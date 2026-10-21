@@ -3,7 +3,7 @@ import { perfCount } from "./PerfReport";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
-import { useTheme } from "./theme";
+import { theme } from "./theme";
 import { TerrainChunks } from "./TerrainChunks";
 import {
   eachEntity,
@@ -40,7 +40,6 @@ export default function World(props: { brush?: () => JSX.Element }) {
   const pool = useInstancePool();
   const ctx = useEngine();
   const { casters } = useDayNight();
-  const theme = useTheme();
 
   const mounted = new Map<string, MountedEntry>();
   /** Where each road node stands, since a delete arrives without it. */
@@ -91,13 +90,12 @@ export default function World(props: { brush?: () => JSX.Element }) {
     }
   }
 
-  const terrain = new TerrainChunks(ctx, casters()!, theme, isBuilt);
+  const terrain = new TerrainChunks(ctx, casters()!, isBuilt);
   // Red where no joined road reaches it; grey where any stock is bare.
   const lookOf = (entry: GameObjectEntry) =>
     !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY;
-  const town = new TownLayer(ctx, casters()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
+  const town = new TownLayer(ctx, casters()!, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
-  createEffect(on(theme, () => (terrain.markAllDirty(), town.repaint()), { defer: true }));
   // The building in hand, or let go until the server answers, drawn where
   // it would stand, and the trees out of its way.
   const standing = () => aim() ?? placed();
@@ -116,9 +114,9 @@ export default function World(props: { brush?: () => JSX.Element }) {
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {
       case "Building":
-        return mountBuilding(entry, pool, ctx, theme(), lookOf(entry));
+        return mountBuilding(entry, pool, ctx, theme, lookOf(entry));
       case "Car":
-        return mountCar(entry, pool, ctx, theme(), SOLID);
+        return mountCar(entry, pool, ctx, theme, SOLID);
       default:
         return null;
     }

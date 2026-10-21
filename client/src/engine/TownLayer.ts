@@ -11,7 +11,7 @@ import { hex, rgb, WHITE, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
 import { CHUNK, kerbed, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
-import type { Theme } from "./theme";
+import { theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z, LAYER_ORDER } from "./town/draw";
@@ -122,7 +122,6 @@ export class TownLayer {
   constructor(
     private ctx: EngineContext,
     private casters: Casters,
-    private theme: () => Theme,
     private entities: (f: (e: GameObjectEntry) => void) => void,
     private ground: (x: number, y: number) => TerrainType | undefined,
     private look: (e: GameObjectEntry) => Look,
@@ -131,8 +130,8 @@ export class TownLayer {
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
-    this.roads = new RoadTiles(ctx.engine, ctx.scene, () => this.theme().road);
-    const { r, g, b } = this.theme().paved;
+    this.roads = new RoadTiles(ctx.engine, ctx.scene);
+    const { r, g, b } = theme.paved;
     this.concrete = new Decks(ctx.engine, ctx.scene, casters, rgb(r, g, b));
   }
 
@@ -172,13 +171,6 @@ export class TownLayer {
   touch(x: number, y: number) {
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) this.dirty.add(`${x + dx},${y + dy}`);
     for (let dy = -MARGIN; dy <= MARGIN; dy += MARGIN) for (let dx = -MARGIN; dx <= MARGIN; dx += MARGIN) this.stale.add(chunkOf(x + dx, y + dy));
-    this.settle();
-  }
-
-  /** Everything drawn again: the theme changed. */
-  repaint() {
-    for (const key of this.roads.tiles()) this.dirty.add(key.split("#")[0]);
-    for (const key of this.chunks.keys()) this.stale.add(key);
     this.settle();
   }
 
@@ -286,7 +278,7 @@ export class TownLayer {
     const g = this.gather(held);
     const inside = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
     const snapshot: Snapshot = {
-      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside)), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
+      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside)), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS,
     };
     // Kept, in development, to time the drawing alone, off the page.
     if (import.meta.env.DEV) Object.assign(window, { sprawlHeldSnapshot: { ...snapshot, ground: [...snapshot.ground] } });
@@ -354,7 +346,7 @@ export class TownLayer {
     if (!todo.length) return;
 
     const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
-    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near)), doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
+    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near)), doors, marks, ground: this.groundUnder(box), kinds: KINDS };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder

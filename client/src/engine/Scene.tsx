@@ -6,7 +6,6 @@ import { Picker } from "./Picker";
 import { Highlight } from "./Highlight";
 import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
-import { ThemeProvider } from "./theme";
 import PerfReport from "./PerfReport";
 import Pins from "./Pins";
 import Glass from "../ui/Glass";
@@ -39,10 +38,8 @@ function SceneInner() {
 
 export default function Scene(props: { connect: Connect }) {
   return (
-    <ThemeProvider>
-      <GameProvider connect={props.connect}>
-        <SceneInner />
-      </GameProvider>
-    </ThemeProvider>
+    <GameProvider connect={props.connect}>
+      <SceneInner />
+    </GameProvider>
   );
 }

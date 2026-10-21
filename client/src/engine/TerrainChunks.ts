@@ -5,7 +5,7 @@ import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, show } from "./geometry";
 import * as Comlink from "comlink";
-import type { Theme } from "./theme";
+import { theme } from "./theme";
 import {
   buildTrees,
   CHUNK_SIZE,
@@ -14,7 +14,6 @@ import {
   TYPE_BY_BYTE,
   type ChunkGeometry,
   type MeshBuffers,
-  type TerrainPalette,
 } from "./objects/terrainGeometry";
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
@@ -88,7 +87,6 @@ export class TerrainChunks {
   constructor(
     private ctx: EngineContext,
     private casters: Casters,
-    private theme: () => Theme,
     private isBuilt: (x: number, y: number) => boolean,
   ) {
     // The one material that genuinely wants both sides. Cliff walls exist only
@@ -102,7 +100,8 @@ export class TerrainChunks {
     this.wallMat = townMaterial([CAST_ONLY]);
 
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
-    this.paintGround();
+    // Each layer of the land its colour, bottom up (`LAYERS`).
+    this.ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
 
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
@@ -111,25 +110,6 @@ export class TerrainChunks {
     });
   }
 
-  /** Each layer of the land its colour, bottom up (`LAYERS`). */
-  private paintGround(): void {
-    const t = this.theme();
-    this.ground.paint([t.beach, t.rock, t.land, t.forest]);
-  }
-
-  /** The worker has no Babylon, so the theme crosses as plain floats. */
-  private palette(): TerrainPalette {
-    const t = this.theme();
-    return {
-      Water: { r: t.water.r, g: t.water.g, b: t.water.b },
-      // The sea a shade deeper than a lake.
-      Sea: { r: t.water.r * 0.85, g: t.water.g * 0.85, b: t.water.b * 0.9 },
-      Beach: { r: t.beach.r, g: t.beach.g, b: t.beach.b },
-      Grass: { r: t.land.r, g: t.land.g, b: t.land.b },
-      Forest: { r: t.forest.r, g: t.forest.g, b: t.forest.b },
-      Mountain: { r: t.mountain.r, g: t.mountain.g, b: t.mountain.b },
-    };
-  }
 
   // --- Tile data ---------------------------------------------------------
 
@@ -193,12 +173,6 @@ export class TerrainChunks {
     this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
 
-  /** Rebuild every chunk — used when the theme changes all terrain colours. */
-  markAllDirty(): void {
-    this.paintGround();
-    for (const key of this.chunks.keys()) this.invalidate(key);
-  }
-
   private invalidate(key: string): void {
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
     this.dirtyGeometry.add(key);
@@ -256,7 +230,7 @@ export class TerrainChunks {
         if (!this.isBuilt(x, y)) return b;
         return this.ashore(x, y, own) ? sea : b === forest ? grass : b;
       });
-      geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy, this.palette());
+      geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy);
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.
@@ -329,7 +303,7 @@ export class TerrainChunks {
     if (!chunk || !tiles) return;
 
     const [cx, cy] = parseKey(key);
-    const sets = buildTrees(tiles, cx, cy, this.isBuilt, this.theme());
+    const sets = buildTrees(tiles, cx, cy, this.isBuilt, theme);
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     for (const kind of ["broad", "conifer"] as const) {
       const { matrices, colors } = sets[kind];

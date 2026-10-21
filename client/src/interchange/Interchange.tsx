@@ -6,7 +6,6 @@ import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNig
 import { InstancePoolProvider } from "../engine/InstancePool";
 import World from "../engine/World";
 import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
-import { ThemeProvider } from "../engine/theme";
 import Glass from "../ui/Glass";
 import { projector, screenToWorld } from "../engine/view";
 import { climb, pen, priority, setPen, setPriority, setTool, tool } from "../ui/buildMode";
@@ -121,26 +120,24 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
   if (import.meta.env.DEV) Object.assign(window, { sprawlLevel: { line: () => line, state } });
 
   return (
-    <ThemeProvider>
-      <GameProvider connect={(on) => (line = connectLevel(props.level.name, props.level.text, layoutOf(props.level.name), on, hear, (json) => keepLayout(props.level.name, json)))}>
-        <DayNightProvider>
-          <Canvas>
-            <OrthoCamera bounds={bounds} />
-            <DayNightLights>
-              <Registered>
-                <InstancePoolProvider>
-                  <World brush={() => (<><RoadBrush /><Flagger line={() => line} /></>)} />
-                </InstancePoolProvider>
-              </Registered>
-            </DayNightLights>
-            <Frame state={state} />
-          </Canvas>
-          <Glass />
-          <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />
-          <Signs />
-        </DayNightProvider>
-      </GameProvider>
-    </ThemeProvider>
+    <GameProvider connect={(on) => (line = connectLevel(props.level.name, props.level.text, layoutOf(props.level.name), on, hear, (json) => keepLayout(props.level.name, json)))}>
+      <DayNightProvider>
+        <Canvas>
+          <OrthoCamera bounds={bounds} />
+          <DayNightLights>
+            <Registered>
+              <InstancePoolProvider>
+                <World brush={() => (<><RoadBrush /><Flagger line={() => line} /></>)} />
+              </InstancePoolProvider>
+            </Registered>
+          </DayNightLights>
+          <Frame state={state} />
+        </Canvas>
+        <Glass />
+        <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />
+        <Signs />
+      </DayNightProvider>
+    </GameProvider>
   );
 }
 

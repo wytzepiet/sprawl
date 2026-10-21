@@ -1,5 +1,5 @@
 import { BLUEPRINTS, GOODS, middle } from "../blueprints";
-import { themes, type Theme } from "../engine/theme";
+import { theme as THEME, type Theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
@@ -121,7 +121,7 @@ function drawLane(g: CanvasRenderingContext2D, lane: Lane, S: number) {
  * Draw the world into `g`, `view.w` by `view.h` pixels. `labels` adds ids
  * and a legend; without, it is the minimap's picture.
  */
-export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, sheet: Sheet, { labels = true, theme = themes.light } = {}) {
+export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, sheet: Sheet, { labels = true, theme = THEME } = {}) {
   const S = view.px;
   const [x0, x1] = [view.x - view.w / 2 / S, view.x + view.w / 2 / S];
   const [y0, y1] = [view.y - view.h / 2 / S, view.y + view.h / 2 / S];

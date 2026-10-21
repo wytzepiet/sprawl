@@ -8,7 +8,7 @@ import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "../engine
 import { drop, meshOf, show } from "../engine/geometry";
 import { screenToWorld } from "../engine/view";
 import { hex, rgb, WHITE, type Rgb } from "../engine/rgb";
-import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
+import { theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
@@ -65,20 +65,18 @@ export default function Sandbox() {
   // Noon, or the time of day `?t=` names (0 midnight, 0.5 noon), stopped.
   syncClock(Number(new URLSearchParams(location.search).get("t") ?? 0.5) * 120_000, 0, 120_000);
   return (
-    <ThemeProvider>
-      <DayNightProvider>
-        <OfflineGame>
-          <Canvas>
-            <OrthoCamera />
-            <DayNightLights>
-              <Registered>
-                <Board />
-              </Registered>
-            </DayNightLights>
-          </Canvas>
-        </OfflineGame>
-      </DayNightProvider>
-    </ThemeProvider>
+    <DayNightProvider>
+      <OfflineGame>
+        <Canvas>
+          <OrthoCamera />
+          <DayNightLights>
+            <Registered>
+              <Board />
+            </Registered>
+          </DayNightLights>
+        </Canvas>
+      </OfflineGame>
+    </DayNightProvider>
   );
 }
 
@@ -86,7 +84,6 @@ function Board() {
   const ctx = useEngine();
   const { scene, canvas } = ctx;
   const casters = useDayNight().casters()!;
-  const theme = useTheme();
   const params = new URLSearchParams(location.search);
   const [name, setName] = createSignal(params.get("f") ?? Object.keys(FIXTURES)[0]);
   const [brush, setBrush] = createSignal("H");
@@ -145,7 +142,7 @@ function Board() {
 
   function draw() {
     undraw(ctx, drawn, casters);
-    drawn = build(ctx, casters, town(), theme(), rows);
+    drawn = build(ctx, casters, town(), rows);
   }
 
   // Painting. A brush of a building kind paints strokes: what is painted is
@@ -369,7 +366,7 @@ let ground: GroundTiles | null = null;
  * The ground as the game draws it, from the fixture's letters: chunk by
  * chunk, each with its skirt, through the builder the terrain worker runs.
  */
-function terrain(ctx: EngineContext, drawn: Drawn, town: Town, theme: Theme, rows: string[]) {
+function terrain(ctx: EngineContext, drawn: Drawn, town: Town, rows: string[]) {
   const { engine, scene } = ctx;
   ground?.dispose();
   // The map runs +x to the screen's left and +y up: turned about.
@@ -471,7 +468,7 @@ function terrain(ctx: EngineContext, drawn: Drawn, town: Town, theme: Theme, row
 const GRID_Z = 0.03;
 let showGrid = true;
 
-function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, rows: string[]): Drawn {
+function build(ctx: EngineContext, casters: Casters, town: Town, rows: string[]): Drawn {
   const { engine, scene } = ctx;
   const drawn: Drawn = { meshes: [], dispose: [] };
   const add = (name: string, plain: MeshGeometry & { colors?: number[] }, colour: Rgb, plugins: MaterialPlugin[] = [], roughness?: number) => {
@@ -514,7 +511,7 @@ function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, r
   drawn.meshes.push(sheet);
 
   // The ground: grass, water, woods and paving, as terrain.
-  terrain(ctx, drawn, town, theme, rows);
+  terrain(ctx, drawn, town, rows);
 
   // The town grid, drawn; and on it what the dressing parks. A sheet's
   // kerbs rounded from its own kerb texture (`engine/kerbs.ts`): the

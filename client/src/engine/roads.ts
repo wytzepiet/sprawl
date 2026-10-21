@@ -1,7 +1,7 @@
 import { markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, show } from "./geometry";
-import type { Rgb } from "./rgb";
+import { theme } from "./theme";
 import { Atlas } from "./atlas";
 import { grain } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
@@ -213,11 +213,9 @@ export class RoadTiles {
   private kinds: Kind[];
   private at = new Map<string, { kind: number; index: number }>();
 
-  /** `colour` paints a street's road, or a through road's. */
   constructor(
     private engine: EngineContext,
     private scene: SceneContext,
-    private colour: (through: boolean) => Rgb,
   ) {
     this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)), 4);
     // Street, through, deck street, deck through (`kindOf`).
@@ -233,6 +231,7 @@ export class RoadTiles {
       giveBevel(engine, mesh, geo);
       // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
       const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, deck)], 0.7);
+      setTint(material, theme.road);
       mesh.material = material;
       mesh.renderOrder = LAYER_ORDER.road;
       mesh.receiveShadows = true;
@@ -275,11 +274,6 @@ export class RoadTiles {
     this.at.set(key, { kind: k, index });
   }
 
-  /** Every tile with a road. */
-  tiles() {
-    return this.at.keys();
-  }
-
   /** No road at this tile. The last of its kind takes its place. */
   delete(key: string) {
     const was = this.at.get(key);
@@ -298,13 +292,12 @@ export class RoadTiles {
     kind.dirty = true;
   }
 
-  /** Every tile drawn as it now is, in the colours of now. */
+  /** Every tile drawn as it now is. */
   flush() {
     this.atlas.upload();
-    this.kinds.forEach((kind, k) => {
+    this.kinds.forEach((kind) => {
       if (!kind.dirty) return;
       kind.dirty = false;
-      setTint(kind.material, this.colour(k % 2 === 1));
       setMeshAttribute(this.engine, kind.mesh, "roadSlot", kind.slots);
       if (kind.lifts) setMeshAttribute(this.engine, kind.mesh, "roadLifts", kind.lifts);
       setThinInstanceCount(kind.mesh, kind.keys.length);

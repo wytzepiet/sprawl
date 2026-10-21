@@ -1,6 +1,6 @@
 import type { TerrainType } from "../../generated";
 import { kerbsOf, kerbTexels, roadsOf, type KerbTexels } from "../kerbLines";
-import type { Theme } from "../theme";
+import { theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt, SIDEWALK, VERGE_KERB } from "./surface";
@@ -55,7 +55,6 @@ export interface Snapshot {
    *  255 where it is not known. */
   ground: Uint8Array;
   kinds: TerrainType[];
-  theme: Theme;
 }
 
 /** One chunk drawn: its pieces in the frame of the window they were drawn
@@ -214,7 +213,7 @@ export function drawChunks(s: Snapshot): Drawing {
   const inWindow = windowOf(whole, c0, r0, ww, wh);
   // The game's own marks, turned half round into the window.
   const marks = s.marks.map((m) => m.map(([x, y]): Pt => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
-  const { pieces, dressing, props } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh), marks);
+  const { pieces, dressing, props } = drawTown(inWindow, theme, paint, windowFacts(known, c0, r0, ww, wh), marks);
   // The roads, as the paving is cut for them: every tile's asphalt,
   // overlapping as they are drawn.
   const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));
@@ -258,7 +257,7 @@ export function drawChunks(s: Snapshot): Drawing {
     const mine = props.filter((p) => p.x >= cut[0] && p.x < cut[2] && p.y >= cut[1] && p.y < cut[3]);
     const packed = new Float32Array(mine.length * PROP_FLOATS);
     mine.forEach((p, i) => packed.set([PROP_KINDS.indexOf(p.kind), p.x, p.y, p.z, p.size, p.high, p.tx, p.ty], i * PROP_FLOATS));
-    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), props: packed, cut, paving };
+    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, theme), props: packed, cut, paving };
   });
   return { chunks, window };
 }
