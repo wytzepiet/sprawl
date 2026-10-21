@@ -531,7 +531,7 @@ function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, r
     } else add(p.name, p.geo, colour);
   }
   const { cars, docks } = dressing;
-  const trees = grove(ctx, "sandbox");
+  const trees = grove("sandbox", [0, 0]);
   const { matrices, colors } = treeInstances(dressing.trees, theme);
   plant(ctx, trees, matrices, colors, casters, [-town.w - 1, -town.h - 1, 1, 1]);
   drawn.dispose.push(() => uproot(ctx, trees, casters));

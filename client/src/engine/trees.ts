@@ -305,50 +305,54 @@ function treeMaterials({ engine, scene, beforeRender }: EngineContext, kind: Kin
 }
 
 export interface Grove {
-  bodies: Mesh;
-  tops: Mesh;
-  /** What of it casts: a broadleaf its card and its crown, which costs no
-   *  frame (it stands still, and the shadows' cache keeps it); a conifer
-   *  its card alone, as its layered top is not one surface. */
-  casting: Mesh[];
-  planted: boolean;
+  name: string;
+  kind: Kind;
+  /** The corner its trees are placed from. */
+  at: [number, number];
+  /** Its bodies and its tops while it has trees; none while it has none. */
+  meshes: Mesh[];
 }
 
-/** A set of trees of a kind, none planted yet: its tops take shadows. */
-export function grove(ctx: EngineContext, name: string, kind: Kind = "broad"): Grove {
-  const { body, top } = treeMaterials(ctx, kind);
-  const [bodies, tops] = ([[BODY, body], [kind === "conifer" ? CONIFER_TOP : BROAD_TOP, top]] as const).map(([geo, material], i) => {
-    const mesh = meshOf(ctx.engine, `${name}_${kind === "broad" ? "tree" : "conifer"}_${i ? "tops" : "bodies"}`, geo);
-    mesh.material = material;
-    return mesh;
-  });
-  tops.receiveShadows = true;
-  return { bodies, tops, casting: kind === "conifer" ? [bodies] : [bodies, tops], planted: false };
-}
+/** A set of trees of a kind, none planted yet. */
+export const grove = (name: string, at: [number, number], kind: Kind = "broad"): Grove => ({ name, kind, at, meshes: [] });
 
 /** Trees planted, 16 floats of matrix and 4 of colour each, in place of
  *  any before, over an area of the map: shown while it is in view, and
- *  casting. False when there are none. */
-export function plant({ scene, cull }: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined, area: Area): boolean {
+ *  casting, its tops taking shadows. None uproots it. */
+export function plant(ctx: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined, area: Area) {
   const count = matrices.length / 16;
-  if (!count) return false;
-  for (const mesh of [g.bodies, g.tops]) {
+  if (!count) return uproot(ctx, g, casters);
+  const fresh = !g.meshes.length;
+  if (fresh) {
+    const { body, top } = treeMaterials(ctx, g.kind);
+    g.meshes = ([[BODY, body], [g.kind === "conifer" ? CONIFER_TOP : BROAD_TOP, top]] as const).map(([geo, material], i) => {
+      const mesh = meshOf(ctx.engine, `${g.name}_${g.kind === "broad" ? "tree" : "conifer"}_${i ? "tops" : "bodies"}`, geo);
+      mesh.material = material;
+      mesh.position.x = g.at[0];
+      mesh.position.y = g.at[1];
+      mesh.receiveShadows = i === 1;
+      return mesh;
+    });
+  }
+  for (const [i, mesh] of g.meshes.entries()) {
     setThinInstances(mesh, matrices, count);
     setThinInstanceColors(mesh, colors);
-    if (g.planted) continue;
-    cull.keep(mesh, area);
-    show(scene, mesh);
-    if (g.casting.includes(mesh)) casters?.add(mesh);
+    if (!fresh) continue;
+    ctx.cull.keep(mesh, area);
+    show(ctx.scene, mesh);
+    // What of it casts: a broadleaf its card and its crown, which costs no
+    // frame (it stands still, and the shadows' cache keeps it); a conifer
+    // its card alone, as its layered top is not one surface.
+    if (i === 0 || g.kind === "broad") casters?.add(mesh);
   }
-  g.planted = true;
-  return true;
 }
 
+/** A grove's trees gone, and its meshes with them. */
 export function uproot({ scene, cull }: EngineContext, g: Grove, casters: Casters | undefined) {
-  if (!g.planted) return;
-  for (const mesh of [g.bodies, g.tops]) {
+  for (const mesh of g.meshes) {
     casters?.remove(mesh);
     cull.forget(mesh);
     drop(scene, mesh);
   }
+  g.meshes = [];
 }

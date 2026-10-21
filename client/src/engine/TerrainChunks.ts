@@ -39,7 +39,6 @@ interface ChunkMeshes {
   meshes: Mesh[];
   cliffs: Mesh | null;
   trees: Record<Kind, Grove>;
-  hasTrees: Record<Kind, boolean>;
   dispose: (() => void)[];
   tick: (() => void) | null;
 }
@@ -279,7 +278,7 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? { broad: grove(this.ctx, `chunk_${key}`), conifer: grove(this.ctx, `chunk_${key}`, "conifer") }, hasTrees: old?.hasTrees ?? { broad: false, conifer: false }, dispose: [], tick: null };
+    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? { broad: grove(`chunk_${key}`, [ox, oy]), conifer: grove(`chunk_${key}`, [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     this.ground.set(key, [ox, oy], geometry.layers);
@@ -333,13 +332,8 @@ export class TerrainChunks {
     const sets = buildTrees(tiles, cx, cy, this.isBuilt, this.theme());
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     for (const kind of ["broad", "conifer"] as const) {
-      // Grown from the chunk's corner.
-      for (const mesh of [chunk.trees[kind].bodies, chunk.trees[kind].tops]) {
-        mesh.position.x = ox;
-        mesh.position.y = oy;
-      }
       const { matrices, colors } = sets[kind];
-      chunk.hasTrees[kind] = plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
+      plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
     }
     this.applyDetail(chunk);
   }
@@ -376,7 +370,7 @@ export class TerrainChunks {
     const { cull } = this.ctx;
     if (chunk.cliffs) cull.want(chunk.cliffs, this.detailVisible);
     for (const kind of ["broad", "conifer"] as const) {
-      if (chunk.hasTrees[kind]) for (const mesh of [chunk.trees[kind].bodies, chunk.trees[kind].tops]) cull.want(mesh, this.detailVisible);
+      for (const mesh of chunk.trees[kind].meshes) cull.want(mesh, this.detailVisible);
     }
   }
 

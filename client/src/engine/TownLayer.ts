@@ -324,7 +324,7 @@ export class TownLayer {
 
   /** A chunk shown or hidden, whatever the view. */
   private want(shown: Shown, wanted: boolean) {
-    for (const m of [...shown.meshes, shown.trees.bodies, shown.trees.tops, ...shown.props]) this.ctx.cull.want(m, wanted);
+    for (const m of [...shown.meshes, ...shown.trees.meshes, ...shown.props]) this.ctx.cull.want(m, wanted);
   }
 
   private draw() {
@@ -538,11 +538,7 @@ export class TownLayer {
       meshes.push(mesh);
     }
     const { matrices, colors } = trees;
-    const g = grove(this.ctx, `town_${key}`);
-    for (const mesh of [g.bodies, g.tops]) {
-      mesh.position.x = ox;
-      mesh.position.y = oy;
-    }
+    const g = grove(`town_${key}`, [ox, oy]);
     plant(this.ctx, g, matrices, colors, this.casters, area);
     const placed = placeProps(this.ctx, `town_${key}`, props, [ox, oy], area, this.casters);
     return { meshes, trees: g, kerbs, props: placed };
