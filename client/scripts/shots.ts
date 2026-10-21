@@ -3,7 +3,6 @@
  *
  *   bun run shots          build the fixtures, photograph each, write the sheet, stop
  *   bun run shots --keep   the same, then leave the stack up at localhost:4810
- *   bun run shots --sandbox   each fixture in the sandbox instead, with no server
  *   bun run shots 20-block    only these fixtures, by name
  *   FIXTURES=<dir> bun run shots   the fixtures in that directory alone, so a
  *                             late one is not built past the map's edge
@@ -15,7 +14,7 @@
  * and `.dev/shots/sheet.png`, every fixture on one page.
  */
 import { args, has, launch, ROOT, sheet } from "./lib";
-import { mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 
 const OUT = `${ROOT}/.dev/shots`;
 const SERVER_PORT = 4811;
@@ -30,14 +29,11 @@ const VIEW = { width: 900, height: 600 };
 type Placed = { name: string; title: string; x: number; y: number; w: number; h: number };
 
 const keep = has("--keep");
-/** The sandbox draws each fixture alone from its text: no server to build
- *  or wait for, and the look as the town grid has it (`engine/town`). */
-const sandbox = has("--sandbox");
 mkdirSync(OUT, { recursive: true });
 rmSync(`${ROOT}/.dev/fixtures.db`, { force: true });
 
 const env = { ...process.env, SPRAWL_PORT: String(SERVER_PORT), SPRAWL_CLIENT_PORT: String(CLIENT_PORT) };
-const server = sandbox ? null : Bun.spawn(["cargo", "run", "-q", "-p", "sprawl-server"], {
+const server = Bun.spawn(["cargo", "run", "-q", "-p", "sprawl-server"], {
   cwd: `${ROOT}/server`,
   env: { ...env, SPRAWL_FIXTURES: process.env.FIXTURES ?? "fixtures", SPRAWL_DB: `${ROOT}/.dev/fixtures.db` },
   stdout: Bun.file(`${ROOT}/.dev/fixtures-server.log`),
@@ -50,7 +46,7 @@ const client = Bun.spawn(["bunx", "vite"], {
   stderr: Bun.file(`${ROOT}/.dev/fixtures-client.log`),
 });
 const stop = () => {
-  server?.kill();
+  server.kill();
   client.kill();
 };
 process.on("SIGINT", () => (stop(), process.exit(130)));
@@ -67,13 +63,7 @@ async function until<T>(what: string, get: () => Promise<T>, seconds = 300): Pro
 }
 
 try {
-  const fixtures: Placed[] = sandbox
-    ? readdirSync(`${ROOT}/server/fixtures`).filter((f) => f.endsWith(".txt")).sort().map((f) => ({
-        name: f.slice(0, -4),
-        title: readFileSync(`${ROOT}/server/fixtures/${f}`, "utf8").split("\n")[0].replace(/^# /, ""),
-        x: 0, y: 0, w: 0, h: 0,
-      }))
-    : await until("the fixture server", async () => {
+  const fixtures: Placed[] = await until("the fixture server", async () => {
     const r = await fetch(`http://localhost:${SERVER_PORT}/fixtures`);
     const built: Placed[] = r.ok ? await r.json() : [];
     // The socket answers before the game loop has built anything.
@@ -86,7 +76,7 @@ try {
 
   const browser = await launch();
   const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 2 });
-  await page.goto(`http://localhost:${CLIENT_PORT}${sandbox ? `/sandbox?f=${fixtures[0].name}` : ""}`);
+  await page.goto(`http://localhost:${CLIENT_PORT}`);
   await page.waitForFunction(() => "sprawlCamera" in window);
   // The map alone: no toolbar, dials or pins over it.
   await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
@@ -97,14 +87,6 @@ try {
   const aspect = VIEW.width / VIEW.height;
   const shot = fixtures.filter((f) => !args.length || args.includes(f.name));
   for (const f of shot) {
-    if (sandbox) {
-      // The sandbox frames a fixture itself when it opens one.
-      await page.goto(`http://localhost:${CLIENT_PORT}/sandbox?f=${f.name}`);
-      await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
-      await page.waitForTimeout(SETTLE_MS);
-      await page.screenshot({ path: `${OUT}/${f.name}.png` });
-      continue;
-    }
     // The middle of the fixture: rows run south from y, a tile's middle is
     // half a tile in.
     const cx = f.x + f.w / 2;

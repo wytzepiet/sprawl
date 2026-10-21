@@ -61,13 +61,10 @@ export function* plans({ town }: Facts) {
 
 /** How a building's surface is painted, given its tile and the shade it
  *  takes of the building's colour: that colour × a + b, a channel at a
- *  time. The sandbox paints the colour itself (`shaded`); the game paints
- *  the shade and which building, and finds the colour as it draws, so a
- *  building's colour changes without its mesh (`tints.ts`). */
+ *  time. The game paints the shade and which building, and finds the
+ *  colour as it draws, so a building's colour changes without its mesh
+ *  (`tints.ts`). */
 export type Paint = (t: Tile, a: number, b: number) => RGB;
-
-/** Each tile its colour, shaded. */
-export const shaded = (colour: (t: Tile) => RGB): Paint => (t, a, b) => colour(t).map((v) => v * a + b) as RGB;
 
 /** What stands on a roof and is drawn as a prop of its own (`props.ts`),
  *  not as the building: an AC unit, a vent; where in the world's frame,

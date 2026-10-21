@@ -1,7 +1,7 @@
 /**
- * A fixture's town drawn flat, layer on layer as the sandbox lays its
- * meshes (`src/sandbox/Sandbox.tsx`), from the same code: the ground, the
- * pavement, the roads, the dressing, the buildings and their roofs' edges.
+ * A fixture's town drawn flat, layer on layer, from the town grid's own
+ * code (`src/engine/town/`): the ground, the pavement, the roads, the
+ * dressing, the buildings and their roofs' edges.
  * As SVG (`plan.ts` is the command), and as the shapes the GPU's UI draws
  * (the build menu's pictures, `src/ui/Build.tsx`).
  */

@@ -14,7 +14,7 @@ let speed = 1;
 const [speedSignal, setSpeedSignal] = createSignal(1);
 /** A day, in sim ms: the server's `protocol::DAY_MS`, which its clock
  *  repeats with every update. */
-export const DAY_MS = 1_200_000;
+const DAY_MS = 1_200_000;
 let dayMs = DAY_MS;
 let synced = false;
 
@@ -57,7 +57,7 @@ export function timeOfDay(): number {
  * it is capped in wall-clock terms — otherwise 20x drifts hours ahead and
  * lurches back the moment the speed changes.
  */
-export function syncClock(sample: number, nextSpeed = speed, nextDayMs = dayMs): void {
+function syncClock(sample: number, nextSpeed = speed, nextDayMs = dayMs): void {
   const predicted = simNow();
   const jumped = !synced || nextSpeed !== speed;
   speed = nextSpeed;

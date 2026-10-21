@@ -81,7 +81,7 @@ export const LETTERS: Record<string, BuildingKind> = {
 
 /** How tall each kind is built. One height for a kind: a height picked per
  *  tile is a chequerboard of steps across every block. Heights that vary
- *  come with success, and by hand in the sandbox. */
+ *  come with success. */
 const STOREYS: Partial<Record<BuildingKind, number>> = {
   House: 2, Apartment: 5, Shop: 2, Office: 6, Factory: 1, Depot: 1, Supermarket: 1, GasStation: 1, Sawmill: 1, Quarry: 1,
 };
@@ -92,7 +92,7 @@ export const isBuilt = (t: Tile) => !GROUND.has(t.kind);
 /** How many storeys a kind is built. */
 export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
 
-export function tileOf(ch: string): Tile {
+function tileOf(ch: string): Tile {
   // A building's letter, its yard's small, as `/map` writes the game's.
   const kind = LETTERS[ch.toUpperCase()];
   if (kind) return ch === ch.toUpperCase() ? { kind, storeys: storeysOf(kind) } : { kind, storeys: storeysOf(kind), yard: true };

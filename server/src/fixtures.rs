@@ -11,7 +11,7 @@
 //!
 //! ```text
 //! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
-//! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
+//! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry
@@ -253,7 +253,7 @@ mod tests {
 
     /// Every fixture builds as it is written: each letter a tile of the
     /// building it names, and `/map` gives the letters and the ground back
-    /// where they were, so what the sandbox paints is what the server
+    /// where they were, so what `bun run plan` draws is what the server
     /// stands up, and a fixture made from the game builds as it stood.
     #[test]
     fn every_fixture_builds_letter_for_letter() {

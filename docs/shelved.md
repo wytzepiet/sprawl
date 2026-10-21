@@ -282,6 +282,17 @@ aisles for both (`parking.md` §8, `look.md` §Into the game step 5);
 a loading bay as a stop of `network.md`. Never the look's guess again.
 The code last lived at `a501124`.
 
+## The sandbox (to 2026-10-21)
+
+**What.** `/sandbox?f=<fixture>`: a fixture drawn with no server, by a
+town renderer of its own, with a brush to paint buildings a tile at a
+time and `bun run shots --sandbox` to photograph them all. **Why
+shelved.** It had drifted from the game's drawing (its own roads,
+terrain and parked cars, no lane lines or props) and keeping it level
+cost more than it showed; `bun run plan` answers layout, `shots` and
+`look` photograph the game itself. **To bring back.** Feed a fixture
+to `TownLayer`, not a second renderer. Last lived at `d7f5dd5`.
+
 ## Pedestrians, transit, walkability
 
 **What.** People on the map: walkers on sidewalks, buses and trams with

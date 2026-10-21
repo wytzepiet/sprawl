@@ -3,7 +3,7 @@ import type { MeshGeometry } from "../geometry";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
 import { dress, type Dressing } from "./dressing";
-import { asphalt, pavement } from "./surface";
+import { pavement } from "./surface";
 import { facts } from "./facts";
 import { area, type Polygon, type Pt } from "./footprint";
 import type { Town } from "./grid";
@@ -54,31 +54,14 @@ const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
 const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };
 
 /**
- * The town grid's roads, drawn: the asphalt of the streets and the drives
- * that lead off them, and the through roads over them. Geometry alone, in
- * the fixture's frame turned into the world's (+x to the screen's left, +y
- * up, as `townMesh` lays it); whoever shows it places it. Each tile's road
- * is its own piece, so this is cheap over a whole map.
- */
-export function drawRoads(town: Town, theme: Theme): Piece[] {
-  const { street, through } = asphalt(town);
-  return [
-    { name: "street", geo: flatPolygons(street, ROAD_Z + PAVED_Z), colour: theme.road },
-    // Over the streets that meet it: a street's end runs on under it.
-    { name: "through", geo: flatPolygons(through, ROAD_Z + PAVED_Z + 0.001), colour: theme.road },
-  ].filter((p) => p.geo.indices.length);
-}
-
-/**
  * The town grid's town, drawn: the pavement, the
- * buildings, and a canopy over a depot's docks; the roads are `drawRoads`.
+ * buildings, and a canopy over a depot's docks; the roads are the game's
+ * (`roads.ts`).
  * Geometry alone, in the same frame, and the lines painted on the yards'
  * asphalt: the docks', and the game's own `marks`, a harbour's trailer
  * park's slots. The trees the dressing plants are the caller's to plant
  * (`treeInstances`), and what stands on its roofs and its street lamps the
- * props' (`props.ts`), as is what stands on it that moves, the
- * cars, lorries and ferries the dressing would put there: the game draws
- * its own, the sandbox the dressing's.
+ * props' (`props.ts`); what moves on it the game draws itself.
  */
 export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: Pt[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
@@ -231,15 +214,4 @@ export function covers(g: MeshGeometry) {
     return false;
   };
   return (a: number[], b: number[], out: number[]) => inside((a[0] + b[0]) / 2 + out[0] * 1e-3, (a[1] + b[1]) / 2 + out[1] * 1e-3);
-}
-
-/** Flat squares on some tiles, a little over the ground. */
-export function quadsAt(cells: [number, number][], z: number): MeshGeometry {
-  const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const [c, r] of cells) {
-    const b = g.positions.length / 3;
-    for (const [dx, dy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) g.positions.push(-(c + dx), -(r + dy), z), g.normals.push(0, 0, 1);
-    g.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
-  }
-  return g;
 }

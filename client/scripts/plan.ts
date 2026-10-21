@@ -1,8 +1,8 @@
 /**
  * The town grid drawn flat, as SVG: no light, no 3D, no browser for the
  * drawing. Instant and exact, and two versions compare as text or side by
- * side. Most layout questions need only this; the sandbox's photographs
- * (`bun run shots --sandbox`) are for light and height.
+ * side. Most layout questions need only this; photographs (`bun run
+ * shots`, `bun run look`) are for light and height.
  *
  *   bun run plan                       every fixture
  *   bun run plan 14-business 16-ferry  these, by name or by path

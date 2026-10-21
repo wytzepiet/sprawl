@@ -121,7 +121,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   loads, so a mesh added and dropped every frame keeps it skipped. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **The plan:** `bun run plan [fixture…]` draws the town grid flat as SVG
-  in `.dev/plan/`, from the sandbox's own code, in well under a second a
+  in `.dev/plan/`, from the town grid's own code (`client/src/engine/town/`,
+  `docs/look.md`), in well under a second a
   fixture: no light, no 3D, no browser. `--png` adds pictures and a sheet,
   `--crop c0,r0,c1,r1` a part (`PX=80` for a closer look), `--at <ref>`
   the same drawn from the code at another commit beside today's,
@@ -172,10 +173,6 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   zooming, and prints each phase's frames, CPU and GPU time and where the
   JavaScript went, from the reports a tab it names sends
   (`PerfReport.tsx`, `.dev/perf.jsonl`); no other tab sends any.
-- **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
-  fixture with no server, through the town grid (`client/src/engine/town/`,
-  `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the
-  sheet from it, in seconds.
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main

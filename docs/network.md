@@ -104,7 +104,7 @@ boxes, never parts.
 
 ## The check
 
-Every network the sandbox shows is checked, and what fails is red:
+Every network drawn is checked, and what fails is red:
 
 - **Every stop can be reached from the town's streets and left again**,
   lanes and one-ways obeyed.
@@ -149,7 +149,7 @@ props. Sketches, to be argued:
 - **Simulation**: a link with lanes is that many queues; a car keeps its
   lane and changes only at a node, by the wiring rule. Kerb parking and
   stops are `parking.md` §4 and §5.
-- **Order**: the network type and the check in the sandbox; the car park,
+- **Order**: the network type and the check; the car park,
   the depot's docks and the supermarket's loading bay re-made as
   templates, deleting their hand-drawn strips in `dressing.ts` (if they
   come out both nicer and correct, the primitives are right); then the

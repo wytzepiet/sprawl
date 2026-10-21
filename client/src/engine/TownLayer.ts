@@ -80,7 +80,7 @@ interface Gathered {
  * the main thread (`town/layer.ts`, `townWorker.ts`), one drawing at a
  * time; meshes are made of them as they land. Cars
  * moving are not a change. The grid runs in the fixture's frame, turned
- * half round onto the map, as the sandbox draws a fixture. Kerbs are
+ * half round onto the map. Kerbs are
  * rounded from each sheet's own kerb texture (`kerbs.ts`).
  */
 export class TownLayer {

@@ -321,16 +321,6 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   );
 }
 
-/** No server behind it: the sandbox, whose camera still asks what it may
- *  see and has no one to tell. */
-export function OfflineGame(props: ParentProps) {
-  return (
-    <Ctx.Provider value={{ welcomed: () => 0, island: () => NO_ISLAND, growth: () => NO_GROWTH, send: () => true }}>
-      {props.children}
-    </Ctx.Provider>
-  );
-}
-
 export function useGame() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useGame must be used within <GameProvider>");
