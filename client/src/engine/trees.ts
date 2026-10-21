@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, updateTexture2DFromPixels, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { markMaterialUboDirty, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
@@ -7,7 +7,7 @@ import type { Area } from "./cull";
 import { lacquer } from "./bevel";
 import { COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS } from "./crowns";
 import recipe from "./crowns.ts?raw";
-import { baked } from "./bakeCache";
+import { bakedTexture, whenBaked } from "./bakeCache";
 
 /**
  * Trees, forest and street alike: a crown on a trunk, a broadleaf's round
@@ -142,36 +142,17 @@ let cardOut = cardX > cardReach || cardGap;`,
   },
 };
 
-const SHAPES = new WeakMap<LiteEngine, Texture2D>();
-const BAKED = new WeakMap<LiteEngine, Promise<void>>();
+/** An engine's crowns: every texel past its crown's outline until the
+ *  worker has baked them, so no tree shows before its crown does. */
+const crownShapes = (engine: LiteEngine): Texture2D =>
+  bakedTexture(engine, "crowns", recipe, [COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255)], {
+    format: "rgba8unorm",
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+  });
 /** When an engine's crowns are baked: at once if it has none. */
-export function crownsBaked(engine: LiteEngine): Promise<void> {
-  return BAKED.get(engine) ?? Promise.resolve();
-}
-function crownShapes(engine: LiteEngine): Texture2D {
-  let texture = SHAPES.get(engine);
-  if (!texture) {
-    // Every texel past its crown's outline until the worker has baked them:
-    // no tree shows before its crown does.
-    const none = new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255);
-    const made = createTexture2DFromPixels(engine, none, COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, {
-      format: "rgba8unorm",
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-    });
-    SHAPES.set(engine, (texture = made));
-    const asked = performance.now();
-    BAKED.set(
-      engine,
-      baked("crowns", recipe, () => new Worker(new URL("./crownWorker.ts", import.meta.url), { type: "module" })).then((data) => {
-        updateTexture2DFromPixels(engine, made, data);
-        if (import.meta.env.DEV) console.info(`[crowns] ready ${(performance.now() - asked).toFixed(0)} ms after asked`);
-      }),
-    );
-  }
-  return texture;
-}
+export const crownsBaked = (engine: LiteEngine): Promise<void> => whenBaked(engine, "crowns");
 
 /** Where the pixel is on its crown, in the world's turn, a radius out at 1,
  *  and, by where the tree stands, which crown it wears and how it is turned,

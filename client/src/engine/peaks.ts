@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, updateTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
 import { CAST_ONLY, townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
@@ -6,7 +6,7 @@ import { lacquer } from "./bevel";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
-import { baked } from "./bakeCache";
+import { bakedTexture } from "./bakeCache";
 import { ripples, swashFn } from "./water";
 
 /**
@@ -134,26 +134,16 @@ let peakShine = 1. - ${f(DULL)} * peakHollow;
 townShine = ${f(ROCK_SHINE)} * peakShine;
 N = normalize(vec3f(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 
-/** Each scene's slate: flat until the worker has baked it. The cliffs the
+/** Each engine's slate: flat until the worker has baked it. The cliffs the
  *  land stands on break along it too (`ground.ts`). */
-const SLATES = new Map<EngineContext, Texture2D>();
-export function slate(engine: EngineContext): Texture2D {
-  let texture = SLATES.get(engine);
-  if (!texture) {
-    const flat = new Uint8Array(SLATE_SIDE * SLATE_SIDE * 4);
-    for (let k = 0; k < flat.length; k += 4) flat.set([128, 128, 255, 255], k);
-    const made = createTexture2DFromPixels(engine, flat, SLATE_SIDE, SLATE_SIDE, {
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "repeat",
-      addressModeV: "repeat",
-    });
-    SLATES.set(engine, (texture = made));
-    void baked("slate", recipe, () => new Worker(new URL("./slateWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
-  }
-  return texture;
-}
+export const slate = (engine: EngineContext): Texture2D =>
+  bakedTexture(engine, "slate", recipe, [SLATE_SIDE, SLATE_SIDE, new Uint8Array(SLATE_SIDE * SLATE_SIDE * 4).map((_, k) => (k % 4 < 2 ? 128 : 255))], {
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+    addressModeU: "repeat",
+    addressModeV: "repeat",
+  });
 
 /** A chunk's mountains' material, with the chunk's heights (half floats,
  *  `PEAK_SIDE` to a side): their surface is laid where it is on the map, so

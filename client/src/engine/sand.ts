@@ -5,7 +5,7 @@
  * off, scattered at random and summed, each facing about the wind's way.
  * Where they overlap they make ridges that wind, fork, end and meet, as
  * ripples grow, rather than lines bent after. On its own, for a worker to
- * bake (`rippleWorker.ts`).
+ * bake (`bakeWorker.ts`).
  */
 export const RIPPLE_SIDE = 512;
 export const RIPPLE_TILES = 4;

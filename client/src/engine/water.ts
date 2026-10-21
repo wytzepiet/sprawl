@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, updateTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
@@ -6,7 +6,9 @@ import { CALM, slate } from "./peaks";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { LACE_SIDE, LACE_TILES } from "./lace";
 import laceRecipe from "./lace.ts?raw";
-import { baked } from "./bakeCache";
+import { WAVES_SIDE } from "./waves";
+import wavesRecipe from "./waves.ts?raw";
+import { bakedTexture } from "./bakeCache";
 
 /**
  * The sea and the lakes, drawn as water: their own meshes (`terrainGeometry`
@@ -27,9 +29,6 @@ import { baked } from "./bakeCache";
  * any ground is, so it dims and takes the light's colour by night.
  */
 
-/** The ripple texture's side, in texels, and how many waves make it. */
-const SIDE = 256;
-const WAVES = 48;
 /** Each reading of it: how many tiles it spans, which way it drifts and
  *  how fast, in tiles a second, how far it tilts the surface, and how far
  *  it is turned, so the readings' grids never line up into a repeat. */
@@ -160,80 +159,17 @@ const wavePiece = (R: (uv: string) => string, at: string, phase: string) =>
 export const swashFn = (R: (uv: string) => string, name: string) =>
   `fn ${name}(t: f32, p: vec2f) -> f32 { let w = ${wavePhase(R, "p", "t", f(SWASH_LEAD))}; let s = fract(w); let up = 1. - min(s / ${f(RISE)}, 1.); return min(1. - up * up, 1. - smoothstep(${f(RISE)}, 1., s)) * mix(0.25, 1., ${wavePiece(R, "p", "(w - 1.)")}); }`;
 
-/** A tiling field of the surface's slope, two channels, and its height, a third, from waves of
- *  whole numbers of crests across it, so it meets itself at its edges:
- *  longer waves stronger, as on open water, and all leaning one way, as
- *  wind lays them. */
-function rippleData(): Float32Array {
-  let seed = 7;
-  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const waves: [number, number, number, number][] = [];
-  while (waves.length < WAVES) {
-    const [kx, ky] = [Math.round((random() * 2 - 1) * 14), Math.round((random() * 2 - 1) * 14)];
-    const k = Math.hypot(kx, ky);
-    if (k < 2) continue;
-    // Toward the wind, (1, 0.4), the stronger.
-    const lean = 0.35 + 0.65 * Math.max(0, (kx + 0.4 * ky) / (k * 1.077));
-    waves.push([kx, ky, lean / k ** 1.5, random() * Math.PI * 2]);
-  }
-  const data = new Float32Array(SIDE * SIDE * 4);
-  let [most, highest] = [0, 0];
-  for (let j = 0; j < SIDE; j++) {
-    for (let i = 0; i < SIDE; i++) {
-      const [u, v] = [(i / SIDE) * Math.PI * 2, (j / SIDE) * Math.PI * 2];
-      let [sx, sy, height] = [0, 0, 0];
-      for (const [kx, ky, a, phase] of waves) {
-        const d = -a * Math.sin(kx * u + ky * v + phase);
-        sx += d * kx;
-        sy += d * ky;
-        height += a * Math.cos(kx * u + ky * v + phase);
-      }
-      const at = (j * SIDE + i) * 4;
-      [data[at], data[at + 1], data[at + 2], data[at + 3]] = [sx, sy, height, 1];
-      most = Math.max(most, Math.abs(sx), Math.abs(sy));
-      highest = Math.max(highest, Math.abs(height));
-    }
-  }
-  for (let k = 0; k < data.length; k += 4) [data[k], data[k + 1], data[k + 2]] = [data[k] / most, data[k + 1] / most, data[k + 2] / highest];
-  return data;
-}
+const REPEAT = { mipmaps: true, minFilter: "linear", magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat" } as const;
 
-const RIPPLES = new WeakMap<EngineContext, Texture2D>();
-export function ripples(engine: EngineContext): Texture2D {
-  let texture = RIPPLES.get(engine);
-  if (!texture) {
-    texture = createTexture2DFromPixels(engine, rippleData(), SIDE, SIDE, {
-      format: "rgba32float",
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "repeat",
-      addressModeV: "repeat",
-    });
-    RIPPLES.set(engine, texture);
-  }
-  return texture;
-}
+/** The water's ripple (`waves.ts`), an engine's: still until the worker
+ *  has baked it, or read back from the last bake (`bakeCache.ts`). */
+export const ripples = (engine: EngineContext): Texture2D =>
+  bakedTexture(engine, "waves", wavesRecipe, [WAVES_SIDE, WAVES_SIDE, new Uint8Array(new Float16Array(WAVES_SIDE * WAVES_SIDE * 4).map((_, k) => (k % 4 === 3 ? 1 : 0)).buffer)], { format: "rgba16float", ...REPEAT });
 
 /** The foam's lace, an engine's: clear until the worker has baked it, or
- *  read back from the last bake (`bakeCache.ts`). */
-const LACES = new WeakMap<EngineContext, Texture2D>();
-function lace(engine: EngineContext): Texture2D {
-  let texture = LACES.get(engine);
-  if (!texture) {
-    const made = createTexture2DFromPixels(engine, new Uint8Array(LACE_SIDE * LACE_SIDE), LACE_SIDE, LACE_SIDE, {
-      format: "r8unorm",
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "repeat",
-      addressModeV: "repeat",
-    });
-    LACES.set(engine, (texture = made));
-    void baked("lace", laceRecipe, () => new Worker(new URL("./laceWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
-  }
-  return texture;
-}
+ *  read back from the last bake. */
+const lace = (engine: EngineContext): Texture2D =>
+  bakedTexture(engine, "lace", laceRecipe, [LACE_SIDE, LACE_SIDE, new Uint8Array(LACE_SIDE * LACE_SIDE)], { format: "r8unorm", ...REPEAT });
 
 const f = (x: number) => x.toFixed(4);
 const water = () => {

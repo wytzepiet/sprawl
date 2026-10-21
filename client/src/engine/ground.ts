@@ -8,8 +8,8 @@ import { FAR, kerbDistances } from "./kerbLines";
 import { CALM, slate } from "./peaks";
 import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
-import { RIPPLE_SIDE, RIPPLE_TILES } from "./ripples";
-import recipe from "./ripples.ts?raw";
+import { RIPPLE_SIDE, RIPPLE_TILES } from "./sand";
+import recipe from "./sand.ts?raw";
 import { baked } from "./bakeCache";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
@@ -71,7 +71,7 @@ const TUFT = 8;
 const GLINTS = 0.25;
 const GLINT_TILT = 0.35;
 const GLINT = 4;
-/** And it lies in ripples, as the wind leaves them (`ripples.ts`, baked),
+/** And it lies in ripples, as the wind leaves them (`sand.ts`, baked),
  *  tilting the sand this much; flat where the waves wet it, which wash them
  *  out, back as the sand dries (its darkening's own band). */
 const RIPPLE_TILT = 0.35;
@@ -155,7 +155,7 @@ function sand(engine: EngineContext): Texture2D {
       addressModeV: "repeat",
     });
     SANDS.set(engine, (texture = made));
-    void baked("ripples", recipe, () => new Worker(new URL("./rippleWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
+    void baked("sand", recipe).then((data) => updateTexture2DFromPixels(engine, made, data));
   }
   return texture;
 }
@@ -269,7 +269,7 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
 let groundGrainUv = input.worldPos.xy / ${span};
 let groundGlint = vec3f(textureSample(groundGrain, groundGrainSampler, groundGrainUv).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other1})).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other2})).r);
 let groundGlinting = input.vGroundSlot.w * step(${glints}, groundGlint.x);
-// The sand's ripples (ripples.ts), their slope read at the size they are drawn.
+// The sand's ripples (sand.ts), their slope read at the size they are drawn.
 let groundRipple = (textureSample(sandRipples, sandRipplesSampler, input.worldPos.xy / ${n(RIPPLE_TILES)}).rg * 2. - 1.) * ${n(RIPPLE_TILT)} * input.vGroundSlot.w
   * smoothstep(0.15, 0.35, textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${n(RIPPLE_PATCH * SIDE)} + vec2f(0.37, 0.71)).r);
 let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${specks}).r - 0.5;
