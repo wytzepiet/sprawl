@@ -210,14 +210,14 @@ fn field(p: vec2f, run: Run) -> Field {
   // Clear along its edge, it deepens past it to nearly black: the town's
   // own colour multiplied down, richer, so it is a deep green over grass
   // and a deep blue over sea, never a grey.
-  var body = mix(vivid, glass.tint.rgb, glass.tint.a * mix(0.3, 1, f.down) * (1 - 0.6 * glow));
+  var body = mix(vivid, glass.tint.rgb, glass.tint.a * f.down * (1 - 0.6 * glow));
   let rich = max(mix(vec3f(luma(vivid)), vivid, 1.5), vec3f(0)) * mix(vec3f(1), glass.tint.rgb / max(max(glass.tint.r, glass.tint.g), max(glass.tint.b, 1e-3)), 0.4);
   body = mix(body, rich * 0.2, ${DEEP} * f.down * (1 - 0.6 * glow));
   // A frosted pane is a little more solid too: less town, more of the light on it.
-  body = mix(body, glass.tint.rgb, 0.22 * f.frost * (1 - 0.6 * glow));
+  body = mix(body, glass.tint.rgb, 0.22 * f.frost * f.down * (1 - 0.6 * glow));
   // Lit by the sun: its colour cast through the whole pane, gold at dawn
   // and dusk, nothing at noon's white or by night.
-  body *= mix(vec3f(1), glass.sun.rgb, ${SUNLIT} * glass.sun.a);
+  body *= mix(vec3f(1), glass.sun.rgb, ${SUNLIT} * glass.sun.a * f.down);
   // Tinted glass keeps its colour: its hue and depth of colour hold, and
   // its lightness follows what is behind, within a band round its own.
   if (f.dye.a > 0.001) {
