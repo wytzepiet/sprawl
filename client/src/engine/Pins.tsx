@@ -2,7 +2,7 @@ import { createEffect, onCleanup } from "solid-js";
 import { createTexture2DFromPixels, setPbrAlphaCutoff, type Texture2D } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
-import { viewExtent } from "./view";
+import { groundCover } from "./view";
 import { storeysOf } from "./town/grid";
 import { seat } from "./town/mass";
 import { INSET } from "./town/footprint";
@@ -208,7 +208,7 @@ export default function Pins() {
   onCleanup(
     beforeRender(() => {
       if (!scene.camera) return;
-      const s = ((2 * viewExtent(scene, canvas).halfH) / Math.max(1, canvas.clientHeight)) * TALL;
+      const s = ((2 * groundCover(scene, canvas).halfH) / Math.max(1, canvas.clientHeight)) * TALL;
       if (Math.abs(s - size) < size * 0.002) return;
       size = s;
       for (const { bucket, id, look } of shown.values()) if (look === "marker" && id >= 0) pool.updateInstance(bucket, id, undefined, undefined, [s, s, s]);

@@ -22,7 +22,7 @@ import { grove, plant, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
-import { viewExtent } from "./view";
+import { groundCover } from "./view";
 
 export { CHUNK_SIZE };
 
@@ -334,7 +334,7 @@ export class TerrainChunks {
   /** Cliffs and trees are illegible when zoomed far out — skip them entirely. */
   private updateDetail(): void {
     if (!this.ctx.scene.camera) return;
-    const visible = viewExtent(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_ORTHO;
+    const visible = groundCover(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_ORTHO;
     if (visible === this.detailVisible) return;
     this.detailVisible = visible;
     for (const chunk of this.chunks.values()) this.applyDetail(chunk);

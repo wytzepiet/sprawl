@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
-import { viewExtent, rectOf } from "./view";
+import { groundCover, rectOf } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
 
 
@@ -91,13 +91,6 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
   let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN, lastWelcome = 0;
 
   /**
-   * Hold the camera at the height that puts `viewHalf` tiles between the middle
-   * of the screen and its top edge. A narrow lens far away looks very nearly
-   * like a flat projection — but only very nearly, and the difference is the
-   * point: a tall building leans away from the middle of the view and shows a
-   * little of its side, which is what makes its height readable.
-   */
-  /**
    * How much ground one pixel covers.
    *
    * The camera looks straight down at a flat world, so every point of the
@@ -107,7 +100,7 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
    * camera just as it did under a flat one.
    */
   function groundScale(rect: DOMRect) {
-    const { halfW, halfH } = viewExtent(scene, canvas);
+    const { halfW, halfH } = groundCover(scene, canvas);
     return { worldPerPxX: (halfW * 2) / rect.width, worldPerPxY: (halfH * 2) / rect.height };
   }
 
