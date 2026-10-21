@@ -83,6 +83,9 @@ export declare namespace JSX {
     /** How much more the town under it is blurred, 0 to 1: more where
      *  what is on it must read whatever is under, a chart's red and green. */
     frost?: number;
+    /** Dark all over, with no clear edge: behind what sits over the
+     *  clear edge of other glass, so it reads. */
+    even?: boolean;
   }
 
   interface Text extends Common {

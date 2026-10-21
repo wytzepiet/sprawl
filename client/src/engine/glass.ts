@@ -82,7 +82,7 @@ export const light = {
 };
 
 const WGSL = /* wgsl */ `
-struct Pane { box: vec4f, round: vec4f, dye: vec4f }
+struct Pane { box: vec4f, round: vec4f, dye: vec4f, even: vec4f }
 struct Run { first: u32, count: u32, pad0: u32, pad1: u32 }
 struct Glass {
   panes: array<Pane, ${PANES}>,
@@ -139,7 +139,8 @@ fn field(p: vec2f, run: Run) -> Field {
     // How deep into the pane it is from its clear edge, the one facing the
     // middle of the screen: the top of a pane low on it, the foot of one high.
     let edge = select(p.y - (pane.box.y - pane.box.w), pane.box.y + pane.box.w - p.y, pane.box.y < 0.5 * glass.size.y);
-    f.down = mix(f.down, smoothstep(0, ${RAMP} * glass.size.z, edge), h);
+    // Even glass, behind what must read over the clear edge of another, has none.
+    f.down = mix(f.down, max(smoothstep(0, ${RAMP} * glass.size.z, edge), pane.even.x), h);
   }
   return f;
 }
@@ -346,7 +347,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
   });
 
   // The uniforms: panes (box, round, dye: 12 floats), runs (4 u32), then seven vec4s.
-  const floats = PANES * 12 + RUNS * 4 + 7 * 4;
+  const floats = PANES * 16 + RUNS * 4 + 7 * 4;
   const data = new Float32Array(floats);
   const ints = new Uint32Array(data.buffer);
   const uniforms = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -435,7 +436,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
         if (i === PANES) break;
         glazed.push({ x: p.x, y: p.y, w: p.w, h: p.h, r: p.r });
         const [hx, hy] = [(p.w / 2) * dpr, (p.h / 2) * dpr];
-        const o = i * 12;
+        const o = i * 16;
         data[o] = (p.x + p.w / 2) * dpr;
         data[o + 1] = (p.y + p.h / 2) * dpr;
         data[o + 2] = hx;
@@ -446,15 +447,16 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
         data[o + 7] = p.frost ?? 0;
         const dye = p.dye ? hexRgb(p.dye) : null;
         if (dye) data.set([...dye, 1], o + 8);
+        data[o + 12] = p.even ? 1 : 0;
         box.x0 = Math.min(box.x0, p.x * dpr);
         box.y0 = Math.min(box.y0, p.y * dpr);
         box.x1 = Math.max(box.x1, (p.x + p.w) * dpr);
         box.y1 = Math.max(box.y1, (p.y + p.h) * dpr);
-        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""},${(p.frost ?? 0).toFixed(2)};`;
+        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""},${(p.frost ?? 0).toFixed(2)},${p.even ? 1 : 0};`;
         i++;
       }
       if (i === first) return false;
-      const o = PANES * 12 + runs.length * 4;
+      const o = PANES * 16 + runs.length * 4;
       ints[o] = first;
       ints[o + 1] = i - first;
       runs.push({
@@ -468,7 +470,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
     for (const panes of byRun.values()) run(panes);
     groups.push({ runs: runs.slice(), layer: null });
     for (const layer of ui?.read() ?? []) groups.push({ runs: layer.panes.length && run(layer.panes) ? [runs[runs.length - 1]] : [], layer });
-    const o = PANES * 12 + RUNS * 4;
+    const o = PANES * 16 + RUNS * 4;
     data.set([...light.tint.map((v, k) => v * (1 - COLOUR + COLOUR * SEA_GLASS[k])), WASH], o);
     data.set([...light.sun, light.sunStrength], o + 4);
     data.set([...light.toward, 0, 0], o + 8);

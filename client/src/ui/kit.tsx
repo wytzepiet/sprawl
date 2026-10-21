@@ -41,7 +41,8 @@ export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?:
   const lit = (i: number) => Math.max(0, 1 - Math.abs(at() - i)) * Math.max(0, Math.min(1, shown()));
   return (
     <box pad={{ x: 12, top: 14, bottom: 12 }}>
-      <box dir="row" h={38} round={19} pad={3} fill="ink/0.06" onSize={(ww) => setW(ww)}>
+      {/* Glass of its own, even and frosted, so it reads over the clear edge of the sheet. */}
+      <glass layer="tabs" even frost={1} dir="row" h={38} round={19} pad={3} onSize={(ww) => setW(ww)}>
         <box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.85" opacity={Math.max(0, Math.min(1, shown()))} />
         <For each={props.tabs}>
           {(t, i) => {
@@ -56,7 +57,7 @@ export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?:
             );
           }}
         </For>
-      </box>
+      </glass>
     </box>
   );
 }
