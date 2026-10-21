@@ -57,27 +57,24 @@ export function RoadsHead() {
   );
 }
 
-/** The road tools, each with what it does: a tap takes it up. */
+/** What the road tools do, under their blocks. */
 export function RoadsBody() {
   const Item = (props: { k: RoadKind; text: string; stone?: boolean }) => (
-    <Press dir="row" align="start" gap={10} pad={{ x: 4, y: 6 }} round={12} fill={inHand() === props.k ? "ink/0.06" : undefined} onTap={() => take(props.k)}>
+    <box dir="row" align="start" gap={10} pad={{ y: 6 }}>
       <box w={28} h={28} round={14} fill={road(props.k).color} align="center" justify="center">
         <icon d={road(props.k).glyph} size={14} ink="white" />
       </box>
-      <box grow={1} gap={1}>
-        <text size={14} weight={600}>{road(props.k).label}</text>
-        <text size={13} soft lead={1.4}>{props.text}</text>
-      </box>
+      <text grow={1} size={13.5} soft lead={1.4}>{props.text}</text>
       <Show when={props.stone}>
         <box dir="row" align="center" gap={2} pad={{ top: 4 }}>
           <icon d={GOODS.Stone.glyph} size={13} ink="ink/0.6" />
           <text serif size={14} soft>1</text>
         </box>
       </Show>
-    </Press>
+    </box>
   );
   return (
-    <box pad={{ x: 12, bottom: 14 }}>
+    <box pad={{ x: 16, bottom: 14 }}>
       <Item k="Street" stone text="Two ways, a lane each. Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price." />
       <Item k="OneWay" stone text="One lane, the way you drag it." />
       <Item k="Road" stone text="A street with priority: whoever joins or crosses it gives way." />

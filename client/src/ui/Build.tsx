@@ -134,7 +134,7 @@ export function BuildBody() {
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
   const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
   return (
-    <Show when={group() !== "roads"} fallback={<RoadsBody />}>
+    <Show when={group() !== "roads"} fallback={<><RoadsHead /><RoadsBody /></>}>
     <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
       <For each={kinds()}>
         {(kind) => (
