@@ -6,7 +6,7 @@ use crate::blueprint::blueprint;
 use crate::economy;
 use crate::needs::{Bucket, Need, Tap};
 use crate::world::pathfinding::Routes;
-use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, GridCoord, Resident, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Resident, DAY_MS};
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -21,10 +21,6 @@ const DETOUR: f64 = 1.4;
 /// How long to sit on a failed departure — a blocked driveway, a severed road —
 /// before looking again.
 const RETRY_MS: u64 = 10_000;
-
-/// How many arrivals it takes for the learned delay to mostly forget the
-/// old ones.
-
 
 /// Who is at, or on their way to, each building for each need. Counted
 /// fresh at every wake from what residents are doing — a claim is being
@@ -67,22 +63,8 @@ pub fn handle_resident_wake(
     let crowd = headcount(world);
     settle(world, id, at, now, &crowd);
     let Some(r) = resident(world, id).cloned() else { return };
-    let mut buckets = buckets(world, &r);
-    let mut routes = routes_from(world, at);
-    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes);
-    drop(routes);
-
-    // The note the demand readout reads: how far short of being served on
-    // the spot each need fell — one where nothing was found at all.
-    for (b, v) in buckets.iter_mut().zip(&verdicts) {
-        b.shortfall = match *v {
-            Verdict::Nothing => 1.0,
-            Verdict::Go { score, .. } => {
-                let ideal = b.need.ceiling(b.stock.short());
-                if ideal > 0.0 { (1.0 - score / ideal).clamp(0.0, 1.0) } else { 0.0 }
-            }
-        };
-    }
+    let buckets = buckets(world, &r);
+    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     store(world, id, r.car, &buckets);
     if buckets.iter().zip(&verdicts).any(|(b, v)| b.need == Need::Fuel && matches!(v, Verdict::Nothing) && b.stock.level < b.stock.cap / 4.0) {
         crate::missions::sense(world, crate::missions::When::Dry, now);
@@ -157,7 +139,7 @@ pub fn handle_resident_wake(
 fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
     let mut all = r.buckets.clone();
     if let Some(GameObject::Car(c)) = world.objects.get(r.car).map(|e| &e.object) {
-        all.extend(c.stocks.iter().map(|(&need, &stock)| Bucket { need, stock, shortfall: 0.0 }));
+        all.extend(c.stocks.iter().map(|(&need, &stock)| Bucket { need, stock }));
     }
     all
 }
@@ -550,33 +532,6 @@ fn drive(
     }
 }
 
-/// The readout the whole system exists for, printed as a trip ends: how the
-/// arrival compares to the shift, and to the free-flow promise made at
-/// departure. People leave on time under free-flow assumptions, so both
-/// numbers worsening together is a direct measurement of congestion on the
-/// roads they actually drove.
-pub fn arrival_readout(world: &mut World, id: EntityId, destination: EntityId, eta: GameTime, now: GameTime) {
-    if let Some(r) = resident(world, id)
-        && r.work == Some(destination)
-        && let Some(open) = taps_of(world, destination)
-            .iter()
-            .find(|t| t.need == Need::Work)
-            .and_then(|t| t.curve.next_nonzero(0))
-    {
-        let day = DAY_MS as i64;
-        let mut diff = (time_of_day(now) as i64 - open as i64).rem_euclid(day);
-        if diff > day / 2 {
-            diff -= day;
-        }
-        let word = if diff > 0 { "late" } else { "early" };
-        let lost = now.saturating_sub(eta) / 1000;
-        println!(
-            "commute: resident {id} at work {}s {word}, {lost}s lost to traffic",
-            (diff / 1000).abs()
-        );
-    }
-}
-
 /// The arithmetic, made visible: what one resident owes, and what every
 /// option scores right now. The model's failure mode is quiet, and this is
 /// the only way to watch it think. Read-only — the buckets are shown as they
@@ -603,98 +558,6 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
             "option": v.describe(now),
         })).collect::<Vec<_>>(),
     })
-}
-
-/// Everyone, one line each: where they are and what they are doing.
-pub fn inspect_all(world: &World, now: GameTime) -> Value {
-    let mut rows: Vec<Value> = world
-        .resident_ids()
-        .into_iter()
-        .filter_map(|id| resident(world, id).map(|r| (id, r)))
-        .map(|(id, r)| json!({
-            "id": id,
-            "at": r.at,
-            "at_kind": r.at.map(|a| whereabouts(world, a)),
-            "selected": r.selected,
-            "short_h": buckets(world, r).iter().map(|b| (format!("{:?}", b.need), b.stock.short() / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
-        }))
-        .collect();
-    rows.sort_by_key(|v| v["id"].as_u64());
-    json!({ "now": hhmm(now), "residents": rows })
-}
-
-/// One resident's note on one need, as left by their last wake: where they
-/// live, how far short of being served it fell, and how much that weighs —
-/// the need's fullness times the shortfall. Someone without a job wants one
-/// outright. Read from the notes; nobody is asked to think again.
-struct Want {
-    home: GridCoord,
-    need: Need,
-    shortfall: f64,
-    weight: f64,
-}
-
-fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
-    world.resident_ids().into_iter().filter_map(|id| resident(world, id)).flat_map(|r| {
-        let home = world.objects.get(r.home).and_then(|e| e.position);
-        let jobless = r.work.is_none();
-        r.at.and(home).into_iter().flat_map(move |home| {
-            r.buckets.iter().filter_map(move |b| {
-                let (shortfall, weight) = if b.need.drain() > 0.0 {
-                    (b.shortfall, b.stock.weight() * b.shortfall)
-                } else if b.need == Need::Work && jobless {
-                    (1.0, 1.0)
-                } else {
-                    (0.0, 0.0)
-                };
-                (weight > 0.0).then_some(Want { home, need: b.need, shortfall, weight })
-            })
-        })
-    })
-}
-
-/// Who found nothing at all, by home chunk: how many, and how badly. What
-/// the demand readout names as missing; a shop that is merely far or full
-/// weighs on `pressure` without showing up here.
-pub fn unmet(world: &World) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
-    let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::default();
-    for w in wants(world).filter(|w| w.shortfall >= 1.0) {
-        let e = unmet.entry((crate::world::chunk_of(w.home), w.need)).or_default();
-        e.0 += 1;
-        e.1 += w.weight;
-    }
-    unmet
-}
-
-pub fn demand(world: &World, now: GameTime) -> Value {
-    let unmet = unmet(world);
-    let mut unmet: Vec<Value> = unmet
-        .into_iter()
-        .map(|((c, need), (people, pressure))| {
-            json!({ "chunk": [c.cx, c.cy], "need": need, "people": people, "pressure": pressure })
-        })
-        .collect();
-    unmet.sort_by_key(|v| (v["chunk"].to_string(), v["need"].to_string()));
-
-    let mut delivered: Vec<Value> = world
-        .books
-        .iter()
-        .flat_map(|(&building, k)| {
-            let (today, yesterday) = (k.on(now), k.before(now));
-            let needs: std::collections::BTreeSet<Need> = today.served.keys().chain(yesterday.served.keys()).copied().collect();
-            needs.into_iter().map(move |need| {
-                json!({
-                    "building": building,
-                    "kind": whereabouts(world, building),
-                    "need": need,
-                    "today_h": today.served.get(&need).copied().unwrap_or(0.0),
-                    "yesterday_h": yesterday.served.get(&need).copied().unwrap_or(0.0),
-                })
-            }).collect::<Vec<_>>()
-        })
-        .collect();
-    delivered.sort_by_key(|v| (v["building"].as_u64(), v["need"].to_string()));
-    json!({ "now": hhmm(now), "unmet": unmet, "delivered": delivered })
 }
 
 impl Verdict {

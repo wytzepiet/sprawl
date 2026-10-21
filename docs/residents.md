@@ -412,10 +412,6 @@ one is.
 - **Routing.** On deciding to travel, a route is computed by existing
   pathfinding. The estimate used for the decision and the route used for the
   journey are distinct.
-- **Demand.** Each wake leaves a note on each bucket, `shortfall`: how far
-  short of being served on the spot the best option fell, 1 where nothing
-  was found. The demand readout reads the notes; the decision is never run
-  a second time on its behalf.
 - **Output.** The total discharged by a building's taps over a period is the
   service it delivered — for a workplace, labour received.
 
@@ -639,7 +635,9 @@ arrivals go home for five minutes; `next_zero` must not land where
 `/debug/residents` beside `/health`: bucket levels, every option's score,
 departure, wait and leave, the selection. Residents are not streamed to the
 client, so a UI is real protocol work; text is enough while two needs can
-be predicted by hand and three cannot. *Done.*
+be predicted by hand and three cannot. *Done.* The routes went
+2026-10-21: the same arithmetic is the inspect card's (`/inspect/<id>`,
+`resident::inspect`).
 
 **4. Eat.** Shop publishes an Eat tap. First accruing need served away from
 home, so `candidates(b)` is built here: expanding ring over the spatial
@@ -685,7 +683,9 @@ settle counts as it goes (not saved; a loaded world counts afresh). This
 is the signal only. It fed the spawner's draw until that went
 (`shelved.md`); what reads it now is the mayor, deciding what to place
 next. Housing demand cannot come from buckets: nobody is homeless, settle
-evicts them; that signal is immigration pressure.
+evicts them; that signal is immigration pressure. The route, and the
+shortfall each wake noted for it, went 2026-10-21, read by nobody; what
+the buildings served is still in their books (`World::books`).
 
 **7. Leisure.** The first need with no natural curve constraint, and the
 real test of `w = L / cap`. *Done.* What it taught, in three tries: with

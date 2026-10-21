@@ -211,18 +211,12 @@ pub struct Bucket {
     pub need: Need,
     #[serde(default)]
     pub stock: Stock,
-    /// How far short of being served on the spot the last wake fell, from 0
-    /// (as well as it could be) to 1 (nothing found anywhere). A record of
-    /// the last decision, not a plan: the demand readout sums it to say what
-    /// the city wants and where, without asking anyone to think again.
-    #[serde(default)]
-    pub shortfall: f64,
 }
 
 impl Bucket {
     /// A full set, the way a new resident is issued them.
     pub fn fresh() -> Vec<Bucket> {
-        Need::OWN.iter().map(|&need| Bucket { need, stock: need.fresh(), shortfall: 0.0 }).collect()
+        Need::OWN.iter().map(|&need| Bucket { need, stock: need.fresh() }).collect()
     }
 
     /// A car's stocks, as issued: a full tank. What a save from before a
@@ -243,7 +237,7 @@ impl Bucket {
         }
         for &need in &Need::OWN {
             if !buckets.iter().any(|b| b.need == need) {
-                buckets.push(Bucket { need, stock: need.fresh(), shortfall: 0.0 });
+                buckets.push(Bucket { need, stock: need.fresh() });
             }
         }
     }

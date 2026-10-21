@@ -1653,17 +1653,9 @@ mod tests {
         // eleven people, nine hours, less the lunches — and the lunch shop
         // served them. The last day, not the second: a settled one.
         if days >= 3 {
-            let d = crate::resident::demand(&world, days * DAY_MS as u64);
-            assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
-            let sold = |b: EntityId, need: &str, day: &str| {
-                d["delivered"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .find(|v| v["building"] == b && v["need"] == need)
-                    .map_or(0.0, |v| v[day].as_f64().unwrap())
-            };
-            let office = sold(office, "Work", "yesterday_h");
+            wants_nothing(&world, now);
+            let sold = |b: EntityId, need| world.books[&b].before(now).served.get(&need).copied().unwrap_or(0.0);
+            let office = sold(office, crate::needs::Need::Work);
             // Eleven at the office: fourteen people, two apartments of
             // seven, less the shop's two and the pump's one, nine hours
             // each, less the odd late morning, a lunch out, a dinner near
@@ -1671,9 +1663,21 @@ mod tests {
             assert!((70.0..=99.0).contains(&office), "office received {office}h");
             // Lunches over a whole day: the shops have no depot here, so
             // by the third day their shelves have run down some.
-            assert!(sold(lunch, "Eat", "yesterday_h") > 1.5, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
+            assert!(sold(lunch, crate::needs::Need::Eat) > 1.5, "lunch shop sold {}h", sold(lunch, crate::needs::Need::Eat));
         }
         log
+    }
+
+    /// Nobody wants for anything: everyone has a job, and whatever they
+    /// owe of a need of their own that runs down has somewhere to be met.
+    fn wants_nothing(world: &World, now: GameTime) {
+        for e in world.objects.iter() {
+            let GameObject::Resident(ref r) = e.object else { continue };
+            let card = crate::resident::inspect(world, e.id, now);
+            assert!(r.work.is_some(), "{card}");
+            let owed = |v: &&serde_json::Value| r.buckets.iter().any(|b| b.need.drain() > 0.0 && v["need"] == serde_json::json!(b.need)) && v["full"].as_f64() > Some(0.0);
+            assert!(card["buckets"].as_array().into_iter().flatten().filter(owed).all(|v| v["option"] != "nothing"), "{card}");
+        }
     }
 
     #[test]
@@ -1710,8 +1714,7 @@ mod tests {
         // a stop is what keeps it from being one: a fill costs nothing.
         println!("{stops} fuel stops in six days");
         assert!((12..=48).contains(&stops), "{stops} fuel stops in six days");
-        let d = crate::resident::demand(&world, 6 * day);
-        assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
+        wants_nothing(&world, now);
     }
 
     /// Every kind the mayor could put down along the street: the harbour
@@ -1830,7 +1833,6 @@ mod tests {
             // were on the street, until claims lapsed (docs/parking.md §9).
             let stuck = world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| now > t.eta + DAY_MS as u64))).count();
             assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
-            println!("day {day}: {} claims lapsed so far", intersections.lapses);
             // The missions read, as the tick reads them: letters come only
             // once the opening is done.
             crate::missions::check(&mut world, now);

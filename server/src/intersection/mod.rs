@@ -503,9 +503,6 @@ impl IntersectionManager {
 
 pub struct IntersectionRegistry {
     managers: HashMap<EntityId, IntersectionManager>,
-    /// How many claims have lapsed: the gauge of how often the street
-    /// locks. A handful a day is a jam; a climb is the street model.
-    pub lapses: u64,
     /// Where each car has a claim.
     held: HashMap<EntityId, Vec<EntityId>>,
 }
@@ -514,7 +511,6 @@ impl IntersectionRegistry {
     pub fn new() -> Self {
         Self {
             managers: HashMap::default(),
-            lapses: 0,
             held: HashMap::default(),
         }
     }
@@ -523,12 +519,7 @@ impl IntersectionRegistry {
     /// lapse if it is old enough. Returns the cars let through.
     pub fn lapse(&mut self, node_id: EntityId, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
         let Some(manager) = self.managers.get_mut(&node_id) else { return Vec::new() };
-        let was = manager.has_passage(car_id);
-        let woken = manager.lapse(car_id, now);
-        if was && !manager.has_passage(car_id) {
-            self.lapses += 1;
-        }
-        woken
+        manager.lapse(car_id, now)
     }
 
     /// A car says when it will be at a junction (`IntersectionManager::claim`).

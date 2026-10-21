@@ -5,11 +5,4 @@ import type { Stock } from "./Stock";
 /**
  * One need's standing with one resident: the stock, and a note.
  */
-export type Bucket = { need: Need, stock: Stock, 
-/**
- * How far short of being served on the spot the last wake fell, from 0
- * (as well as it could be) to 1 (nothing found anywhere). A record of
- * the last decision, not a plan: the demand readout sums it to say what
- * the city wants and where, without asking anyone to think again.
- */
-shortfall: number, };
+export type Bucket = { need: Need, stock: Stock, };

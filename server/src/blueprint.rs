@@ -10,7 +10,6 @@
 
 use std::sync::LazyLock;
 
-use serde_json::{json, Value};
 
 use crate::needs::curve::Curve;
 use crate::needs::{Need, Tap};
@@ -273,22 +272,6 @@ pub fn check() {
     assert_eq!(BLUEPRINTS.len(), BuildingKind::ALL.len(), "a kind has no blueprint");
 }
 
-/// The whole table, readable: what each kind is and does.
-pub fn inspect() -> Value {
-    let hours = |c: &Curve| c.per_day() / H as f64;
-    json!(BLUEPRINTS.iter().map(|(kind, b)| json!({
-        "kind": kind,
-        "homes": b.homes,
-        "jobs": b.jobs,
-        "size": b.size,
-        "materials": b.materials,
-        "shelves": b.shelves,
-        "taps": b.taps.iter().map(|t| json!({
-            "need": t.need, "open_h": hours(&t.curve), "rate": t.rate, "slots": t.slots,
-        })).collect::<Vec<_>>(),
-    })).collect::<Vec<_>>())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,14 +280,6 @@ mod tests {
     #[test]
     fn the_table_holds_up() {
         check();
-    }
-
-    /// The whole table serialises: the readout is the only way to see
-    /// what a kind actually says.
-    #[test]
-    fn the_table_can_be_read() {
-        let v = inspect();
-        assert_eq!(v.as_array().unwrap().len(), BLUEPRINTS.len());
     }
 
     #[test]

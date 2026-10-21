@@ -25,22 +25,13 @@ pub enum Command {
     ClientDisconnect { id: ClientId },
     /// Ask the game loop a question about the world. It lives on that
     /// task; this is the only way to read it.
-    Inspect { query: Ask, reply: tokio::sync::oneshot::Sender<String> },
+    Inspect { query: Debug, reply: tokio::sync::oneshot::Sender<String> },
 }
 
 /// What the debug endpoints can ask.
-pub enum Ask {
-    /// What one resident is thinking.
-    Resident(EntityId),
-    /// Everyone, one line each.
-    Residents,
-    /// Who cannot be served, where; and what each building delivered.
-    Demand,
+pub enum Debug {
     /// A building's lot: its spots, their windows, and what it has seen.
     Lot(EntityId),
-    /// Raise a call at a building now, to watch it answered: a shop calls
-    /// for stock, a depot for a fetch from beyond the edge.
-    Call(EntityId),
     /// The card for one thing on the map, whatever it is.
     Card(EntityId),
     /// The town's page: what it served and what crossed the door.

@@ -704,12 +704,12 @@ pub fn handle_car_wake_up(
     car_id: EntityId,
     now: GameTime,
 ) {
-    let (owner, role, mut trip) = match world.objects.get(car_id) {
+    let (role, mut trip) = match world.objects.get(car_id) {
         Some(entry) => match &entry.object {
             // A parked car has nothing to think about — unless it is a
             // vehicle on a call, which has finished unloading.
             GameObject::Car(c) => match c.trip.clone() {
-                Some(t) => (c.owner, c.role, t),
+                Some(t) => (c.role, t),
                 None => {
                     crate::calls::car_idle(world, events, car_id, now);
                     return;
@@ -719,8 +719,8 @@ pub fn handle_car_wake_up(
         },
         None => return,
     };
-    let Some(h) = advance(world, events, intersections, owner, role, &trip, car_id, now) else { return };
-    let (waiting, turning_in) = lots(world, events, intersections, &h, &trip);
+    let Some(h) = advance(world, events, intersections, role, &trip, car_id, now) else { return };
+    let (waiting, turning_in) = lots(world, events, &h, &trip);
     let (mut held, tail_clears) = clear_behind(world, events, intersections, &h, &trip);
     // Its nose at the crossing on the link it is on, if there is one, or
     // past it: through it, nothing there stops it any more.
@@ -763,8 +763,7 @@ pub fn handle_car_wake_up(
 /// Drive on to now: over each node the car has passed since it last
 /// looked, clearing the junctions behind it, timing the runs it finished,
 /// and parking it where its trip ends. Where it is now, unless parked.
-#[allow(clippy::too_many_arguments)]
-fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: crate::protocol::OwnerId, role: CarRole, trip: &Trip, car_id: EntityId, now: GameTime) -> Option<Here> {
+fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, role: CarRole, trip: &Trip, car_id: EntityId, now: GameTime) -> Option<Here> {
     // === ADVANCE ===
     let dt = (now - trip.updated_at) as f64 / 1000.0;
     let (cur_progress, cur_speed) =
@@ -853,7 +852,6 @@ fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
             // stretches crossed on the way here are left like any others,
             // or the car would stay on their queues as a ghost.
             leave_crossed(world, events, car_id, &trip, old_ri, ri);
-            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
             park_car(world, intersections, events, car_id, trip.destination);
             // A lorry only couples or drops a box, wherever it stops: a
             // moment. The box is the load, not the lorry.
@@ -894,7 +892,7 @@ fn stops_at(world: &World, trip: &Trip, k: usize) -> bool {
 /// In and out of lots: where it waits at its give-way line to pull out,
 /// and where it waits to turn in across the street. Whether it waits to
 /// pull out, and whether to turn in.
-fn lots(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, h: &Here, trip: &Trip) -> (bool, bool) {
+fn lots(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip) -> (bool, bool) {
     let Here { car_id, now, ri, progress: cur_progress, speed: cur_speed, .. } = *h;
     // Out of a lot: a give-way line where it stands. There it waits for a
     // gap; with one it pulls out, and the street waits for it until it is
@@ -915,7 +913,6 @@ fn lots(world: &mut World, events: &mut EventQueue, intersections: &mut Intersec
                 }
             }
         } else if now >= since + crate::intersection::PATIENCE {
-            intersections.lapses += 1;
             let_go(world, events, car_id);
             lapsed = true;
         }

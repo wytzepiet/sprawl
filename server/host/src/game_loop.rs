@@ -6,10 +6,10 @@ use tokio::time::{Instant, interval, Duration};
 use sprawl::engine::GameTime;
 use sprawl::engine::tracked::Tracked;
 use sprawl::game::{Game, STEP_MS, restore};
-use sprawl::protocol::{DAY_MS, GameObject, ServerMessage};
+use sprawl::protocol::{DAY_MS, ServerMessage};
 use sprawl::world::World;
 
-use crate::network::{ClientId, Command};
+use crate::network::{ClientId, Command, Debug};
 use crate::persistence;
 
 fn db_path() -> PathBuf {
@@ -123,31 +123,14 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     }
 }
 
-fn inspect(game: &mut Game, query: crate::network::Ask) -> String {
-    use crate::network::Ask;
+fn inspect(game: &mut Game, query: Debug) -> String {
     let (world, now) = (&mut game.world, game.now);
     let v = match query {
-        Ask::Resident(id) => sprawl::resident::inspect(world, id, now),
-        Ask::Residents => sprawl::resident::inspect_all(world, now),
-        Ask::Demand => sprawl::resident::demand(world, now),
-        Ask::Lot(id) => world.inspect_lot(id, now),
-        Ask::Card(id) => sprawl::card::card(world, id, now),
-        Ask::Town => sprawl::economy::town(world, now),
-        Ask::Sea => sprawl::haul::inspect(world, now),
-        Ask::Map { x, y, r } => sprawl::fixtures::draw(world, x, y, r).into(),
-        Ask::Call(id) => {
-            // Its shelf, emptied: a depot fetches, a maker is full again by
-            // tomorrow, anything else calls for stock.
-            if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-                for need in sprawl::economy::shelves(b.kind) {
-                    if let Some(stock) = b.stocks.get_mut(&need) {
-                        stock.level = 0.0;
-                    }
-                }
-            }
-            sprawl::calls::turn(world, &mut game.events, id, now);
-            serde_json::json!({ "calls": world.calls.iter().map(|c| serde_json::json!({ "kind": format!("{:?}", c.kind), "good": c.good, "at": c.at, "answered_by": c.answered_by })).collect::<Vec<_>>() })
-        }
+        Debug::Lot(id) => world.inspect_lot(id, now),
+        Debug::Card(id) => sprawl::card::card(world, id, now),
+        Debug::Town => sprawl::economy::town(world, now),
+        Debug::Sea => sprawl::haul::inspect(world, now),
+        Debug::Map { x, y, r } => sprawl::fixtures::draw(world, x, y, r).into(),
     };
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
