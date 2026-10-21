@@ -78,6 +78,14 @@ function born() {
   return is;
 }
 
+/** What a tab shows when it is switched to: it fades in, so one view
+ *  gives way to the next. */
+export function Fade(props: JSX.Box) {
+  const b = born();
+  const [o] = follow(() => (b() ? 1 : 0), { rest: 0.001 });
+  return <box {...props} opacity={Math.max(0, Math.min(1, o()))} />;
+}
+
 /** What answers a press: it springs in from small. */
 export function Pop(props: JSX.Box) {
   const b = born();

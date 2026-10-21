@@ -6,7 +6,7 @@ import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { Shelf } from "./Depot";
-import { Line, Press, Tabs } from "./kit";
+import { Fade, Line, Press, Tabs } from "./kit";
 import { open, setOpen, sheetWidth, show } from "./sheet";
 import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
@@ -115,9 +115,9 @@ export const MarketHead = () => <Tabs tabs={VIEWS} on={view()} lit={open()} pick
 
 export const MarketBody = () => (
   <Switch>
-    <Match when={view() === "market"}><List /></Match>
-    <Match when={view() === "stock"}><Holdings /></Match>
-    <Match when={view() === "orders"}><Orders /></Match>
+    <Match when={view() === "market"}><Fade><List /></Fade></Match>
+    <Match when={view() === "stock"}><Fade><Holdings /></Fade></Match>
+    <Match when={view() === "orders"}><Fade><Orders /></Fade></Match>
   </Switch>
 );
 

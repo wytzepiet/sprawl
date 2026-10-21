@@ -4,7 +4,7 @@ import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
-import { Info, Press, Tabs } from "./kit";
+import { Fade, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
@@ -126,7 +126,10 @@ export function BuildBody() {
   const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
   const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
   return (
-    <Show when={group() !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
+    <Show when={group()} keyed>
+      {(g) => (
+        <Fade>
+    <Show when={g !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
       <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
         <For each={kinds()}>
           {(kind) => (
@@ -141,6 +144,9 @@ export function BuildBody() {
           )}
         </For>
       </box>
+    </Show>
+        </Fade>
+      )}
     </Show>
   );
 }

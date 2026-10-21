@@ -11,7 +11,7 @@ import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, take } from "./Roads"
 import { BuildBody, BuildHead } from "./Build";
 import { FROSTED, MarketBody, MarketHead, setView } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
-import { Press, view, wide } from "./kit";
+import { Fade, Press, view, wide } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "~ui/jsx-runtime";
 
@@ -137,11 +137,11 @@ export default function Dock() {
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
-                <Show when={tab()} keyed>{(t) => SHEETS[t].head()}</Show>
+                <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].head()}</Fade>}</Show>
               </box>
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} opacity={ink()} clip onScroll={scrolled}>
                 <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
-                  <Show when={tab()} keyed>{(t) => SHEETS[t].body()}</Show>
+                  <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].body()}</Fade>}</Show>
                 </box>
               </box>
               <box at={{ left: 16, right: 16, bottom: BAR }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
