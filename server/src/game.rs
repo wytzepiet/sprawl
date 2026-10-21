@@ -1850,7 +1850,7 @@ mod tests {
         // last is off the border; and a box of the farm's crates sold, once
         // the last is loaded.
         let mut berthed = false;
-        let mut market = |world: &mut World, events: &mut EventQueue| {
+        let mut market = |world: &mut World, events: &mut EventQueue, exporting: bool| {
             let ferry = world.ferry_of(harbour_of(world)).expect("the harbour's ferry");
             let was = std::mem::replace(&mut berthed, car_of(world, ferry).spot.is_some());
             if !was || berthed {
@@ -1861,11 +1861,12 @@ mod tests {
                 crate::market::trade(world, Good::Fuel, false, 1);
             }
             let harbour = harbour_of(world);
-            if !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Crates) {
+            if exporting && !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Crates) {
                 crate::market::trade(world, Good::Crates, true, 1);
             }
             crate::haul::call_lorries(world, events);
         };
+        let mut exporting = false;
         let mut wakes = 0;
         let mut now = 0;
         let end = days * DAY_MS as u64;
@@ -1875,7 +1876,7 @@ mod tests {
             let midnight = day * DAY_MS as u64;
             for hour in 1..=24 {
                 crate::market::hour(&mut world, &mut events, now);
-                market(&mut world, &mut events);
+                market(&mut world, &mut events, exporting);
                 let to = (midnight - DAY_MS as u64 + hour * crate::market::HOUR).min(end);
                 while step_counting(&mut world, &mut events, &mut intersections, &mut now, to, &mut wakes) {}
             }
@@ -1890,6 +1891,9 @@ mod tests {
             // once the opening is done.
             crate::missions::check(&mut world, now);
             each_day(&world, day, wakes);
+            if !exporting && world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm && b.stocks[&Good::Crates].level > 0.0)) {
+                exporting = true;
+            }
             let steps = hand(&world, day);
             if !steps.is_empty() {
                 for d in steps {
@@ -2442,18 +2446,19 @@ mod tests {
         assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());
         assert_eq!(yard(&world), 0.0, "something landed in the yard before a harvest");
         assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.run.is_none() && c.trip.is_none()), "the tractor is not home");
-        // The second day: seeded. The third: ripe by morning, harvested
-        // by evening, a harvest in the yard, and a lorry from beyond the
-        // edge called for it.
+        // The second day: seeded. The third, growing; the fourth: ripe by
+        // morning, harvested by evening, a harvest in the yard, and a lorry
+        // from beyond the edge called for it.
         pump(&mut world, &mut events, &mut intersections, 20 * day / 24, day + 20 * day / 24);
         assert!(stages(&world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&world));
         assert_eq!(yard(&world), 0.0);
-        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 2 * day + 7 * day / 24);
-        // Ripe by the third morning, and cut that day: the whole harvest
+        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 3 * day + 5 * day / 24);
+        assert_eq!(yard(&world), 0.0, "a harvest before the crop was ripe");
+        // Ripe by the fourth morning, and cut that day: the whole harvest
         // in the yard by evening, or already on its way to the world.
         let mut harvest = 0.0f64;
-        let mut t = 2 * day + 7 * day / 24;
-        while step(&mut world, &mut events, &mut intersections, &mut t, 3 * day + 20 * day / 24) {
+        let mut t = 3 * day + 5 * day / 24;
+        while step(&mut world, &mut events, &mut intersections, &mut t, 4 * day + 20 * day / 24) {
             harvest = harvest.max(yard(&world));
         }
         assert!((harvest - stages(&world).len() as f64 * crop).abs() < 1e-6, "the harvest came to {harvest}, not a yard's worth");
@@ -2461,7 +2466,7 @@ mod tests {
         // Then the depot's shelf runs low: its lorry fetches from the farm,
         // and no coin moves. The clock goes on from where the world is: an
         // event queue is not pumped backwards.
-        let now = 3 * day + 20 * day / 24;
+        let now = 4 * day + 20 * day / 24;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
             b.stocks.get_mut(&Good::Crates).unwrap().level = 300.0;
         }

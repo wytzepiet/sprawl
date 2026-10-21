@@ -1365,10 +1365,10 @@ allows. What stands:
   farm with neighbours a tile away on both flanks as a town builds
   them, a house in the field, and a coast running diagonally either
   way, and it was looked at.
-- **One run a day, three days a cycle.** Plough day, seed day, harvest
-  day. A crop sown by the end of a shift is ripe by the next morning,
-  half a day, so the harvest is the third day. The yard holds a
-  harvest, three days of the row's make, taken away by pickup that
+- **One run a day, four days a cycle.** Plough day, seed day, a day
+  growing, harvest day. A crop sown by the end of a shift stands a day
+  and is ripe the morning after, a day and a half, so the harvest is
+  the fourth day. The yard holds a harvest, four days of the row's make, taken away by pickup that
   night; a crop is the yard over the farm's land, about ten crates a
   tile. The tractor goes with a hand on shift and the shift
   open, and the farm wakes itself when the last of its crop is ripe.
