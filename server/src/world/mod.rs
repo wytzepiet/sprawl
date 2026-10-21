@@ -283,7 +283,7 @@ impl World {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
                 let lanes = if self.is_wide(*id, *neighbor) { 2 } else { 1 };
-                self.edges.insert((*id, *neighbor), EdgeSegment::new(len, lanes));
+                self.edges.insert((*id, *neighbor), EdgeSegment::new(lanes));
                 self.network.link(*id, *neighbor, len);
             }
         }
@@ -423,7 +423,7 @@ impl World {
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
         let len = self.segment_length(from, to);
         let lanes = if self.is_wide(from, to) { 2 } else { 1 };
-        self.edges.insert((from, to), EdgeSegment::new(len, lanes));
+        self.edges.insert((from, to), EdgeSegment::new(lanes));
         let turning = self.network.link(from, to, len);
         self.mark_joined(turning.into_iter().chain([from, to]));
     }

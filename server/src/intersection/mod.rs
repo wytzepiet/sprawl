@@ -549,16 +549,6 @@ impl IntersectionRegistry {
         self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(rule))
     }
 
-    /// A junction's lights, if it has any.
-    pub fn signal(&self, node_id: EntityId) -> Option<&Signal> {
-        self.managers.get(&node_id).and_then(|m| m.signal())
-    }
-
-    /// The lights at a junction look again (`IntersectionManager::tick`).
-    pub fn tick(&mut self, node_id: EntityId, now: GameTime) -> (Vec<EntityId>, Option<GameTime>) {
-        self.managers.get_mut(&node_id).map_or((Vec::new(), None), |m| m.tick(now))
-    }
-
     pub fn has_passage(&self, node_id: EntityId, car_id: EntityId) -> bool {
         self.managers.get(&node_id).is_some_and(|m| m.has_passage(car_id))
     }

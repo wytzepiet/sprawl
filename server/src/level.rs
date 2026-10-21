@@ -409,6 +409,7 @@ impl Level {
         (level, world)
     }
 
+    #[cfg(test)]
     pub fn inside(&self, t: GridCoord) -> bool {
         (self.min.x..=self.max.x).contains(&t.x) && (self.min.y..=self.max.y).contains(&t.y)
     }

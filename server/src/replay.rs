@@ -178,6 +178,7 @@ impl<'a> Playback<'a> {
     }
 
     /// Played up to a moment, or to where it went another way.
+    #[cfg(test)]
     pub fn to(&mut self, until: GameTime) -> Result<(), Diverged> {
         while self.session.game.now < until {
             self.step()?;

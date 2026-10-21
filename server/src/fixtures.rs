@@ -204,13 +204,6 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
     (w, h, title)
 }
 
-/// One fixture from its text alone, standing as written: a world for
-/// whatever has no files to read.
-pub fn build_text(world: &mut World, text: &str) {
-    lay(world, text, 0, "fixture");
-    finish_sites(world);
-}
-
 /// A town written by hand stands as written: no site waits for its
 /// materials.
 fn finish_sites(world: &mut World) {

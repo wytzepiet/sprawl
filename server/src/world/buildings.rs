@@ -260,15 +260,6 @@ impl World {
         }
     }
 
-    /// The road joining two tiles beside each other, for the demolisher
-    /// to cut: its two nodes.
-    pub fn link_between(&self, a: GridCoord, b: GridCoord) -> Option<(EntityId, EntityId)> {
-        if (a.x - b.x).abs() > 1 || (a.y - b.y).abs() > 1 || a == b || !self.are_connected(a, b) {
-            return None;
-        }
-        Some((self.road_node_at(a)?, self.road_node_at(b)?))
-    }
-
     /// A road's dead end under a building placed over it: the road goes,
     /// and the street it ended off becomes the building's door, if it
     /// may be one, the building turned to it. That is how the mayor says

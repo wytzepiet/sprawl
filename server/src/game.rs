@@ -437,15 +437,15 @@ pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road
     world.laid.saturating_sub(laid)
 }
 
-/// May the mayor's hand take this step with this tool: the build's gate
-/// (what it has opened, how much road is left to lay), and the world's
-/// own rule for the step. The one rule a step is refused by, and the
-/// hand's dots are drawn by (`hint.rs`).
+/// May the mayor's hand take this step with this tool.
+#[cfg(test)]
 pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
     may_step(world, Build { tool, from, to, up: None, sides: None, road: false })
 }
 
-/// `may`, at the heights and sides the step gives.
+/// May the mayor's hand take this step, at the heights and sides it
+/// gives: the world's own rule for the step. The one rule a step is
+/// refused by, and the hand's dots are drawn by (`hint.rs`).
 pub fn may_step(world: &World, step: Build) -> bool {
     may_step_on(world, step, None, None)
 }
@@ -2498,7 +2498,7 @@ mod tests {
             shelve(&mut world, depot, good, if good == Good::Stone { 0.0 } else { 100.0 });
         }
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
+        let intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
         let quarry = |world: &mut World| missions(world, 0).into_iter().filter(|m| m.0 == Key::Quarry).map(|m| m.2).collect::<Vec<_>>();
         // Flats, a site of timber and stone, call for both, and the depot
@@ -2795,7 +2795,7 @@ mod tests {
         assert_eq!(opening(&mut world, 0), [true, true, true, false, false], "a depot on the harbour's street");
         let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
         let tug = world.tug_of(harbour).expect("the harbour's tug");
-        let lorry = crate::haul::lorry_of(&world, depot).expect("the depot's lorry");
+        let lorry = crate::haul::lorries_of(&world, depot)[0];
         assert_eq!(car_of(&world, ferry).booked.len(), 6, "the starter pack is booked");
         // A settle with nothing new touches nothing: what it touches goes
         // to every client, and is written down, each tick.
@@ -2936,7 +2936,7 @@ mod tests {
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
         let ferry = world.ferry_of(harbour).unwrap();
-        let lorry = crate::haul::lorry_of(&world, depot).unwrap();
+        let lorry = crate::haul::lorries_of(&world, depot)[0];
         let (day, mut now) = (DAY_MS as u64, 0);
         while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
         while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}

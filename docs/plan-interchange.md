@@ -226,7 +226,7 @@ roads:
 
 ### 0. One-way routes are a bug today
 
-The router (`pathfinding.rs` `hops_from`, `junctions_from`) walks the
+The router (`pathfinding.rs` `hops_from`, `stretch_ends`) walks the
 **undirected** segments of `RoadNetwork` and never reads `outgoing`. A car
 can be routed the wrong way up a one-way and then find no edge to queue
 on. Fix first: a segment knows which ways it can be driven, and the router

@@ -142,12 +142,6 @@ impl World {
             }
             self.roads.insert((at.x, at.y), id);
         }
-        for (a, b) in self.edges_involving(id) {
-            let len = self.segment_length(a, b);
-            if let Some(seg) = self.edges.get_mut(&(a, b)) {
-                seg.length = len;
-            }
-        }
     }
 
     /// A road on a side goes back to the middle of its tile where it
@@ -186,6 +180,7 @@ impl World {
     /// May a road be laid from one tile at one height and side to the next
     /// at another: the ground's rule (`may_lay`) where both ends are in the
     /// ground's middles.
+    #[cfg(test)]
     pub fn may_lay_at(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool) -> bool {
         self.may_lay_at_on(from, hf, sf, to, ht, st, if one_way { Tool::OneWay } else { Tool::Street }, None, None)
     }

@@ -405,9 +405,7 @@ impl World {
             id
         };
         let mut edge = |world: &mut World, a: EntityId, b: EntityId| {
-            let (pa, pb) = (world.node_pos(a).unwrap(), world.node_pos(b).unwrap());
-            let len = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2)).sqrt();
-            world.edges.insert((a, b), EdgeSegment::new(len, 1));
+            world.edges.insert((a, b), EdgeSegment::new(1));
             edges.push((a, b));
         };
         let (tiles, kind, facing) = self.building_of(building)?;

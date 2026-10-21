@@ -36,11 +36,6 @@ fn car(world: &World, id: EntityId) -> Option<&crate::protocol::Car> {
     }
 }
 
-/// A depot's lorry.
-pub fn lorry_of(world: &World, depot: EntityId) -> Option<EntityId> {
-    world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Truck && c.owner == depot)).map(|e| e.id)
-}
-
 /// Every box in the world, and where it is: the shipments list, read off
 /// every place a box can be.
 pub fn boxes(world: &World) -> Vec<(Trailer, Leg, Option<EntityId>)> {
@@ -388,6 +383,7 @@ pub fn sea(world: &World) -> Sea {
 }
 
 /// A depot's lorries, by id.
+#[cfg(test)]
 pub fn lorries_of(world: &World, depot: EntityId) -> Vec<EntityId> {
     world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Truck && c.owner == depot)).map(|e| e.id).collect()
 }

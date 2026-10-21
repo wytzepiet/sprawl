@@ -120,7 +120,7 @@ impl<'w> Routes<'w> {
         // So the search starts at whichever junctions this stretch leads to,
         // already carrying the cost of reaching them.
         let here = (start, start);
-        for leg in junctions_from(world, start) {
+        for leg in stretch_ends(world, start, true) {
             if leg.to == start {
                 routes.cost.insert(here, 0.0);
                 routes.open.push(Node { at: here, f: 0.0 });
@@ -197,7 +197,7 @@ impl<'w> Routes<'w> {
         // destination's stretch may be settled first and still be the dearer
         // way in, so the search runs on until nothing left in the queue could
         // beat the best way in found so far.
-        let exits = junctions_into(world, end);
+        let exits = stretch_ends(world, end, false);
         let way_in = |routes: &Routes| -> Option<(f64, At, Leg)> {
             exits
                 .iter()
@@ -265,19 +265,10 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
         .collect()
 }
 
-/// The junctions this node's own stretch leads to, with what it costs to get
-/// there from where it stands. A junction leads to itself, for nothing.
-fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
-    stretch_ends(world, from, true)
-}
-
-/// The junctions this node's own stretch can be reached from, named from the
-/// node's side as `junctions_from` names them, costed the way they are
-/// driven: in.
-fn junctions_into(world: &World, to: EntityId) -> Vec<Leg> {
-    stretch_ends(world, to, false)
-}
-
+/// The junctions this node's own stretch leads to, `leaving`, with what it
+/// costs to get there from where it stands; or else those it can be reached
+/// from, named from the node's side the same way, costed the way they are
+/// driven: in. A junction leads to itself, for nothing.
 fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
     if world.network.is_junction(node) {
         return vec![Leg { to: node, cost: 0.0, step: node, behind: node }];

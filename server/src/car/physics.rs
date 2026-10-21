@@ -296,7 +296,7 @@ mod tests {
     fn from_rest_it_accounts_for_the_pulling_away() {
         // Short enough to still be gaining speed at the end: 0.5 * 2 * t^2 = 0.5
         let t = time_to_reach(0.0, 0.0, 2.0, 0.5).unwrap();
-        assert!((t - 0.707_106_781).abs() < 1e-6, "got {t}");
+        assert!((t - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-6, "got {t}");
     }
 
     #[test]

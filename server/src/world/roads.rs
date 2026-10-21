@@ -244,11 +244,6 @@ impl World {
         matches!(self.objects.get(a).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road.contains(&b))
     }
 
-    /// A node on a through road.
-    pub fn is_road(&self, id: EntityId) -> bool {
-        matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if !n.road.is_empty())
-    }
-
     /// Check if two nodes at the given coords are connected as outgoing.
     pub fn are_connected(&self, a: GridCoord, b: GridCoord) -> bool {
         let a_id = match self.road_node_at(a) {
@@ -266,11 +261,10 @@ impl World {
         false
     }
 
-    /// Place road nodes at `from` and `to`, and connect them as outgoing.
-    /// The mayor's own hand: what it lays is counted against the build.
     /// May a road be laid from one tile to the next: the one rule, which the
     /// mayor's hand is refused by and the map of where a road may go is
     /// drawn from.
+    #[cfg(test)]
     pub fn may_lay(&self, from: GridCoord, to: GridCoord, one_way: bool) -> bool {
         self.may_lay_on(from, to, one_way, None)
     }

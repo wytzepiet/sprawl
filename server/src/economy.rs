@@ -448,12 +448,6 @@ pub fn van_load(good: Good) -> f64 {
     }
 }
 
-/// What booking `boxes` of a good costs, full, at the world's price and
-/// the margin: what the treasury must hold to book them.
-pub fn quote(good: Good, boxes: u32) -> f64 {
-    import(good, boxes as f64 * good.per_box())
-}
-
 fn kind_of(world: &World, building: EntityId) -> Option<BuildingKind> {
     match world.objects.get(building)?.object {
         GameObject::Building(ref b) => Some(b.kind),
