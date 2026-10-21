@@ -255,8 +255,12 @@ export function Brush() {
   // red where it may not stand. Its label is the UI's (`ui/Held.tsx`).
   const plot = document.createElement("canvas");
   plot.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none";
+  /** Whether the plot has anything on it to clear. */
+  let plotted = false;
   const stopLabel = afterRender(() => {
     const p = aim();
+    if (!p && !plotted) return;
+    plotted = !!p;
     const g = plot.getContext("2d")!;
     const dpr = devicePixelRatio || 1;
     const [w, h] = [Math.round(innerWidth * dpr), Math.round(innerHeight * dpr)];

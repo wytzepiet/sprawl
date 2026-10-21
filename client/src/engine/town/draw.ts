@@ -206,7 +206,7 @@ export const RIM = 0.03;
 
 /** An edge the sheet runs on past: a point just outside it is still
  *  covered, as where one tile's road overlaps the next. */
-export function runsOn(g: MeshGeometry) {
+export function covers(g: MeshGeometry) {
   const p = g.positions;
   // Triangles filed by the rows of a tenth of a tile they cross: a point
   // asks only those crossing its row, and of those only the ones whose

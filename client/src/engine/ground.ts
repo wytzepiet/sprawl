@@ -350,6 +350,7 @@ export class GroundTiles {
       markMaterialUboDirty(this.material);
       // A chunk drawn anew is built a frame or two after it is shown: its
       // old ground stays until then, or the land under it flashes through.
+      if (!this.replaced.length) return;
       const drawn = new Set((scene as unknown as { _renderables: { mesh: Mesh }[] })._renderables.map((r) => r.mesh));
       this.replaced = this.replaced.filter(({ old, by }) => {
         if (drawn.has(by) || !this.scene.meshes.includes(by)) return this.cull.forget(old), drop(this.scene, old), false;

@@ -1,6 +1,6 @@
 import type { MeshGeometry } from "./geometry";
 import { fillTriangles } from "./raster";
-import { RIM, runsOn } from "./town/draw";
+import { covers, RIM } from "./town/draw";
 
 /**
  * A sheet's kerbs, and how far each point of a
@@ -190,7 +190,7 @@ export interface Roads {
 }
 
 export function roadsOf(sheet: MeshGeometry): Roads {
-  const on = runsOn(sheet);
+  const on = covers(sheet);
   return { sheet, edges: kerbsOf(sheet, (a, b, out) => !on(a, b, out)) };
 }
 

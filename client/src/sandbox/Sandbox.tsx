@@ -26,7 +26,7 @@ import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
 import { peakMaterial } from "../engine/peaks";
-import { drawRoads, drawTown, flatPolygons, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
+import { covers, drawRoads, drawTown, flatPolygons, quadsAt, treeInstances } from "../engine/town/draw";
 import { grove, plant, uproot } from "../engine/trees";
 import { kerbField, kerbPlugin, unkerb } from "../engine/kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "../engine/paving";
@@ -523,7 +523,7 @@ function build(ctx: EngineContext, casters: Casters, town: Town, rows: string[])
       const field = kerbs(kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through], 0)) }));
       add(p.name, p.geo, colour, [kerbPlugin(field), pavingPlugin(engine, true)], PAVING_ROUGHNESS);
     } else if (p.name === "street" || p.name === "through") {
-      const on = runsOn(p.geo);
+      const on = covers(p.geo);
       add(p.name, p.geo, colour, [kerbPlugin(kerbs(kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))))]);
     } else add(p.name, p.geo, colour);
   }
