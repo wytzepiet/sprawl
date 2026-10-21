@@ -28,8 +28,8 @@ export const clear = () => setPages([]);
 export const PEEK = 10;
 const BEHIND = 2;
 const SHRINK = 0.04;
-/** How a page slides in and settles: barely past where it stops. */
-const SLIDE: Feel = { stiff: 320, ratio: 0.85 };
+/** How a page slides in and settles: a little past where it stops. */
+const SLIDE: Feel = { stiff: 305, ratio: 0.7 };
 /** How long a page takes to go. */
 const LEAVE_MS = 380;
 
