@@ -1145,7 +1145,7 @@ pub enum ServerMessage {
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
     /// What the town did with the mayor's coins of its own accord, or more
-    /// than it was asked: a box a rule bought, stone bought express. And
+    /// than it was asked: stone bought express. And
     /// what the hand did, to its player alone: an undo, a building refused.
     News(Vec<News>),
     /// The answer to an `Ask`.

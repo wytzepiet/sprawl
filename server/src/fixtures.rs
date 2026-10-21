@@ -233,7 +233,8 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
                 },
                 (Some(GameObject::RoadNode(n)), _) => if n.road.is_empty() { '=' } else { '#' },
                 _ => match world.terrain.get(&(tx, ty)) {
-                    Some(TerrainType::Sea | TerrainType::Water) => '~',
+                    Some(TerrainType::Water) => '~',
+                    Some(TerrainType::Sea) => '≈',
                     Some(TerrainType::Forest) => 'T',
                     Some(TerrainType::Beach) => '_',
                     Some(TerrainType::Mountain) => '^',
@@ -251,8 +252,9 @@ mod tests {
     use super::*;
 
     /// Every fixture builds as it is written: each letter a tile of the
-    /// building it names, and `/map` gives the letters back where they
-    /// were, so what the sandbox paints is what the server stands up.
+    /// building it names, and `/map` gives the letters and the ground back
+    /// where they were, so what the sandbox paints is what the server
+    /// stands up, and a fixture made from the game builds as it stood.
     #[test]
     fn every_fixture_builds_letter_for_letter() {
         let mut world = World::new();
@@ -270,6 +272,10 @@ mod tests {
                     });
                     if building(c).map(|_| c) != built {
                         wrong.push(format!("{} col {col} row {row}: {c} built {built:?}", p.name));
+                    }
+                    let drawn = draw(&world, at.x, at.y, 0).lines().last().and_then(|l| l.chars().next());
+                    if "~≈T_^".contains(c) && drawn != Some(c) {
+                        wrong.push(format!("{} col {col} row {row}: {c} drawn {drawn:?}", p.name));
                     }
                 }
             }

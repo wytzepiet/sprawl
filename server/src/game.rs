@@ -735,13 +735,15 @@ fn handle_wake(
             settle_and_wake(world, events);
         }
         // A call nothing could answer, tried again.
-        None if id == crate::calls::RETRY => crate::calls::dispatch(world, events, now),
+        None if id == CALLS_AGAIN => crate::calls::dispatch(world, events, now),
         _ => {}
     }
 }
 
-/// The wake that is nobody's: the day turning. No entity has this id.
+/// The wakes that are nobody's: the day turning, and the calls nothing
+/// could answer tried again (`calls::RETRY_MS`). No entity has these ids.
 const MIDNIGHT: EntityId = EntityId::MAX;
+pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 
 /// Population follows what changed, and whoever's situation changed gets to
 /// think about it. And the day is always due to turn.

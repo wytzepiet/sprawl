@@ -52,10 +52,9 @@ pub struct Call {
 /// Unloading at the door: ten minutes.
 pub const SERVICE_MS: GameTime = DAY_MS as GameTime / 144;
 
-/// A call nothing could answer is tried again in an hour. The wake that
-/// is nobody's, like midnight.
+/// A call nothing could answer is tried again in an hour
+/// (`game::CALLS_AGAIN`).
 pub const RETRY_MS: GameTime = DAY_MS as GameTime / 24;
-pub const RETRY: EntityId = EntityId::MAX - 1;
 
 /// A hand on shift at the building: a tractor goes only with someone to
 /// drive it.
@@ -172,7 +171,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
         }
     }
     if world.calls.iter().any(|c| c.answered_by.is_none()) {
-        events.wake(RETRY_MS, RETRY);
+        events.wake(RETRY_MS, crate::game::CALLS_AGAIN);
     }
 }
 

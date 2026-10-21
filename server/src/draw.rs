@@ -107,11 +107,7 @@ pub fn draw(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     lay_on(world, &stroke, &mut steps, now);
     let coins = express(&steps);
     world.undo.entry(owner).or_default().push(Done { act: Act::Drawn { stroke, steps }, at: now, after });
-    (paid_before == 0.0 && coins > 0.0).then(|| News {
-        text: format!("Stone bought express, {coins:.0} coins"),
-        sub: "the depots have none for the road; a rule on a depot keeps some in".into(),
-        at: world.harbours.keys().next().copied().unwrap_or(0),
-    })
+    (paid_before == 0.0 && coins > 0.0).then(|| crate::undo::bought_express(world, coins))
 }
 
 /// The drag laid on from the last step standing, tile by tile, each where

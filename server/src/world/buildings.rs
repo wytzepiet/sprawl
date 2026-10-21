@@ -314,9 +314,9 @@ impl World {
         self.occupied.get(&(tile.x, tile.y)).copied()
     }
 
-    /// A building placed by the mayor: a depot comes with its first rules
-    /// over it; the town's first depot, and anything built of nothing,
-    /// stands at once, and the rest are sites waiting for their timber.
+    /// A building placed by the mayor: the town's first depot, and anything
+    /// built of nothing, stands at once, and the rest are sites waiting for
+    /// their timber.
     pub fn founded(&mut self, id: EntityId) {
         let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return };
         let kind = b.kind;
@@ -636,7 +636,7 @@ impl World {
     }
 
     /// A building put back as it stood when it was taken down: its stock,
-    /// its rules, a site or standing, as it was.
+    /// a site or standing, as it was.
     pub fn raise_as(&mut self, building: Building) -> EntityId {
         let id = self.stand_up(building);
         self.unsettled.insert(id);

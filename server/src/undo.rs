@@ -224,11 +224,16 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
         }
     };
     // The drag is the action: said once, where it first buys stone.
-    (road && first && express > 0.0).then(|| News {
-        text: format!("Stone bought express, {express:.0} coins"),
-        sub: "the depots have none for the road; a rule on a depot keeps some in".into(),
+    (road && first && express > 0.0).then(|| bought_express(world, express))
+}
+
+/// Stone for a road the depots could not give, bought from the world.
+pub fn bought_express(world: &World, coins: f64) -> News {
+    News {
+        text: format!("Stone bought express, {coins:.0} coins"),
+        sub: "the depots have none for the road".into(),
         at: world.harbours.keys().next().copied().unwrap_or(0),
-    })
+    }
 }
 
 /// A building placed, kept to undo, with the street it brought.
