@@ -1872,11 +1872,11 @@ mod tests {
         }
     }
 
-    /// A town thinks as fast in a wide world as in a narrow one. The
-    /// survey lays road out ahead of the frontier, so a played world is
-    /// mostly road nodes nobody drives: 29,000 of them beside 47 buildings
-    /// on 2026-10-05, when every call and every choice still walked them
-    /// all to find a depot, a van or a resident, and the clock stalled for
+    /// A town thinks as fast in a wide world as in a narrow one. A big
+    /// world is mostly road nodes nobody drives: 29,000 of them beside 47
+    /// buildings on 2026-10-05, when the survey laid road ahead of the
+    /// frontier and every call and every choice still walked them all to
+    /// find a depot, a van or a resident, and the clock stalled for
     /// seconds at a time. The same day of the same town, with that much
     /// road laid out of reach, costs about the same.
     #[test]

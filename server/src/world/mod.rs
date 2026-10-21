@@ -431,7 +431,7 @@ impl World {
     }
 
     /// Keep nodes' marks in step with their network: joined to the world
-    /// beyond the survey, or an island. Only the nodes named are touched, and
+    /// by a way out, or an island. Only the nodes named are touched, and
     /// only those whose mark actually changed are sent.
     fn mark_joined(&mut self, ids: impl IntoIterator<Item = EntityId>) {
         for id in ids {

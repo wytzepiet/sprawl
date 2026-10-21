@@ -936,8 +936,8 @@ mod tests {
         agrees_with_the_edges(&world);
     }
 
-    /// Red means one thing: not joined to the world. A road that reaches
-    /// past the survey is how people arrive; one that reaches nothing is an
+    /// Red means one thing: not joined to the world. A road that reaches a
+    /// way out is how people arrive; one that reaches nothing is an
     /// island, and every node of it says so — and stops saying so the moment
     /// a road joins it up, or starts again when the road is cut.
     #[test]

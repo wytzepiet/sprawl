@@ -129,7 +129,8 @@ pub struct RoadNetwork {
     /// Observed passage time, one per direction: [along the run, against it].
     /// Keyed so it survives the run being laid again by a nearby edit.
     passage: HashMap<SegmentKey, [Passage; 2]>,
-    /// Nodes standing beyond the survey: where the world reaches in.
+    /// The ways out of the town, the harbours' streets: where the world
+    /// reaches in.
     exits: HashSet<EntityId>,
     /// How many exits each network has. Joined to the world while above zero;
     /// an island otherwise. Counted rather than searched, so laying a tile
@@ -155,7 +156,7 @@ impl RoadNetwork {
         self.component.get(&node).copied()
     }
 
-    /// Is this node's network joined to the world beyond the survey?
+    /// Is this node's network joined to the world, by a way out?
     pub fn joined(&self, node: EntityId) -> bool {
         self.component
             .get(&node)

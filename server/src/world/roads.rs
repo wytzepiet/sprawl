@@ -9,8 +9,8 @@ impl World {
 
     /// Place a road node at coord. Idempotent: returns the node already
     /// standing here, whatever kind it is. `laid` is the mayor's own hand,
-    /// counted to be paid for; the survey's roads and driveways are
-    /// streets, laid by nobody, and free.
+    /// counted to be paid for; a fixture's or a level's roads and
+    /// driveways are streets, laid by nobody, and free.
     fn place_road_of(&mut self, coord: GridCoord, laid: bool) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {
             return id;
@@ -275,7 +275,7 @@ impl World {
             return false;
         }
         // Not over water, down onto a beach or up a mountain: a road
-        // already there, a bridge the survey laid, may be carried on from.
+        // already there may be carried on from.
         let wet = |t: GridCoord| {
             self.road_node_at(t).is_none()
                 && matches!(self.terrain.get(&(t.x, t.y)), Some(crate::protocol::TerrainType::Water | crate::protocol::TerrainType::Sea | crate::protocol::TerrainType::Beach | crate::protocol::TerrainType::Mountain))
@@ -308,7 +308,7 @@ impl World {
         if let Some(id) = self.claimed_plot_at(to) {
             self.place_road_of(from, true);
             self.door_through(id, from, to);
-            // Reached, as by a survey road: a depot's fleet and a farm's
+            // Reached, as by any street: a depot's fleet and a farm's
             // land come with the door, not with the first call.
             self.orient(id);
             return;

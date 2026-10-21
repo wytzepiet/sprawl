@@ -179,8 +179,8 @@ pub struct RoadNode {
     #[serde(default)]
     #[ts(type = "Array<number>")]
     pub road: Vec<EntityId>,
-    /// Laid by the mayor, so it was paid for. The survey's own roads, and
-    /// driveways, are free.
+    /// Laid by the mayor, so it was paid for. A fixture's or a level's
+    /// roads, and driveways, are free.
     #[serde(default)]
     pub laid: bool,
     /// How high it stands, in half-levels: 0 the ground, 2 a level up, 4

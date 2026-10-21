@@ -6,9 +6,8 @@ use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,
     /// The ids, by id, in two piles: the road nodes, and everything else.
-    /// A played world is mostly road the survey laid ahead of the frontier,
-    /// and what looks for a depot, a van or a resident has no business
-    /// walking it.
+    /// A big town is mostly road, and what looks for a depot, a van or a
+    /// resident has no business walking it.
     roads: BTreeSet<EntityId>,
     things: BTreeSet<EntityId>,
     dirty: HashSet<EntityId>,
@@ -114,12 +113,11 @@ impl Tracked {
 
     /// Everything but the road, by id.
     ///
-    /// The order is load-bearing rather than tidy. A hash map hands its
-    /// values back in an order seeded afresh for every process, so anything
-    /// built by walking it came out arranged differently each run: different
-    /// tie-breaks between equally good routes, different traffic, and two
-    /// runs of the same seed that disagree, which makes any before-and-after
-    /// measurement meaningless.
+    /// The order is load-bearing rather than tidy: what the game decides
+    /// by walking it must not change with how a hasher spreads the ids
+    /// (`fixed.rs`), or a new hasher is a different game. `get` stays a
+    /// hash map's, the hottest call there is: two ordered maps alone cost
+    /// the town two thirds more instructions.
     pub fn iter(&self) -> impl Iterator<Item = &GameObjectEntry> {
         self.things.iter().map(|id| &self.data[id])
     }
