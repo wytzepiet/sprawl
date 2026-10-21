@@ -200,6 +200,8 @@ fn field(p: vec2f, run: Run) -> Field {
 
   // Its body: what is seen, washed with the light on a pane.
   var body = mix(vivid, glass.tint.rgb, glass.tint.a * (1 - 0.6 * glow));
+  // A frosted pane is a little more solid too: less town, more of the light on it.
+  body = mix(body, glass.tint.rgb, 0.22 * f.frost * (1 - 0.6 * glow));
   // Lit by the sun: its colour cast through the whole pane, gold at dawn
   // and dusk, nothing at noon's white or by night.
   body *= mix(vec3f(1), glass.sun.rgb, ${SUNLIT} * glass.sun.a);
