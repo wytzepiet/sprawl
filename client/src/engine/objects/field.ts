@@ -539,6 +539,7 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[], which: number, cut
  *  how fast `u` and `v` change across the screen, so far off it is read
  *  from a smaller copy, as what it adds up to. */
 const DEFINITIONS = `fn fieldNoise(p: vec2f) -> f32 { return textureSample(fieldGrain, fieldGrainSampler, p / 256.).r; }
+fn fieldHash(x: f32) -> f32 { return fract(sin(x * 12.9898) * 43758.5453); }
 fn fieldWheatAt(stage: f32, u: f32, v: f32, du: vec2f, dv: vec2f) -> vec4f {
   let tall = ${WHEAT_STRIDE * WHEAT_STAGES}.;
   let y = (stage * ${WHEAT_STRIDE}. + ${WHEAT_MARGIN}. + fract(v) * ${WHEAT_TEXELS}.) / tall;
@@ -563,13 +564,14 @@ let fieldW = input.worldPos.xy;
 // Round a turn each part of the pass runs at its own length (\`vStripTex\`,
 // how much further than the middle), so the outside is not drawn out
 // nor the inside crushed: two copies, each starting over every quarter
-// tile and faded out where it does, so neither shears far. On the
-// straight the two are one.
+// tile and faded out where it does, so neither shears far.
 let fieldSwell = 0.7 * fieldNoise(fieldW * 0.3 + vec2f(97., 43.));
 let fieldPhase = fieldV * 4.;
+// And each tile along, each copy jumps to somewhere else in the wheat
+// as it starts over, faded in, so no tile of it repeats the last.
 let fieldTexVs = array<f32, 2>(
-  (floor(fieldPhase) + fract(fieldPhase) * input.vStripTex) / 4. + fieldSwell,
-  (floor(fieldPhase + 0.5) - 0.5 + fract(fieldPhase + 0.5) * input.vStripTex) / 4. + fieldSwell);
+  (floor(fieldPhase) + fract(fieldPhase) * input.vStripTex) / 4. + fieldSwell + fieldHash(floor(floor(fieldPhase) / 4.)),
+  (floor(fieldPhase + 0.5) - 0.5 + fract(fieldPhase + 0.5) * input.vStripTex) / 4. + fieldSwell + fieldHash(floor((floor(fieldPhase + 0.5) - 0.5) / 4.)));
 let fieldTexW = 1. - abs(2. * fract(fieldPhase) - 1.);
 // Where a tight turn folds the pass on itself, \`fieldV\` leaps across a
 // pixel; read no blurrier there than across.
