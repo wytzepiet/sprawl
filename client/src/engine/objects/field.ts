@@ -620,7 +620,11 @@ let fieldDirt = material.fieldEarth.rgb;
 let fieldSoil = mix(fieldDirt, vec3f(dot(fieldDirt, vec3f(0.3, 0.55, 0.15))), 0.45) * 0.55;
 let fieldLeaf = material.fieldGrowing.rgb;
 let fieldGreen = mix(fieldLeaf, vec3f(dot(fieldLeaf, vec3f(0.3, 0.55, 0.15))), 0.3) * vec3f(0.56, 0.62, 0.52);
-let fieldGold = material.fieldRipe.rgb * vec3f(0.86, 0.8, 0.66);
+// Ripe wheat a pale buff, not a gold: the theme's ripe, mostly greyed.
+let fieldRipe = material.fieldRipe.rgb;
+let fieldGold = mix(fieldRipe, vec3f(dot(fieldRipe, vec3f(0.3, 0.55, 0.15))), 0.6) * vec3f(0.9, 0.87, 0.78);
+// Grain by grain a little paler or duller, a few in a hundred.
+let fieldKernel = fieldNoise(fieldW * 140. + vec2f(31., 97.));
 let fieldStraw = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.4) * 0.85;
 var fieldAt = 0.;
 if (fieldStage == 2u) { fieldAt = 1. + 4. * clamp(fieldNow.y, 0., 1.); }
@@ -644,7 +648,7 @@ for (var i = 0; i < 2; i++) {
   let soil = fieldSoil * select(select(1., 0.8, st > 5.5), 0.9, st < 0.5);
   var crop = fieldGreen;
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
-  if (st > 4.5) { crop = fieldGold; }
+  if (st > 4.5) { crop = fieldGold * mix(vec3f(1.07, 1.05, 0.96), vec3f(0.91, 0.9, 0.88), fieldKernel); }
   if (st > 5.5) { crop = fieldStraw; }
   let c = select(soil, crop, fieldLook.w > 0.5) * t.b * 1.25;
   let w = select(1. - fieldAhead, fieldAhead, i == 1);
