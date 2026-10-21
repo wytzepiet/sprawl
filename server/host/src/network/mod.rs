@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
 use sprawl::protocol::{
-    ChunkBounds, ClientMessage, Clock, DAY_MS, EntityId, Growth, Operation, OwnerId, Lump, ServerMessage, StateUpdate,
+    ClientMessage, EntityId, OwnerId, ServerMessage, StateUpdate,
 };
 
 /// One socket. Dies with the connection.
@@ -84,65 +84,21 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
 
     let (mut sink, mut stream) = socket.split();
 
-    // Write task: send what is queued as soon as it is, the updates among it
-    // merged into one. Waiting for more would only delay the first; a socket
-    // that cannot keep up lets a queue grow, and that is what gets merged.
+    // Write task: send what is queued as soon as it is, in order, the
+    // updates that came one after another merged into one. Waiting for more
+    // would only delay the first; a socket that cannot keep up lets a queue
+    // grow, and that is what gets merged. Only neighbours merge: a chunk
+    // unloaded between two updates must not overtake the ops before it.
     let write_task = tokio::spawn(async move {
-        let mut buf: Vec<ServerMessage> = Vec::new();
-        loop {
-            let first = match msg_rx.recv().await {
-                Some(msg) => msg,
-                None => return,
-            };
-            buf.push(first);
-            while let Ok(msg) = msg_rx.try_recv() {
-                buf.push(msg);
+        let mut out: Vec<ServerMessage> = Vec::new();
+        while let Some(first) = msg_rx.recv().await {
+            let mut next = Some(first);
+            while let Some(msg) = next {
+                queue(&mut out, msg);
+                next = msg_rx.try_recv().ok();
             }
-
-            let mut ops: Vec<Operation> = Vec::new();
-            let mut lumps: Vec<Lump> = Vec::new();
-            let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
-            let mut growth = Growth::default();
-            let mut sea = sprawl::protocol::Sea::default();
-            let mut missions = Vec::new();
-            let mut neighbours = Vec::new();
-            let mut island = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
-            let mut has_update = false;
-
-            for msg in buf.drain(..) {
-                match msg {
-                    ServerMessage::Update(su) => {
-                        has_update = true;
-                        ops.extend(su.ops);
-                        lumps.extend(su.lumps);
-                        clock = su.clock;
-                        growth = su.growth.clone();
-                        sea = su.sea;
-                        missions = su.missions;
-                        neighbours = su.neighbours;
-                        island = su.island;
-                    }
-                    other => {
-                        let bytes = rmp_serde::to_vec_named(&other).unwrap();
-                        if sink.send(Message::Binary(bytes.into())).await.is_err() {
-                            return;
-                        }
-                    }
-                }
-            }
-
-            if has_update {
-                let merged = ServerMessage::Update(StateUpdate {
-                    ops,
-                    lumps,
-                    clock,
-                    growth,
-                    sea,
-                    missions,
-                    neighbours,
-                    island,
-                });
-                let bytes = rmp_serde::to_vec_named(&merged).unwrap();
+            for msg in out.drain(..) {
+                let bytes = rmp_serde::to_vec_named(&msg).unwrap();
                 if sink.send(Message::Binary(bytes.into())).await.is_err() {
                     return;
                 }
@@ -172,4 +128,46 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
 
     let _ = state.command_tx.send(Command::ClientDisconnect { id: client_id });
     write_task.abort();
+}
+
+/// A message on to what the socket sends next: an update straight after
+/// another is merged into it, its ops after theirs and the rest as of the
+/// later; anything else keeps its place.
+fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
+    match (out.last_mut(), msg) {
+        (Some(ServerMessage::Update(last)), ServerMessage::Update(su)) => {
+            let (mut ops, mut lumps) = (std::mem::take(&mut last.ops), std::mem::take(&mut last.lumps));
+            ops.extend(su.ops);
+            lumps.extend(su.lumps);
+            *last = StateUpdate { ops, lumps, ..su };
+        }
+        (_, msg) => out.push(msg),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sprawl::protocol::{ChunkCoord, Clock, Operation, DAY_MS};
+
+    /// A chunk unloaded between two updates goes out between them: merged
+    /// past it, the second's ops would land after the chunk they belong to
+    /// was let go.
+    #[test]
+    fn only_neighbouring_updates_merge() {
+        let world = sprawl::world::World::new();
+        let update = |id| sprawl::game::state_update(&world, vec![Operation::Delete(id)], vec![], Clock { now: id, speed: 1, day_ms: DAY_MS });
+        let mut out = Vec::new();
+        for msg in [update(1), update(2), ServerMessage::UnloadChunk(ChunkCoord { cx: 0, cy: 0 }), update(3), update(4)] {
+            queue(&mut out, msg);
+        }
+        let shape: Vec<String> = out
+            .iter()
+            .map(|m| match m {
+                ServerMessage::Update(su) => format!("{:?}@{}", su.ops.iter().map(|o| match o { Operation::Delete(id) => *id, _ => 0 }).collect::<Vec<_>>(), su.clock.now),
+                _ => "unload".into(),
+            })
+            .collect();
+        assert_eq!(shape, ["[1, 2]@2", "unload", "[3, 4]@4"]);
+    }
 }
