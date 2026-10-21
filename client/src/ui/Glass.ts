@@ -5,7 +5,7 @@ import { light } from "../engine/glass";
 type Rgb = [number, number, number];
 
 /** How far the light's colour is softened toward white: a tint, not a gel. */
-const SOFT = 0.55;
+const SOFT = 0.66;
 
 const luma = ([r, g, b]: Rgb) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 const mix = (a: Rgb, b: Rgb, f: number): Rgb => a.map((v, i) => Math.round(v + (b[i] - v) * f)) as Rgb;

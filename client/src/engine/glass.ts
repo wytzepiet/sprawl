@@ -56,7 +56,7 @@ const ROOM = 200;
 const SEA_GLASS: [number, number, number] = [0.62, 0.86, 0.82];
 const COLOUR = 0.45;
 /** How much the sun's colour is cast through the glass. */
-const SUNLIT = 0.35;
+const SUNLIT = 0.26;
 /** How far a press's light spreads through the glass, in CSS pixels. */
 const GLOW = 40;
 

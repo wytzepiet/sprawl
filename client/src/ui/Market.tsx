@@ -22,7 +22,7 @@ import type { Good, Quote, When } from "../generated";
  */
 
 /** How solid the glass under a chart is: its red and green read over any town. */
-export const OPAQUE = 0.75;
+export const OPAQUE = 0.45;
 const UP = "#2E9D6A";
 const DOWN = "#D9483B";
 /** The most boxes a ferry's deck takes: the most bought or sold at once. */

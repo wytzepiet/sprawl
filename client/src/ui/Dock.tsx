@@ -115,8 +115,9 @@ export default function Dock() {
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
-  // The market's and the stock's lines and moves want solid glass under them.
-  const [opaque] = follow(() => (tab() === "market" || tab() === "stock" ? OPAQUE : 0), { rest: 0.001 });
+  // The market's and the stock's lines and moves, and the build menu's
+  // pictures, want more solid glass under them.
+  const [opaque] = follow(() => (tab() === "select" ? 0 : OPAQUE), { rest: 0.001 });
   createEffect(() => (eye.below = barBottom() + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
