@@ -2,7 +2,7 @@
 import { createMemo, createRoot, createSignal, For, Index, Show } from "solid-js";
 import { eachEntity, useGame } from "../state/gameObjects";
 import { now, sea } from "../state/sea";
-import { change, market, quoteOf } from "../state/market";
+import { change, market, quoteOf, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { Shelf } from "./Depot";
@@ -227,7 +227,7 @@ function Page(props: { good: Good }) {
   const shown = () => (week() ? q().history : q().history.slice(-25));
   const orders = () => market.orders.filter((o) => o.good === props.good);
   const trade = (out: boolean) => send({ type: "Trade", data: { good: props.good, boxes: boxes(), out } });
-  const cost = () => boxes() * box(props.good, q().buy);
+  const cost = () => total(q(), boxes(), false);
   const harbour = () => home() !== null;
 
   // The "when" order being written: buying or selling, at what price a
@@ -273,17 +273,6 @@ function Page(props: { good: Good }) {
         </box>
       </box>
 
-      <box dir="row" gap={8}>
-        <box grow={1} pad={{ x: 12, y: 8 }} round={14} fill="ink/0.05">
-          <text size={12} soft>Buy here, freight on</text>
-          <text serif size={17}>{money(box(props.good, q().buy))}</text>
-        </box>
-        <box grow={1} pad={{ x: 12, y: 8 }} round={14} fill="ink/0.05">
-          <text size={12} soft>Sell here, freight off</text>
-          <text serif size={17}>{money(box(props.good, q().sell))}</text>
-        </box>
-      </box>
-
       <Show when={stock()}>{(s) => <box pad={{ x: 4 }}><Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} /></box>}</Show>
 
       <box dir="row" align="center" gap={8}>
@@ -297,7 +286,7 @@ function Page(props: { good: Good }) {
         </Press>
         <Press grow={1} dir="row" align="center" justify="center" gap={8} h={44} round={16} stroke={[1.5, "ink/0.18"]} opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && trade(true)}>
           <text size={15} weight={700}>Sell</text>
-          <text serif size={15}>{money(boxes() * box(props.good, q().sell))}</text>
+          <text serif size={15}>{money(total(q(), boxes(), true))}</text>
         </Press>
       </box>
 

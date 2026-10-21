@@ -8,9 +8,15 @@
 //! pushes the price up, what it sells pushes it down. How lively a good
 //! is is how wide its band is: stone narrow, fuel wide.
 //!
-//! The town buys at the price and freight on top, and sells at it less
-//! freight, never past the band: a quick flip always loses the spread.
-//! Freight is flat for now (`economy::MARGIN`); real distances later.
+//! One price, the same to buy and to sell. Each box moves it a step, a
+//! fortieth of the way from the world's price to the band's edge, and is
+//! paid at the price it moved to: a box bought pushes the price up and
+//! costs the new price, a box sold pushes it down and gets the new one.
+//! So a quick flip always loses a step a box, and a town that buys a
+//! whole ferry of a good pays more for the last box than the first. Past
+//! the band there is no more room: the world sells at its ceiling and
+//! buys at its floor. Freight leaves the price for now; real distances
+//! later.
 //!
 //! The price steps once an hour of the town's day, from the world's seed
 //! and the hour alone, so the same seed and the same trades give the same
@@ -25,7 +31,7 @@ use std::collections::{BTreeMap, VecDeque};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::economy::{world_price, MARGIN};
+use crate::economy::world_price;
 use crate::engine::GameTime;
 use crate::protocol::{Good, DAY_MS};
 use crate::world::World;
@@ -49,7 +55,9 @@ pub const HOUR: GameTime = DAY_MS as GameTime / 24;
 /// Hours of price kept: a week.
 const KEPT: usize = 7 * 24;
 /// Boxes the town trades to move a price from the world's to its ceiling
-/// or floor.
+/// or floor. A town that buys a box of fuel a sailing barely moves it,
+/// the drift back taking each step away again within the day; a whole
+/// ferry of fifteen bought at once moves it most of a half of its band.
 const DEPTH: f64 = 40.0;
 /// How much of an hour's push from the mayors lasts into the next: a
 /// glut or a shortage lasts most of a day.
@@ -98,8 +106,9 @@ pub struct Quote {
     pub price: f64,
     pub floor: f64,
     pub ceiling: f64,
-    pub buy: f64,
-    pub sell: f64,
+    /// How far a box moves the price, a unit's: each box is paid at the
+    /// price it moved to.
+    pub step: f64,
     /// The price each hour kept, oldest first; the last is the hour just
     /// gone.
     pub history: Vec<f64>,
@@ -128,13 +137,14 @@ impl Market {
     pub fn floor(good: Good) -> f64 {
         world_price(good) * (1.0 - band(good))
     }
-    /// A unit bought at the town's harbour: the price and freight on it.
-    pub fn buy(&self, good: Good) -> f64 {
-        (self.price(good) * (1.0 + MARGIN)).min(Self::ceiling(good))
+    /// How far a box moves a good's price, a unit's.
+    pub fn nudge(good: Good) -> f64 {
+        world_price(good) * band(good) / DEPTH
     }
-    /// A unit sold there: the price less freight.
-    pub fn sell(&self, good: Good) -> f64 {
-        (self.price(good) * (1.0 - MARGIN)).max(Self::floor(good))
+    /// What a unit of the next box costs bought, or gets sold: the price
+    /// it moves to, never past the band.
+    pub fn next(&self, good: Good, out: bool) -> f64 {
+        (self.price(good) + if out { -1.0 } else { 1.0 } * Self::nudge(good)).clamp(Self::floor(good), Self::ceiling(good))
     }
 
     /// The town traded so many units: the price moves its way.
@@ -180,8 +190,7 @@ impl Market {
                 price: self.price(good),
                 floor: Self::floor(good),
                 ceiling: Self::ceiling(good),
-                buy: self.buy(good),
-                sell: self.sell(good),
+                step: Self::nudge(good),
                 history: self.history.get(&good).map_or(Vec::new(), |h| h.iter().copied().collect()),
             })
             .collect();
@@ -227,12 +236,12 @@ pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQue
 }
 
 /// Buy so many boxes of a good from the market, on the next ferry in, or
-/// sell them, to wait at the harbour for a lorry: each at the price as it
-/// stands, which the box before moved. How many were booked.
+/// sell them, to wait at the harbour for a lorry: each at the price it
+/// moves to. How many were booked.
 pub fn trade(world: &mut World, good: Good, out: bool, boxes: u32) -> u32 {
     let Some(&harbour) = world.harbours.keys().next() else { return 0 };
     for n in 0..boxes {
-        let price = if out { world.market.sell(good) } else { world.market.buy(good) };
+        let price = world.market.next(good, out);
         if !crate::orders::book(world, harbour, good, out, None, price, None) {
             return n;
         }
@@ -298,12 +307,13 @@ mod tests {
         };
         assert_eq!(run(), run());
         let mut m = Market::default();
-        let before = m.buy(Good::Fuel);
+        let before = m.price(Good::Fuel);
+        assert!(m.next(Good::Fuel, false) > before && m.next(Good::Fuel, true) < before, "a box is paid at the price it moves to");
         m.traded(Good::Fuel, 10.0 * Good::Fuel.per_box(), false);
-        assert!(m.buy(Good::Fuel) > before, "buying did not push the price");
+        assert!(m.price(Good::Fuel) > before, "buying did not push the price");
         m.traded(Good::Fuel, 1e6, false);
-        assert!(m.buy(Good::Fuel) <= Market::ceiling(Good::Fuel) + 1e-9);
+        assert!(m.next(Good::Fuel, false) <= Market::ceiling(Good::Fuel) + 1e-9);
         m.traded(Good::Fuel, 1e6, true);
-        assert!(m.sell(Good::Fuel) >= Market::floor(Good::Fuel) - 1e-9 && m.sell(Good::Fuel) < m.buy(Good::Fuel));
+        assert!(m.next(Good::Fuel, true) >= Market::floor(Good::Fuel) - 1e-9);
     }
 }

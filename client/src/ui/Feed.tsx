@@ -5,7 +5,7 @@ import { missionKey, neighbours, shownMissions } from "../state/missions";
 import { clockAt, news, sea, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { deals, letterOf, setSpread, spread, stepsOf, type Deal } from "../state/deals";
-import { quoteOf } from "../state/market";
+import { quoteOf, total } from "../state/market";
 import { toMarket } from "./sheet";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { eye } from "../engine/OrthoCamera";
@@ -134,7 +134,7 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   /** A box more, from the market or for it, at what it pays or costs a box now. */
   const more = () => {
     const q = d().partner === null && d().key !== "gift" ? quoteOf(d().good) : undefined;
-    return q && (d().out ? q.sell : q.buy) * GOODS[d().good].box;
+    return q && total(q, 1, d().out);
   };
   const title = () => (d().key === "gift" ? "The starter pack" : `${GOODS[d().good].label[0].toUpperCase()}${GOODS[d().good].label.slice(1)} ${d().out ? "for" : "from"} ${nameOf(d().partner)}`);
   /** Where it is, in words: its furthest box, or what it waits for. */

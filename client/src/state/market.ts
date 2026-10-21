@@ -1,4 +1,5 @@
 import { createStore, reconcile } from "solid-js/store";
+import { GOODS } from "../blueprints";
 import type { Good, Prices, Quote } from "../generated";
 
 /**
@@ -19,3 +20,12 @@ export const dayAgo = (q: Quote) => q.history[Math.max(0, q.history.length - 25)
 
 /** How far it moved since then, as a share. */
 export const change = (q: Quote) => q.price / dayAgo(q) - 1;
+
+/** What so many boxes come to, bought or sold now, in coins: each moves
+ *  the price a step and is paid at the price it moved to, never past the
+ *  band (`market::trade`). */
+export const total = (q: Quote, boxes: number, out: boolean) => {
+  let sum = 0;
+  for (let k = 1; k <= boxes; k++) sum += Math.min(q.ceiling, Math.max(q.floor, q.price + (out ? -k : k) * q.step));
+  return sum * GOODS[q.good].box;
+};

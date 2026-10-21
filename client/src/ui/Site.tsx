@@ -4,7 +4,7 @@ import { useGame } from "../state/gameObjects";
 import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { quoteOf } from "../state/market";
+import { quoteOf, total } from "../state/market";
 import { Btn, coins, GoodDot, Section, StepBar, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingKind, Good, Stock } from "../generated";
@@ -89,7 +89,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   const coming = () => inbound().find((s) => s.leg !== "Parked") ?? null;
   const boxes = () => Math.max(1, Math.ceil(props.short / box()));
   const quote = () => quoteOf(g());
-  const cost = () => boxes() * box() * (quote()?.buy ?? 0);
+  const cost = () => (quote() ? total(quote()!, boxes(), false) : 0);
   const sailing = () => sea.sailings[0];
   const [ordered, setOrdered] = createSignal(false);
   const order = () => {

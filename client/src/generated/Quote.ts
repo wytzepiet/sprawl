@@ -5,7 +5,12 @@ import type { Good } from "./Good";
  * A good on the market as the clients are sent it: the price, the
  * band, what the town pays and gets at its harbour, and the week.
  */
-export type Quote = { good: Good, price: number, floor: number, ceiling: number, buy: number, sell: number, 
+export type Quote = { good: Good, price: number, floor: number, ceiling: number, 
+/**
+ * How far a box moves the price, a unit's: each box is paid at the
+ * price it moved to.
+ */
+step: number, 
 /**
  * The price each hour kept, oldest first; the last is the hour just
  * gone.
