@@ -653,13 +653,11 @@ impl World {
         let tiles = b.tiles.clone();
         // Its fleet goes with it: what stands in the yard now, and what is
         // out when it gets back (`park_car`). Its people go at `settle`.
-        let chunks: crate::fixed::HashSet<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
-        let yard: Vec<EntityId> = chunks
-            .iter()
-            .flat_map(|c| self.spatial.get(c))
-            .flatten()
-            .copied()
-            .filter(|&car| matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.owner == id && c.trip.is_none()))
+        let chunks: Vec<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
+        let yard: Vec<EntityId> = self
+            .objects
+            .fleet(id)
+            .filter(|&car| matches!(self.objects.get(car), Some(e) if e.position.is_some_and(|p| chunks.contains(&crate::world::chunk_of(p))) && matches!(e.object, GameObject::Car(ref c) if c.trip.is_none())))
             .collect();
         for car in yard {
             self.despawn_car(car);
