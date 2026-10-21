@@ -4,6 +4,7 @@ import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
+import { follow } from "../engine/spring";
 import { Info, Press } from "./kit";
 import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
@@ -88,6 +89,37 @@ const [group, setGroup] = createSignal<Tab | "roads">("roads");
 // A road taken up, by a key or the head's row, shows the roads.
 createRoot(() => createEffect(() => inHand() && setGroup("roads")));
 
+/** The groups as a tab bar: one pill, and in it a darker one that slides
+ *  to the group shown, its name turning light as it passes under it. */
+function Bar() {
+  const tabs = ["roads" as const, ...groups.map((g) => g.tab)];
+  const [w, setW] = createSignal(0);
+  const seg = () => (w() - 6) / tabs.length;
+  const [at] = follow(() => tabs.indexOf(group()));
+  const [shown] = follow(() => (open() ? 1 : 0), { rest: 0.001 });
+  return (
+    <box pad={{ x: 12, top: 14, bottom: 12 }}>
+      <box dir="row" h={38} round={19} pad={3} fill="ink/0.06" onSize={(ww) => setW(ww)}>
+        <box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.85" opacity={Math.max(0, Math.min(1, shown()))} />
+        <For each={tabs}>
+          {(t, i) => {
+            const lit = () => Math.max(0, 1 - Math.abs(at() - i())) * Math.max(0, Math.min(1, shown()));
+            const name = t[0].toUpperCase() + t.slice(1);
+            return (
+              <box grow={1} h={32} align="center" justify="center" onTap={() => (setGroup(t), setOpen(true))}>
+                <text size={13} weight={600} ink={`ink/${(0.72 * (1 - lit())).toFixed(3)}`}>{name}</text>
+                <box at={{ left: 0, top: 0 }} w={seg()} h={32} align="center" justify="center" opacity={lit()}>
+                  <text size={13} weight={600} ink="glass">{name}</text>
+                </box>
+              </box>
+            );
+          }}
+        </For>
+      </box>
+    </box>
+  );
+}
+
 /**
  * The build tab's head: the roads and the menu's groups, a tap on one
  * drawing it up. While a road is in hand, the road tools; while a
@@ -100,18 +132,7 @@ export function BuildHead() {
       when={held()}
       fallback={
         <Show when={!inHand()} fallback={<RoadsHead />}>
-          <box dir="row" justify="between" pad={{ x: 12, top: 14, bottom: 12 }}>
-            <For each={["roads" as const, ...groups.map((g) => g.tab)]}>
-              {(t) => {
-                const on = () => group() === t && open();
-                return (
-                  <Press h={36} pad={{ x: 11 }} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(t), setOpen(true))}>
-                    <text size={13} weight={600} ink={on() ? "glass" : "ink/0.72"}>{t[0].toUpperCase() + t.slice(1)}</text>
-                  </Press>
-                );
-              }}
-            </For>
-          </box>
+          <Bar />
         </Show>
       }
     >
