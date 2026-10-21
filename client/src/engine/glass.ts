@@ -119,10 +119,10 @@ fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
 /** The rim's rise across the bezel, 0 at the edge to 1 where it is flat: a squircle. */
 fn rise(x: f32) -> f32 { return pow(1 - pow(1 - clamp(x, 0, 1), 4.0), 0.25); }
 
-struct Field { d: f32, dye: vec4f, size: f32, frost: f32, down: f32 }
+struct Field { d: f32, dye: vec4f, size: f32, frost: f32, down: f32, quiet: f32 }
 fn field(p: vec2f, run: Run) -> Field {
   let k = glass.size.w;
-  var f = Field(1e6, vec4f(0), 0, 0, 0);
+  var f = Field(1e6, vec4f(0), 0, 0, 0, 0);
   for (var i = run.first; i < run.first + run.count; i++) {
     let pane = glass.panes[i];
     if (pane.round.y <= 0.002) { continue; }
@@ -139,8 +139,10 @@ fn field(p: vec2f, run: Run) -> Field {
     // How deep into the pane it is from its clear edge, the one facing the
     // middle of the screen: the top of a pane low on it, the foot of one high.
     let edge = select(p.y - (pane.box.y - pane.box.w), pane.box.y + pane.box.w - p.y, pane.box.y < 0.5 * glass.size.y);
-    // Even glass, behind what must read over the clear edge of another, has none.
-    f.down = mix(f.down, max(smoothstep(0, ${RAMP} * glass.size.z, edge), pane.even.x), h);
+    // Even glass, behind what must read over the clear edge of another, has
+    // none: a quiet pane, half as deep all over, its rim fainter.
+    f.down = mix(f.down, select(smoothstep(0, ${RAMP} * glass.size.z, edge), 0.55, pane.even.x > 0.5), h);
+    f.quiet = mix(f.quiet, pane.even.x, h);
   }
   return f;
 }
@@ -240,7 +242,7 @@ fn field(p: vec2f, run: Run) -> Field {
   // Where the glass is clear its rim shines brighter; where it is deep,
   // dimmer, the light's colour kept rich rather than washed out.
   let hue = rich / max(max(rich.r, rich.g), max(rich.b, 1e-3));
-  let shine = mix(1.6, 0.5, f.down);
+  let shine = mix(1.6, 0.5, f.down) * (1 - 0.6 * f.quiet);
   let sky = mix(glass.sky.rgb, deep, f.dye.a);
   let sun = mix(mix(glass.sun.rgb, hue, 0.5 * f.down), deep, f.dye.a);
   let fresnel = pow(1 - n.z, 3.0);
