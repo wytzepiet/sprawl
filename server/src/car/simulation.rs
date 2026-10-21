@@ -1080,7 +1080,10 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
                     due: ms(due),
                     nose: along.map(|s| time(begins + s - nose(role))),
                     tail: along.map(|s| time(begins + s + tail(role))),
-                    committed: physics::braking_distance(cur_speed, 0.0) >= line,
+                    // Standing, it can stop anywhere short of the junction
+                    // itself: crept over its line behind the car ahead, it
+                    // still gives way (replays/four-roundabouts-waiting.json).
+                    committed: if cur_speed < 0.01 { line + INTERSECTION_STOP_MARGIN <= 0.0 } else { physics::braking_distance(cur_speed, 0.0) >= line },
                     after: after(k),
                 };
                 wants.push((k, line, to_k + g.past + tail(role), g, claim));
