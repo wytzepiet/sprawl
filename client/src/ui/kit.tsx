@@ -121,6 +121,22 @@ export const { view, wide } = createRoot(() => {
 
 /** How far a moment has run since it was made, 0 to 1 over `ms`: what a
  *  thing that comes, does its turn and goes is drawn by. */
+/** Asks `url` now and every `ms` after, handing on each answer, until
+ *  the scope that asked ends. */
+export function poll<T>(url: string, ms: number, got: (answer: T) => void) {
+  let live = true;
+  const ask = async () => {
+    const answer = (await (await fetch(url)).json()) as T;
+    if (live) got(answer);
+  };
+  ask();
+  const timer = setInterval(ask, ms);
+  onCleanup(() => {
+    live = false;
+    clearInterval(timer);
+  });
+}
+
 export function elapsed(ms: number) {
   const [t, set] = createSignal(0);
   const start = performance.now();

@@ -2,7 +2,7 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { Header, Pane } from "./Card";
-import { view, wide } from "./kit";
+import { poll, view, wide } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { BuildingKind, Good } from "../generated";
 
@@ -24,8 +24,6 @@ interface Town {
 const [open, setOpen] = createSignal(false);
 export { setOpen as setBoardOpen };
 
-/** How often the open board asks again. */
-const REFRESH_MS = 1000;
 const COL = 48;
 
 const sum = (m: object) => (Object.values(m) as number[]).reduce((a, b) => a + b, 0);
@@ -45,18 +43,7 @@ export default function Board() {
   createEffect(on(open, (o) => {
     setTown(null);
     if (!o) return;
-    let live = true;
-    const fetchTown = async () => {
-      const r = await fetch("/town");
-      if (!live) return;
-      setTown((await r.json()) as Town);
-    };
-    fetchTown();
-    const timer = setInterval(fetchTown, REFRESH_MS);
-    onCleanup(() => {
-      live = false;
-      clearInterval(timer);
-    });
+    poll("/town", 1000, setTown);
   }));
 
   const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);

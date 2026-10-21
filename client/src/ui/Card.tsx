@@ -1,12 +1,12 @@
 /** @jsxImportSource ~ui */
-import { For, Show, createEffect, createMemo, createRoot, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
 import { BLUEPRINTS } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
 import { getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type DepotLine, type MakerLine } from "./Site";
-import { Bar, Press, Row, Section, To, type Link } from "./kit";
+import { Bar, poll, Press, Row, Section, To, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 
@@ -59,8 +59,6 @@ type Card =
   | { kind: "gone"; id: number };
 type BuildingCard = Extract<Card, { kind: "building" }>;
 
-/** How often an open card asks again. The world moves; the card should too. */
-const REFRESH_MS = 1000;
 const CLOSE = "M6 6l12 12M18 6L6 18";
 
 /** The card of whatever is selected, asked again every second. */
@@ -70,11 +68,7 @@ const card = createRoot(() => {
   // sink and rise again between them.
   createEffect(on(selected, (id) => {
     if (id === null) return setCard(null);
-    let live = true;
-    const fetchCard = async () => {
-      const r = await fetch(`/inspect/${id}`);
-      if (!live) return;
-      const c = (await r.json()) as Card;
+    poll<Card>(`/inspect/${id}`, 1000, (c) => {
       setCard(c);
       // A resident is not on the map; where they are is.
       if (c.kind === "resident") {
@@ -82,12 +76,6 @@ const card = createRoot(() => {
         setSubject(at);
         setFollowing((f) => (f === id || (at !== null && f !== null) ? at : f));
       }
-    };
-    fetchCard();
-    const timer = setInterval(fetchCard, REFRESH_MS);
-    onCleanup(() => {
-      live = false;
-      clearInterval(timer);
     });
   }));
 
