@@ -9,6 +9,7 @@ import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
+import { hearMarket } from "./market";
 import { hearMissions } from "./missions";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
@@ -327,6 +328,9 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         break;
       case "Hint":
         for (const f of hintListeners) f(msg.data);
+        break;
+      case "Market":
+        hearMarket(msg.data);
         break;
     }
   });

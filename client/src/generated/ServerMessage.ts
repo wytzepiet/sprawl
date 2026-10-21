@@ -3,7 +3,8 @@ import type { ChunkCoord } from "./ChunkCoord";
 import type { ErrorMessage } from "./ErrorMessage";
 import type { Hint } from "./Hint";
 import type { News } from "./News";
+import type { Prices } from "./Prices";
 import type { StateUpdate } from "./StateUpdate";
 import type { TerrainChunk } from "./TerrainChunk";
 
-export type ServerMessage = { "type": "Welcome", "data": number } | { "type": "Update", "data": StateUpdate } | { "type": "TerrainChunk", "data": TerrainChunk } | { "type": "UnloadChunk", "data": ChunkCoord } | { "type": "Error", "data": ErrorMessage } | { "type": "Pong", "data": number } | { "type": "News", "data": Array<News> } | { "type": "Hint", "data": Hint };
+export type ServerMessage = { "type": "Welcome", "data": number } | { "type": "Update", "data": StateUpdate } | { "type": "TerrainChunk", "data": TerrainChunk } | { "type": "UnloadChunk", "data": ChunkCoord } | { "type": "Error", "data": ErrorMessage } | { "type": "Pong", "data": number } | { "type": "News", "data": Array<News> } | { "type": "Hint", "data": Hint } | { "type": "Market", "data": Prices };

@@ -146,6 +146,8 @@ pub struct World {
     pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
+    /// The market's prices and the orders waiting on them (`market.rs`). Saved.
+    pub market: crate::market::Market,
 }
 
 use crate::protocol::GridCoord;
@@ -206,6 +208,7 @@ impl World {
             unsettled: BTreeSet::new(),
             undo: HashMap::default(),
             missions: Default::default(),
+            market: Default::default(),
         }
     }
 
@@ -251,6 +254,7 @@ impl World {
             unsettled: BTreeSet::new(),
             undo: HashMap::default(),
             missions: Default::default(),
+            market: Default::default(),
             objects,
         };
         // Rebuild the spatial index and the road index from loaded objects.

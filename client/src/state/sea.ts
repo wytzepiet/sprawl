@@ -11,7 +11,7 @@ import type { Building, Car, Good, Leg, Sailing, Sea, Shipment } from "../genera
  * view, so the shipments list, the cards and the missions all read it.
  * Reconciled by key, so a line that stays on the list stays the same line.
  */
-const [sea, setSea] = createStore<Sea>({ shipments: [], sailings: [], lanes: [], offers: [] });
+const [sea, setSea] = createStore<Sea>({ shipments: [], sailings: [], lanes: [], letters: [] });
 export { sea };
 
 /** Sim time four times a second: what every countdown reads. */
@@ -48,7 +48,7 @@ export function hearSea(s: Sea) {
     setSea("shipments", reconcile(s.shipments, { key: "trailer" }));
     setSea("sailings", reconcile(s.sailings, { key: "harbour" }));
     setSea("lanes", reconcile(s.lanes ?? []));
-    setSea("offers", reconcile(s.offers ?? []));
+    setSea("letters", reconcile(s.letters ?? []));
   });
   if (!heard) return void (heard = true);
   for (const x of s.sailings) {

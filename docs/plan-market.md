@@ -1,8 +1,19 @@
 # The market: a mayor in a world of prices
 
 Direction, 2026-10-20, from a long talk with Wytze about what the game's
-loop is. Nothing built. It changes `trade.md` where they meet; until it is
-built, `trade.md` is what the code does.
+loop is. It changes `trade.md` where they meet.
+
+Built, 2026-10-21, the first version (`market.rs`, `ui/Market.tsx`): a
+price per good inside a fixed band (stone ±15%, timber and crates ±20%,
+fuel ±50% of the world's price), stepped each hour from the seed and
+pushed by the computer's mayors (`orders.rs` §WHO: what they want up,
+what they make down) and by the town's own trades; a week of hours kept
+and saved. Buy and Sell at the harbour are the price with freight on or
+off, never past the band. The market tab replaced the trade and stock
+tabs: the list, a good's graph with the band, Buy and Sell so many
+boxes, and "when" orders read each hour. The pin and the deals with a
+mayor for a slot are gone; letters stay. Freight is still the flat
+tenth (`economy::MARGIN`), not the real distance.
 
 ## The idea
 

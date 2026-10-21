@@ -2,22 +2,23 @@ import { createRoot, createSignal, on, createEffect } from "solid-js";
 import { held, hold, setTool, tool } from "./buildMode";
 import { select, selected } from "../state/selection";
 import { view, wide } from "./kit";
+import type { Good } from "../generated";
 
 /**
  * The dock's tabs, and the sheet over them, as the Find My app has it:
  * each tab has a sheet, peeking over the bar as its head alone, drawn up
  * to show the rest. What a tab is for is what it holds: the bare hand
  * a card of what it tapped, the roads their tools, the build menu its
- * buildings, the ferry new deals, the stock the town's shelves.
+ * buildings, the market its goods.
  */
-export const TABS = ["select", "roads", "build", "trade", "stock"] as const;
+export const TABS = ["select", "roads", "build", "market"] as const;
 export type Tab = (typeof TABS)[number];
 
 const [tab, setTab] = createSignal<Tab>("select");
 const [open, setOpen] = createSignal(false);
-/** The trade tab's way: buying (false) or selling (true). */
-const [selling, setSelling] = createSignal(false);
-export { tab, open, setOpen, selling, setSelling };
+/** The market's good whose page is shown; none, the list of them. */
+const [good, setGood] = createSignal<Good | null>(null);
+export { tab, open, setOpen, good, setGood };
 
 /** The sheet to a tab, drawn up or at its peek. Each tab owns what is
  *  in hand while it is shown: leaving the roads puts the tool down,
@@ -30,8 +31,8 @@ export function show(t: Tab, opened: boolean) {
   setOpen(opened);
 }
 
-/** The trade tab, open, buying or selling: the dock's ferry, a mission's step. */
-export const trade = (out: boolean) => (setSelling(out), show("trade", true));
+/** The market, open on a good's page or the list: a mission's step. */
+export const toMarket = (g: Good | null) => (setGood(g), show("market", true));
 
 /** The sheet's width: on a phone the screen's, less a margin each side. */
 export const sheetWidth = () => (wide() ? 440 : view().w - 24);

@@ -17,12 +17,13 @@
  *                                       whole
  *   bun run act undo                    the hand's last action taken back
  *   bun run act speed 0                 sim steps per tick; 0 pauses
- *   bun run act book 7 in Timber        a slot of harbour 7's deck: a box of
- *       book 7 out Crates Tam           timber in from the world, or of crates
- *                                       out for Tam (a mayor: Tam, Mira, Bess,
- *                                       Aldra; none is the world)
- *   bun run act pin 7 in Fuel           the same, booked again every sailing
- *   bun run act unpin 7 42              pin 42 taken off harbour 7's deck
+ *   bun run act buy Timber 2            two boxes of timber from the market, on
+ *       sell Crates                     the next ferry; or a box of crates sold
+ *   bun run act send 42 2               two boxes letter 42 asks for, sent
+ *   bun run act order buy Fuel 3 0.9    three boxes of fuel bought once its
+ *                                       price (a unit) falls to 0.9; `sell`,
+ *                                       once it rises to it
+ *   bun run act cancel 57               order 57 taken back
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -257,14 +258,20 @@ for (const line of lines) {
     case "speed":
       send("SetSpeed", Number(args[0]));
       break;
-    // The border: a slot of the deck booked or pinned, a pin taken off.
-    // The sea's state is at /sea.
-    case "book":
-    case "pin":
-      send(verb === "book" ? "Book" : "Pin", { harbour: Number(args[0]), out: args[1] === "out", good: args[2], partner: args[3] ?? null });
+    // The border: the market and the letters. The sea's state, and the
+    // market's, is at /sea.
+    case "buy":
+    case "sell":
+      send("Trade", { good: args[0], boxes: Number(args[1] ?? 1), out: verb === "sell" });
       break;
-    case "unpin":
-      send("Unpin", { harbour: Number(args[0]), pin: Number(args[1]) });
+    case "send":
+      send("Send", { letter: Number(args[0]), boxes: Number(args[1] ?? 1) });
+      break;
+    case "order":
+      send("Order", { out: args[0] === "sell", good: args[1], boxes: Number(args[2]), price: Number(args[3]) });
+      break;
+    case "cancel":
+      send("Cancel", { order: Number(args[0]) });
       break;
     case "reset":
       send("ResetWorld");
@@ -298,6 +305,6 @@ for (const line of lines) {
   const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch", "book", "pin", "unpin", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "send", "order", "cancel", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 ws.close();

@@ -3,7 +3,6 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Door } from "./Door";
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
-import type { Pin } from "./Pin";
 import type { Slot } from "./Slot";
 import type { Stock } from "./Stock";
 import type { Tile } from "./Tile";
@@ -47,10 +46,6 @@ park: Array<Slot>,
  * with the good to fill (`haul::lorry_wake`).
  */
 outgoing: Array<Trailer>, 
-/**
- * A harbour's pinned slots, booked again for every sailing.
- */
-pins: Array<Pin>, 
 /**
  * Lorries bought for it beyond the one its row comes with.
  */

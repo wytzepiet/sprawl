@@ -169,6 +169,7 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
         if !meta.missions.is_empty() {
             world.missions.list = meta.missions;
         }
+        world.market = meta.market;
         world
     };
     // SPRAWL_ALL: the whole tree and a bottomless treasury, to test any building.
@@ -203,6 +204,7 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
             treasury: world.treasury,
             taken: world.build.taken(),
             missions: world.missions.list.clone(),
+            market: world.market.clone(),
         },
     );
     println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());

@@ -1,7 +1,7 @@
 import { createMemo, createRoot, createSignal } from "solid-js";
 import { now, sea } from "./sea";
 import { missions } from "./missions";
-import type { Good, Offer, Shipment } from "../generated";
+import type { Good, Letter, Shipment } from "../generated";
 import type { Mayor } from "../generated/Mayor";
 
 export const GOOD_ORDER: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
@@ -26,11 +26,10 @@ export interface Box {
 
 /**
  * A deal (docs/trade.md §The deck): every box of one good from or for one
- * partner, wherever they are on the way; the pin that books it every
- * sailing; and the letter it fills, with the boxes it still wants. The
- * one thing the mayor trades in: the deals stack shows them, newest on
- * top, and a deal whose last box is in, or gone, shows its coins and
- * goes.
+ * partner, the market or a mayor, wherever they are on the way; and the
+ * letter it fills, with the boxes it still wants. The deals stack shows
+ * them, newest on top, and a deal whose last box is in, or gone, shows
+ * its coins and goes.
  */
 export interface Deal {
   key: string;
@@ -39,7 +38,6 @@ export interface Deal {
   out: boolean;
   /** Furthest along first. */
   boxes: Box[];
-  pin: number | null;
   /** The letter it fills, the boxes it still wants not yet booked, and
    *  when it is due. */
   letter: number | null;
@@ -90,7 +88,7 @@ function live(): Deal[] {
   const deals = new Map<string, Deal>();
   const deal = (out: boolean, partner: Mayor | null, good: Good, key = keyOf(out, partner, good)) => {
     let d = deals.get(key);
-    if (!d) deals.set(key, (d = { key, good, partner, out, boxes: [], pin: null, letter: null, wanted: 0, due: null, coins: 0, done: false }));
+    if (!d) deals.set(key, (d = { key, good, partner, out, boxes: [], letter: null, wanted: 0, due: null, coins: 0, done: false }));
     return d;
   };
   for (const s of sea.shipments) {
@@ -106,11 +104,9 @@ function live(): Deal[] {
       d.boxes.push({ trailer: t.id, step: 0, words: OUT_STEPS[0], eta: null, seen: false });
       d.coins += t.price * t.units;
     }
-    for (const p of x.pins) deal(p.out, p.partner, p.good).pin = p.id;
   }
-  for (const o of sea.offers) {
-    if (o.letter === null || !o.boxes) continue;
-    const d = deal(o.out, o.partner, o.good);
+  for (const o of sea.letters) {
+    const d = deal(true, o.partner, o.good);
     d.letter = o.letter;
     d.wanted = o.boxes;
     d.due = missions().find((m) => typeof m.key === "object" && m.key.Order === o.letter)?.due ?? null;
@@ -158,10 +154,5 @@ export { spread, setSpread };
  *  mayor never names a port. */
 export const home = () => sea.sailings[0]?.harbour ?? null;
 
-/** The deal on offer for a box of a good from or for a partner. */
-export const offerOf = (good: Good, partner: Mayor | null, out: boolean): Offer | undefined =>
-  sea.offers.find((o) => o.good === good && o.partner === partner && o.out === out);
-
-/** The cheapest deal for a box of a good coming in, if any: what a site's
- *  card books with one tap. */
-export const cheapest = (good: Good): Offer | undefined => sea.offers.find((o) => o.good === good && !o.out);
+/** What a letter from a mayor still wants of a good, if one does. */
+export const letterOf = (good: Good, partner: Mayor | null): Letter | undefined => sea.letters.find((o) => o.good === good && o.partner === partner);
