@@ -50,8 +50,9 @@ pub struct World {
     /// driven. Disposable — a car with no entry here simply does not report
     /// its first stretch, and the next junction starts it off.
     pub car_segment: HashMap<EntityId, (EntityId, EntityId, crate::engine::GameTime)>,
-    /// Maps node_id → set of car_ids whose route passes through that node.
-    pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
+    /// Maps node_id → set of car_ids whose route passes through that node,
+    /// in id order: a road taken up reroutes them in it.
+    pub node_cars: HashMap<EntityId, BTreeSet<EntityId>>,
     /// The car turning between the street and a lot at each street node,
     /// and when it was last seen moving: pulling out, from the moment it
     /// found a gap until its tail is clear of the node; turning in, from

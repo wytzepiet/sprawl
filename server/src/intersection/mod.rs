@@ -587,13 +587,9 @@ impl IntersectionRegistry {
     /// Remove a car from all intersections. Returns list of (node, woken_car) pairs.
     pub fn remove_car_from_all(&mut self, car_id: EntityId, now: GameTime) -> Vec<(EntityId, EntityId)> {
         self.held.remove(&car_id);
-        let mut results = Vec::new();
-        for (&node_id, manager) in &mut self.managers {
-            for woken in manager.remove_car(car_id, now) {
-                results.push((node_id, woken));
-            }
-        }
-        results
+        let mut at: Vec<EntityId> = self.managers.iter().filter(|(_, m)| m.queue.iter().chain(&m.passing).any(|e| e.car_id == car_id)).map(|(&n, _)| n).collect();
+        at.sort_unstable();
+        at.into_iter().flat_map(|n| self.managers.get_mut(&n).unwrap().remove_car(car_id, now).into_iter().map(move |woken| (n, woken))).collect()
     }
 
     /// Take a car out of one junction's queue and passage altogether: a
