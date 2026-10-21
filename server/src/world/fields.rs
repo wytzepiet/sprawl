@@ -235,7 +235,7 @@ impl World {
         let Some(tractor) = self
             .objects
             .iter()
-            .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == CarRole::Tractor && c.trip.is_none() && c.run.is_none() && c.away == 0))
+            .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == CarRole::Tractor && c.trip.is_none() && c.run.is_none()))
             .map(|e| e.id)
         else {
             return;

@@ -92,13 +92,12 @@ impl Db {
 }
 
 /// Whether an object is worth saving. A journey is not — a trip's route
-/// references live world state, and a run or a voyage or a spell beyond
-/// the edge is timed by wakes that die with the process, so a restart ends
-/// all of them anyway. The parked car is; a save mid-journey keeps the
+/// references live world state, and a run or a voyage is timed by wakes
+/// that die with the process, so a restart ends all of them anyway. The parked car is; a save mid-journey keeps the
 /// version last seen parked, and the driver self-heals home, or the
 /// shelves the ship was fetching for call again.
 pub fn kept(entry: &GameObjectEntry) -> bool {
-    !matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some() || c.away > 0)
+    !matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some())
 }
 
 #[cfg(test)]
@@ -138,14 +137,11 @@ mod tests {
         let mut ship = Car::new(1, CarRole::Ferry);
         save(GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) });
         ship.sail = Some(Sail { path: vec![[5.5, 5.5], [5.5, 9.5]], started: 0, ends: 1, ease: [true, false], astern: true });
-        save(GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(GridCoord { x: 5, y: 6 }) });
-        ship.sail = None;
-        ship.away = 7;
-        save(GameObjectEntry { id: 2, object: GameObject::Car(ship), position: None });
+        save(GameObjectEntry { id: 2, object: GameObject::Car(ship), position: Some(GridCoord { x: 5, y: 6 }) });
         let (loaded, _) = Db::open(&scratch.0).load();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].position, Some(quay), "the ship is not where it was last moored");
-        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none() && c.away == 0));
+        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
     /// The rest of the world outlives a restart as it stood, the town's

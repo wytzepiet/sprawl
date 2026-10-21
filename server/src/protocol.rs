@@ -425,8 +425,8 @@ pub enum CarRole {
     /// A resident's own, driven by them.
     #[default]
     Private,
-    /// An articulated lorry: a depot's, fetching from beyond the edge, or
-    /// from beyond the edge itself where the city has no depot.
+    /// An articulated lorry: a depot's, hauling boxes between the
+    /// harbour's trailer park and its yard.
     Truck,
     /// A depot's van, on the last mile to a shop.
     Van,
@@ -449,17 +449,12 @@ pub enum CarRole {
 #[ts(export)]
 pub struct Car {
     /// Who it belongs to: the resident driving it, whose `at` points back
-    /// at this car while they are aboard; or the facility it works for; or,
-    /// come from beyond the edge, the building that called it.
+    /// at this car while they are aboard; or the facility it works for.
     #[ts(type = "number")]
     pub owner: EntityId,
     pub trip: Option<Trip>,
     #[serde(default)]
     pub role: CarRole,
-    /// Beyond the edge of the map until this time; zero when on it.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub away: u64,
     /// Where it stands while parked, if the lot had room: the spot's centre
     /// and the way its nose points, in radians. `None` is parked out of
     /// sight.
@@ -509,7 +504,7 @@ pub struct Car {
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, load: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
+        Car { owner, trip: None, role, spot: None, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, load: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
     }
 }
 
@@ -552,7 +547,7 @@ impl Good {
 /// A box: a trailer off the ferry, the world's, which the town's lorries
 /// haul. Never an entity: a value that stands in one place at a time, on
 /// a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
-/// (`World::booked`). A box is only ever full: the world makes it loaded
+/// (`Car::booked`, a ferry's). A box is only ever full: the world makes it loaded
 /// for an import, a depot or a maker when an export is ready, and it is
 /// gone once unloaded into a depot's stock or carried off by the ferry.
 /// docs/shipping.md §Boxes and lorries.
@@ -648,7 +643,8 @@ pub enum Leg {
     Parked,
     /// On a lorry's hitch, or a tug's.
     Hauled,
-    /// In a depot's yard, waiting to be unloaded.
+    /// On a lorry standing in its depot's yard: home, to be unloaded
+    /// or taken out again.
     Yard,
 }
 
