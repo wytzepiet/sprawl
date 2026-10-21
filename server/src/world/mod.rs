@@ -137,6 +137,9 @@ pub struct World {
     pub sites: BTreeSet<EntityId>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
+    /// The buildings placed lately, for razing to give back (`undo::raze`).
+    /// Not saved.
+    pub placed: Vec<crate::undo::Placed>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
 }
@@ -196,6 +199,7 @@ impl World {
             vacancies: BTreeSet::new(),
             sites: BTreeSet::new(),
             undo: HashMap::default(),
+            placed: Vec::new(),
             missions: Default::default(),
         }
     }

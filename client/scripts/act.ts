@@ -15,7 +15,8 @@
  *                                       cuts
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
- *   bun run act undo                    the hand's last action taken back
+ *   bun run act undo                    the hand's last road laid or taken up,
+ *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act book 7 in Timber        a slot of harbour 7's deck: a box of
  *       book 7 out Crates Tam           timber in from the world, or of crates

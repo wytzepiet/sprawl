@@ -270,8 +270,8 @@ fn handle_player_action(
     match message {
         ClientMessage::Build(step) => return build(world, events, intersections, owner, step, now),
         ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, intersections, owner, stroke, now),
-        ClientMessage::Place { kind, at, facing } => return place(world, events, intersections, owner, kind, at, facing, now),
-        ClientMessage::Raze { building } => return crate::undo::raze(world, events, intersections, owner, building, now),
+        ClientMessage::Place { kind, at, facing } => return place(world, events, intersections, kind, at, facing, now),
+        ClientMessage::Raze { building } => return crate::undo::raze(world, events, intersections, building, now),
         ClientMessage::Undo => return Some(crate::undo::undo(world, events, intersections, owner, now)),
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.iter()
@@ -332,7 +332,7 @@ fn build(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
 /// harbour lays its street first. Kept to undo; refused, the reason, for
 /// the hand that asked.
 #[allow(clippy::too_many_arguments)]
-fn place(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
+fn place(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
     let refuse = |why: &str| Some(News { text: format!("No room for the {}", format!("{kind:?}").to_lowercase()), sub: why.to_string(), at: 0 });
     let facing = facing.or_else(|| world.facing_for(kind, at)).unwrap_or(2);
     let tiles = match world.fit(kind, at, facing) {
@@ -350,7 +350,7 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
     let id = world.raise(kind, tiles, facing);
     crate::calls::turn(world, events, id, now);
     let paid = purse.paid(world);
-    crate::undo::placed(world, owner, id, laid, paid, after, now);
+    crate::undo::placed(world, id, laid, paid, after, now);
     None
 }
 
@@ -1137,38 +1137,6 @@ mod tests {
         assert_eq!(hand(&mut world, ClientMessage::Undo).unwrap().text, "Nothing to undo");
     }
 
-    /// A building placed is one action: undone, it is gone, and what its
-    /// site was brought goes back to the depot. A demolition undone
-    /// stands again as it stood, for nothing. Undo goes back in order.
-    #[test]
-    fn undo_takes_back_a_placing_and_a_demolition_in_order() {
-        let mut world = street();
-        let depot = build(&mut world, 30, BuildingKind::Depot);
-        let shop = build(&mut world, 12, BuildingKind::Shop);
-        let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
-        let at = |x, y| GridCoord { x, y };
-        let timber = |w: &World| building_of(w, depot).stocks[&Good::Timber].level;
-        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
-            b.stocks.get_mut(&Good::Timber).unwrap().level = 10.0;
-        }
-        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
-        assert!(hand(&mut world, ClientMessage::Place { kind: BuildingKind::House, at: at(5, 1), facing: None }).is_none(), "the house was refused");
-        let house = world.occupied[&(5, 1)];
-        // Two of its four timber delivered.
-        if let Some(GameObject::Building(b)) = world.objects.get_mut(house).map(|e| &mut e.object) {
-            b.site.as_mut().unwrap().get_mut(&Good::Timber).unwrap().level = 2.0;
-        }
-        hand(&mut world, ClientMessage::Raze { building: shop });
-        assert!(world.objects.get(shop).is_none(), "the shop stands");
-        assert!(hand(&mut world, ClientMessage::Undo).unwrap().text.contains("stands again"));
-        let again = world.occupied[&(12, 1)];
-        assert!(building_of(&world, again).site.is_none() && world.door_of(again).is_some(), "the shop is not as it stood");
-        hand(&mut world, ClientMessage::Undo);
-        assert!(!world.occupied.contains_key(&(5, 1)), "the house stands");
-        assert_eq!(timber(&world), 12.0, "its delivered timber is not back at the depot");
-    }
-
     /// What the mayor takes down of their own lately built is undone: a
     /// house placed and razed gives its delivered timber back, a street
     /// laid and taken up its stone. Past the window, nothing comes back.
@@ -1201,11 +1169,12 @@ mod tests {
         assert!(back.sub.contains("stone"), "{back:?}");
         assert_eq!(shelf(&world, Good::Stone), 10.0, "its stone is not back");
         assert_eq!(hand(&mut world, ClientMessage::Undo, 0).unwrap().text, "Nothing to undo", "what was taken back is still to undo");
-        // Old, a house razed gives nothing back, and is kept to undo.
+        // Old, a house razed gives nothing back.
         hand(&mut world, ClientMessage::Place { kind: BuildingKind::House, at: at(5, 1), facing: None }, 0);
-        let house = world.occupied[&(5, 1)];
+        let (house, timber) = (world.occupied[&(5, 1)], shelf(&world, Good::Timber));
         assert!(hand(&mut world, ClientMessage::Raze { building: house }, crate::undo::WINDOW + 1).is_none());
-        assert!(hand(&mut world, ClientMessage::Undo, crate::undo::WINDOW + 2).unwrap().text.contains("stands again"));
+        assert!(world.objects.get(house).is_none(), "the old house stands");
+        assert_eq!(shelf(&world, Good::Timber), timber, "the old house gave something back");
     }
 
     /// Someone else's building on a street since laid holds it: undo says
@@ -1225,8 +1194,9 @@ mod tests {
         let roads = world.roads.len();
         let no = hand(&mut world, 1, ClientMessage::Undo, 0).unwrap();
         assert_eq!((no.text.as_str(), world.roads.len()), ("Can't undo", roads), "{no:?}");
-        // The house's player takes theirs back; then the street goes.
-        hand(&mut world, 2, ClientMessage::Undo, 0);
+        // The house's player takes theirs down; then the street goes.
+        let house = world.occupied[&(11, 3)];
+        hand(&mut world, 2, ClientMessage::Raze { building: house }, 0);
         hand(&mut world, 1, ClientMessage::Undo, 0);
         assert!(world.road_node_at(at(10, 3)).is_none());
         hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(20, 0), to: at(20, 1), up: None, sides: None, road: false }), 0);
@@ -1266,7 +1236,7 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
         assert!(world.lines.contains_key(&id), "no ferry line");
         // Razed, the harbour is gone whole.
-        crate::undo::raze(&mut world, &mut events, &mut intersections, 1, id, 0);
+        crate::undo::raze(&mut world, &mut events, &mut intersections, id, 0);
         assert!((8..11).all(|x| (1..3).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
         settle_and_wake(&mut world, &mut events);
     }

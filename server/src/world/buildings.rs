@@ -625,31 +625,15 @@ impl World {
     /// A building stood on its tiles, facing this way: a site, or
     /// standing where it takes nothing or is the town's first depot, its
     /// door open onto a street beside its front. The one way a building
-    /// comes, whoever asks: the hand placing it (`fit` first), a fixture,
-    /// an undone demolition (`raise_as`).
+    /// comes, whoever asks: the hand placing it (`fit` first), a fixture.
     pub fn raise(&mut self, kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> EntityId {
-        let id = self.stand_up(Building::new(kind, tiles, facing));
-        self.founded(id);
-        self.orient(id);
-        id
-    }
-
-    /// A building put back as it stood when it was taken down: its stock,
-    /// a site or standing, as it was.
-    pub fn raise_as(&mut self, building: Building) -> EntityId {
-        let id = self.stand_up(building);
-        self.unsettled.insert(id);
-        self.orient(id);
-        id
-    }
-
-    fn stand_up(&mut self, building: Building) -> EntityId {
-        let tiles = building.tiles.clone();
-        let id = self.insert_at(GameObject::Building(building), Some(tiles[0]));
+        let id = self.insert_at(GameObject::Building(Building::new(kind, tiles.clone(), facing)), Some(tiles[0]));
         for &t in &tiles {
             self.take_stub(id, t);
             self.occupy(id, t);
         }
+        self.founded(id);
+        self.orient(id);
         id
     }
 

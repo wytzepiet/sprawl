@@ -77,8 +77,9 @@ single player's island is the same island with one town on it.
 
 You draw the network, and the first road is yours, from the ramp. No road
 is born with the map. **Streets** front buildings and take driveways.
-**Roads** are through routes nothing fronts onto: faster, later with
-priority over streets and levels for overpasses. One-way is a toggle.
+**Roads** are through routes nothing fronts onto: faster, with priority
+over the streets that meet them, and on levels for overpasses (built for
+the interchange first). One-way is a toggle.
 Intersections are the skill ceiling: roundabouts, merges, interchanges are
 built from these three things, and your steel lorries share them with the
 school run.
@@ -92,52 +93,30 @@ is laid: gravel for its base and asphalt for its top, and concrete
 and steel for a bridge or an overpass, which is the big project you stock
 a big depot for. As built, a tile takes a unit of stone off the nearest
 depot's shelf, and what the depots lack the world sends express, dear,
-so a road is never refused (`trade.md` §Building materials). Demolition
-is to give back part of what a road took, so trying things is never
-punished; it does not yet.
+so a road is never refused (`trade.md` §Building materials). Taken up
+within five minutes, a road gives back what it took, so trying things is
+never punished (§Undo).
 
 ## Undo
 
 **What the hand does is done at once, and what it did lately is taken
 back by taking it down.** A road is laid as it is drawn and a building
-is a site the moment it is let go; there is no draft and no second
-step, and no undo button (2026-10-20): a road or a building taken down
-while it is new is the slip undone, and gives back what it cost. Taken
-down later, it gives back nothing. (The interchange keeps its Z, the
-last action taken back, a demolition stood again among them.)
+is a site the moment it is let go; there is no draft, no second step and
+no undo button. A road or a building taken down within five minutes of
+being laid or placed, a quarter of the town's day, is the slip undone: it
+gives back what it cost (`undo::raze`, `undo::recoup`). The stone a road
+took goes back on the shelves it came off and its express coins to the
+purse; a building gives what its site had been brought, and what was on
+a van to it, to the nearest depot, the rest in coins at the world's
+price, or all it took if it stood. Taken down later, it gives back
+nothing. Five minutes, not a count: what makes an action no longer a
+slip is that the town has started to use it. The street a building
+brought stays if someone's building since opens onto it. What the server
+keeps for this (`World::placed`, `World::undo`) is forgotten on restart.
 
-- **What an action is.** A drag is one: every step of a drag of road
-  or of the demolisher's drag, each from where the last ended, is one
-  action; a building placed, a tap of the demolisher, or a building
-  taken down (a long press on it), another.
-- **Taken back, it gives back what was paid.** The stone a road took goes back on
-  the shelves it came off, and the coins it paid express go back to
-  the purse. A building taken back gives what its site had been
-  brought, and what was on a van on its way to it, to the nearest
-  depot, and what no shelf has room for in coins at the world's price;
-  one that stood, all it took, unless it stood for nothing (the town's
-  first depot). A demolition taken back (the interchange's Z) stands
-  the building again as it stood, its stock and all, for nothing.
-- **For five minutes.** An action can be taken back for a quarter of the
-  town's day, five minutes of play. Not a count: what makes an action
-  no longer a slip is that the town has started to use it, and that
-  takes time, not other actions. Five minutes is long enough to see a
-  mistake and short enough that undo is never a demolition with all
-  the materials back.
-- **In order, or not at all.** Undo takes back only the newest action,
-  so what a player built on their own road goes before the road does.
-  What someone else did since is never taken back with it: an action
-  something since rests on is refused, with why, and stays (a street
-  another player's building now opens onto; ground a demolition would
-  stand again on, built on since). A building someone else took down
-  meanwhile has nothing left to undo: it goes from the history, said so,
-  and the next press goes on before it.
-- **Per player, on the server, and only while it runs.** Each player's
-  history is the server's (`server/src/undo.rs`, `World::undo`), and a
-  restart forgets it. What it says, done or refused, comes back to that
-  player alone, as a line of news.
-
-`bun run act undo` presses it.
+The interchange keeps its Z over the same record of road laid and taken
+up: the newest action taken back, in order, refused with why when
+something since rests on it (`undo::undo`). `bun run act undo` presses it.
 
 ## Buildings
 
