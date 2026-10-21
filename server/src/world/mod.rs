@@ -129,6 +129,12 @@ pub struct World {
     /// Buildings placed, reached, cut off or taken away since the last
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
+    /// Every line that may have a desk free: each one settled, and each
+    /// that lost a worker. Some are full; `settle` sees which, by id.
+    pub vacancies: BTreeSet<EntityId>,
+    /// Every building settled as a site, standing or not since: those
+    /// still waiting call for their timber (`game::settle_and_wake`).
+    pub sites: BTreeSet<EntityId>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
     /// The town's missions (`missions.rs`). Saved.
@@ -187,6 +193,8 @@ impl World {
             aims: HashMap::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
+            vacancies: BTreeSet::new(),
+            sites: BTreeSet::new(),
             undo: HashMap::default(),
             missions: Default::default(),
         }
@@ -228,6 +236,8 @@ impl World {
             aims: HashMap::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
+            vacancies: BTreeSet::new(),
+            sites: BTreeSet::new(),
             undo: HashMap::default(),
             missions: Default::default(),
             objects,

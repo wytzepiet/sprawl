@@ -757,13 +757,8 @@ fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     // A harbour reached, or cut off: the town's way out, and its ferry.
     world.mark_harbours(events.now());
     // A site reached, and not calling: it calls for its timber.
-    let waiting: Vec<EntityId> = world
-        .objects
-        .iter()
-        .filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some()))
-        .map(|e| e.id)
-        .filter(|&id| world.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id))
-        .collect();
+    world.sites.retain(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
+    let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
     for id in waiting {
         crate::calls::turn(world, events, id, events.now());
     }
@@ -1946,7 +1941,8 @@ mod tests {
     }
 
     /// What builds cost the loop in a town of `copies`, in microseconds,
-    /// each the median of a row of them: a house placed across the
+    /// each the best of a row of them, as the least a machine busy with
+    /// other things lets through: a house placed across the
     /// street and demolished again, a shop the same, and a side street
     /// drawn four tiles — each a batch of the brush's steps, with the
     /// settle the tick runs after it.
@@ -1990,10 +1986,7 @@ mod tests {
         }
         let costs: Vec<(&'static str, f64)> = costs
             .into_iter()
-            .map(|(what, mut v)| {
-                v.sort_by(f64::total_cmp);
-                (what, v[v.len() / 2])
-            })
+            .map(|(what, v)| (what, v.into_iter().fold(f64::INFINITY, f64::min)))
             .collect();
         println!("{copies} town(s), {} residents: {}", world.resident_ids().len(), costs.iter().map(|(what, c)| format!("{what} {c:.0} µs")).collect::<Vec<_>>().join(", "));
         costs
@@ -2011,6 +2004,35 @@ mod tests {
         for ((what, one), (_, two)) in build_cost(1).into_iter().zip(build_cost(2)) {
             assert!(two < 1.5 * one + 100.0, "{what} cost {one:.0} µs in one town and {two:.0} µs in two");
         }
+    }
+
+    /// The server's own loop over every fixture, a town of thousands of
+    /// buildings: `Game::step` for six hours of play, settle and all,
+    /// which the town tests above skip. Printed, not asserted: what a
+    /// settle step costs against the steps between, in microseconds.
+    #[test]
+    #[ignore]
+    fn a_town_of_every_fixture_settles() {
+        let mut world = World::new();
+        crate::fixtures::build(&mut world, &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"));
+        let mut game = Game::new(world, DAY_MS as GameTime / 2, 1, Box::new(World::new));
+        let (mut settles, mut others) = (Vec::new(), Vec::new());
+        for _ in 0..DAY_MS as GameTime / 4 / STEP_MS {
+            let settling = game.now % SETTLE_MS == 0 || !game.world.unsettled.is_empty();
+            let started = Instant::now();
+            game.step();
+            (if settling { &mut settles } else { &mut others }).push(started.elapsed().as_secs_f64() * 1e6);
+        }
+        let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+        println!(
+            "{} objects: {} settles {:.0} µs each (worst {:.0}), {} other steps {:.1} µs each",
+            game.world.objects.len(),
+            settles.len(),
+            mean(&settles),
+            settles.iter().fold(0.0, |a: f64, &b| a.max(b)),
+            others.len(),
+            mean(&others)
+        );
     }
 
     /// What settling must leave true, whatever was built: every home a

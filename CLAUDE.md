@@ -65,7 +65,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   life and asserts how often residents wake (a storm is ten times the
   budget) and prints simulated days per second, to see whether it drifted;
   and it times a house, a shop, their demolition and a road in a town and
-  in one twice the size, and asserts the bigger town costs about the same.
+  in one twice the size, and asserts the bigger town costs about the same;
+  and it runs the server's own loop over every fixture for six hours and
+  prints what a settle step costs against the steps between.
   A build costs what it changed: `World::settle` reads only the buildings
   marked `unsettled`, and `resettle`, the whole world, runs at startup.
 - **Does the town still keep?** `cargo test season -- --ignored

@@ -484,8 +484,8 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
 /// there. One pass over everyone.
 fn headcount(world: &World) -> Crowd {
     let mut crowd = Crowd::default();
-    for id in world.resident_ids() {
-        let Some(r) = resident(world, id) else { continue };
+    for e in world.objects.iter() {
+        let GameObject::Resident(ref r) = e.object else { continue };
         let (Some(at), Some(need)) = (r.at, r.selected) else { continue };
         let place = match world.objects.get(at).map(|e| &e.object) {
             Some(GameObject::Building(_)) => at,
