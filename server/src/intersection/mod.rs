@@ -7,8 +7,9 @@ use crate::protocol::EntityId;
 pub type Dir = (i32, i32);
 
 /// Who may go together through a junction: does a party waiting, from
-/// its arm to its exit, cross one passing. Roads keep right
-/// (`paths_conflict`); the sea has its own (`shipping::lanes`).
+/// its arm to its exit, cross one passing. Only ships, which say no track,
+/// are judged by one (`shipping::lanes`; keeping right is
+/// `paths_conflict`); a car says its track.
 pub type Rule = fn(waiting: (Dir, Dir), passing: (Dir, Dir)) -> bool;
 
 /// A car's way through a junction, as it drives it: points along its lane
@@ -136,23 +137,6 @@ pub fn paths_conflict((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) ->
     (p_from > 0.0 && p_from < w_to) || (p_to > 0.0 && p_to <= w_to)
 }
 
-/// Right-hand traffic, as `paths_conflict`, but two cars bound for the
-/// same exit from different arms do not exclude each other: they merge,
-/// the one behind following the one ahead on the road out
-/// (`car::simulation`'s `join_run`), easing in rather than stopping.
-pub fn paths_cross((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) -> bool {
-    if w_from == p_from {
-        return false;
-    }
-    let base = dir_angle(w_from);
-    let tau = std::f64::consts::TAU;
-    let ccw = |d: Dir| (dir_angle(d) - base).rem_euclid(tau);
-    let w_to = ccw(w_to);
-    let p_from = ccw(p_from);
-    let p_to = ccw(p_to);
-    (p_from > 0.0 && p_from < w_to) || (p_to > 0.0 && p_to < w_to - 1e-9)
-}
-
 /// A junction's traffic lights: its arms in phases, each green in turn.
 ///
 /// Phases are found, not set: arms straight across from each other are
@@ -222,13 +206,14 @@ pub fn phases_of(arms: &[Dir]) -> Vec<Vec<Dir>> {
 pub struct IntersectionManager {
     queue: VecDeque<QueueEntry>,
     passing: Vec<QueueEntry>,
-    rule: Rule,
+    /// None on the road, where every car says its track.
+    rule: Option<Rule>,
     /// Its lights, if it has them.
     signal: Option<Signal>,
 }
 
 impl IntersectionManager {
-    pub fn new(rule: Rule) -> Self {
+    pub fn new(rule: Option<Rule>) -> Self {
         Self {
             queue: VecDeque::new(),
             passing: Vec::new(),
@@ -415,7 +400,7 @@ impl IntersectionManager {
                 Some(_) if x[TRACK_POINTS - 1] == y[TRACK_POINTS - 1] => Meet::Merge,
                 Some((i, j)) => Meet::Cross(i, j),
             },
-            _ if (self.rule)((a.claim.from, a.claim.to), (b.claim.from, b.claim.to)) => Meet::Rule,
+            _ if self.rule.is_some_and(|rule| rule((a.claim.from, a.claim.to), (b.claim.from, b.claim.to))) => Meet::Rule,
             _ => Meet::Apart,
         }
     }
@@ -477,28 +462,16 @@ impl IntersectionManager {
         (woken, busy.then_some(SIGNAL_TICK))
     }
 
-    /// Car has left the intersection. Remove from passing and grant new cars.
+    /// A party gone from the junction, through it or not: out of passage
+    /// and out of the queue, and whoever that lets through let through.
+    /// Out of the queue too: a claim that lapsed while it stood in the box,
+    /// and was never granted again before it left, would stand in the
+    /// queue for a car that is gone.
     pub fn clear(&mut self, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
         self.passing.retain(|e| e.car_id != car_id);
-        // Nor queued: a claim that lapsed while it stood in the box, and
-        // was never granted again before it left, would stand in the queue
-        // for a car that is gone.
         self.queue.retain(|e| e.car_id != car_id);
         self.grant_passage(now)
     }
-
-    /// Remove a car entirely (e.g., on despawn). Returns newly granted cars.
-    pub fn remove_car(&mut self, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
-        let was_passing = self.passing.iter().any(|e| e.car_id == car_id);
-        self.passing.retain(|e| e.car_id != car_id);
-        self.queue.retain(|e| e.car_id != car_id);
-        if was_passing {
-            self.grant_passage(now)
-        } else {
-            Vec::new()
-        }
-    }
-
 }
 
 pub struct IntersectionRegistry {
@@ -537,16 +510,17 @@ impl IntersectionRegistry {
         let Some(held) = self.held.get_mut(&car_id) else { return Vec::new() };
         let gone: Vec<EntityId> = held.iter().copied().filter(|n| !nodes.contains(n)).collect();
         held.retain(|n| nodes.contains(n));
-        gone.into_iter().flat_map(|n| self.remove_car(n, car_id, now)).collect()
+        gone.into_iter().flat_map(|n| self.clear_car(n, car_id, now)).collect()
     }
 
+    /// A road junction, where every car says its track.
     pub fn get_or_create(&mut self, node_id: EntityId) -> &mut IntersectionManager {
-        self.get_or_create_with(node_id, paths_cross)
+        self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(None))
     }
 
     /// A junction that keeps its own rule (a sea's: `shipping::lanes`).
     pub fn get_or_create_with(&mut self, node_id: EntityId, rule: Rule) -> &mut IntersectionManager {
-        self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(rule))
+        self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(Some(rule)))
     }
 
     pub fn has_passage(&self, node_id: EntityId, car_id: EntityId) -> bool {
@@ -589,17 +563,11 @@ impl IntersectionRegistry {
         self.held.remove(&car_id);
         let mut at: Vec<EntityId> = self.managers.iter().filter(|(_, m)| m.queue.iter().chain(&m.passing).any(|e| e.car_id == car_id)).map(|(&n, _)| n).collect();
         at.sort_unstable();
-        at.into_iter().flat_map(|n| self.managers.get_mut(&n).unwrap().remove_car(car_id, now).into_iter().map(move |woken| (n, woken))).collect()
+        at.into_iter().flat_map(|n| self.managers.get_mut(&n).unwrap().clear(car_id, now).into_iter().map(move |woken| (n, woken))).collect()
     }
 
-    /// Take a car out of one junction's queue and passage altogether: a
-    /// claim made from behind a junction it has since lost passage at
-    /// would be held by a car that cannot reach it. Returns woken car IDs.
-    pub fn remove_car(&mut self, node_id: EntityId, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
-        self.managers.get_mut(&node_id).map_or_else(Vec::new, |m| m.remove_car(car_id, now))
-    }
-
-    /// Clear a car from a specific node's manager (if it exists). Returns woken car IDs.
+    /// Take a car out of one junction's queue and passage altogether
+    /// (`IntersectionManager::clear`). Returns woken car IDs.
     pub fn clear_car(&mut self, node_id: EntityId, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
         if let Some(manager) = self.managers.get_mut(&node_id) {
             manager.clear(car_id, now)
@@ -719,11 +687,11 @@ mod tests {
     #[test]
     fn cars_whose_ways_miss_go_at_once() {
         let (w, e, n, s) = ((-1, 0), (1, 0), (0, -1), (0, 1));
-        let mut j = super::IntersectionManager::new(super::paths_cross);
+        let mut j = super::IntersectionManager::new(None);
         come(&mut j, 1, w, n, Some(way(w, n, false)), false, 0);
         come(&mut j, 2, s, e, Some(way(s, e, false)), false, 0);
         assert!(j.has_passage(1) && j.has_passage(2), "two bends wait for each other");
-        let mut j = super::IntersectionManager::new(super::paths_cross);
+        let mut j = super::IntersectionManager::new(None);
         come(&mut j, 1, w, e, Some(way(w, e, true)), false, 0);
         come(&mut j, 2, s, n, Some(way(s, n, true)), false, 0);
         assert!(j.has_passage(1) && !j.has_passage(2), "two crossing go together");
@@ -759,12 +727,12 @@ mod tests {
     /// it is first come, first served.
     #[test]
     fn the_priority_road_goes_first() {
-        let mut j = IntersectionManager::new(paths_conflict);
+        let mut j = IntersectionManager::new(Some(paths_conflict));
         come(&mut j, 1, S, N, None, false, 0);
         assert!(j.has_passage(1), "alone, the side street goes");
         j.clear(1, 10);
 
-        let mut j = IntersectionManager::new(paths_conflict);
+        let mut j = IntersectionManager::new(Some(paths_conflict));
         // Both arrive while the junction is held, the side street first,
         // and both are bound west, so only one may go.
         come(&mut j, 9, N, S, None, true, 0);
@@ -774,7 +742,7 @@ mod tests {
         assert_eq!(j.clear(9, 3), vec![2], "the priority road's car, not the side street's");
         assert_eq!(j.clear(2, 4), vec![1], "then the side street");
 
-        let mut j = IntersectionManager::new(paths_conflict);
+        let mut j = IntersectionManager::new(Some(paths_conflict));
         come(&mut j, 9, N, S, None, false, 0);
         come(&mut j, 1, S, W, None, false, 1);
         come(&mut j, 2, E, W, None, false, 2);
@@ -785,7 +753,7 @@ mod tests {
     /// empty after the shortest green, all red, then the other.
     #[test]
     fn the_lights_take_turns() {
-        let mut j = IntersectionManager::new(paths_cross);
+        let mut j = IntersectionManager::new(Some(paths_conflict));
         j.set_signal(Some(&[W, E, N, S]), 0);
         assert_eq!(j.signal().unwrap().phases.len(), 2, "east-west, and north-south");
         let green = j.signal().unwrap().phases[0].clone();

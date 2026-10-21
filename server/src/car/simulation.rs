@@ -463,7 +463,7 @@ struct Gate {
     id: EntityId,
     from: (i32, i32),
     to: (i32, i32),
-    track: Option<crate::intersection::Track>,
+    track: crate::intersection::Track,
     /// How far before the node its track begins.
     start: f64,
     past: f64,
@@ -490,13 +490,14 @@ fn gates(world: &World, trip: &Trip, k: usize) -> [Option<Gate>; 2] {
         let corner = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0].map(f64::round);
         let track = crate::intersection::straight([a[0] - corner[0], a[1] - corner[1]], [b[0] - corner[0], b[1] - corner[1]], lane_offset(world, prev, at, lanes[k]));
         let seg = world.segment_length(prev, at);
-        out[0] = Some(Gate { id, from: (-dx, -dy), to: (dx, dy), track: Some(track), start: seg, past: -seg / 2.0 });
+        out[0] = Some(Gate { id, from: (-dx, -dy), to: (dx, dy), track, start: seg, past: -seg / 2.0 });
     }
     if k + 1 < route.len()
         && world.is_intersection(at)
+        && let (Some(p), Some(j), Some(n)) = (world.node_pos(prev), world.node_pos(at), world.node_pos(route[k + 1]))
         && let (Some(from), Some(to)) = (arm(world, at, prev), arm(world, at, route[k + 1]))
     {
-        let track = (|| Some(crate::intersection::track(world.node_pos(prev)?, world.node_pos(at)?, world.node_pos(route[k + 1])?, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]))))();
+        let track = crate::intersection::track(p, j, n, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]));
         out[1] = Some(Gate { id: at, from, to, track, start: world.segment_length(prev, at) / 2.0, past: 0.0 });
     }
     out
@@ -1051,18 +1052,16 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
                 // tail is past it: along the track from where it begins, as
                 // fast as it may go there.
                 let time = |d: f64| ms(if d <= line { eta(d.max(0.0), cur_speed, CRUISE_SPEED) } else { through(line, d, cur_speed, limit).1 });
-                let along = g.track.map_or_else(|| std::array::from_fn(|i| 2.0 * g.start * i as f64 / (TRACK_POINTS - 1) as f64), |t| {
-                    let mut s = [0.0; TRACK_POINTS];
-                    for i in 1..TRACK_POINTS {
-                        s[i] = s[i - 1] + ((t[i][0] - t[i - 1][0]) as f64).hypot((t[i][1] - t[i - 1][1]) as f64);
-                    }
-                    s
-                });
+                let t = g.track;
+                let mut along = [0.0; TRACK_POINTS];
+                for i in 1..TRACK_POINTS {
+                    along[i] = along[i - 1] + ((t[i][0] - t[i - 1][0]) as f64).hypot((t[i][1] - t[i - 1][1]) as f64);
+                }
                 let begins = to_k - g.start;
                 let claim = crate::intersection::Claim {
                     from: g.from,
                     to: g.to,
-                    track: g.track,
+                    track: Some(g.track),
                     major: world.is_road_between(trip.route[k - 1], trip.route[k]),
                     due: ms(due),
                     nose: along.map(|s| time(begins + s - nose(role))),
@@ -1542,7 +1541,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
     // there: moving over into another's way, it gave up its turn at the
     // junction for a wait behind them.
     let moved = Trip { lanes: trip.lanes.iter().enumerate().map(|(k, &l)| if (ri..=carry).contains(&k) { 1 - l } else { l }).collect(), ..trip.clone() };
-    let ways = |t: &Trip, k: usize| gates(world, t, k).into_iter().flatten().filter_map(|g| Some((g.id, g.crossing(), g.track?)));
+    let ways = |t: &Trip, k: usize| gates(world, t, k).into_iter().flatten().map(|g| (g.id, g.crossing(), g.track));
     let clear_there = (ri..carry).all(|k| ways(&moved, k).all(|(j, _, t)| !intersections.meets(j, car_id, &t, false)));
     let joining = ways(trip, end).any(|(j, crossing, t)| !crossing && intersections.meets(j, car_id, &t, true));
     let merging = |l: u8| to_end < MAKE_ROOM && end + 1 < len && trip.lanes[end + 1] == l && joining;
@@ -1567,7 +1566,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
     // Nor into a lane someone is still to come out into at the junction it
     // has just come through, in by another arm: not behind it on this car's
     // way, it is not seen there, and came on it braking hard, or into it.
-    if gates(world, &moved, ri - 1).into_iter().flatten().any(|g| !g.crossing() && g.track.is_some_and(|t| intersections.joins(g.id, car_id, &t, g.from))) {
+    if gates(world, &moved, ri - 1).into_iter().flatten().any(|g| !g.crossing() && intersections.joins(g.id, car_id, &g.track, g.from)) {
         return short;
     }
     if let Some(blocker) = in_the_way(role, v, near[to as usize]) {
