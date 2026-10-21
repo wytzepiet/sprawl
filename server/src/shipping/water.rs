@@ -88,6 +88,14 @@ pub struct Water {
 }
 
 impl Water {
+    /// A map from rows of text, as the fixtures key it: `≈` or `~` sea,
+    /// anything else land.
+    #[cfg(test)]
+    pub fn from_rows(rows: &[impl AsRef<str>]) -> Water {
+        let rows: Vec<Vec<char>> = rows.iter().map(|r| r.as_ref().chars().collect()).collect();
+        Water::new(0, 0, rows[0].len() as i32, rows.len() as i32, |x, y| matches!(rows[y as usize][x as usize], '≈' | '~'))
+    }
+
     /// A map's water, from whether each tile in its bounds is sea.
     pub fn new(x0: i32, y0: i32, w: i32, h: i32, sea: impl Fn(i32, i32) -> bool) -> Water {
         let mut c: Vec<u8> = (0..w * h).map(|i| if sea(x0 + i % w, y0 + i / w) { FAR } else { 0 }).collect();
@@ -401,51 +409,44 @@ fn sweep(p: &[[f64; 2]], i: usize, j: usize, t: f64) -> Vec<[f64; 2]> {
         .collect()
 }
 
-/// The tightest turn along a way at sea, as a radius in tiles: at each
-/// point, the legs either side over the angle between them. Within
-/// `BERTH` tiles of a berth the ferry turns on its thrusters, at a crawl,
-/// and is not counted.
-pub fn tightest(way: &[[f64; 2]]) -> f64 {
-    let len = super::length(way);
-    let mut along = 0.0;
-    let mut at_sea = Vec::new();
-    for (i, p) in way.iter().enumerate() {
-        if i > 0 {
-            along += (p[0] - way[i - 1][0]).hypot(p[1] - way[i - 1][1]);
-        }
-        if along >= BERTH as f64 && along <= len - BERTH as f64 {
-            at_sea.push(*p);
-        }
-    }
-    turns(&at_sea)
-}
-
-fn turns(path: &[[f64; 2]]) -> f64 {
-    path.windows(3)
-        .map(|w| {
-            let (u, v) = ([w[1][0] - w[0][0], w[1][1] - w[0][1]], [w[2][0] - w[1][0], w[2][1] - w[1][1]]);
-            let angle = (u[0] * v[1] - u[1] * v[0]).atan2(u[0] * v[0] + u[1] * v[1]).abs();
-            let reach = (u[0].hypot(u[1]) + v[0].hypot(v[1])) / 2.0;
-            if angle < 1e-6 { f64::INFINITY } else { reach / angle }
-        })
-        .fold(f64::INFINITY, f64::min)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::shipping::lanes::Kind;
 
-    /// A map from rows of text: `~` sea, anything else land.
-    pub fn water(rows: &[&str]) -> Water {
-        let h = rows.len() as i32;
-        let w = rows[0].len() as i32;
-        Water::new(0, 0, w, h, |x, y| rows[y as usize].as_bytes()[x as usize] == b'~')
+    /// The tightest turn along a way at sea, as a radius in tiles: at each
+    /// point, the legs either side over the angle between them. Within
+    /// `BERTH` tiles of a berth the ferry turns on its thrusters, at a crawl,
+    /// and is not counted.
+    fn tightest(way: &[[f64; 2]]) -> f64 {
+        let len = crate::shipping::length(way);
+        let mut along = 0.0;
+        let mut at_sea = Vec::new();
+        for (i, p) in way.iter().enumerate() {
+            if i > 0 {
+                along += (p[0] - way[i - 1][0]).hypot(p[1] - way[i - 1][1]);
+            }
+            if along >= BERTH as f64 && along <= len - BERTH as f64 {
+                at_sea.push(*p);
+            }
+        }
+        turns(&at_sea)
+    }
+
+    fn turns(path: &[[f64; 2]]) -> f64 {
+        path.windows(3)
+            .map(|w| {
+                let (u, v) = ([w[1][0] - w[0][0], w[1][1] - w[0][1]], [w[2][0] - w[1][0], w[2][1] - w[1][1]]);
+                let angle = (u[0] * v[1] - u[1] * v[0]).atan2(u[0] * v[0] + u[1] * v[1]).abs();
+                let reach = (u[0].hypot(u[1]) + v[0].hypot(v[1])) / 2.0;
+                if angle < 1e-6 { f64::INFINITY } else { reach / angle }
+            })
+            .fold(f64::INFINITY, f64::min)
     }
 
     #[test]
     fn clearance_is_the_steps_to_land() {
-        let w = water(&["......", "~~~~~~", "~~~~~~", "~~~~~~", "~~~~~~"]);
+        let w = Water::from_rows(&["......", "~~~~~~", "~~~~~~", "~~~~~~", "~~~~~~"]);
         assert_eq!((0..5).map(|y| w.clear(2, y)).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4]);
     }
 
@@ -463,7 +464,7 @@ mod tests {
         for _ in 0..20 {
             rows.push("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
         }
-        let w = water(&rows);
+        let w = Water::from_rows(&rows);
         let from = Berth { quay: GridCoord { x: 5, y: 3 }, out: (0, 1) };
         let to = Berth { quay: GridCoord { x: 34, y: 3 }, out: (0, 1) };
         let lanes = Lanes::new(&w);
@@ -634,7 +635,7 @@ mod tests {
                 // The world's line from here calls as often as the old
                 // ferry's 6.4 a day, with as many ferries as that takes.
                 if end == End::Edge {
-                    let ferry = crate::shipping::lines::Line { calls: vec![crate::shipping::lines::Call::Harbour(0), crate::shipping::lines::Call::World], legs: vec![way.clone(), back.clone()], ships: Vec::new(), slots: 15, dwell: crate::world::sea::DWELL, stay: crate::shipping::WORLD_STAY, every: 0 };
+                    let ferry = crate::shipping::lines::Line { calls: vec![crate::shipping::lines::Call::Harbour(0), crate::shipping::lines::Call::World], legs: vec![way.clone(), back.clone()], dwell: crate::world::sea::DWELL, stay: crate::shipping::WORLD_STAY };
                     let calls = ferry.every_call() as f64 * crate::protocol::DAY_MS as f64 / ferry.cycle() as f64;
                     line += &format!(" {} ferries, {calls:.1} calls a day;", ferry.every_call());
                     if calls < 6.0 {

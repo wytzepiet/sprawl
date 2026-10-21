@@ -1,20 +1,13 @@
 //! The sea's decisions, as pure functions over plain data: the water and
-//! the ways over it (`water.rs`), the lines and their timetables
-//! (`lines.rs`), and how a ship moves along a leg (here). Nothing in this
-//! module names `World` or `EventQueue`: the game and the scenario
-//! harness (`sim.rs`, `cargo test scenario`) call the same functions, so
-//! what the harness measures is what the game does (docs/plan-sea.md).
-
-// The game sails one line a harbour, to the world, so far: the rest of
-// `lines.rs` (journeys, the company's rule) is the harness's until stage 3.
-#![cfg_attr(not(test), allow(dead_code))]
+//! the ways over it (`water.rs`), the lanes they are laid in
+//! (`lanes.rs`), a ship's passage through their junctions (`voyage.rs`),
+//! a line's round (`lines.rs`), and how a ship moves along a leg (here).
+//! Nothing in this module names `World` or `EventQueue`.
 
 pub mod lanes;
 pub mod voyage;
 pub mod water;
 pub mod lines;
-#[cfg(test)]
-mod sim;
 
 use crate::engine::GameTime;
 use crate::protocol::{Pose, Sail, CHUNK_SIZE};

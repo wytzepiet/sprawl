@@ -7,6 +7,12 @@ the container port and the network. Where it parts from `shipping.md`
 it says so and gives the reason. Change the other documents to match as
 each stage lands.
 
+Stages 1, 2 and 5 are built. Stages 3, 4 and 6, and the harness they
+were measured by, are superseded by `plan-market.md` (2026-10-21): the
+world stays the shipping company, so there is no second harbour of the
+player's linked by company lines, no lines sized by forecast, and no
+boxes changing ship. See §The harness comes first.
+
 ## What it is for
 
 Today the sea is one ferry per harbour, a shuttle to a world 48 tiles
@@ -169,6 +175,16 @@ deleted):
   2026-10-12.)
 
 ## The harness comes first
+
+**Superseded by `plan-market.md`, and deleted (2026-10-21).** The
+scenario harness (`server/src/shipping/sim.rs`, the scenarios in
+`server/scenarios/`, and in `lines.rs` the company's rule and the
+Connection Scan over the timetable) measured a network of lines between
+the player's harbours that the game will not have. It last lived intact
+at commit `675ca33`: `git show 675ca33:server/src/shipping/sim.rs` (and `lines.rs`),
+`git checkout 675ca33 -- server/scenarios`. When
+cargo ships between players' harbours are designed, start there. What
+follows is what it was.
 
 The router and the planner can be tested in isolation, so they are
 built that way and iterated against numbers before the game sees them.
@@ -459,6 +475,8 @@ Each stage leaves the game playable and the suite green
 
 ### Stage 3: the second harbour, connected the day it stands
 
+Superseded by `plan-market.md` (2026-10-21); kept as it was planned.
+
 - **Player.**
   - Build a harbour on another island, then a depot and a sawmill there.
   - Within the hour of the harbour standing, a new ferry sails in on a
@@ -516,6 +534,8 @@ Each stage leaves the game playable and the suite green
   `arrives`/`departs`; `Sailing` reads the timetable.
 
 ### Stage 4: the lines follow the traffic
+
+Superseded by `plan-market.md` (2026-10-21); kept as it was planned.
 
 - **Player.** A line the forecast underrated fills up: a backlog of
   boxes in a park adds a sailing at the next departure, and the card
@@ -644,6 +664,8 @@ Each stage leaves the game playable and the suite green
     patching are unchanged.
 
 ### Stage 6: the container port
+
+Superseded by `plan-market.md` (2026-10-21); kept as it was planned.
 
 - **Player.**
   - A new kind, `Port`. It is a long quay along the water (two berths'

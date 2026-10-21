@@ -438,6 +438,30 @@ the quay by `calls::stable`, and its fetch sent from there. Last lived at
 sails in, lands the shelves and sails away, still on call until the
 ferry's timetable (milestone 1).
 
+## The sea's network and its harness (2026-10-10 to 2026-10-21)
+
+**What.** `plan-sea.md` stage 1, and the instrument for stages 3, 4 and
+6: a discrete-event harness (`shipping/sim.rs`, test only) that sailed
+scenarios in text (`server/scenarios/*.txt`: a map, harbours, demand,
+`expect` lines) for days in a second and printed delivered, transit,
+lateness, transfers, missed, berth waits and coins. With it, in
+`lines.rs`, the company's rule (a new harbour linked to the player's
+nearest by sea, sailings sized by forecast, a backlog adding a sailing,
+new sailings slotted clear of other lines' berth windows) and a box's
+way by a Connection Scan over the timetable, changing ship at a hub.
+
+**Why shelved.** `plan-market.md`: the world stays the shipping company
+and freight leaves the game, so there are no lines between the
+player's harbours for it to measure. The game sails one line a harbour,
+out to the world and back; its routing, lanes and junctions stay, with
+their own tests.
+
+**To bring back.** When cargo ships between players' harbours are
+designed, start from it: `git show 675ca33:server/src/shipping/sim.rs`
+and `lines.rs`, `git checkout 675ca33 -- server/scenarios`, and
+`plan-sea.md` §The harness comes first and stages 3 and 4. Last lived at
+`675ca33`.
+
 ## The construction firm
 
 **What.** `game.md` as of 2026-09-09: construction as a delivery by a

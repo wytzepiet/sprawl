@@ -15,7 +15,7 @@ each, and since when, is in its own header, and only there.
 | `canvas.md` | The flat view: the game on a 2D canvas, the minimap, the far zoom and low-end devices; tools for seeing what the server does. |
 | `architecture.md` | How the code is shaped: the discrete event simulation, the tracked state, the wire, persistence, the client, deployment. |
 | `residents.md` | How a resident decides what to do: needs as stocks of time, taps, the utility search, alarms. |
-| `plan-sea.md` | The build plan for the sea: the harness and metrics first, ships on routed water, your own second harbour with the world as hub, lines the company opens, blocks, the container port; what is cut and why. |
+| `plan-sea.md` | The build plan for the sea: ships on routed water, lanes and blocks (built); the harness, your own second harbour, company lines and the container port (superseded by `plan-market.md`); what is cut and why. |
 | `plan-market.md` | The market: world prices that move with a graph, freight as the moat between islands, a mayor as a nation, the harbour growing into a hub, the computer's mayors as the market until there are players. |
 | `plan-interchange.md` | A Freeways-like puzzle mode run in the browser on the sim compiled to wasm: levels, gates and demands, Build and Test, an efficiency percentage; a road brush; and the roads it needs: one-way, cross-sections, markings, merging, priority, levels, lanes, lights. |
 | `multiplayer.md` | Many towns, one sea: coastal spawns, trade between players by sea and optional roads, influence from traffic as the claim. |

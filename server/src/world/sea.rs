@@ -178,7 +178,7 @@ impl World {
         lanes.lay(water, &out, [true, false]);
         let back = water.route(lanes, &berth, End::Edge, true)?;
         lanes.lay(water, &back, [false, true]);
-        Some(Line { calls: vec![Call::Harbour(harbour), Call::World], legs: vec![out, back], ships: Vec::new(), slots: DECK, dwell: DWELL, stay: crate::shipping::WORLD_STAY, every: 0 })
+        Some(Line { calls: vec![Call::Harbour(harbour), Call::World], legs: vec![out, back], dwell: DWELL, stay: crate::shipping::WORLD_STAY })
     }
 
     /// The junction a ferry holds while it is at a harbour's ramp: the
