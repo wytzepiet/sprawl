@@ -2753,7 +2753,8 @@ mod tests {
     #[test]
     fn the_opening_from_the_harbour() {
         use crate::missions::Key;
-        use crate::world::sea::{DWELL, FIRST_CALL};
+        use crate::shipping::DWELL;
+        use crate::world::sea::FIRST_CALL;
         let mut world = street();
         let harbour = harbour_of(&world);
         assert_eq!(opening(&mut world, 0), [true, false, false, false, false], "the harbour stands, and nothing else");

@@ -635,7 +635,7 @@ mod tests {
                 // The world's line from here calls as often as the old
                 // ferry's 6.4 a day, with as many ferries as that takes.
                 if end == End::Edge {
-                    let ferry = crate::shipping::lines::Line { calls: vec![crate::shipping::lines::Call::Harbour(0), crate::shipping::lines::Call::World], legs: vec![way.clone(), back.clone()], dwell: crate::world::sea::DWELL, stay: crate::shipping::WORLD_STAY };
+                    let ferry = crate::shipping::lines::Line { legs: [way.clone(), back.clone()] };
                     let calls = ferry.every_call() as f64 * crate::protocol::DAY_MS as f64 / ferry.cycle() as f64;
                     line += &format!(" {} ferries, {calls:.1} calls a day;", ferry.every_call());
                     if calls < 6.0 {

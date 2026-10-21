@@ -28,6 +28,8 @@ pub const GATHER: GameTime = 30_000;
 /// How long a ship stays beyond the map's edge, at the world, between
 /// sailing out and sailing back in: half an hour.
 pub const WORLD_STAY: GameTime = HOUR / 2;
+/// How long a ship stands at a harbour's ramp: an hour and a quarter.
+pub const DWELL: GameTime = HOUR * 5 / 4;
 
 /// How far a ship has come from the start of a leg `len` tiles long, `t`
 /// ms after it set out. A ship gathers way at an even push from rest at

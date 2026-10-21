@@ -358,8 +358,8 @@ pub fn sea(world: &World) -> Sea {
             let ferry = world.ferry_of(harbour)?;
             let c = car(world, ferry)?;
             let berthed = c.spot.is_some();
-            let arrives = if berthed { c.due - crate::world::sea::DWELL } else { c.due };
-            let departs = arrives + crate::world::sea::DWELL;
+            let arrives = if berthed { c.due - crate::shipping::DWELL } else { c.due };
+            let departs = arrives + crate::shipping::DWELL;
             Some(Sailing {
                 harbour,
                 ferry,

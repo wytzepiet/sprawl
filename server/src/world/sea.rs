@@ -30,7 +30,8 @@ use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Place, Pose, Shunt, TerrainType, Trailer, DAY_MS};
 use crate::shipping::lanes::{Gate, Kind, Lanes};
-use crate::shipping::lines::{Call, Line};
+use crate::shipping::lines::Line;
+use crate::shipping::DWELL;
 use crate::shipping::voyage::Voyage;
 use crate::shipping::water::{End, Water};
 use crate::world::World;
@@ -45,8 +46,6 @@ pub const DECK: usize = LANES * ROWS;
 const LANE_GAP: f64 = 0.27;
 const ROW_FIRST: f64 = 0.45;
 const ROW_GAP: f64 = 0.6;
-/// At the ramp: an hour and a quarter.
-pub const DWELL: GameTime = DAY_MS as GameTime * 5 / 96;
 /// The first call at a new harbour: half an hour after it is built.
 pub const FIRST_CALL: GameTime = DAY_MS as GameTime / 48;
 /// A settler's car rolls off every few seconds.
@@ -178,7 +177,7 @@ impl World {
         lanes.lay(water, &out, [true, false]);
         let back = water.route(lanes, &berth, End::Edge, true)?;
         lanes.lay(water, &back, [false, true]);
-        Some(Line { calls: vec![Call::Harbour(harbour), Call::World], legs: vec![out, back], dwell: DWELL, stay: crate::shipping::WORLD_STAY })
+        Some(Line { legs: [out, back] })
     }
 
     /// The junction a ferry holds while it is at a harbour's ramp: the
