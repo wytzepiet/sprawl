@@ -463,14 +463,6 @@ impl World {
         }
     }
 
-    /// Collect all edge keys involving a node (as from or to).
-    pub fn edges_involving(&self, node_id: EntityId) -> Vec<EdgeKey> {
-        self.edges.keys()
-            .filter(|&&(from, to)| from == node_id || to == node_id)
-            .copied()
-            .collect()
-    }
-
     pub fn register_car_route(&mut self, car_id: EntityId, route: &[EntityId]) {
         for &node in route {
             self.node_cars.entry(node).or_default().insert(car_id);

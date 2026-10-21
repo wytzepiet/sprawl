@@ -269,9 +269,6 @@ impl World {
     fn take_stub(&mut self, id: EntityId, tile: GridCoord) {
         let Some(node) = self.road_node_at(tile) else { return };
         let street = self.arms_of(node, false).first().and_then(|&a| self.objects.get(a)?.position);
-        for edge in self.edges_involving(node) {
-            self.remove_edge(edge.0, edge.1);
-        }
         self.demolish_node(node);
         if let Some(street) = street {
             self.door_through(id, street, tile);
@@ -742,6 +739,7 @@ impl World {
 mod tests {
     use super::*;
     use super::super::roads::tests::{agrees_with_the_edges, lift_road};
+    use crate::world::decks::MIDDLE;
 
     /// A world with nothing in it but grass and the given road path.
     fn world_with_road(path: &[(i32, i32)]) -> World {
@@ -771,7 +769,7 @@ mod tests {
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2)
             .unwrap();
 
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
+        world.place_road_at(GridCoord { x: 2, y: 1 }, 0, MIDDLE, GridCoord { x: 2, y: 0 }, 0, MIDDLE, false, false);
         let street = world.road_node_at(GridCoord { x: 2, y: 1 });
         assert!(street.is_some(), "the street ran up to it");
         assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_none(), "and no road onto it");
@@ -789,9 +787,9 @@ mod tests {
             .unwrap();
 
         // In from below, then in from the left.
-        world.handle_place_road(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }, false, false);
+        world.place_road_at(GridCoord { x: 1, y: 1 }, 0, MIDDLE, GridCoord { x: 1, y: 0 }, 0, MIDDLE, false, false);
         assert_eq!(world.door_of(b).map(|d| d.0), Some(GridCoord { x: 1, y: 0 }));
-        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false);
+        world.place_road_at(GridCoord { x: 0, y: 0 }, 0, MIDDLE, GridCoord { x: 1, y: 0 }, 0, MIDDLE, false, false);
         assert_eq!(world.street_of(b), world.road_node_at(GridCoord { x: 0, y: 0 }), "the new door is the one");
     }
 
@@ -803,7 +801,7 @@ mod tests {
         world
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2)
             .unwrap();
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
+        world.place_road_at(GridCoord { x: 2, y: 1 }, 0, MIDDLE, GridCoord { x: 2, y: 0 }, 0, MIDDLE, false, false);
 
         assert!(!world.may_lay(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false), "the road stops at the door");
     }

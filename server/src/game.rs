@@ -414,25 +414,9 @@ pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road
     if let Some((a, b)) = world.link_between_at(from, hf, sf, to, ht, st) {
         world.set_priority(a, b, road);
     }
-    if hf != 0 || ht != 0 || sf != MIDDLE || st != MIDDLE {
-        world.place_road_at(from, hf, sf, to, ht, st, one_way, road);
-        if let (Some(a), Some(b)) = (world.node_in(from, hf, sf), world.node_in(to, ht, st)) {
-            world.set_wide(a, b, wide);
-        }
-        return world.laid.saturating_sub(laid);
-    }
-    let (from_id, to_id) = (world.road_node_at(from), world.road_node_at(to));
-    world.handle_place_road(from, to, one_way, road);
-    if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to))
-        && (from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)))
-    {
-        world.insert_edge(f, t);
-        if !one_way {
-            world.insert_edge(t, f);
-        }
-    }
-    if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to)) {
-        world.set_wide(f, t, wide);
+    world.place_road_at(from, hf, sf, to, ht, st, one_way, road);
+    if let (Some(a), Some(b)) = (world.node_in(from, hf, sf), world.node_in(to, ht, st)) {
+        world.set_wide(a, b, wide);
     }
     world.laid.saturating_sub(laid)
 }
@@ -537,10 +521,6 @@ fn handle_road_demolish(
 
     // Fully remove the node and update the graph BEFORE rerouting
     intersections.remove_node(node_id);
-    let removed_edges = world.edges_involving(node_id);
-    for &edge in &removed_edges {
-        world.remove_edge(edge.0, edge.1);
-    }
     world.demolish_node(node_id);
 
     // Now reroute — pathfinder sees the correct graph

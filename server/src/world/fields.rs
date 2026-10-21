@@ -839,7 +839,7 @@ mod tests {
         world.finish(farm);
         assert!(world.street_of(farm).is_none(), "served before any door");
         world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
-        world.handle_place_road(GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }, false, false);
+        world.place_road_at(GridCoord { x: 61, y: 44 }, 0, crate::world::decks::MIDDLE, GridCoord { x: 61, y: 45 }, 0, crate::world::decks::MIDDLE, false, false);
         let t = tractor(&world, farm);
         assert!(matches!(world.objects.get(t).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()), "the tractor has no spot");
         let land = tiles(&world, farm);

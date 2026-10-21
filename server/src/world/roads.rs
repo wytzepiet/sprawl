@@ -1,39 +1,11 @@
-use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
+use crate::protocol::{EntityId, GameObject, GridCoord};
 use crate::world::World;
+use super::decks::MIDDLE;
 
 impl World {
     /// The road on this tile.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
         self.roads.get(&(coord.x, coord.y)).copied()
-    }
-
-    /// Place a road node at coord. Idempotent: returns the node already
-    /// standing here, whatever kind it is. `laid` is the mayor's own hand,
-    /// counted to be paid for; a fixture's or a level's roads and
-    /// driveways are streets, laid by nobody, and free.
-    fn place_road_of(&mut self, coord: GridCoord, laid: bool) -> EntityId {
-        if let Some(id) = self.road_node_at(coord) {
-            return id;
-        }
-
-        let id = self.insert_at(
-            GameObject::RoadNode(RoadNode {
-                outgoing: vec![],
-                incoming: vec![],
-                joined: false,
-                road: vec![],
-                laid,
-                height: 0,
-                light: None,
-                wide: vec![],
-                side: super::decks::MIDDLE,
-            }),
-            Some(coord),
-        );
-        self.roads.insert((coord.x, coord.y), id);
-        self.laid += laid as u32;
-        self.unsettle_round(coord);
-        id
     }
 
     /// A node's neighbours.
@@ -302,44 +274,30 @@ impl World {
             && (into_building || !self.road_node_at(to).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way, on)))
     }
 
-    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
-        // Into a building is its door, moved here: the street it runs
-        // from is laid, and nothing on the building's tile.
-        if let Some(id) = self.claimed_plot_at(to) {
-            self.place_road_of(from, true);
-            self.door_through(id, from, to);
-            // Reached, as by any street: a depot's fleet and a farm's
-            // land come with the door, not with the first call.
-            self.orient(id);
-            return;
-        }
-
-        let from_id = self.place_road_of(from, true);
-        let to_id = self.place_road_of(to, true);
+    /// A way from `a` to `b`, and back unless it is one way; a road's, with
+    /// priority, if `road`. The nodes' links and the edges traffic reads,
+    /// kept in step: the one way any road is laid.
+    pub fn join(&mut self, a: EntityId, b: EntityId, one_way: bool, road: bool) {
         if road {
-            self.set_priority(from_id, to_id, true);
+            self.set_priority(a, b, true);
         }
-
-        if let Some(entry) = self.objects.get_mut(from_id)
-            && let GameObject::RoadNode(ref mut node) = entry.object
-                && !node.outgoing.contains(&to_id) {
-                    node.outgoing.push(to_id);
-                }
-
-        if one_way {
-            if let Some(entry) = self.objects.get_mut(to_id)
-                && let GameObject::RoadNode(ref mut node) = entry.object
-                    && !node.incoming.contains(&from_id) {
-                        node.incoming.push(from_id);
-                    }
-        } else if let Some(entry) = self.objects.get_mut(to_id)
-        && let GameObject::RoadNode(ref mut node) = entry.object
-            && !node.outgoing.contains(&from_id) {
-                node.outgoing.push(from_id);
+        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(a).map(|e| &mut e.object)
+            && !n.outgoing.contains(&b)
+        {
+            n.outgoing.push(b);
+        }
+        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(b).map(|e| &mut e.object) {
+            let back = if one_way { &mut n.incoming } else { &mut n.outgoing };
+            if !back.contains(&a) {
+                back.push(a);
             }
-        // A new arm on a door's street may make its drive a hairpin.
-        self.unsettle_round(from);
-        self.unsettle_round(to);
+        }
+        if !self.edges.contains_key(&(a, b)) {
+            self.insert_edge(a, b);
+        }
+        if !one_way && !self.edges.contains_key(&(b, a)) {
+            self.insert_edge(b, a);
+        }
     }
 
     /// Lay a street along a path, both ways, with no player-input checks:
@@ -389,26 +347,9 @@ impl World {
             }
             expanded.push(b);
         }
-        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, false)).collect();
+        let ids: Vec<_> = expanded.iter().map(|&c| self.place_node(c, 0, MIDDLE, false)).collect();
         for pair in ids.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
-            if road {
-                self.set_priority(a, b, true);
-            }
-            // Add outgoing a→b
-            if let Some(entry) = self.objects.get_mut(a)
-                && let GameObject::RoadNode(ref mut node) = entry.object
-                    && !node.outgoing.contains(&b) {
-                        node.outgoing.push(b);
-                    }
-            // Add outgoing b→a
-            if let Some(entry) = self.objects.get_mut(b)
-                && let GameObject::RoadNode(ref mut node) = entry.object
-                    && !node.outgoing.contains(&a) {
-                        node.outgoing.push(a);
-                    }
-            self.insert_edge(a, b);
-            self.insert_edge(b, a);
+            self.join(pair[0], pair[1], false, road);
         }
         // A street reaches whatever dormant building stands beside it — once
         // the nodes are joined, since a building reached stables its fleet
@@ -416,31 +357,12 @@ impl World {
         self.open_doors_along(&expanded);
     }
 
-    /// A ground node for the mayor's road, or the one there.
-    pub(super) fn place_ground(&mut self, coord: GridCoord) -> EntityId {
-        self.place_road_of(coord, true)
-    }
-
     /// Lay a one-way along a path, the way it runs, with no player-input
     /// checks: a level's gates. Free, as a fixture's roads are.
     pub fn place_one_way_of(&mut self, path: &[GridCoord], road: bool) {
-        let ids: Vec<_> = path.iter().map(|&c| self.place_road_of(c, false)).collect();
+        let ids: Vec<_> = path.iter().map(|&c| self.place_node(c, 0, MIDDLE, false)).collect();
         for pair in ids.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
-            if road {
-                self.set_priority(a, b, true);
-            }
-            if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(a).map(|e| &mut e.object)
-                && !node.outgoing.contains(&b)
-            {
-                node.outgoing.push(b);
-            }
-            if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(b).map(|e| &mut e.object)
-                && !node.incoming.contains(&a)
-            {
-                node.incoming.push(a);
-            }
-            self.insert_edge(a, b);
+            self.join(pair[0], pair[1], true, road);
         }
     }
 
@@ -466,8 +388,8 @@ impl World {
         }
     }
 
-    /// Remove a road node by id and clean up every reference to it. A tile
-    /// the mayor laid is refunded.
+    /// Remove a road node by id and clean up every reference to it, its
+    /// edges first. A tile the mayor laid is refunded.
     pub fn demolish_node(&mut self, id: EntityId) {
         let Some(pos) = self.objects.get(id).and_then(|e| e.position) else { return };
         let (neighbor_ids, incoming_ids, laid) = match self.objects.get(id) {
@@ -482,8 +404,13 @@ impl World {
         };
         self.laid -= laid as u32;
 
-        for nid in neighbor_ids.iter().chain(incoming_ids.iter()) {
-            if let Some(entry) = self.objects.get_mut(*nid)
+        for &nid in neighbor_ids.iter().chain(incoming_ids.iter()) {
+            for (x, y) in [(id, nid), (nid, id)] {
+                if self.edges.contains_key(&(x, y)) {
+                    self.remove_edge(x, y);
+                }
+            }
+            if let Some(entry) = self.objects.get_mut(nid)
                 && let GameObject::RoadNode(ref mut node) = entry.object {
                     node.outgoing.retain(|&x| x != id);
                     node.incoming.retain(|&x| x != id);
@@ -491,7 +418,7 @@ impl World {
                 }
         }
 
-        let middle = self.height_of(id) == 0 && self.side_of(id) == super::decks::MIDDLE;
+        let middle = self.height_of(id) == 0 && self.side_of(id) == MIDDLE;
         self.objects.remove(id);
         self.unindex(id, pos);
         if middle {
@@ -672,9 +599,6 @@ pub(super) mod tests {
     /// Demolition as the game loop does it: edges first, then the node.
     pub(in crate::world) fn lift_road(world: &mut World, at: GridCoord) {
         let Some(id) = world.road_node_at(at) else { return };
-        for edge in world.edges_involving(id) {
-            world.remove_edge(edge.0, edge.1);
-        }
         world.demolish_node(id);
     }
 
