@@ -9,9 +9,9 @@ import { clear } from "./pages";
  * each tab has a sheet, peeking over the bar as its head alone, drawn up
  * to show the rest. What a tab is for is what it holds: the bare hand
  * a card of what it tapped, the build menu its roads and buildings,
- * the market its goods, the stock what the town holds.
+ * the market its goods, what the town holds and its orders.
  */
-export const TABS = ["select", "build", "market", "stock"] as const;
+export const TABS = ["select", "build", "market"] as const;
 export type Tab = (typeof TABS)[number];
 
 const [tab, setTab] = createSignal<Tab>("select");

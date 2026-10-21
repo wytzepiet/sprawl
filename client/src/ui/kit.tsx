@@ -30,6 +30,37 @@ export function Press(props: JSX.Box & { onTap: () => void }) {
   return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} onSize={sized} />;
 }
 
+/** A tab bar: one pill, and in it a darker one that slides to the tab
+ *  shown, its name turning light as it passes under it; `lit` false,
+ *  none is shown. */
+export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?: boolean; pick: (t: T) => void }) {
+  const [w, setW] = createSignal(0);
+  const seg = () => (w() - 6) / props.tabs.length;
+  const [at] = follow(() => props.tabs.indexOf(props.on));
+  const [shown] = follow(() => (props.lit ?? true ? 1 : 0), { rest: 0.001 });
+  const lit = (i: number) => Math.max(0, 1 - Math.abs(at() - i)) * Math.max(0, Math.min(1, shown()));
+  return (
+    <box pad={{ x: 12, top: 14, bottom: 12 }}>
+      <box dir="row" h={38} round={19} pad={3} fill="ink/0.06" onSize={(ww) => setW(ww)}>
+        <box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.85" opacity={Math.max(0, Math.min(1, shown()))} />
+        <For each={props.tabs}>
+          {(t, i) => {
+            const name = t[0].toUpperCase() + t.slice(1);
+            return (
+              <box grow={1} h={32} align="center" justify="center" onTap={() => props.pick(t)}>
+                <text size={13} weight={600} ink={`ink/${(0.72 * (1 - lit(i()))).toFixed(3)}`}>{name}</text>
+                <box at={{ left: 0, top: 0 }} w={seg()} h={32} align="center" justify="center" opacity={lit(i())}>
+                  <text size={13} weight={600} ink="glass">{name}</text>
+                </box>
+              </box>
+            );
+          }}
+        </For>
+      </box>
+    </box>
+  );
+}
+
 /** A little i on a tile: a tap opens what it is. */
 export function Info(props: { at?: JSX.Box["at"]; onTap: () => void }) {
   return (

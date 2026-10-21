@@ -1,13 +1,14 @@
 /** @jsxImportSource ~ui */
-import { createMemo, createRoot, createSignal, For, Index, Show } from "solid-js";
+import { createMemo, createRoot, createSignal, For, Index, Match, Show, Switch } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { sea } from "../state/sea";
 import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { Shelf } from "./Depot";
-import { Line, Press } from "./kit";
-import { sheetWidth, show } from "./sheet";
+import { Line, Press, Tabs } from "./kit";
+import { open, setOpen, sheetWidth, show } from "./sheet";
+import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
 import type { Good, Quote, When } from "../generated";
 
@@ -104,31 +105,26 @@ export const Tile = (props: { good: Good; size?: number }) => (
   </box>
 );
 
-/** The market's head: each good and its price; a tap opens its page. */
-export function MarketHead() {
-  return (
-    <box dir="row" align="center" justify="between" pad={{ x: 16, top: 14, bottom: 12 }}>
-      <For each={market.goods} fallback={<text size={14} weight={600} soft>The market opens with a harbour</text>}>
-        {(q) => (
-          <Press dir="row" align="center" gap={6} onTap={() => push(goodPage(q.good))}>
-            <Tile good={q.good} size={28} />
-            <box gap={0}>
-              <text serif size={16}>{money(box(q.good, q.price))}</text>
-              <text size={10.5} weight={600} ink={tint(change(q))}>{percent(change(q))}</text>
-            </box>
-          </Press>
-        )}
-      </For>
-    </box>
-  );
-}
+/** What the market tab shows: every good's price, what the town holds, or its orders. */
+const VIEWS = ["market", "stock", "orders"] as const;
+const [view, setView] = createSignal<(typeof VIEWS)[number]>("market");
+export { setView };
 
-export const MarketBody = () => <List />;
+/** The market's head: its tab bar. */
+export const MarketHead = () => <Tabs tabs={VIEWS} on={view()} lit={open()} pick={(v) => (setView(v), setOpen(true))} />;
+
+export const MarketBody = () => (
+  <Switch>
+    <Match when={view() === "market"}><List /></Match>
+    <Match when={view() === "stock"}><Holdings /></Match>
+    <Match when={view() === "orders"}><Orders /></Match>
+  </Switch>
+);
 
 /** A good's page, as the page stack shows it. */
 export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} />, frost: FROSTED });
 /** The market, and a good's page over it: a mission's step. */
-export const toMarket = (g: Good | null) => (show("market", true), g && push(goodPage(g)));
+export const toMarket = (g: Good | null) => (setView("market"), show("market", true), g && push(goodPage(g)));
 
 /** Every good: what the town holds, the day's line, the price and its move. */
 function List() {
