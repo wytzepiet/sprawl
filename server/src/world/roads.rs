@@ -93,7 +93,7 @@ impl World {
         let mut k = 1;
         while k < route.len() {
             let mut j = k;
-            while j + 1 < route.len() && !self.network.is_junction(route[j]) {
+            while j + 1 < route.len() && !self.network.ends_run(route[j]) {
                 j += 1;
             }
             if (k..=j).any(wide) {
@@ -419,6 +419,7 @@ impl World {
         }
 
         let middle = self.height_of(id) == 0 && self.side_of(id) == MIDDLE;
+        self.streets.remove_node(id);
         self.objects.remove(id);
         self.unindex(id, pos);
         if middle {

@@ -315,7 +315,7 @@ impl RoadNetwork {
     /// stops? Distinct from `is_intersection`, which is about arbitrating who
     /// goes first and so only counts genuine forks. A node the network has
     /// never heard of — a lot's, off the street — is not mid-run either.
-    pub fn is_junction(&self, node: EntityId) -> bool {
+    pub fn ends_run(&self, node: EntityId) -> bool {
         self.adj.get(&node).is_none_or(|a| a.len() != 2)
     }
 

@@ -270,7 +270,7 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
 /// from, named from the node's side the same way, costed the way they are
 /// driven: in. A junction leads to itself, for nothing.
 fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
-    if world.network.is_junction(node) {
+    if world.network.ends_run(node) {
         return vec![Leg { to: node, cost: 0.0, step: node, behind: node }];
     }
     world
@@ -528,7 +528,7 @@ mod tests {
 
         let from = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
         let to = world.road_node_at(GridCoord { x: 3, y: 4 }).unwrap();
-        assert!(!world.network.is_junction(from), "the start is mid-street on purpose");
+        assert!(!world.network.ends_run(from), "the start is mid-street on purpose");
 
         let route = find_path(&world, from, to).unwrap();
         assert_eq!(route.first(), Some(&from));

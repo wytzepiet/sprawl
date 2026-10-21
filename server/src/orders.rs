@@ -401,7 +401,6 @@ mod tests {
     use super::*;
     use crate::game::tests::*;
     use crate::game::settle_and_wake;
-    use crate::intersection::IntersectionRegistry;
     use crate::protocol::{BuildingKind, Good, DAY_MS};
     use crate::engine::event_queue::EventQueue;
 
@@ -537,7 +536,6 @@ mod tests {
         let harbour = harbour_of(&world);
         build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
         opening_done(&mut world);
         post(&mut world, harbour, 0);
@@ -550,7 +548,7 @@ mod tests {
         let mut now = 0;
         let mut marked = false;
         let finished = |w: &World| w.missions.list.iter().any(|m| m.key == order.key && m.finished.is_some());
-        while !finished(&world) && step(&mut world, &mut events, &mut intersections, &mut now, DAY_MS as u64) {
+        while !finished(&world) && step(&mut world, &mut events, &mut now, DAY_MS as u64) {
             crate::missions::check(&mut world, now);
             marked |= crate::haul::boxes(&world).iter().any(|(t, ..)| t.order == id && t.outbound);
         }
@@ -563,7 +561,7 @@ mod tests {
         // A day on, nothing more for it.
         let treasury = world.treasury;
         let until = now + DAY_MS as u64;
-        while step(&mut world, &mut events, &mut intersections, &mut now, until) {
+        while step(&mut world, &mut events, &mut now, until) {
             crate::missions::check(&mut world, now);
         }
         let crates_sold: f64 = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum();

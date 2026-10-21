@@ -4,7 +4,6 @@
 use crate::car::simulation::park_at_home;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::intersection::IntersectionRegistry;
 use crate::protocol::{EntityId, GameObject, Trip};
 use crate::world::World;
 
@@ -15,7 +14,6 @@ use crate::world::World;
 pub(crate) fn handle_road_demolish(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     node_id: EntityId,
     now: GameTime,
 ) {
@@ -44,7 +42,6 @@ pub(crate) fn handle_road_demolish(
         .collect();
 
     // Fully remove the node and update the graph BEFORE rerouting
-    intersections.remove_node(node_id);
     world.demolish_node(node_id);
 
     // Now reroute — pathfinder sees the correct graph
@@ -55,16 +52,16 @@ pub(crate) fn handle_road_demolish(
             route[ri]
         };
 
-        if reroute(world, intersections, events, car_id, from_node, dest, now) {
+        if reroute(world, events, car_id, from_node, dest, now) {
             continue;
         }
 
         // Destination unreachable: the trip dies here, and the car goes home
         // with its driver to think again.
-        park_at_home(world, intersections, events, car_id);
+        park_at_home(world, events, car_id);
     }
 
-    drop_orphans(world, intersections, events, &neighbor_ids);
+    drop_orphans(world, events, &neighbor_ids);
 }
 
 /// Cut the road between two nodes, both ways, rerouting whatever was to
@@ -72,7 +69,6 @@ pub(crate) fn handle_road_demolish(
 pub(crate) fn handle_link_demolish(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     a: EntityId,
     b: EntityId,
     now: GameTime,
@@ -98,16 +94,16 @@ pub(crate) fn handle_link_demolish(
         .collect();
     world.unlink_roads(a, b);
     for (car_id, from, dest) in cars {
-        if !reroute(world, intersections, events, car_id, from, dest, now) {
-            park_at_home(world, intersections, events, car_id);
+        if !reroute(world, events, car_id, from, dest, now) {
+            park_at_home(world, events, car_id);
         }
     }
-    drop_orphans(world, intersections, events, &[a, b]);
+    drop_orphans(world, events, &[a, b]);
 }
 
 /// Road nodes among these left with no road: gone, and anything routed
 /// over one sent home.
-fn drop_orphans(world: &mut World, intersections: &mut IntersectionRegistry, events: &mut EventQueue, nodes: &[EntityId]) {
+fn drop_orphans(world: &mut World, events: &mut EventQueue, nodes: &[EntityId]) {
     for &nid in nodes {
         let is_orphan = match world.objects.get(nid) {
             Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
@@ -119,9 +115,8 @@ fn drop_orphans(world: &mut World, intersections: &mut IntersectionRegistry, eve
             // Any car routed over this orphan has nowhere left to drive
             let orphan_cars: Vec<EntityId> = world.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
             for car_id in orphan_cars {
-                park_at_home(world, intersections, events, car_id);
+                park_at_home(world, events, car_id);
             }
-            intersections.remove_node(nid);
             world.demolish_node(nid);
         }
     }
@@ -132,7 +127,6 @@ fn drop_orphans(world: &mut World, intersections: &mut IntersectionRegistry, eve
 /// new, standing where it was. False where no way is left.
 fn reroute(
     world: &mut World,
-    intersections: &mut IntersectionRegistry,
     events: &mut EventQueue,
     car_id: EntityId,
     from_node: EntityId,
@@ -149,7 +143,7 @@ fn reroute(
     // whole run ahead of it, not just the tile it is on.
     world.unregister_car_route(car_id, &old.route);
     world.remove_car_from_edges(car_id);
-    for (_node, woken_id) in intersections.remove_car_from_all(car_id, now) {
+    for (_node, woken_id) in world.streets.remove_car_from_all(car_id, now) {
         events.wake(0, woken_id);
     }
 

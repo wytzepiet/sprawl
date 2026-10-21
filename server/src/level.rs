@@ -729,7 +729,7 @@ impl Level {
 fn clear(game: &mut Game) {
     let cars: Vec<EntityId> = game.world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(_))).map(|e| e.id).collect();
     for car in cars {
-        crate::car::simulation::park_at_home(&mut game.world, &mut game.intersections, &mut game.events, car);
+        crate::car::simulation::park_at_home(&mut game.world, &mut game.events, car);
     }
 }
 
@@ -758,7 +758,7 @@ mod tests {
         ] {
             for n in 2..=tiles.len() {
                 let stroke = crate::protocol::Stroke { id, tool: Tool::OneWay, road: false, tiles: tiles[..n].to_vec(), start: None };
-                crate::draw::draw(&mut game.world, &mut game.events, &mut game.intersections, 1, stroke, 0);
+                crate::draw::draw(&mut game.world, &mut game.events, 1, stroke, 0);
             }
         }
         let node = |x, y| game.world.road_node_at(GridCoord { x, y }).expect("the roads were not laid");
@@ -824,7 +824,7 @@ mod tests {
         for p in path.windows(2) {
             let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None, sides: None, road: false };
             assert!(crate::hand::may_step(&game.world, step), "{step:?} refused");
-            crate::hand::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
+            crate::hand::take_step(&mut game.world, &mut game.events, step, game.now);
         }
     }
 
@@ -880,7 +880,7 @@ mod tests {
             };
             for step in level.solve_steps(&game.world) {
                 assert!(crate::hand::may_step(&game.world, step), "{name}: {step:?} refused by the level");
-                assert!(crate::hand::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{name}: {step:?} refused by the world");
+                assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{name}: {step:?} refused by the world");
             }
             let s = level.state(&game);
             assert!(s.wants.iter().all(|w| w.joined), "{name}: the solve leaves a want with no road");
@@ -938,13 +938,13 @@ mod tests {
         let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/levels/08-over-and-under.txt")).unwrap();
         let (level, mut game) = play(&text);
         for step in level.solve_steps(&game.world) {
-            crate::hand::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
+            crate::hand::take_step(&mut game.world, &mut game.events, step, game.now);
         }
         let written = Level::layout(&game.world);
         let (_, mut fresh) = play(&text);
         for step in &written {
             assert!(crate::hand::may_step(&fresh.world, *step));
-            assert!(crate::hand::take_step(&mut fresh.world, &mut fresh.events, &mut fresh.intersections, *step, fresh.now), "{step:?}");
+            assert!(crate::hand::take_step(&mut fresh.world, &mut fresh.events, *step, fresh.now), "{step:?}");
         }
         assert_eq!(Level::cost(&fresh.world), Level::cost(&game.world));
         assert_eq!(fresh.world.edges.len(), game.world.edges.len());
@@ -963,7 +963,7 @@ mod tests {
             let (mut level, mut game) = play(&format!("# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 {per_min}\n..........\n1........2\n..........\n"));
             for x in (1..=9).rev() {
                 let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None, sides: None, road: false };
-                assert!(crate::hand::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+                assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{step:?}");
             }
             level.test(&mut game);
             let (mut both, mut watch) = (false, crate::replay::Watch::default());
@@ -1021,7 +1021,7 @@ mod tests {
     fn draw_road(game: &mut Game, tool: Tool, tiles: &[(i32, i32)]) {
         for w in tiles.windows(2) {
             let step = Build { tool, from: GridCoord { x: w[0].0, y: w[0].1 }, to: GridCoord { x: w[1].0, y: w[1].1 }, up: None, sides: None, road: false };
-            assert!(crate::hand::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+            assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{step:?}");
         }
     }
 
@@ -1150,7 +1150,7 @@ mod tests {
         };
         let step = |game: &mut Game, tool, x, priority| {
             let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, sides: None, road: priority };
-            assert!(crate::hand::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+            assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{step:?}");
         };
         for x in 0..9 {
             step(&mut game, Tool::OneWay, x, true);

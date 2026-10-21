@@ -4,7 +4,6 @@ use crate::car::simulation::handle_car_wake_up;
 use crate::resident::handle_resident_wake;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::intersection::IntersectionRegistry;
 use crate::protocol::{CarRole, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
 use crate::view::{flush_dirty, handle_set_chunks, ClientState, Shared};
 use crate::world::World;
@@ -27,7 +26,6 @@ const MAX_SPEED: u32 = 50;
 pub struct Game {
     pub world: World,
     pub events: EventQueue,
-    pub intersections: IntersectionRegistry,
     pub now: GameTime,
     pub speed: u32,
     clients: HashMap<ClientId, ClientState>,
@@ -46,7 +44,6 @@ impl Game {
         let mut game = Game {
             world,
             events: EventQueue::new(),
-            intersections: IntersectionRegistry::new(),
             now,
             speed,
             clients: HashMap::default(),
@@ -139,7 +136,7 @@ impl Game {
                 self.stirred = true;
                 // What the hand did, said to its owner alone: an undo, or a
                 // building refused.
-                if let Some(reply) = crate::hand::handle_player_action(&mut self.world, &mut self.events, &mut self.intersections, owner, message, self.now) {
+                if let Some(reply) = crate::hand::handle_player_action(&mut self.world, &mut self.events, owner, message, self.now) {
                     let to: Vec<ClientId> = self.clients.iter().filter(|(_, cs)| cs.owner == owner).map(|(&id, _)| id).collect();
                     for id in to {
                         self.send(id, ServerMessage::News(vec![reply.clone()]));
@@ -170,7 +167,6 @@ impl Game {
         self.world = world;
         self.events = EventQueue::new();
         self.events.set_now(self.now);
-        self.intersections = IntersectionRegistry::new();
         self.wake_all();
         let mut shared = Shared::new(&self.world, clk);
         for id in ids {
@@ -222,7 +218,7 @@ impl Game {
         self.events.set_now(self.now);
         let mut wakes = 0;
         while let Some(id) = self.events.pop_due() {
-            handle_wake(&mut self.world, &mut self.events, &mut self.intersections, id, self.now);
+            handle_wake(&mut self.world, &mut self.events, id, self.now);
             wakes += 1;
         }
         crate::market::hour(&mut self.world, &mut self.events, self.now);
@@ -237,17 +233,16 @@ impl Game {
 fn handle_wake(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     id: EntityId,
     now: GameTime,
 ) {
     match world.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Car(_)) => handle_car_wake_up(world, events, intersections, id, now),
+        Some(GameObject::Car(_)) => handle_car_wake_up(world, events, id, now),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened.
         Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
         // A junction's is its lights looking again.
-        Some(GameObject::RoadNode(_)) => crate::car::simulation::lights(world, events, intersections, id, now),
+        Some(GameObject::RoadNode(_)) => crate::car::simulation::lights(world, events, id, now),
         // Midnight: every building takes its turn, and every line reads
         // the labour market again.
         None if id == MIDNIGHT => {

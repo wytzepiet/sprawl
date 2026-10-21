@@ -93,6 +93,9 @@ pub struct World {
     /// a ship saved at sea comes back moored.
     pub lanes: Option<crate::shipping::lanes::Lanes>,
     pub junctions: crate::intersection::IntersectionRegistry,
+    /// Who goes first at each road junction and crossing: its cars'
+    /// claims, keyed by node or crossing. Never saved: trips are not.
+    pub streets: crate::intersection::IntersectionRegistry,
     pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
@@ -187,6 +190,7 @@ impl World {
             lines: Default::default(),
             lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
+            streets: crate::intersection::IntersectionRegistry::new(),
             voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::default(),

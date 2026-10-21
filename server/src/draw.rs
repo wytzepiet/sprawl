@@ -23,7 +23,6 @@
 
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
 use crate::world::decks::{across, other, toward, Side, MIDDLE};
@@ -85,7 +84,7 @@ pub fn may_start(world: &World, tool: Tool, road: bool, want: u8, at: GridCoord)
 
 /// A drag drawn on, or a new one: laid as planned, what stands of it as
 /// it was kept. Says so the first time the drag buys stone express.
-pub fn draw(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, stroke: Stroke, now: GameTime) -> Option<News> {
+pub fn draw(world: &mut World, events: &mut EventQueue, owner: OwnerId, stroke: Stroke, now: GameTime) -> Option<News> {
     if !matches!(stroke.tool, Tool::Street | Tool::OneWay | Tool::Wide) || stroke.tiles.is_empty() {
         return None;
     }
@@ -103,7 +102,7 @@ pub fn draw(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     // the one after it are as they were, it stands.
     let same = was.as_ref().filter(|w| w.tool == stroke.tool && w.road == stroke.road && w.start == stroke.start).map_or(0, |w| w.tiles.iter().zip(&stroke.tiles).take_while(|(a, b)| a == b).count());
     let gone = steps.split_off(steps.len().min(same.saturating_sub(2)));
-    crate::undo::take_back(world, events, intersections, &gone, now);
+    crate::undo::take_back(world, events, &gone, now);
     lay_on(world, &stroke, &mut steps, now);
     let coins = express(&steps);
     world.undo.entry(owner).or_default().push(Done { act: Act::Drawn { stroke, steps }, at: now, after });
@@ -345,7 +344,6 @@ mod tests {
     struct Field {
         world: World,
         events: EventQueue,
-        intersections: IntersectionRegistry,
         id: u32,
     }
 
@@ -353,14 +351,14 @@ mod tests {
         fn new() -> Field {
             let mut world = World::meadow(-10..16, -10..10);
             world.treasury = 1e9;
-            Field { world, events: EventQueue::new(), intersections: IntersectionRegistry::new(), id: 0 }
+            Field { world, events: EventQueue::new(), id: 0 }
         }
 
         fn drag(&mut self, tool: Tool, tiles: &[(i32, i32)]) {
             self.id += 1;
             for n in 1..=tiles.len() {
                 let spots = tiles[..n].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-                draw(&mut self.world, &mut self.events, &mut self.intersections, 1, Stroke { id: self.id, tool, road: false, tiles: spots, start: None }, 0);
+                draw(&mut self.world, &mut self.events, 1, Stroke { id: self.id, tool, road: false, tiles: spots, start: None }, 0);
             }
         }
 
@@ -395,7 +393,7 @@ mod tests {
         f.drag(Tool::OneWay, &row[..4]);
         let kept = f.node(1, 0);
         let spots = row.iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-        draw(&mut f.world, &mut f.events, &mut f.intersections, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: None }, 0);
+        draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: None }, 0);
         assert_eq!(f.node(1, 0), kept, "a step standing as planned was laid again");
         assert!(f.world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "the drag was not drawn on");
         match f.world.undo.get(&1).and_then(|h| h.last()).map(|d| &d.act) {
@@ -454,7 +452,7 @@ mod tests {
         let side = f.world.side_of(outer);
         f.id += 1;
         let spots = [(4, 0), (3, 0), (2, 0)].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-        draw(&mut f.world, &mut f.events, &mut f.intersections, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side }) }, 0);
+        draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side }) }, 0);
         assert!(f.world.road_node_at(GridCoord { x: 2, y: 0 }).is_some(), "the outer road could not go on past the bend");
         assert_eq!(pair(&f), 2, "the pair came apart");
     }
@@ -476,7 +474,7 @@ mod tests {
                 let tiles = [(4, -4), (4, -5), (5, -5), (6, -5), (7, -5), (8, -5), (9, -5)];
                 for n in 2..=tiles.len() {
                     let spots = tiles[..n].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-                    draw(&mut f.world, &mut f.events, &mut f.intersections, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side: westbound }) }, 0);
+                    draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side: westbound }) }, 0);
                 }
             };
             let down = |f: &mut Field| f.drag(Tool::OneWay, &[(9, -5), (8, -5), (7, -5), (6, -5), (5, -5), (4, -5), (3, -4)]);

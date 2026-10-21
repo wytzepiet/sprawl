@@ -340,7 +340,6 @@ mod tests {
     use crate::calls;
     use crate::resident::handle_resident_wake;
     use crate::game::settle_and_wake;
-    use crate::intersection::IntersectionRegistry;
     use crate::protocol::{BuildingKind, Good, GridCoord, TerrainType};
     use crate::engine::event_queue::EventQueue;
 
@@ -370,7 +369,6 @@ mod tests {
             shelve(&mut world, depot, good, if good == Good::Stone { 0.0 } else { 100.0 });
         }
         let mut events = EventQueue::new();
-        let intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
         let quarry = |world: &mut World| missions(world, 0).into_iter().filter(|m| m.0 == Key::Quarry).map(|m| m.2).collect::<Vec<_>>();
         // Flats, a site of timber and stone, call for both, and the depot
@@ -402,7 +400,6 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
         assert_eq!(quarry(&mut world), [true], "the quarry stands and the mission is open");
         assert!((world.treasury - before - 50.0).abs() < 1e-9, "the quarry's mission paid {}", world.treasury - before);
-        let _ = intersections;
     }
 
     /// A car low on fuel with nowhere in town to fill it asks for a gas

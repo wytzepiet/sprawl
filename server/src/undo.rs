@@ -13,7 +13,6 @@
 
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
 use crate::world::decks::Side;
@@ -132,12 +131,12 @@ pub struct Laid {
 
 /// Steps of a drawn drag taken back, newest first: what each laid taken
 /// up, and what it paid given back; what was given back, said.
-pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, steps: &[Laid], now: GameTime) -> String {
+pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, steps: &[Laid], now: GameTime) -> String {
     let mut paid = Paid::default();
     for step in steps.iter().rev() {
         let [a, b] = step.nodes;
         if step.fresh && (world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))) {
-            crate::car::reroute::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
         }
         paid.add(step.paid.clone());
     }
@@ -256,7 +255,7 @@ pub fn placed(world: &mut World, id: EntityId, laid: Vec<Link>, paid: Paid, afte
 /// A building taken down whole. Placed lately, it is as if it never
 /// was, and gives back what it cost (`unplace`): what the mayor takes
 /// down of their own slip is the slip undone.
-pub fn raze(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, id: EntityId, now: GameTime) -> Option<News> {
+pub fn raze(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime) -> Option<News> {
     let lately = world.placed.iter().position(|p| p.id == id && now.saturating_sub(p.at) <= WINDOW).map(|i| world.placed.remove(i));
     let Some(Placed { kind, laid, paid, free, after, .. }) = lately else {
         world.remove_building(id);
@@ -264,7 +263,7 @@ pub fn raze(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     };
     // The street it brought stays if a building since opens onto it.
     let (laid, paid) = if rests_on(world, &laid, after).is_some() { (Vec::new(), Paid::default()) } else { (laid, paid) };
-    let back = unplace(world, events, intersections, id, kind, &laid, &paid, free, now);
+    let back = unplace(world, events, id, kind, &laid, &paid, free, now);
     Some(News { text: format!("The {} taken back", label(kind)), sub: back, at: 0 })
 }
 
@@ -318,7 +317,7 @@ fn laid_lately(world: &mut World, l: &Link, now: GameTime) -> Option<Paid> {
 
 /// The player's last action taken back, if it is recent and nothing since
 /// rests on it; what was done, or why not, as a line of news for them.
-pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, now: GameTime) -> News {
+pub fn undo(world: &mut World, events: &mut EventQueue, owner: OwnerId, now: GameTime) -> News {
     let say = |text: String, sub: String, at: EntityId| News { text, sub, at };
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
@@ -336,7 +335,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     world.undo.get_mut(&owner).and_then(|h| h.pop());
     match done.act {
         Act::Laid { links, paid } => {
-            take_up(world, events, intersections, &links, now);
+            take_up(world, events, &links, now);
             let back = refund(world, &paid, now);
             say(format!("Undone: {}", tiles(&links)), back, 0)
         }
@@ -348,7 +347,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
         }
         Act::Drawn { steps, .. } => {
             let laid: Vec<Link> = steps.iter().filter(|s| s.fresh).map(|s| s.link).collect();
-            let back = take_back(world, events, intersections, &steps, now);
+            let back = take_back(world, events, &steps, now);
             say(format!("Undone: {}", tiles(&laid)), back, 0)
         }
     }
@@ -370,7 +369,7 @@ fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static s
 /// van on its way to it; the street it brought taken up, and what that
 /// paid given back. What was given back, said.
 #[allow(clippy::too_many_arguments)]
-fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, id: EntityId, kind: BuildingKind, laid: &[Link], paid: &Paid, free: bool, now: GameTime) -> String {
+fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: BuildingKind, laid: &[Link], paid: &Paid, free: bool, now: GameTime) -> String {
     let site = match world.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Building(b)) => b.site.clone(),
         _ => None,
@@ -386,7 +385,7 @@ fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
     let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
     materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
     world.remove_building(id);
-    take_up(world, events, intersections, laid, now);
+    take_up(world, events, laid, now);
     let mut back = vec![refund(world, paid, now)];
     back.push(give_back(world, &materials, at, now));
     back.retain(|s| !s.is_empty());
@@ -397,10 +396,10 @@ fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
 }
 
 /// The links taken up, newest first, as the demolisher would.
-fn take_up(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, links: &[Link], now: GameTime) {
+fn take_up(world: &mut World, events: &mut EventQueue, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
         if let Some((a, b)) = world.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
-            crate::car::reroute::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
         }
     }
 }

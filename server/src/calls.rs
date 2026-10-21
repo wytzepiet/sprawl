@@ -359,7 +359,6 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
 mod tests {
     use super::*;
     use crate::game::tests::*;
-    use crate::intersection::IntersectionRegistry;
     use crate::protocol::{BuildingKind, Good, DAY_MS};
     use crate::engine::event_queue::EventQueue;
 
@@ -390,7 +389,6 @@ mod tests {
         let shop = build(&mut world, 20, BuildingKind::Shop);
         let warehouse = build(&mut world, 60, BuildingKind::Depot);
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         sell(&mut world, &mut events, shop, 35.0, 0);
         let truck = world.calls[0].answered_by.expect("the warehouse answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
@@ -400,7 +398,7 @@ mod tests {
 
         // Out through one ring and home through another, at lot speed, on
         // top of the drive: under three hours.
-        pump(&mut world, &mut events, &mut intersections, 0, 3 * DAY_MS as u64 / 24);
+        pump(&mut world, &mut events, 0, 3 * DAY_MS as u64 / 24);
         assert!(world.calls.is_empty());
         let e = world.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));

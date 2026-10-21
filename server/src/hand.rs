@@ -3,7 +3,6 @@
 
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Build, BuildingKind, ClientMessage, EntityId, GameObject, GridCoord, News, OwnerId, Tool};
 use crate::world::decks::MIDDLE;
 use crate::world::World;
@@ -13,7 +12,6 @@ use crate::world::World;
 pub(crate) fn handle_player_action(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     owner: OwnerId,
     message: ClientMessage,
     now: GameTime,
@@ -21,18 +19,18 @@ pub(crate) fn handle_player_action(
     // Anything the mayor does may do a mission's step.
     world.missions.stir();
     match message {
-        ClientMessage::Build(step) => return build(world, events, intersections, owner, step, now),
-        ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, intersections, owner, stroke, now),
-        ClientMessage::Place { kind, at, facing } => return place(world, events, intersections, kind, at, facing, now),
-        ClientMessage::Raze { building } => return crate::undo::raze(world, events, intersections, building, now),
-        ClientMessage::Undo => return Some(crate::undo::undo(world, events, intersections, owner, now)),
+        ClientMessage::Build(step) => return build(world, events, owner, step, now),
+        ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, owner, stroke, now),
+        ClientMessage::Place { kind, at, facing } => return place(world, events, kind, at, facing, now),
+        ClientMessage::Raze { building } => return crate::undo::raze(world, events, building, now),
+        ClientMessage::Undo => return Some(crate::undo::undo(world, events, owner, now)),
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.iter()
                 .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))
                 .map(|e| e.id)
                 .collect();
             for car_id in car_ids {
-                crate::car::simulation::park_at_home(world, intersections, events, car_id);
+                crate::car::simulation::park_at_home(world, events, car_id);
             }
         }
         ClientMessage::Trade { good, boxes, out } => {
@@ -55,7 +53,7 @@ pub(crate) fn handle_player_action(
 
 /// A step of a road or the demolisher, built as it is sent, and kept to
 /// undo: a drag is one action.
-fn build(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, step: Build, now: GameTime) -> Option<News> {
+fn build(world: &mut World, events: &mut EventQueue, owner: OwnerId, step: Build, now: GameTime) -> Option<News> {
     let purse = crate::undo::Purse::of(world);
     let after = world.objects.next_id();
     let taken = (step.tool == Tool::Demolish).then(|| crate::undo::doomed(world, step)).flatten();
@@ -64,7 +62,7 @@ fn build(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
     let [hf, ht] = step.up.unwrap_or_default();
     let [sf, st] = step.sides.unwrap_or_default();
     let repaint = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Wide) && world.link_between_at(step.from, hf, sf, step.to, ht, st).is_some();
-    if !take_step(world, events, intersections, step, now) || repaint {
+    if !take_step(world, events, step, now) || repaint {
         return None;
     }
     let paid = purse.paid(world);
@@ -85,8 +83,7 @@ fn build(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
 /// first way it fits: a site that calls for its materials at once. A
 /// harbour lays its street first. Kept to undo; refused, the reason, for
 /// the hand that asked.
-#[allow(clippy::too_many_arguments)]
-fn place(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
+fn place(world: &mut World, events: &mut EventQueue, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
     let refuse = |why: &str| Some(News { text: format!("No room for the {}", format!("{kind:?}").to_lowercase()), sub: why.to_string(), at: 0 });
     let facing = facing.or_else(|| world.facing_for(kind, at)).unwrap_or(2);
     let tiles = match world.fit(kind, at, facing) {
@@ -97,7 +94,7 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
     let after = world.objects.next_id();
     let mut laid = Vec::new();
     for (from, to) in world.stub(kind, &tiles, facing) {
-        if take_step(world, events, intersections, Build { tool: Tool::Street, from, to, up: None, sides: None, road: false }, now) {
+        if take_step(world, events, Build { tool: Tool::Street, from, to, up: None, sides: None, road: false }, now) {
             laid.push(crate::undo::Link { from, to, one_way: false, road: false, up: [0, 0], sides: [MIDDLE; 2], wide: false });
         }
     }
@@ -109,7 +106,7 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
 }
 
 /// A step of the hand, built. Whether the step was taken.
-pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, step: Build, now: GameTime) -> bool {
+pub fn take_step(world: &mut World, events: &mut EventQueue, step: Build, now: GameTime) -> bool {
     let Build { tool, from, to, road, .. } = step;
     let [hf, ht] = step.up.unwrap_or_default();
     let [sf, st] = step.sides.unwrap_or_default();
@@ -139,10 +136,10 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut
             // the two tiles.
             if from == to {
                 if let Some(id) = world.node_in(to, ht, st) {
-                    crate::car::reroute::handle_road_demolish(world, events, intersections, id, now);
+                    crate::car::reroute::handle_road_demolish(world, events, id, now);
                 }
             } else if let Some((a, b)) = world.link_between_at(from, hf, sf, to, ht, st) {
-                crate::car::reroute::handle_link_demolish(world, events, intersections, a, b, now);
+                crate::car::reroute::handle_link_demolish(world, events, a, b, now);
             }
         }
     }
@@ -259,10 +256,9 @@ mod tests {
                 let (from, to) = (at(5, 0), at(5 + dx, dy));
                 let allowed = may(&world, Tool::Street, from, to);
                 let mut events = EventQueue::new();
-                let mut intersections = IntersectionRegistry::new();
                 let mut probe = street();
                 let edges = probe.edges.len();
-                take_step(&mut probe, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
+                take_step(&mut probe, &mut events, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
                 assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
             }
         }
@@ -279,10 +275,9 @@ mod tests {
             b.stocks.get_mut(&Good::Stone).unwrap().level = 2.0;
         }
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
         let (roads, treasury) = (world.roads.len(), world.treasury);
-        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
+        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, 1, message, 0);
         let mut said = Vec::new();
         // A drag as the hand sends it: the whole of it so far, a tile on each time.
         for n in 1..=5 {
@@ -309,14 +304,13 @@ mod tests {
         world.treasury = 1e9;
         let depot = build(&mut world, 30, BuildingKind::Depot);
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
         let shelf = |w: &World, g: Good| building_of(w, depot).stocks[&g].level;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
             b.stocks.get_mut(&Good::Timber).unwrap().level = 10.0;
             b.stocks.get_mut(&Good::Stone).unwrap().level = 10.0;
         }
-        let mut hand = |world: &mut World, message, now| handle_player_action(world, &mut events, &mut intersections, 1, message, now);
+        let mut hand = |world: &mut World, message, now| handle_player_action(world, &mut events, 1, message, now);
         hand(&mut world, ClientMessage::Place { kind: BuildingKind::House, at: at(5, 1), facing: None }, 0);
         let house = world.occupied[&(5, 1)];
         if let Some(GameObject::Building(b)) = world.objects.get_mut(house).map(|e| &mut e.object) {
@@ -347,9 +341,8 @@ mod tests {
         let mut world = street();
         world.treasury = 1e9;
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
-        let mut hand = |world: &mut World, owner, message, now| handle_player_action(world, &mut events, &mut intersections, owner, message, now);
+        let mut hand = |world: &mut World, owner, message, now| handle_player_action(world, &mut events, owner, message, now);
         for y in 0..3 {
             hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None, sides: None, road: false }), 0);
         }
@@ -385,9 +378,8 @@ mod tests {
     fn a_harbour_is_placed_whole_with_its_street() {
         let mut world = bare_coast();
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
-        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
+        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, 1, message, 0);
         let no = hand(&mut world, ClientMessage::Place { kind: BuildingKind::Harbour, at: at(10, -10), facing: None }).expect("a harbour inland was placed");
         assert!(world.occupied.is_empty() && no.sub.contains("sea"), "{no:?}");
         assert!(hand(&mut world, ClientMessage::Place { kind: BuildingKind::Harbour, at: at(9, 2), facing: None }).is_none(), "the coast refused it");
@@ -399,7 +391,7 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
         assert!(world.lines.contains_key(&id), "no ferry line");
         // Razed, the harbour is gone whole.
-        crate::undo::raze(&mut world, &mut events, &mut intersections, id, 0);
+        crate::undo::raze(&mut world, &mut events, id, 0);
         assert!((8..11).all(|x| (1..3).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
         settle_and_wake(&mut world, &mut events);
     }
@@ -411,11 +403,10 @@ mod tests {
     fn a_road_into_a_depot_short_of_its_plot_is_asked_of_no_yard() {
         let mut world = street();
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
         world.raise(BuildingKind::Depot, vec![at(30, 1)], 2);
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(31, 2), to: at(30, 1), up: None, sides: None, road: false }, 0);
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(30, 2), to: at(30, 1), up: None, sides: None, road: false }, 0);
+        take_step(&mut world, &mut events, Build { tool: Tool::Street, from: at(31, 2), to: at(30, 1), up: None, sides: None, road: false }, 0);
+        take_step(&mut world, &mut events, Build { tool: Tool::Street, from: at(30, 2), to: at(30, 1), up: None, sides: None, road: false }, 0);
     }
 
     /// A house razed takes its drive with it: the drive is the house's,
@@ -425,12 +416,11 @@ mod tests {
         let mut world = street();
         world.treasury = 1e9;
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = GridCoord { x: 5, y: 1 };
-        does(&mut world, &mut events, &mut intersections, Do::Place(BuildingKind::House, at), 0);
+        does(&mut world, &mut events, Do::Place(BuildingKind::House, at), 0);
         let house = world.occupied[&(5, 1)];
         assert!(world.door_of(house).is_some() && world.road_node_at(at).is_none(), "a house with its door, and no road on its tile");
-        does(&mut world, &mut events, &mut intersections, Do::Raze(at), 0);
+        does(&mut world, &mut events, Do::Raze(at), 0);
         assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
         assert!(world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "and the street stands");
     }
@@ -443,9 +433,8 @@ mod tests {
         let mut world = street();
         world.treasury = 1e9;
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
-        let mut hand = |world: &mut World, d| does(world, &mut events, &mut intersections, d, 0);
+        let mut hand = |world: &mut World, d| does(world, &mut events, d, 0);
         // A side street, two tiles long, off the main one.
         hand(&mut world, Do::Step(Tool::Street, at(5, 0), at(5, 1)));
         hand(&mut world, Do::Step(Tool::Street, at(5, 1), at(5, 2)));
@@ -475,10 +464,9 @@ mod tests {
             b.stocks.get_mut(&Good::Stone).unwrap().level = 2.0;
         }
         let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
         let treasury = world.treasury;
-        let mut hand = |world: &mut World, from, to| take_step(world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
+        let mut hand = |world: &mut World, from, to| take_step(world, &mut events, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
         hand(&mut world, at(10, 0), at(10, 1));
         hand(&mut world, at(10, 1), at(10, 2));
         assert_eq!(stone(&world), 0.0, "two tiles took {} stone", 2.0 - stone(&world));

@@ -24,14 +24,14 @@ pub(crate) enum Do {
 
 /// The hand's act done, as the loop does it; a building refused is a
 /// test gone wrong.
-pub(crate) fn does(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, d: Do, now: GameTime) {
+pub(crate) fn does(world: &mut World, events: &mut EventQueue, d: Do, now: GameTime) {
     let message = match d {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
         Do::Raze(at) => ClientMessage::Raze { building: world.occupied[&(at.x, at.y)] },
         Do::Send(letter) => ClientMessage::Send { letter, boxes: 1 },
     };
-    let news = handle_player_action(world, events, intersections, 0, message, now);
+    let news = handle_player_action(world, events, 0, message, now);
     if let Do::Place(kind, at) = d {
         assert!(world.occupied.contains_key(&(at.x, at.y)), "{kind:?} at {at:?} refused: {news:?}");
     }
@@ -60,18 +60,16 @@ pub(crate) fn doing(world: &World, id: EntityId) -> Option<crate::needs::Need> {
 pub(crate) fn step(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     now: &mut GameTime,
     to: GameTime,
 ) -> bool {
-    step_counting(world, events, intersections, now, to, &mut 0)
+    step_counting(world, events, now, to, &mut 0)
 }
 
 /// `step`, counting how many times a resident thought: the budget.
 pub(crate) fn step_counting(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     now: &mut GameTime,
     to: GameTime,
     wakes: &mut u64,
@@ -86,7 +84,7 @@ pub(crate) fn step_counting(
         if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(_))) {
             *wakes += 1;
         }
-        handle_wake(world, events, intersections, id, *now);
+        handle_wake(world, events, id, *now);
     }
     true
 }
@@ -95,12 +93,11 @@ pub(crate) fn step_counting(
 pub(crate) fn pump(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     from: GameTime,
     to: GameTime,
 ) {
     let mut now = from;
-    while step(world, events, intersections, &mut now, to) {}
+    while step(world, events, &mut now, to) {}
 }
 
 /// Where the test street's harbour stands, at its east end.
@@ -175,7 +172,6 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
             let from = build(&mut world, from_x, BuildingKind::House);
             let shop = build(&mut world, dest_x, BuildingKind::Shop);
             let mut events = EventQueue::new();
-            let mut intersections = IntersectionRegistry::new();
             let car = |world: &mut World, at: EntityId| {
                 let c = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), world.objects.get(at).unwrap().position);
                 world.park_in_lot(at, c, 0);
@@ -192,7 +188,7 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
                     out = crate::car::spawn::start_trip(&mut world, &mut events, backer, s, shop, now, GameTime::MAX);
                 }
                 let to = now + 50;
-                step(&mut world, &mut events, &mut intersections, &mut now, to);
+                step(&mut world, &mut events, &mut now, to);
                 let (a, b) = (whereabouts(&world, backer, now), whereabouts(&world, through, now));
                 if let Some((_, v, k)) = a {
                     if k == 1 {
@@ -219,7 +215,6 @@ fn residents_commute_and_come_home() {
     let shop = build(&mut world, 20, BuildingKind::Shop);
 
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     let people = world.resident_ids();
     assert_eq!(people.len(), 2);
@@ -231,12 +226,12 @@ fn residents_commute_and_come_home() {
     let open = shift.curve.next_nonzero(0).unwrap();
     let close = shift.curve.next_zero(open);
 
-    pump(&mut world, &mut events, &mut intersections, 0, open + 60_000);
+    pump(&mut world, &mut events, 0, open + 60_000);
     for &id in &people {
         assert_eq!(at_of(&world, id), Some(shop), "at work once the shift is on");
     }
 
-    pump(&mut world, &mut events, &mut intersections, open + 60_000, close + 120_000);
+    pump(&mut world, &mut events, open + 60_000, close + 120_000);
     for &id in &people {
         assert_eq!(at_of(&world, id), Some(home), "home once the shift is over");
     }
@@ -259,7 +254,6 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     build(&mut world, 18, BuildingKind::GasStation);
 
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     // Fourteen households in the two blocks, and three desks over that
     // stay empty: nobody comes from beyond the town for a job.
@@ -270,7 +264,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
     let mut last_doing: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
     let mut now = 0;
-    while step(&mut world, &mut events, &mut intersections, &mut now, days * DAY_MS as u64) {
+    while step(&mut world, &mut events, &mut now, days * DAY_MS as u64) {
         for (i, &id) in people.iter().enumerate() {
             let at = at_of(&world, id);
             // `TRACE=1 cargo test the_same_town -- --nocapture` prints
@@ -328,7 +322,6 @@ fn cars_stop_for_fuel_now_and_then() {
     let station = build(&mut world, 30, BuildingKind::GasStation);
 
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     let people = world.resident_ids();
 
@@ -336,7 +329,7 @@ fn cars_stop_for_fuel_now_and_then() {
     let mut stops = 0;
     let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
     let mut now = 0;
-    while step(&mut world, &mut events, &mut intersections, &mut now, 6 * day) {
+    while step(&mut world, &mut events, &mut now, 6 * day) {
         for (i, &id) in people.iter().enumerate() {
             let state = (at_of(&world, id), doing(&world, id));
             if state != last[i] {
@@ -392,7 +385,6 @@ fn a_street_drawn_to_a_dormant_house_fills_it() {
         .expect("land is land");
     world.finish(home);
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     assert!(world.resident_ids().is_empty(), "nobody lives where no road goes");
 
@@ -403,7 +395,7 @@ fn a_street_drawn_to_a_dormant_house_fills_it() {
         // Onto the plot: a road that ends on one is a driveway.
         (GridCoord { x: 10, y: 2 }, GridCoord { x: 10, y: 3 }),
     ] {
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
+        take_step(&mut world, &mut events, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
     }
     assert!(world.street_of(home).is_some(), "the driveway formed itself");
 
@@ -446,7 +438,6 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
         }
     }
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     // Started as the game starts one.
     world.resettle();
     settle_and_wake(&mut world, &mut events);
@@ -484,7 +475,7 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
             crate::market::hour(&mut world, &mut events, now);
             market(&mut world, &mut events, exporting);
             let to = (midnight - DAY_MS as u64 + hour * crate::market::HOUR).min(end);
-            while step_counting(&mut world, &mut events, &mut intersections, &mut now, to, &mut wakes) {}
+            while step_counting(&mut world, &mut events, &mut now, to, &mut wakes) {}
         }
         // A town that gridlocks is not a town being measured: nobody is
         // a day late for anything. Two driveways two tiles apart held
@@ -502,7 +493,7 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
         let steps = hand(&world, day);
         if !steps.is_empty() {
             for d in steps {
-                does(&mut world, &mut events, &mut intersections, d, now);
+                does(&mut world, &mut events, d, now);
             }
             settle_and_wake(&mut world, &mut events);
         }
@@ -613,7 +604,6 @@ pub(crate) fn towns(copies: i32) -> World {
 pub(crate) fn build_cost(copies: i32) -> Vec<(&'static str, f64)> {
     let mut world = towns(copies);
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     world.resettle();
     settle_and_wake(&mut world, &mut events);
     world.treasury = 1e9;
@@ -621,7 +611,7 @@ pub(crate) fn build_cost(copies: i32) -> Vec<(&'static str, f64)> {
     let mut timed = |world: &mut World, steps: Vec<Do>| {
         let started = Instant::now();
         for d in steps {
-            does(world, &mut events, &mut intersections, d, 0);
+            does(world, &mut events, d, 0);
         }
         settle_and_wake(world, &mut events);
         started.elapsed().as_secs_f64() * 1e6
@@ -746,14 +736,13 @@ fn every_build_leaves_the_town_settled() {
         build(&mut world, x, kind);
     }
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     world.resettle();
     settle_and_wake(&mut world, &mut events);
     assert_settled(&world, "the start");
     world.treasury = 1e9;
     let at = |x, y| GridCoord { x, y };
     let mut act = |world: &mut World, d: Do| {
-        does(world, &mut events, &mut intersections, d, 0);
+        does(world, &mut events, d, 0);
         settle_and_wake(world, &mut events);
         assert_settled(world, &format!("{d:?}"));
     };
@@ -1043,7 +1032,6 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     let farm = build(&mut world, 10, BuildingKind::Farm);
     let depot = build(&mut world, 30, BuildingKind::Depot);
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     world.treasury = 1000.0;
     let yard = |world: &World| match world.objects.get(farm).unwrap().object {
@@ -1069,7 +1057,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     let day = DAY_MS as u64;
     let land = stages(&world).len();
     let crop = crate::economy::crop(BuildingKind::Farm, land);
-    pump(&mut world, &mut events, &mut intersections, 0, 20 * day / 24);
+    pump(&mut world, &mut events, 0, 20 * day / 24);
     assert!(stages(&world).iter().all(|&s| s == Stage::Ploughed), "by evening the land is {:?}", stages(&world));
     assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());
     assert_eq!(yard(&world), 0.0, "something landed in the yard before a harvest");
@@ -1077,16 +1065,16 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     // The second day: seeded. The third, growing; the fourth: ripe by
     // morning, harvested by evening, a harvest in the yard, and a lorry
     // from beyond the edge called for it.
-    pump(&mut world, &mut events, &mut intersections, 20 * day / 24, day + 20 * day / 24);
+    pump(&mut world, &mut events, 20 * day / 24, day + 20 * day / 24);
     assert!(stages(&world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&world));
     assert_eq!(yard(&world), 0.0);
-    pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 3 * day + 5 * day / 24);
+    pump(&mut world, &mut events, day + 20 * day / 24, 3 * day + 5 * day / 24);
     assert_eq!(yard(&world), 0.0, "a harvest before the crop was ripe");
     // Ripe by the fourth morning, and cut that day: the whole harvest
     // in the yard by evening, or already on its way to the world.
     let mut harvest = 0.0f64;
     let mut t = 3 * day + 5 * day / 24;
-    while step(&mut world, &mut events, &mut intersections, &mut t, 4 * day + 20 * day / 24) {
+    while step(&mut world, &mut events, &mut t, 4 * day + 20 * day / 24) {
         harvest = harvest.max(yard(&world));
     }
     assert!((harvest - stages(&world).len() as f64 * crop).abs() < 1e-6, "the harvest came to {harvest}, not a yard's worth");
@@ -1107,7 +1095,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     calls::turn(&mut world, &mut events, depot, now);
     let fetch = world.calls.iter().find(|c| c.at == depot && c.kind == calls::CallKind::Fetch).expect("the depot fetches");
     assert_eq!(fetch.from, Some(farm), "the lorry went past the farm to the edge");
-    pump(&mut world, &mut events, &mut intersections, now, now + 3 * day / 24);
+    pump(&mut world, &mut events, now, now + 3 * day / 24);
     assert!(world.calls.iter().all(|c| c.at != depot), "the fetch did not land: {:?}; lorries {:?}", world.calls, world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck)).map(|e| (e.id, e.position, matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))).collect::<Vec<_>>());
     let fetched = before - yard(&world);
     assert!(fetched > 0.0, "the lorry took nothing from the yard");
@@ -1140,13 +1128,12 @@ fn a_real_coast_is_called_at_as_often_as_ever() {
     world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 32 }).collect::<Vec<_>>());
     let harbour = world.place_on_street(GridCoord { x: 1, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     let ferries = world.ferries_of(harbour);
     assert_eq!(ferries.len(), 2, "the world's line, {} ms round, runs {} ferries", world.lines[&harbour].cycle(), ferries.len());
     let (mut now, mut calls, mut moored) = (0, 0, vec![false; 2]);
     let days = 2;
-    while step(&mut world, &mut events, &mut intersections, &mut now, days * DAY_MS as u64) {
+    while step(&mut world, &mut events, &mut now, days * DAY_MS as u64) {
         let here: Vec<bool> = ferries.iter().map(|&f| car_of(&world, f).spot.is_some()).collect();
         assert!(here.iter().filter(|&&m| m).count() <= 1, "two ferries at the ramp at {now}");
         calls += here.iter().zip(&moored).filter(|&(&h, &m)| h && !m).count();
@@ -1197,7 +1184,6 @@ fn the_opening_from_the_harbour() {
     assert!(building_of(&world, depot).site.is_none(), "the first depot is a site");
     assert!(building_of(&world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     assert_eq!(opening(&mut world, 0), [true, true, true, false, false], "a depot on the harbour's street");
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
@@ -1217,7 +1203,7 @@ fn the_opening_from_the_harbour() {
     let turn = world.turn(harbour).expect("the harbour's line");
     let mut sailed = false;
     while car_of(&world, ferry).spot.is_none() {
-        assert!(step(&mut world, &mut events, &mut intersections, &mut now, day), "the ferry never berthed");
+        assert!(step(&mut world, &mut events, &mut now, day), "the ferry never berthed");
         if let Some(sail) = car_of(&world, ferry).sail {
             assert!(world.water.get().unwrap().afloat(&sail.path), "the ferry's way crosses land");
             sailed = true;
@@ -1230,7 +1216,7 @@ fn the_opening_from_the_harbour() {
     // The tug unloads while it is in, and it sails on time.
     let mut shunted = false;
     while car_of(&world, ferry).spot.is_some() {
-        assert!(step(&mut world, &mut events, &mut intersections, &mut now, day), "the ferry never sailed");
+        assert!(step(&mut world, &mut events, &mut now, day), "the ferry never sailed");
         shunted |= car_of(&world, tug).shunt.is_some();
     }
     assert!(shunted, "the tug never moved");
@@ -1242,7 +1228,7 @@ fn the_opening_from_the_harbour() {
     // The lorry fetches a box as it lands, and unloads it.
     let stock = |w: &World| building_of(w, depot).stocks.values().map(|s| s.level).sum::<f64>();
     let until = now + day / 12;
-    while stock(&world) == 0.0 && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+    while stock(&world) == 0.0 && step(&mut world, &mut events, &mut now, until) {}
     assert!(stock(&world) > 0.0, "the lorry brought nothing home in two hours");
     assert!(car_of(&world, lorry).hitched.is_none(), "the box was not gone into stock");
     assert!(world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
@@ -1254,21 +1240,21 @@ fn the_opening_from_the_harbour() {
     assert_eq!(crate::haul::lorries_of(&world, depot).len(), 2, "no second lorry");
     assert!((before - world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
     let until = now + day / 4;
-    while (parked(&world) > 0 || car_of(&world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+    while (parked(&world) > 0 || car_of(&world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && step(&mut world, &mut events, &mut now, until) {}
     let shelf = |w: &World, g: Good| building_of(w, depot).stocks[&g].level;
     assert!(shelf(&world, Good::Timber) >= 40.0, "the timber did not come in: {}", shelf(&world, Good::Timber));
 
     // A house, placed: a site until a van brings its timber.
     let player = 7;
     let house_at = GridCoord { x: 20, y: 1 };
-    let refused = handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Place { kind: BuildingKind::House, at: house_at, facing: None }, now);
+    let refused = handle_player_action(&mut world, &mut events, player, ClientMessage::Place { kind: BuildingKind::House, at: house_at, facing: None }, now);
     assert!(refused.is_none(), "the house was refused: {refused:?}");
     settle_and_wake(&mut world, &mut events);
     let house = world.occupied[&(20, 1)];
     assert!(building_of(&world, house).site.is_some(), "the house stood without its timber");
     assert!(world.household(house).is_empty(), "people moved into a site");
     let until = now + day / 4;
-    while building_of(&world, house).site.is_some() && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+    while building_of(&world, house).site.is_some() && step(&mut world, &mut events, &mut now, until) {}
     assert!(building_of(&world, house).site.is_none(), "the van never brought the timber");
     settle_and_wake(&mut world, &mut events);
     let settlers = world.household(house);
@@ -1278,7 +1264,7 @@ fn the_opening_from_the_harbour() {
     let until = now + turn + DWELL + day / 6;
     let berth = world.berth(harbour).unwrap();
     let mut rolled = 0;
-    while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {
+    while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut now, until) {
         for &id in &settlers {
             let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
             if let Some(t) = car_of(&world, r.car).trip.filter(|t| t.progress == 0.0 && t.route_positions.len() > 3) {
@@ -1300,15 +1286,15 @@ fn the_opening_from_the_harbour() {
     let trunk = |world: &mut World, now| missions(world, now).into_iter().map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
     assert_eq!(trunk(&mut world, now), [(Key::Opening, true), (Key::Book, false)]);
     let price = world.market.price(Good::Timber);
-    handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Trade { good: Good::Timber, boxes: 1, out: false }, now);
+    handle_player_action(&mut world, &mut events, player, ClientMessage::Trade { good: Good::Timber, boxes: 1, out: false }, now);
     assert_eq!(trunk(&mut world, now)[1..], [(Key::Book, true), (Key::Sell, false)]);
     assert!(world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
     // A box of crates sold: out on the ferry, paid as it casts off.
     let before = world.treasury;
-    handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Trade { good: Good::Crates, boxes: 1, out: true }, now);
+    handle_player_action(&mut world, &mut events, player, ClientMessage::Trade { good: Good::Crates, boxes: 1, out: true }, now);
     let until = now + 2 * turn;
-    while world.town.on(now).sold.get(&Good::Crates).is_none() && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+    while world.town.on(now).sold.get(&Good::Crates).is_none() && step(&mut world, &mut events, &mut now, until) {}
     let sold = world.town.on(now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
     // What the depot spares over its own shelf, at the market's price less freight.
     assert!(sold > 0.0 && sold <= 100.0 * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the box went out for {sold}");
@@ -1333,17 +1319,16 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
     let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
     world.orient(depot);
     let mut events = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
     settle_and_wake(&mut world, &mut events);
     let ferry = world.ferry_of(harbour).unwrap();
     let lorry = crate::haul::lorries_of(&world, depot)[0];
     let (day, mut now) = (DAY_MS as u64, 0);
-    while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
-    while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+    while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut now, day) {}
+    while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut now, day) {}
     let (sailed, hour) = (now, day / 24);
     let home = |w: &World| w.lumps.iter().filter(|l| l.building == depot && l.units > 0.0).count();
     let mut parked_home = None;
-    while home(&world) < 6 && step(&mut world, &mut events, &mut intersections, &mut now, sailed + 8 * hour) {
+    while home(&world) < 6 && step(&mut world, &mut events, &mut now, sailed + 8 * hour) {
         let c = car_of(&world, lorry);
         match (c.trip.is_none() && world.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
