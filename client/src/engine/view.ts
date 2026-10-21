@@ -1,4 +1,5 @@
 import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
+import type { Area } from "../generated";
 
 /**
  * Everything that needs to know how the world lands on the screen.
@@ -67,6 +68,15 @@ export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { c
     radius = Math.max(radius, Math.hypot(c.wx - mid.wx, c.wy - mid.wy));
   }
   return { cx: mid.wx, cy: mid.wy, radius };
+}
+
+/** The tiles the view covers, a square round its middle. */
+export function viewArea(scene: SceneContext, canvas: HTMLCanvasElement): Area {
+  const rect = rectOf(canvas);
+  const mid = screenToWorld(scene, canvas, { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
+  const { halfW, halfH } = viewExtent(scene, canvas);
+  const half = Math.max(halfW, halfH);
+  return { x0: Math.floor(mid.wx - half), y0: Math.floor(mid.wy - half), x1: Math.ceil(mid.wx + half), y1: Math.ceil(mid.wy + half) };
 }
 
 /**

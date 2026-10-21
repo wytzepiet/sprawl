@@ -8,10 +8,12 @@ import World from "../engine/World";
 import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
 import Glass from "../ui/Glass";
 import { projector, screenToWorld } from "../engine/view";
-import { climb, pen, priority, setPen, setPriority, setTool, tool } from "../ui/buildMode";
+import { priority, setPriority, setTool, tool } from "../ui/buildMode";
 import type { LevelState, Tool } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
-import { RoadBrush } from "./RoadBrush";
+import { climb, pen, RoadBrush, setPen } from "./RoadBrush";
+import { road } from "../ui/Roads";
+import { SELECT } from "../ui/kit";
 import { best, keep, keepLayout, layoutOf } from "./progress";
 import { LEVELS, neighbours, type LevelText } from "./levels";
 import Map, { isOpen } from "./Map";
@@ -43,14 +45,12 @@ export default function Interchange() {
 /** The palette: each tool its name, its key, what it does, and its
  *  picture (a path in a 24 square, its holes cut even-odd). */
 const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: string }[] = [
-  { tool: "Street", key: "1", name: "Two-way", label: "A road both ways", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
-  { tool: "OneWay", key: "2", name: "One-way", label: "Runs the way you drag; laid back against another, a divided road", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
+  { tool: "Street", key: "1", name: "Two-way", label: "A road both ways", glyph: road("Street").glyph },
+  { tool: "OneWay", key: "2", name: "One-way", label: "Runs the way you drag; laid back against another, a divided road", glyph: road("OneWay").glyph },
   { tool: "Wide", key: "3", name: "Two lanes", label: "One-way, two lanes: cars keep right to turn right, left to turn left", glyph: "M1.5 2h2v20h-2zM20.5 2h2v20h-2zM8 4l3.5 5H9v12H7V9H4.5zM16 4l3.5 5H17v12h-2V9h-2.5z" },
   { tool: "Light", key: "4", name: "Lights", label: "Tap a junction for traffic lights, again to take them away", glyph: "M8 1.5h8A1.5 1.5 0 0 1 17.5 3v18a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 21V3A1.5 1.5 0 0 1 8 1.5zM12 3.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 9.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 15.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z" },
-  { tool: "Demolish", key: "X", name: "Bulldozer", label: "Takes up road; hold Shift for it with any tool", glyph: "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z" },
+  { tool: "Demolish", key: "X", name: "Bulldozer", label: "Takes up road; hold Shift for it with any tool", glyph: road("Demolish").glyph },
 ];
-/** The empty hand's arrow (the dock's, `ui/Dock.tsx`). */
-const LOOK = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A bin: everything taken up. */
 const CLEAR = "M9 3h6l1 2h4v2H4V5h4zM6 8h12l-1 13H7zM9.5 10.5v8h1.5v-8zM13 10.5v8h1.5v-8z";
 /** The priority road's sign, a diamond in a diamond. */
@@ -414,7 +414,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           title="Look: the roads as they are, every level solid, nothing in hand (V)"
           onClick={() => setTool(null)}
         >
-          <Glyph d={LOOK} />
+          <Glyph d={SELECT} />
           <KeyCap>V</KeyCap>
         </button>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />

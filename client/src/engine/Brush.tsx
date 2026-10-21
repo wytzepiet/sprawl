@@ -2,10 +2,9 @@ import { createEffect, on, onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { underGlass } from "./glass";
-import { projector, screenToWorld, viewExtent, rectOf } from "./view";
+import { projector, screenToWorld, viewArea } from "./view";
 import { builtVersion, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
-import { snap, STEPS } from "./tiles";
 import { Pen } from "./pen";
 import type { Area, Building, GridCoord, Tool } from "../generated";
 
@@ -37,12 +36,6 @@ export function Brush() {
   const stopTick = afterRender(() => dots.frame());
   const { send } = useGame();
   const pen = new Pen({ roads: roadsAt, tool, want: () => 0, priority, send, lift: () => {} });
-  /** Where the pointer is while dragging, and the way it last went. */
-  let pointer: { wx: number; wy: number } | null = null;
-  let heading = 0;
-  let accDx = 0;
-  let accDy = 0;
-
   const pick = (e: { clientX: number; clientY: number }) => screenToWorld(scene, canvas, e);
   const tileOf = (e: { clientX: number; clientY: number }) => {
     const w = pick(e);
@@ -65,8 +58,7 @@ export function Brush() {
 
   /** The drag on toward the pointer, as far as the pen may go now. */
   const advance = () => {
-    if (!pointer) return;
-    for (const t of pen.pull(pointer.wx, pointer.wy, heading)) dots.step(t);
+    for (const t of pen.onward()) dots.step(t);
     draw();
   };
   const stopHints = listenHints((h) => {
@@ -81,18 +73,10 @@ export function Brush() {
     }
   });
 
-  /** The tiles the view covers. */
-  const viewBox = (): Area => {
-    const rect = rectOf(canvas);
-    const mid = screenToWorld(scene, canvas, { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
-    const { halfW, halfH } = viewExtent(scene, canvas);
-    const half = Math.max(halfW, halfH);
-    return { x0: Math.floor(mid.wx - half), y0: Math.floor(mid.wy - half), x1: Math.ceil(mid.wx + half), y1: Math.ceil(mid.wy + half) };
-  };
   /** Where the hand may start, asked of the game for the view; `afresh`,
    *  again, something having been built. */
   const ask = (afresh = false) => {
-    const [a, h] = [viewBox(), held()];
+    const [a, h] = [viewArea(scene, canvas), held()];
     if (h) {
       const key = fitsKey(h.kind, h.facing, a);
       if (key !== fitsAsked || afresh) send({ type: "Ask", data: { type: "Starts", data: { hand: { type: "Building", data: { kind: h.kind, facing: h.facing } }, area: a } } });
@@ -114,9 +98,8 @@ export function Brush() {
   function draw() {
     const current = pen.current;
     const starts = held() ? fits : tool() !== null ? pen.starts : [];
-    const nexts: [number, number][] = current ? STEPS.flatMap(([dx, dy], i) => (pen.allowed(i) ? [[current.x + dx, current.y + dy] as [number, number]] : [])) : [];
-    const a = viewBox();
-    dots.aim(starts.map((t) => [t.x, t.y]), nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (a.x0 + a.x1) / 2, y: (a.y0 + a.y1) / 2 });
+    const a = viewArea(scene, canvas);
+    dots.aim(starts.map((t) => [t.x, t.y]), pen.nexts(), current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (a.x0 + a.x1) / 2, y: (a.y0 + a.y1) / 2 });
   }
 
   /** What road stands at a tile, as the tool that lays it, and whether
@@ -149,39 +132,30 @@ export function Brush() {
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 || held() !== null || tool() === null) return;
-    pointer = pick(e);
-    const at = { x: Math.floor(pointer.wx), y: Math.floor(pointer.wy) };
-    pen.press(at, pointer.wx, pointer.wy);
-    accDx = 0;
-    accDy = 0;
-    dots.grab(at, { x: pointer.wx, y: pointer.wy });
+    const w = pick(e);
+    const at = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
+    pen.press(at, w.wx, w.wy);
+    dots.grab(at, { x: w.wx, y: w.wy });
     draw();
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!pen.current || !pointer) {
+    if (!pen.current) {
       const at = tileOf(e);
       if (at.x !== hover?.x || at.y !== hover?.y) (hover = at), aimAt();
       return;
     }
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
-    accDx += w.wx - pointer.wx;
-    accDy += w.wy - pointer.wy;
-    pointer = w;
-    // Need enough accumulated movement to determine direction
-    if (Math.max(Math.abs(accDx), Math.abs(accDy)) < 0.1) return;
-    heading = snap(accDx, accDy);
-    accDx = 0;
-    accDy = 0;
-    advance();
+    const went = pen.drag(w.wx, w.wy);
+    for (const t of went) dots.step(t);
+    if (went.length) draw();
   };
 
   const onPointerUp = (e: PointerEvent) => {
     if (held() !== null && e.button === 0 && touches.size < 2) return place(e.shiftKey);
     if (pen.current) dots.release();
     pen.release();
-    pointer = null;
     draw();
   };
 

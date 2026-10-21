@@ -12,10 +12,9 @@ import { BuildBody, BuildHead } from "./Build";
 import { TradeBody, TradeHead } from "./Trade";
 import { StockBody, StockHead } from "./Stock";
 import { open, setOpen, sheetWidth, show, tab, TABS, trade, type Tab } from "./sheet";
-import { FERRY, Press, view, wide } from "./kit";
+import { FERRY, Press, SELECT, view, wide } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 
-const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 const BUILD = "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z";
 const STOCK = "M3 13h8v8H3zM13 13h8v8h-8zM8 3.5h8v8H8z";
 

@@ -109,6 +109,8 @@ export const Line = (props: { d: string; size: number; width?: number; ink?: str
 
 /** The ferry, side on: news of it, and the dock's new deal. */
 export const FERRY = "M2 14h20l-2.5 5.5h-15zM6 9h9v4H6zM8 5.5h4V9H8z";
+/** The empty hand's arrow. */
+export const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 
 /** The window's size, and whether it is wide: a phone's is not. */
 export const { view, wide } = createRoot(() => {
