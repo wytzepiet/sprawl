@@ -76,6 +76,8 @@ export function driveOf(id: number, car: Car): Drive | null {
   drives.set(id, { key, lanes, drive });
   return drive;
 }
+/** A vehicle gone: its drive with it. */
+export const forgetDrive = (id: number) => void drives.delete(id);
 
 /** Where a lane runs from the road's middle, by what kind of link it is
  *  on: a two-way's to the right of the middle, a one-way's down it. A

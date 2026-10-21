@@ -10,7 +10,7 @@ import { screenToWorld } from "../engine/view";
 import { hex, rgb, WHITE, type Rgb } from "../engine/rgb";
 import { theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
-import { syncClock } from "../network/clock";
+import { DAY_MS, syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
 import type { RGB } from "../engine/town/mass";
 import { CAB, CAR, TRAILER } from "../engine/objects/roadGeometry";
@@ -63,7 +63,7 @@ const BRUSHES: { key: string; ch: string; label: string }[] = [
 
 export default function Sandbox() {
   // Noon, or the time of day `?t=` names (0 midnight, 0.5 noon), stopped.
-  syncClock(Number(new URLSearchParams(location.search).get("t") ?? 0.5) * 120_000, 0, 120_000);
+  syncClock(Number(new URLSearchParams(location.search).get("t") ?? 0.5) * DAY_MS, 0, DAY_MS);
   return (
     <DayNightProvider>
       <OfflineGame>

@@ -19,7 +19,7 @@ import type { Operation, GameObjectEntry } from "../generated";
 import type { Building, RoadNode } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
-import { mountCar } from "./objects/CarObject";
+import { forgetCar, mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
 import { aim, placed, setPlaced } from "../ui/buildMode";
@@ -150,6 +150,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
         if (!same) uncover(existing.covers);
         existing.cleanup();
         mounted.delete(key);
+        if (!entry && existing.kind === "Car") forgetCar(Number(key));
       }
       if (!same) {
         // Trees make way for a road, and come back where one went; the

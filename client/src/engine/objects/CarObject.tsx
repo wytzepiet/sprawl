@@ -15,7 +15,7 @@ import { field, FIELD_Z, leaves } from "./BuildingObject";
 import { CAR, ROAD_Z, VAN } from "./roadGeometry";
 import { behind, boxShape, type BoxPart, DECK_Z, rigidShape, deckPose, FERRY_SHAPE, LORRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
 import type { Drive, Pose } from "./driver";
-import { aboard, ahead, carried, colourOf, driveOf, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
+import { aboard, ahead, carried, colourOf, driveOf, forgetDrive, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
 import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry, Pose as Stand } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
@@ -265,6 +265,8 @@ function mountTug(id: number, car: Car, pool: InstancePool, ctx: EngineContext):
 /** Each car on a trip: where it is drawn along its drive, kept across the
  *  server's updates, which are just when its pedal changes. */
 const easing = new Map<number, { drive: Drive; x: number; v: number; then: number }>();
+/** A car gone, not mounted again: what was kept for it across updates. */
+export const forgetCar = (id: number) => (easing.delete(id), forgetDrive(id));
 
 /** A trip on the roads, driven as `driver.ts` steers it, at the distance
  *  the trip's physics puts it, eased: the drawn distance chases it as a

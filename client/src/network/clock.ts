@@ -12,7 +12,10 @@ let baseLocal = 0;
 // the signal exists so the UI can react to a speed change.
 let speed = 1;
 const [speedSignal, setSpeedSignal] = createSignal(1);
-let dayMs = 120_000;
+/** A day, in sim ms: the server's `protocol::DAY_MS`, which its clock
+ *  repeats with every update. */
+export const DAY_MS = 1_200_000;
+let dayMs = DAY_MS;
 let synced = false;
 
 /**
