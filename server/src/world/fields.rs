@@ -36,8 +36,9 @@ use crate::world::World;
 /// half minutes of the game's clock, two seconds watched at full speed,
 /// so a shift's ploughing is a couple of hundred tiles.
 pub const PACE: GameTime = DAY_MS as GameTime / 600;
-/// A crop sown by the end of a shift is ripe by the next morning.
-pub const RIPEN: GameTime = DAY_MS as GameTime / 2;
+/// A crop sown by the end of a shift stands a day and is ripe the
+/// morning after: a day and a half.
+pub const RIPEN: GameTime = DAY_MS as GameTime * 3 / 2;
 /// The tiles a shift's ploughing makes a farm of, on open ground: the
 /// shift over the pace, less the ground driven between rows. What a
 /// farm's land comes to at capacity, and what its yard is divided by.
@@ -960,8 +961,8 @@ mod tests {
         assert!(stages(&world).iter().all(|&s| s == Stage::Sown));
         assert!(world.batch(farm, now).is_none(), "a job before the crop is ripe");
         assert!(world.batch(farm, sown_at + DAY_MS as u64 / 2).is_none());
-        // The harvest, a day on: every tile's crop in the yard.
-        let now = sown_at + DAY_MS as u64 + PACE * 200;
+        // The harvest, once ripe: every tile's crop in the yard.
+        let now = now + RIPEN;
         let (job, batch) = world.batch(farm, now).expect("a harvest");
         assert_eq!((job, batch.len()), (Job::Harvest, tiles.len()));
         let (path, _) = world.sweep(farm, pos, &batch, job).unwrap();
@@ -970,7 +971,7 @@ mod tests {
         }
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Cut));
-        assert!((yard(&world) - 1944.0).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
+        assert!((yard(&world) - 2592.0).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
         // Round again: plough the stubble. And a full yard leaves the
         // crop standing.
         assert_eq!(world.batch(farm, now).map(|b| b.0), Some(Job::Plough));

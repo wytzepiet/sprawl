@@ -56,7 +56,7 @@ export type Look = { stage: "Grass" | "Ploughed" | "Sown" | "Cut"; growth: numbe
 export const FIELD_Z = 0.008;
 const CROP_H = 0.08;
 /** How long a sown crop takes to ripen, as the server has it. */
-export const RIPEN = 600_000;
+export const RIPEN = 1_800_000;
 
 /** The runs out now, by farm: the tractor's (`CarObject`), for its
  *  farm's field to lay. */

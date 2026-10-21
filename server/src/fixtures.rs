@@ -213,15 +213,18 @@ pub fn build_text(world: &mut World, text: &str) {
     finish_sites(world);
 }
 
+/// When fixtures stand still: noon, on the third day, so a field sown
+/// two days before can stand ripe.
+pub const NOON: crate::engine::GameTime = crate::protocol::DAY_MS as crate::engine::GameTime * 5 / 2;
+
 /// The farms, east to west as a fixture reads, each worked to the next
 /// stage of the cycle, so one row of them shows every look a field has:
 /// ploughed; sown just now, a quarter grown, green, ripe; cut; and the
 /// tractor half way through a harvest, and through ploughing the stubble.
-/// Fixtures stand still at noon, which is a crop's ripening after midnight.
 fn till_farms(world: &mut World) {
     use crate::protocol::Job::*;
     use crate::world::fields::RIPEN;
-    let now = crate::protocol::DAY_MS as crate::engine::GameTime / 2;
+    let now = NOON;
     let sown = |k: f64| now - (RIPEN as f64 * k) as crate::engine::GameTime;
     let mut farms: Vec<(i32, crate::protocol::EntityId)> = world.objects.iter().filter_map(|e| match e.object {
         GameObject::Building(ref b) if b.kind == BuildingKind::Farm => Some((-e.position?.x, e.id)),
