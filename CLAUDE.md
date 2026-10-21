@@ -159,6 +159,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
   vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
   first after a change to what moves; `look` is for light and material.
+  `bun run jolt 6,80,12 20` samples every vehicle round a tile as the
+  client places it, fifty times a second for twenty, and counts each
+  jump, snap, flip and lurch, with the clock and the place.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.
@@ -171,7 +174,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   map, then the shadow map and the other lights as a whole, and prints what
   each saved a frame, with its meshes, instances, triangles and draw calls,
   in `.dev/cost/`. Under a minute; agrees with itself to a tenth of a ms.
-  The frame is the GPU's when it is well over the CPU's.
+  The frame is the GPU's when it is well over the CPU's. `bun run pan
+  6,80,8` drives its own Chrome round a tile, still, panning, then
+  zooming, and prints each phase's frames, CPU and GPU time and where the
+  JavaScript went, from the reports a tab it names sends
+  (`PerfReport.tsx`, `.dev/perf.jsonl`); no other tab sends any.
 - **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
   fixture with no server, through the town grid (`client/src/engine/town/`,
   `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the
@@ -202,7 +209,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the top of `server/src/level.rs`); `cargo test level` runs every
   level's own solve and asserts it scores 100. A new level file needs
   Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
-  is what it is and what is built.
+  is what it is and what is built. `bun client/scripts/level-look.ts
+  <level> [steps.json]` photographs one as it plays, its steps laid, and
+  its verdict, in `.dev/look/`.
 - **A replay of what went wrong:** in a level, F flags the moment and the
   tile under the pointer, and "Copy replay" puts everything played since
   the level opened on the clipboard (`server/src/replay.rs`): the

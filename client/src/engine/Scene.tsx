@@ -17,7 +17,8 @@ function SceneInner() {
     <DayNightProvider>
       <Canvas>
         <OrthoCamera />
-        {import.meta.env.DEV && <PerfReport />}
+        {/* Only while `bun run pan` measures: it names its tab. */}
+        {import.meta.env.DEV && new URLSearchParams(location.search).has("tab") && <PerfReport />}
         <DayNightLights>
           <Registered>
             <InstancePoolProvider>

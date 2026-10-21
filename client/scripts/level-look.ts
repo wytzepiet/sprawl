@@ -1,9 +1,9 @@
 /**
  * A photograph of a level as it plays (`/interchange`), driven from here:
  * `bun scripts/level-look.ts <level> [steps.json]` opens it on the dev client
- * (SPRAWL_CLIENT_PORT, default 4800), lays the steps given (or the level's
- * own solve), waits, photographs, tests, and photographs the verdict, in
- * .dev/look/.
+ * (SPRAWL_CLIENT_PORT, default 4800), lays the steps given, if any (a
+ * JSON list of `Build`s), waits, photographs, tests, and photographs the
+ * verdict, in .dev/look/.
  */
 import { mkdirSync, readFileSync } from "node:fs";
 import { launch, open } from "./browser";

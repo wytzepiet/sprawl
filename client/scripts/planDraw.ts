@@ -13,13 +13,14 @@ import { asphalt, pavement } from "../src/engine/town/surface";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { slope } from "../src/engine/town/mass";
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
+import { PALETTE } from "../src/engine/objects/motion";
 import { BLUEPRINTS } from "../src/blueprints";
 import { themes } from "../src/engine/theme";
 
 const T = themes.light;
 const hex = (c: { r: number; g: number; b: number }) =>
   "#" + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
-const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", "#338066", "#cca640"];
+const CARS = PALETTE.map(hex);
 
 type Traced = { points: Pt[]; tight: Pt[]; strobe: Pt[][] }[];
 

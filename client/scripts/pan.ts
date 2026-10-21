@@ -15,6 +15,7 @@
  */
 import { launch } from "./browser";
 import { readFileSync } from "node:fs";
+import type { Report } from "../src/engine/PerfReport";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -74,18 +75,6 @@ await phase("zooming", async (until) => {
 await page.waitForTimeout(6000);
 await browser.close();
 
-interface Report {
-  at: string;
-  tab?: string | null;
-  fps: number;
-  gap: { p50: number; p90: number; p99: number; max: number; over34: number };
-  cpuMs: { mean: number; max: number };
-  gpuMs: number | null;
-  draws: number;
-  long: { ms: number; scripts: { ms: number; what: string }[] }[];
-  profile: { busyMs: number; own: [string, number][] } | string;
-  counts?: Record<string, number>;
-}
 const reports: Report[] = readFileSync(`${ROOT}/.dev/perf.jsonl`, "utf8")
   .split("\n")
   .filter((l) => l.includes(tab))
