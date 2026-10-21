@@ -27,7 +27,8 @@ pub fn name(id: EntityId) -> String {
     format!("{} {}", FIRST[(h >> 20) as usize % FIRST.len()], LAST[(h >> 40) as usize % LAST.len()])
 }
 
-fn hhmm(t: GameTime) -> String {
+/// A time of day as the clock shows it.
+pub(crate) fn hhmm(t: GameTime) -> String {
     let day = DAY_MS as u64;
     format!("{:02}:{:02}", (t % day) / (day / 24), (t % (day / 24)) / (day / 24 / 60))
 }
@@ -164,12 +165,12 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
     // Where an order can be sent and timber found: every depot, nearest
     // first, on a harbour's card and a site's, and whether its street is
     // joined to the harbour.
-    let here = world.objects.get(id).and_then(|e| e.position);
+    let pos = world.objects.get(id).and_then(|e| e.position);
     let mut depots: Vec<(i32, Value)> = Vec::new();
     if b.kind == crate::protocol::BuildingKind::Harbour || b.site.is_some() {
         for e in world.objects.iter() {
             let GameObject::Building(ref d) = e.object else { continue };
-            let (Some(at), Some(here)) = (e.position, here) else { continue };
+            let (Some(at), Some(here)) = (e.position, pos) else { continue };
             if !crate::economy::depot(d.kind) || d.site.is_some() {
                 continue;
             }
@@ -182,7 +183,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
     // Where a site's materials are made in town: every maker of one, its
     // yard, nearest first.
     let mut makers: Vec<(i32, Value)> = Vec::new();
-    if let (Some(site), Some(here)) = (&b.site, here) {
+    if let (Some(site), Some(here)) = (&b.site, pos) {
         for e in world.objects.iter() {
             let GameObject::Building(ref m) = e.object else { continue };
             let (Some(good), Some(at)) = (crate::blueprint::blueprint(m.kind).makes, e.position) else { continue };
@@ -199,7 +200,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "label": format!("{:?}", b.kind),
         "building_kind": b.kind,
         "reached": world.street_of(id).is_some(),
-        "stocks": b.stocks.iter().map(|(good, s)| json!({ "need": good, "good": good, "full": s.level / s.cap, "level": s.level, "cap": s.cap })).collect::<Vec<_>>(),
+        "stocks": b.stocks.iter().map(|(good, s)| json!({ "need": good, "full": s.level / s.cap, "level": s.level, "cap": s.cap })).collect::<Vec<_>>(),
         "site": b.site,
         "depots": depots.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "makers": makers.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),

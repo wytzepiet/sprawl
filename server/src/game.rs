@@ -1675,7 +1675,7 @@ mod tests {
             let GameObject::Resident(ref r) = e.object else { continue };
             let card = crate::resident::inspect(world, e.id, now);
             assert!(r.work.is_some(), "{card}");
-            let owed = |v: &&serde_json::Value| r.buckets.iter().any(|b| b.need.drain() > 0.0 && v["need"] == serde_json::json!(b.need)) && v["full"].as_f64() > Some(0.0);
+            let owed = |v: &&serde_json::Value| r.buckets.iter().any(|b| b.need.drain() > 0.0 && v["need"] == serde_json::json!(b.need)) && v["full"].as_f64() < Some(1.0);
             assert!(card["buckets"].as_array().into_iter().flatten().filter(owed).all(|v| v["option"] != "nothing"), "{card}");
         }
     }

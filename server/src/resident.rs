@@ -544,17 +544,17 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let verdicts = verdicts(world, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     json!({
         "id": id,
-        "now": hhmm(now),
+        "now": crate::card::hhmm(now),
         "at": at,
         "at_kind": whereabouts(world, at),
         "home": r.home,
         "work": r.work,
         "selected": r.selected,
-        "last_update": hhmm(r.last_update),
+        "last_update": crate::card::hhmm(r.last_update),
         "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
             "need": b.need,
             "short_h": b.stock.short() / HOUR,
-            "full": b.stock.weight(),
+            "full": 1.0 - b.stock.weight(),
             "option": v.describe(now),
         })).collect::<Vec<_>>(),
     })
@@ -567,9 +567,9 @@ impl Verdict {
                 "building": building,
                 "rate": rate,
                 "score": score,
-                "departure": hhmm(departure),
+                "departure": crate::card::hhmm(departure),
                 "wait_h": (departure - now) as f64 / HOUR,
-                "leave": hhmm(leave),
+                "leave": crate::card::hhmm(leave),
             }),
             Verdict::Nothing => json!("nothing"),
         }
@@ -588,12 +588,6 @@ fn whereabouts(world: &World, at: EntityId) -> String {
 const HOUR: f64 = (DAY_MS / 24) as f64;
 
 /// Clock time, with the day in front when it is not today's.
-fn hhmm(t: GameTime) -> String {
-    let day = t / DAY_MS as u64;
-    let tod = time_of_day(t) as f64 / HOUR;
-    format!("d{day} {:02}:{:02}", tod as u32, ((tod % 1.0) * 60.0) as u32)
-}
-
 fn resident(world: &World, id: EntityId) -> Option<&Resident> {
     match world.objects.get(id)?.object {
         GameObject::Resident(ref r) => Some(r),
@@ -710,10 +704,6 @@ const LOT_MS: f64 = 2.0 / crate::car::LOT_SPEED * 1000.0;
 
 fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
     world.objects.get(id)?.position.map(|p| (p.x, p.y))
-}
-
-fn time_of_day(now: GameTime) -> u32 {
-    (now % DAY_MS as u64) as u32
 }
 
 #[cfg(test)]

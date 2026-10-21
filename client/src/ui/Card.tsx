@@ -13,8 +13,7 @@ import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 interface Bucket {
   need: Need;
   full: number;
-  owed_h: number;
-  option: "nothing" | { building: number; score: number; departure: string; leave: string; wait_h: number };
+  option: "nothing" | { building: number };
 }
 
 type Card =
