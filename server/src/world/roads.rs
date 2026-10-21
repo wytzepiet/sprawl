@@ -11,7 +11,7 @@ impl World {
 
     /// Place a road node at coord. Idempotent: returns the node already
     /// standing here, whatever kind it is. `laid` is the mayor's own hand,
-    /// counted against the build; the survey's roads and driveways are
+    /// counted to be paid for; the survey's roads and driveways are
     /// streets, laid by nobody, and free.
     fn place_road_of(&mut self, coord: GridCoord, laid: bool) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {

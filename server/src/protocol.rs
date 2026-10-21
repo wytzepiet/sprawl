@@ -1029,8 +1029,6 @@ pub enum ClientMessage {
     Raze { #[ts(type = "number")] building: EntityId },
     /// The player's last action taken back (`undo.rs`).
     Undo,
-    /// Spend a point on a node of the tree.
-    Take(crate::tree::Cell),
     DespawnAllCars,
     /// A box on a harbour's next sailing: of this good, from or for this
     /// partner (None, the world), in or out (`orders::book`).
@@ -1101,10 +1099,6 @@ pub struct Growth {
     /// over it is days of imports left.
     pub income: f64,
     pub imports: f64,
-    /// The build: the nodes of the tree taken.
-    pub taken: Vec<crate::tree::Cell>,
-    /// Tiles of road the mayor may still lay.
-    pub road_tiles_left: u32,
 }
 
 /// Something landing on a building: coins as goods cross the border, a

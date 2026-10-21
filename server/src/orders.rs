@@ -234,7 +234,7 @@ pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
             now.push(g);
         }
     }
-    let further = BuildingKind::ALL.iter().filter(|&&k| world.build.may_place(k) && !built.contains(&k)).filter_map(|&k| blueprint(k).makes).filter(|g| !now.contains(g)).collect();
+    let further = BuildingKind::ALL.iter().filter(|&&k| !built.contains(&k)).filter_map(|&k| blueprint(k).makes).filter(|g| !now.contains(g)).collect();
     (now, further)
 }
 

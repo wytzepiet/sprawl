@@ -81,10 +81,7 @@ pub struct World {
     /// What the town bought of its own accord since the last flush, said
     /// to every player.
     pub news: Vec<crate::protocol::News>,
-    /// The nodes of the tree the player has taken: the gate for everything
-    /// the city may do. See `tree.rs`.
-    pub build: crate::tree::Build,
-    /// Tiles of road the mayor has laid, against the build's allowance.
+    /// Tiles of road the mayor has laid, which `game::lay` counts to price.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
     /// A level's map, corner to corner: no road is laid off it, and the
@@ -184,7 +181,6 @@ impl World {
             treasury: crate::economy::STAKE,
             lumps: Vec::new(),
             news: Vec::new(),
-            build: Default::default(),
             laid: 0,
             frame: None,
             terrain: HashMap::default(),
@@ -229,7 +225,6 @@ impl World {
             treasury: 0.0,
             lumps: Vec::new(),
             news: Vec::new(),
-            build: Default::default(),
             laid: 0,
             frame: None,
             terrain: HashMap::default(),

@@ -361,7 +361,6 @@ mod tests {
                     world.terrain.insert((x, y), TerrainType::Grass);
                 }
             }
-            world.build = crate::tree::Build::all();
             world.treasury = 1e9;
             Field { world, events: EventQueue::new(), intersections: IntersectionRegistry::new(), id: 0 }
         }

@@ -587,11 +587,7 @@ impl World {
     pub fn placing(&self, kind: BuildingKind, at: GridCoord, facing: Option<u8>) -> Placing {
         const NEAR: [(i32, i32); 9] = [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
         let tried: Vec<Placing> = NEAR.iter().map(|&(dx, dy)| self.turned(kind, GridCoord { x: at.x + dx, y: at.y + dy }, facing)).collect();
-        let mut p = tried.iter().find(|p| p.why.is_none()).unwrap_or(&tried[0]).clone();
-        if !self.build.may_place(kind) {
-            p.why = Some("Not yet opened on the tree".into());
-        }
-        p
+        tried.iter().find(|p| p.why.is_none()).unwrap_or(&tried[0]).clone()
     }
 
     fn turned(&self, kind: BuildingKind, at: GridCoord, facing: Option<u8>) -> Placing {

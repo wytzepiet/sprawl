@@ -222,8 +222,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is
-  forty tiles in from its island's coast. `SPRAWL_ALL=1` opens
-  the whole tree and a bottomless treasury. Any fixed seed gives
+  forty tiles in from its island's coast. `SPRAWL_ALL=1` gives
+  a bottomless treasury. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
   `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole
   map, sixteen tiles to a character.

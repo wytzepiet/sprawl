@@ -305,10 +305,6 @@ fn handle_player_action(
         }
         ClientMessage::Unpin { harbour, pin } => crate::orders::unpin(world, harbour, pin),
         ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
-        ClientMessage::Take(cell) => {
-            let (level, _) = crate::economy::level(world.gdp);
-            world.build.take(cell, level);
-        }
         ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ping | ClientMessage::Ask(_) => {
             unreachable!("handled by Game::command")
         }
@@ -351,9 +347,6 @@ fn build(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
 #[allow(clippy::too_many_arguments)]
 fn place(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
     let refuse = |why: &str| Some(News { text: format!("No room for the {}", format!("{kind:?}").to_lowercase()), sub: why.to_string(), at: 0 });
-    if !world.build.may_place(kind) {
-        return refuse("not yet opened on the tree");
-    }
     let facing = facing.or_else(|| world.facing_for(kind, at)).unwrap_or(2);
     let tiles = match world.fit(kind, at, facing) {
         Ok(tiles) => tiles,
@@ -499,12 +492,8 @@ pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }:
             // Into a building is its door: nothing is laid on its tile, and
             // a through road is no door, nothing fronting onto one.
             let door = ht == 0 && world.occupied.contains_key(&(to.x, to.y));
-            // Each end that is not standing yet is a tile laid.
-            let new_tiles = a.is_none() as u32 + (!door && b.is_none()) as u32;
             !(door && road)
                 && !(tool == Tool::Wide && (sf != MIDDLE || st != MIDDLE))
-                && world.build.may_draw(one_way, road)
-                && world.laid + new_tiles <= world.build.road_tiles()
                 && world.may_lay_at_on(from, hf, sf, to, ht, st, tool, on, then)
         }
         Tool::Light => from == to && b.is_some_and(|id| world.is_intersection(id)),
@@ -1134,7 +1123,6 @@ mod tests {
     #[test]
     fn the_rule_of_where_the_hand_may_go_is_what_it_does() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         let at = |x, y| GridCoord { x, y };
         assert!(world.fit(BuildingKind::House, at(5, 1), 2).is_ok(), "beside the street");
@@ -1155,7 +1143,6 @@ mod tests {
                 let mut events = EventQueue::new();
                 let mut intersections = IntersectionRegistry::new();
                 let mut probe = street();
-                probe.build = crate::tree::Build::all();
                 let edges = probe.edges.len();
                 take_step(&mut probe, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
                 assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
@@ -1169,7 +1156,6 @@ mod tests {
     #[test]
     fn undo_takes_back_a_drag_of_road_and_what_it_paid() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         let depot = build(&mut world, 30, BuildingKind::Depot, 1);
         if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
             b.stocks.get_mut(&Good::Stone).unwrap().level = 2.0;
@@ -1202,7 +1188,6 @@ mod tests {
     #[test]
     fn undo_takes_back_a_placing_and_a_demolition_in_order() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         let depot = build(&mut world, 30, BuildingKind::Depot, 1);
         let shop = build(&mut world, 12, BuildingKind::Shop, 1);
         let mut events = EventQueue::new();
@@ -1235,7 +1220,6 @@ mod tests {
     #[test]
     fn taking_down_what_was_just_built_gives_it_back() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         let depot = build(&mut world, 30, BuildingKind::Depot, 1);
         let mut events = EventQueue::new();
@@ -1274,7 +1258,6 @@ mod tests {
     #[test]
     fn undo_refuses_what_another_has_built_on_and_what_is_old() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1313,7 +1296,6 @@ mod tests {
     #[test]
     fn a_harbour_is_placed_whole_with_its_street() {
         let mut world = bare_coast();
-        world.build = crate::tree::Build::all();
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
@@ -1340,7 +1322,6 @@ mod tests {
     #[test]
     fn a_road_into_a_depot_short_of_its_plot_is_asked_of_no_yard() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
@@ -1354,7 +1335,6 @@ mod tests {
     #[test]
     fn a_house_razed_takes_its_drive_with_it() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1373,7 +1353,6 @@ mod tests {
     #[test]
     fn a_drag_cuts_a_link_and_a_tap_takes_the_point() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1402,7 +1381,6 @@ mod tests {
     #[test]
     fn a_road_is_laid_on_stone_from_the_depot() {
         let mut world = street();
-        world.build = crate::tree::Build::all();
         let depot = build(&mut world, 30, BuildingKind::Depot, 1);
         let stone = |w: &World| building_of(w, depot).stocks[&Good::Stone].level;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
@@ -1978,7 +1956,6 @@ mod tests {
         let mut intersections = IntersectionRegistry::new();
         world.resettle();
         settle_and_wake(&mut world, &mut events);
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         // A command batch as the tick takes it: every step, then one settle.
         let mut timed = |world: &mut World, steps: Vec<Do>| {
@@ -2087,7 +2064,6 @@ mod tests {
         world.resettle();
         settle_and_wake(&mut world, &mut events);
         assert_settled(&world, "the start");
-        world.build = crate::tree::Build::all();
         world.treasury = 1e9;
         let at = |x, y| GridCoord { x, y };
         let mut act = |world: &mut World, d: Do| {
@@ -2160,7 +2136,6 @@ mod tests {
         // The mountain behind the quarry's plot, and the woods behind the
         // sawmill's, beyond the town's forty.
         let mut world = street();
-        world.build = crate::tree::Build::all();
         for (x0, ground) in [(QUARRY_X, TerrainType::Mountain), (SAWMILL_X, TerrainType::Forest)] {
             for x in x0 - 5..x0 + 7 {
                 for y in 5..14 {
@@ -2515,7 +2490,6 @@ mod tests {
     fn a_site_short_of_stone_asks_for_a_quarry_once() {
         use crate::missions::Key;
         let mut world = street();
-        world.build = crate::tree::Build::all();
         for x in QUARRY_X - 5..QUARRY_X + 7 {
             for y in 5..14 {
                 world.terrain.insert((x, y), TerrainType::Mountain);

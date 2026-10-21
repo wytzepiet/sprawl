@@ -165,15 +165,13 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
         world.gdp = meta.gdp;
         world.treasury = meta.treasury;
-        world.build = sprawl::tree::Build::load(meta.taken);
         if !meta.missions.is_empty() {
             world.missions.list = meta.missions;
         }
         world
     };
-    // SPRAWL_ALL: the whole tree and a bottomless treasury, to test any building.
+    // SPRAWL_ALL: a bottomless treasury, to test any building.
     if std::env::var("SPRAWL_ALL").is_ok() {
-        world.build = sprawl::tree::Build::all();
         world.treasury = 1_000_000.0;
     }
     (world, sim_time)
@@ -201,7 +199,6 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
             sim_time,
             gdp: world.gdp,
             treasury: world.treasury,
-            taken: world.build.taken(),
             missions: world.missions.list.clone(),
         },
     );

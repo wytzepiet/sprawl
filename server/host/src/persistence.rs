@@ -4,8 +4,6 @@ use rusqlite::Connection;
 
 use sprawl::protocol::{GameObjectEntry, GameObject};
 
-use sprawl::tree::Cell;
-
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS objects (
     id INTEGER PRIMARY KEY,
@@ -38,8 +36,6 @@ pub struct Meta {
     pub gdp: f64,
     /// The mayor's coins.
     pub treasury: f64,
-    /// The nodes of the tree taken, one metadata row each.
-    pub taken: Vec<Cell>,
     /// The town's missions, open and finished, a row each in order.
     pub missions: Vec<sprawl::missions::Mission>,
 }
@@ -108,17 +104,6 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             .unwrap_or(0)
     };
 
-    let taken = conn
-        .prepare("SELECT key FROM metadata WHERE key LIKE 'taken:%'")
-        .and_then(|mut stmt| {
-            stmt.query_map([], |row| row.get::<_, String>(0))
-                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|k| {
-                    let (x, y) = k.strip_prefix("taken:")?.split_once(',')?;
-                    Some(Cell { x: x.parse().ok()?, y: y.parse().ok()? })
-                }).collect::<Vec<_>>())
-        })
-        .unwrap_or_default();
-
     // A mission this build cannot read is dropped, and opens again if
     // its row still exists.
     let missions = conn
@@ -138,7 +123,6 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             sim_time,
             gdp: read("gdp") as f64 / 100.0,
             treasury: read("treasury") as f64 / 100.0,
-            taken,
         },
     )
 }
@@ -184,7 +168,6 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         .expect("failed to save a mission");
     }
 
-    let taken: Vec<(String, i64)> = meta.taken.iter().map(|c| (format!("taken:{},{}", c.x, c.y), 1)).collect();
     for (key, value) in [
         ("next_id".to_string(), meta.next_id as i64),
         ("terrain_seed".to_string(), meta.terrain_seed as i64),
@@ -192,8 +175,6 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         ("gdp".to_string(), centi(meta.gdp)),
         ("treasury".to_string(), centi(meta.treasury)),
     ]
-    .into_iter()
-    .chain(taken)
     {
         tx.execute(
             "INSERT OR REPLACE INTO metadata (key, value) VALUES (?1, ?2)",

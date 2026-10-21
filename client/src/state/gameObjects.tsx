@@ -274,25 +274,14 @@ const Ctx = createContext<GameContext>();
  *  a level in the browser. Told where to send what the game says. */
 export type Connect = (onMessage: (msg: ServerMessage) => void) => Connection;
 
+/** What the dials and the camera have before the game first says. */
+const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0 };
+const NO_ISLAND: ChunkBounds = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
+
 export function GameProvider(props: ParentProps & { connect: Connect }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
-  const [growth, setGrowth] = createSignal<Growth>({
-    level: 0,
-    toward: 0,
-    needed: 0,
-    gdp: 0,
-    treasury: 0,
-    income: 0,
-    imports: 0,
-    taken: [],
-    road_tiles_left: 0,
-  });
-  const [island, setIsland] = createSignal<ChunkBounds>({
-    min_cx: 0,
-    min_cy: 0,
-    max_cx: -1,
-    max_cy: -1,
-  });
+  const [growth, setGrowth] = createSignal<Growth>(NO_GROWTH);
+  const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
   const { send, close } = props.connect((msg) => {
     switch (msg.type) {
@@ -343,10 +332,8 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
 /** No server behind it: the sandbox, whose camera still asks what it may
  *  see and has no one to tell. */
 export function OfflineGame(props: ParentProps) {
-  const none = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
-  const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0 };
   return (
-    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
+    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => NO_ISLAND, growth: () => NO_GROWTH, send: () => true, getObjectsAt: () => [] }}>
       {props.children}
     </Ctx.Provider>
   );

@@ -574,8 +574,6 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
         treasury: world.treasury,
         income: town.revenue() - town.purchases(),
         imports: town.purchases(),
-        taken: world.build.taken(),
-        road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
     }
 }
 

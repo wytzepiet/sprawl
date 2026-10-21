@@ -21,6 +21,5 @@ pub mod replay;
 pub mod resident;
 pub mod shipping;
 pub mod terrain;
-pub mod tree;
 pub mod undo;
 pub mod world;
