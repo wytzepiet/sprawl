@@ -209,7 +209,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `cd client && bun run wasm` after changing the server (`bun run dev`
   does it on start). A level is `server/levels/<name>.txt` (the format at
   the top of `server/src/level.rs`); `cargo test level` runs every
-  level's own solve and asserts it scores 100. A new level file needs
+  level's own solve and asserts it flows as its `@flow` says, which is
+  what scores 100; when cars change, it says what to write instead. A new level file needs
   Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
   is what it is and what is built. `bun client/scripts/level-look.ts
   <level> [steps.json]` photographs one as it plays, its steps laid, and

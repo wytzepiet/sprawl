@@ -166,8 +166,8 @@ cars: **no mode flag**.
 
 **Cost** is asphalt per tile, a deck tile ×3, a slope ×2, a light as N tiles
 of asphalt. The **reference** is our own solve, shipped with the level
-(it is also its test: `cargo test` asserts it solves). So 100% is "as good
-as ours", and beating us shows as 104%. To argue: whether going over 100 is
+and how it flows (`@flow`; it is also its test: `cargo test` asserts it
+solves and flows so). So 100% is "as good as ours", and beating us shows as 104%. To argue: whether going over 100 is
 a delight or a bug.
 
 **The chart**: a histogram of everyone's efficiency on the level, your bar
@@ -472,7 +472,7 @@ What runs, and where; the rest of the order above is still to come.
   road, driven off its end (`car::spawn::drive_through`).
 - **Levels** (`server/src/level.rs`, `server/levels/*.txt`): gates,
   wants, our own solve (`%` rows, arrows for one-ways, `%#` for priority,
-  `%^h` for a height), Build and Test, a
+  `%^h` for a height) and its flow (`@flow`), Build and Test, a
   jam called by a backed-up gate or a stopped road, efficiency as flow
   and asphalt against our solve's. Every level's solve is its test.
 - **The client** (`client/src/interchange/`): `/interchange` is the map of

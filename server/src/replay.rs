@@ -82,7 +82,7 @@ pub struct Session {
 impl Session {
     /// A level from its name and text, at noon, its traffic running.
     pub fn new(name: &str, text: &str, commit: &str) -> Session {
-        let (level, world) = Level::build(name, text);
+        let (level, world) = Level::parse(name, text);
         let (n, t) = (name.to_string(), text.to_string());
         let again = move || Level::parse(&n, &t).1;
         let mut game = Game::new(world, DAY_MS as u64 / 2, 1, Box::new(again));
