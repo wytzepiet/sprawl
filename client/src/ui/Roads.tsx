@@ -4,7 +4,7 @@ import { priority, setPriority, setTool, tool } from "./buildMode";
 import { GOODS } from "../blueprints";
 import { Press } from "./kit";
 
-/** The road tab's tools: a road is a street with priority. */
+/** The road tools, first in the build menu: a road is a street with priority. */
 export const ROAD_KINDS = [
   { id: "Street", label: "Street", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
   { id: "OneWay", label: "One-way", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
@@ -20,14 +20,14 @@ export type RoadKind = (typeof ROAD_KINDS)[number]["id"];
 export const road = (k: RoadKind) => ROAD_KINDS.find((r) => r.id === k)!;
 export const DEMOLISH = road("Demolish").glyph;
 
-/** What is in hand of the road tab's tools, if any. */
+/** What is in hand of the road tools, if any. */
 export const inHand = (): RoadKind | null => {
   const t = tool();
   return t === "Street" && priority() ? "Road" : t === "Street" || t === "OneWay" || t === "Demolish" ? t : null;
 };
 export const take = (k: RoadKind) => (setPriority(k === "Road"), setTool(k === "Road" ? "Street" : k));
 
-/** The tool last taken: the tab's again. */
+/** The tool last taken: R's again. */
 export const lastRoad = createRoot(() => {
   const [last, setLast] = createSignal<RoadKind>("Street");
   createEffect(() => {
@@ -37,7 +37,8 @@ export const lastRoad = createRoot(() => {
   return last;
 });
 
-/** The road tools in a row, the one in hand in its colour. */
+/** The road tools in a row, the one in hand in its colour: the build
+ *  tab's head while one is in hand. */
 export function RoadsHead() {
   return (
     <box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
@@ -56,24 +57,27 @@ export function RoadsHead() {
   );
 }
 
-/** What the road tools do, drawn up under them. */
+/** The road tools, each with what it does: a tap takes it up. */
 export function RoadsBody() {
   const Item = (props: { k: RoadKind; text: string; stone?: boolean }) => (
-    <box dir="row" align="start" gap={10} pad={{ y: 6 }}>
+    <Press dir="row" align="start" gap={10} pad={{ x: 4, y: 6 }} round={12} fill={inHand() === props.k ? "ink/0.06" : undefined} onTap={() => take(props.k)}>
       <box w={28} h={28} round={14} fill={road(props.k).color} align="center" justify="center">
         <icon d={road(props.k).glyph} size={14} ink="white" />
       </box>
-      <text grow={1} size={13.5} soft lead={1.4}>{props.text}</text>
+      <box grow={1} gap={1}>
+        <text size={14} weight={600}>{road(props.k).label}</text>
+        <text size={13} soft lead={1.4}>{props.text}</text>
+      </box>
       <Show when={props.stone}>
         <box dir="row" align="center" gap={2} pad={{ top: 4 }}>
           <icon d={GOODS.Stone.glyph} size={13} ink="ink/0.6" />
           <text serif size={14} soft>1</text>
         </box>
       </Show>
-    </box>
+    </Press>
   );
   return (
-    <box pad={{ x: 16, bottom: 14 }}>
+    <box pad={{ x: 12, bottom: 14 }}>
       <Item k="Street" stone text="Two ways, a lane each. Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price." />
       <Item k="OneWay" stone text="One lane, the way you drag it." />
       <Item k="Road" stone text="A street with priority: whoever joins or crosses it gives way." />

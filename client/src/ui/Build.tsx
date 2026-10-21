@@ -1,10 +1,11 @@
 /** @jsxImportSource ~ui */
-import { createSignal, For, Index, Show } from "solid-js";
+import { createEffect, createRoot, createSignal, For, Index, Show } from "solid-js";
 import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
 import { Press } from "./kit";
+import { inHand, RoadsBody, RoadsHead } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
 
@@ -81,12 +82,15 @@ const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materi
 
 /** The kinds of building opened, by the menu's own groups. */
 const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
-/** The group shown. */
-const [group, setGroup] = createSignal<Tab>(groups[0].tab);
+/** The group shown: the roads, or a group of buildings. */
+const [group, setGroup] = createSignal<Tab | "roads">("roads");
+// A road taken up, by a key or the head's row, shows the roads.
+createRoot(() => createEffect(() => inHand() && setGroup("roads")));
 
 /**
- * The build tab's head: the menu's groups, a tap on one drawing it up.
- * While a building is in hand, a place to let it go and put it back.
+ * The build tab's head: the roads and the menu's groups, a tap on one
+ * drawing it up. While a road is in hand, the road tools; while a
+ * building is, a place to let it go and put it back.
  */
 export function BuildHead() {
   const [over, setOver] = createSignal(false);
@@ -94,18 +98,20 @@ export function BuildHead() {
     <Show
       when={held()}
       fallback={
-        <box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
-          <For each={groups}>
-            {(g) => {
-              const on = () => group() === g.tab && open();
-              return (
-                <Press grow={1} h={36} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(g.tab), setOpen(true))}>
-                  <text size={13} weight={600} ink={on() ? "glass" : "ink/0.72"}>{g.tab[0].toUpperCase() + g.tab.slice(1)}</text>
-                </Press>
-              );
-            }}
-          </For>
-        </box>
+        <Show when={!inHand()} fallback={<RoadsHead />}>
+          <box dir="row" justify="between" pad={{ x: 12, top: 14, bottom: 12 }}>
+            <For each={["roads" as const, ...groups.map((g) => g.tab)]}>
+              {(t) => {
+                const on = () => group() === t && open();
+                return (
+                  <Press h={36} pad={{ x: 11 }} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(t), setOpen(true))}>
+                    <text size={13} weight={600} ink={on() ? "glass" : "ink/0.72"}>{t[0].toUpperCase() + t.slice(1)}</text>
+                  </Press>
+                );
+              }}
+            </For>
+          </box>
+        </Show>
       }
     >
       <box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
@@ -118,16 +124,17 @@ export function BuildHead() {
 }
 
 /**
- * The build menu, drawn up: every kind of building in the group, a
- * picture of it as it stands, its name and what it is built of. Press on
- * one and drag it onto the map: the sheet sinks to its head, a place to
+ * The build menu, drawn up: the road tools, or every kind of building
+ * in the group, a picture of it as it stands, its name and what it is
+ * built of. Press on one and drag it onto the map: the sheet sinks to its head, a place to
  * let it go and put it back. A tap takes it up to place with a click.
  */
 export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
-  const kinds = () => groups.find((g) => g.tab === group())!.kinds;
+  const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
   return (
+    <Show when={group() !== "roads"} fallback={<RoadsBody />}>
     <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
       <For each={kinds()}>
         {(kind) => (
@@ -150,6 +157,7 @@ export function BuildBody() {
         )}
       </For>
     </box>
+    </Show>
   );
 }
 
