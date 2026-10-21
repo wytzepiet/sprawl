@@ -511,12 +511,11 @@ impl World {
         c.spot = None;
         c.due = now + turn;
         // Each box is paid for at its slot's price, by its partner; one
-        // for a letter counts to it. The pinned slots are booked again.
+        // for a letter counts to it.
         for t in sold {
             crate::orders::sailed(self, &t);
             crate::economy::exported(self, harbour, t.good, t.price * t.units, now);
         }
-        crate::orders::repeat(self, harbour);
         self.set_out(events, ferry, way, true, now);
     }
 

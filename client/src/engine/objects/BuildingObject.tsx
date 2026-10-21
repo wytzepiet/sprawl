@@ -9,20 +9,11 @@ import { KERB_Z } from "../town/draw";
 import { INSET } from "../town/footprint";
 import { eaves } from "../town/mass";
 import { storeysOf } from "../town/grid";
-import { Strip, type RGB } from "./strip";
-import { drawnPath } from "./drawnPath";
+import { keepField } from "./field";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
-import { simNow } from "../../network/clock";
-import type { Building, GameObjectEntry, Job, Tile } from "../../generated";
+import type { Building, GameObjectEntry } from "../../generated";
 
-/** A farm's field is the ground the tractor last drove, a strip a tile
- *  wide along its path, painted flat like a map's farmland in one tone
- *  for the stage the last run left it in — earth, growing, ripe,
- *  stubble — with the furrows along the tractor's path in a shade
- *  darker, lit as the roads and the lots are, and no grid over it. A run paints the
- *  stage it leaves behind the tractor, over the field as it was. */
-export const FIELD_Z = 0.008;
 /** The ferry's berth, out from the quay's edge (`town/draw.ts`): the link
  *  span over its land end, the dolphins it lies between, this far either
  *  side of its middle, out along it, and how far down they stand into the
@@ -48,37 +39,6 @@ const CRANE = hex("#E9B530");
 const WHITE_RGB = hex("#FFFFFF");
 /** Heights in steps of a hundredth, so a site's buckets are few. */
 const round = (h: number) => Math.max(0.01, Math.round(h * 100) / 100);
-/** How long a sown crop takes to ripen, as the server has it. */
-const RIPEN = 600_000;
-const rgb = (c: Rgb): RGB => [c.r, c.g, c.b];
-/** The tone a job leaves behind the tractor: the plough turns the
- *  ground to earth, the harvest leaves stubble, and the seed leaves the
- *  earth as it found it — the green comes with the clock. */
-export const leaves = (theme: Theme, job: Job): RGB | null => (job === "Plough" ? rgb(theme.earth) : job === "Harvest" ? rgb(theme.stubble) : null);
-/** The field's tone between runs: the stage the last run left it in,
- *  which mid-run is the stage of the tiles not yet reached — the ones
- *  longest unchanged — since the run paints the new stage itself. A sown
- *  field grows as one, by the clock from the last tile sown: earth
- *  greening over the first part of the half day, green turning gold
- *  over the rest, ripe when the server counts it ripe too. */
-export function fieldTone(theme: Theme, land: Tile[]): RGB | null {
-  const oldest = land.reduce<Tile | null>((a, t) => (a === null || t.since < a.since ? t : a), null);
-  switch (oldest?.stage) {
-    case "Ploughed": return rgb(theme.earth);
-    case "Cut": return rgb(theme.stubble);
-    case "Sown": {
-      const since = Math.max(...land.filter((t) => t.stage === "Sown").map((t) => t.since));
-      const k = Math.min(1, Math.max(0, (simNow() - since) / RIPEN));
-      const mix = (a: Rgb, b: Rgb, t: number): RGB => rgb(lerp(a, b, t));
-      return k < 0.6 ? mix(theme.earth, theme.growing, k / 0.6) : mix(theme.growing, theme.ripe, (k - 0.6) / 0.4);
-    }
-    default: return null;
-  }
-}
-/** The field along a path over the land, in a tone. */
-export const field = (ctx: EngineContext, drawn: NonNullable<ReturnType<typeof drawnPath>>, land: Set<string>, z: number, tone: RGB) =>
-  new Strip(ctx, drawn, (x, y) => land.has(`${x},${y}`), z, tone);
-
 /**
  * What a building lays on the ground past its own walls, which the town
  * grid does not draw: a harbour's quay out over the water and the boxes in
@@ -180,26 +140,13 @@ export function mountBuilding(
     frame("weight", [0.09, 0.08, 0.05], STEEL, ca - 0.12, co, KERB_Z + 0.025 + mast - 0.02);
   }
 
-  // A farm's field: the ground its tractor last drove over, along the
-  // path it drove, in the tone the last run left. Every run works the
-  // same ground, so the last run's path is the field. Repainted now and
-  // then while the crop ripens, so it is seen to turn.
-  const drawn = data.ruts.length > 1 ? drawnPath(data.ruts.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 })), 0, 0, 0) : null;
-  const tone = fieldTone(theme, data.land);
-  const strip = drawn && tone ? field(ctx, drawn, new Set(data.land.map((t) => `${t.at.x},${t.at.y}`)), FIELD_Z, tone) : null;
-  let painted = performance.now();
-  const stop = strip && data.land.some((t) => t.stage === "Sown" && simNow() - t.since < RIPEN)
-    ? ctx.beforeRender(() => {
-        if (performance.now() - painted < 500) return;
-        painted = performance.now();
-        strip.paint(fieldTone(theme, data.land)!);
-      })
-    : null;
+  // A farm's field: its land, worked as its tractor last left it, or as
+  // it is working it now.
+  const field = data.land.length ? keepField(ctx, pool.casters, entry.id, data.land, data.ruts, theme) : null;
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
     for (const box of boxes) box.remove();
-    stop?.();
-    strip?.dispose();
+    field?.();
   };
 }

@@ -112,6 +112,7 @@ impl Game {
         // Objects come with the first SetChunks.
         let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
         self.send(id, update);
+        self.send(id, ServerMessage::Market(self.world.market.prices()));
         self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default() });
     }
 
@@ -210,6 +211,12 @@ impl Game {
         }
         let clk = self.clock();
         flush_dirty(&mut self.world, &mut self.clients, &mut self.outbox, clk);
+        if std::mem::take(&mut self.world.market.changed) {
+            let prices = self.world.market.prices();
+            for &id in self.clients.keys() {
+                self.outbox.push((id, ServerMessage::Market(prices.clone())));
+            }
+        }
         wakes
     }
 
@@ -231,6 +238,7 @@ impl Game {
             handle_wake(&mut self.world, &mut self.events, &mut self.intersections, id, self.now);
             wakes += 1;
         }
+        crate::market::hour(&mut self.world, &mut self.events, self.now);
         // Before the flush, which takes the lumps a mission reads.
         crate::missions::check(&mut self.world, self.now);
         wakes
@@ -303,15 +311,16 @@ fn handle_player_action(
                 park_at_home(world, intersections, events, car_id);
             }
         }
-        ClientMessage::Book { harbour, good, partner, out } => {
-            crate::orders::book(world, harbour, good, partner, out);
+        ClientMessage::Trade { good, boxes, out } => {
+            crate::market::trade(world, good, out, boxes);
             crate::haul::call_lorries(world, events);
         }
-        ClientMessage::Pin { harbour, good, partner, out } => {
-            crate::orders::pin(world, harbour, good, partner, out);
+        ClientMessage::Send { letter, boxes } => {
+            crate::orders::send(world, letter, boxes);
             crate::haul::call_lorries(world, events);
         }
-        ClientMessage::Unpin { harbour, pin } => crate::orders::unpin(world, harbour, pin),
+        ClientMessage::Order { good, out, boxes, price } => crate::market::order(world, good, out, boxes, price),
+        ClientMessage::Cancel { order } => crate::market::cancel(world, order),
         ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
         ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) => {
             unreachable!("handled by Game::command")
@@ -946,7 +955,7 @@ mod tests {
     use super::*;
     use std::time::Instant;
     use crate::calls;
-    use crate::protocol::{BuildingKind, Good, GridCoord, TerrainType};
+    use crate::protocol::{BuildingKind, Good, GridCoord, Leg, TerrainType};
 
     /// What a test's hand does: a step of road or the demolisher, or a
     /// building placed whole round a tile, the first way it fits.
@@ -956,8 +965,8 @@ mod tests {
         Place(BuildingKind, GridCoord),
         /// The building on a tile taken down whole.
         Raze(GridCoord),
-        /// A slot of a harbour's deck booked: a good, a partner, going out.
-        Book(EntityId, Good, Option<crate::orders::Mayor>, bool),
+        /// A box a letter wants, sent.
+        Send(u64),
     }
 
     /// The hand's act done, as the loop does it; a building refused is a
@@ -967,7 +976,7 @@ mod tests {
             Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
             Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
             Do::Raze(at) => ClientMessage::Raze { building: world.occupied[&(at.x, at.y)] },
-            Do::Book(harbour, good, partner, out) => ClientMessage::Book { harbour, good, partner, out },
+            Do::Send(letter) => ClientMessage::Send { letter, boxes: 1 },
         };
         let news = handle_player_action(world, events, intersections, 0, message, now);
         if let Do::Place(kind, at) = d {
@@ -1761,12 +1770,28 @@ mod tests {
         world.resettle();
         settle_and_wake(&mut world, &mut events);
         assert!(!world.harbours.is_empty(), "no harbour, or nobody can arrive at all");
-        // The deck pinned: a box of fuel in from the world every sailing,
-        // which nothing in town makes, and a box of the farm's crates out.
-        for h in world.harbours.keys().copied().collect::<Vec<_>>() {
-            crate::orders::pin(&mut world, h, Good::Fuel, None, false);
-            crate::orders::pin(&mut world, h, Good::Crates, None, true);
-        }
+        // The mayor at the market as each ferry casts off, looked for every
+        // hour: a box of fuel bought, which nothing in town makes, once the
+        // last is off the border; and a box of the farm's crates sold, once
+        // the last is loaded.
+        let mut berthed = false;
+        let mut market = |world: &mut World, events: &mut EventQueue, exporting: bool| {
+            let ferry = world.ferry_of(harbour_of(world)).expect("the harbour's ferry");
+            let was = std::mem::replace(&mut berthed, car_of(world, ferry).spot.is_some());
+            if !was || berthed {
+                return;
+            }
+            let boxes = crate::haul::boxes(world);
+            if !boxes.iter().any(|(t, l, _)| !t.outbound && t.good == Good::Fuel && matches!(l, Leg::Booked | Leg::Aboard | Leg::Parked)) {
+                crate::market::trade(world, Good::Fuel, false, 1);
+            }
+            let harbour = harbour_of(world);
+            if exporting && !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Crates) {
+                crate::market::trade(world, Good::Crates, true, 1);
+            }
+            crate::haul::call_lorries(world, events);
+        };
+        let mut exporting = false;
         let mut wakes = 0;
         let mut now = 0;
         let end = days * DAY_MS as u64;
@@ -1774,7 +1799,12 @@ mod tests {
         // that turns it, with the midnight wake taken.
         for day in 1..=days {
             let midnight = day * DAY_MS as u64;
-            while step_counting(&mut world, &mut events, &mut intersections, &mut now, midnight.min(end), &mut wakes) {}
+            for hour in 1..=24 {
+                crate::market::hour(&mut world, &mut events, now);
+                market(&mut world, &mut events, exporting);
+                let to = (midnight - DAY_MS as u64 + hour * crate::market::HOUR).min(end);
+                while step_counting(&mut world, &mut events, &mut intersections, &mut now, to, &mut wakes) {}
+            }
             // A town that gridlocks is not a town being measured: nobody is
             // a day late for anything. Two driveways two tiles apart held
             // each other for good on the third day, once the offices' cars
@@ -1785,6 +1815,9 @@ mod tests {
             // once the opening is done.
             crate::missions::check(&mut world, now);
             each_day(&world, day, wakes);
+            if !exporting && world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm && b.stocks[&Good::Crates].level > 0.0)) {
+                exporting = true;
+            }
             let steps = hand(&world, day);
             if !steps.is_empty() {
                 for d in steps {
@@ -2134,10 +2167,10 @@ mod tests {
             let depot = world.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).unwrap();
             let harbour = harbour_of(world);
             // Waiting at the harbour, and booked tonight for a letter before this one.
-            let queued = |g: Good, steps: &Steps| (building_of(world, harbour).outgoing.iter().filter(|t| t.good == g).count() + steps.iter().filter(|d| matches!(d, Do::Book(_, s, _, true) if *s == g)).count()) as f64;
-            for o in crate::orders::offers(world).into_iter().filter(|o| o.letter.is_some()) {
+            let queued = |g: Good, steps: &Steps| (building_of(world, harbour).outgoing.iter().filter(|t| t.good == g).count() + steps.iter().filter(|d| matches!(d, Do::Send(l) if crate::orders::letters(world).iter().any(|o| o.letter == *l && o.good == g))).count()) as f64;
+            for o in crate::orders::letters(world) {
                 let spare = (building_of(world, depot).stocks[&o.good].level / o.good.per_box()).floor() - 1.0 - queued(o.good, &steps);
-                steps.extend((0..(o.boxes.unwrap_or(0) as f64).min(spare).max(0.0) as usize).map(|_| Do::Book(harbour, o.good, o.partner, true)));
+                steps.extend((0..(o.boxes as f64).min(spare).max(0.0) as usize).map(|_| Do::Send(o.letter)));
             }
             steps
         };
@@ -2360,18 +2393,19 @@ mod tests {
         assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());
         assert_eq!(yard(&world), 0.0, "something landed in the yard before a harvest");
         assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.run.is_none() && c.trip.is_none()), "the tractor is not home");
-        // The second day: seeded. The third: ripe by morning, harvested
-        // by evening, a harvest in the yard, and a lorry from beyond the
-        // edge called for it.
+        // The second day: seeded. The third, growing; the fourth: ripe by
+        // morning, harvested by evening, a harvest in the yard, and a lorry
+        // from beyond the edge called for it.
         pump(&mut world, &mut events, &mut intersections, 20 * day / 24, day + 20 * day / 24);
         assert!(stages(&world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&world));
         assert_eq!(yard(&world), 0.0);
-        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 2 * day + 7 * day / 24);
-        // Ripe by the third morning, and cut that day: the whole harvest
+        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 3 * day + 5 * day / 24);
+        assert_eq!(yard(&world), 0.0, "a harvest before the crop was ripe");
+        // Ripe by the fourth morning, and cut that day: the whole harvest
         // in the yard by evening, or already on its way to the world.
         let mut harvest = 0.0f64;
-        let mut t = 2 * day + 7 * day / 24;
-        while step(&mut world, &mut events, &mut intersections, &mut t, 3 * day + 20 * day / 24) {
+        let mut t = 3 * day + 5 * day / 24;
+        while step(&mut world, &mut events, &mut intersections, &mut t, 4 * day + 20 * day / 24) {
             harvest = harvest.max(yard(&world));
         }
         assert!((harvest - stages(&world).len() as f64 * crop).abs() < 1e-6, "the harvest came to {harvest}, not a yard's worth");
@@ -2379,7 +2413,7 @@ mod tests {
         // Then the depot's shelf runs low: its lorry fetches from the farm,
         // and no coin moves. The clock goes on from where the world is: an
         // event queue is not pumped backwards.
-        let now = 3 * day + 20 * day / 24;
+        let now = 4 * day + 20 * day / 24;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
             b.stocks.get_mut(&Good::Crates).unwrap().level = 300.0;
         }
@@ -2691,7 +2725,7 @@ mod tests {
         assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Crates), "Tam's letter, for crates");
         let (crate::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
         let before = (world.treasury, standing(&world, Mayor::Tam));
-        assert!(crate::orders::book(&mut world, harbour, Good::Crates, Some(Mayor::Tam), true), "no slot for Tam");
+        assert_eq!(crate::orders::send(&mut world, id, 1), 1, "no slot for Tam");
         crate::haul::call_lorries(&mut world, &mut events);
         let mut now = 0;
         let mut marked = false;
@@ -2860,35 +2894,28 @@ mod tests {
         }
         assert!(rolled > 0, "no settler was seen rolling off the deck");
         assert!(settlers.iter().all(|&id| at_of(&world, id) == Some(house)), "the settlers never got home");
-        // The opening done, and paid; the trunk opens on the deck: a box
-        // booked in, a slot pinned.
+        // The opening done, and paid; the trunk opens on the market: a box
+        // bought.
         let before = world.treasury;
         assert_eq!(opening(&mut world, now), [true; 5], "the settlers came");
         assert!((world.treasury - before - 100.0).abs() < 1e-9, "the opening paid {}", world.treasury - before);
         let trunk = |world: &mut World, now| missions(world, now).into_iter().map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
         assert_eq!(trunk(&mut world, now), [(Key::Opening, true), (Key::Book, false)]);
-        handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Book { harbour, good: Good::Timber, partner: None, out: false }, now);
-        assert_eq!(trunk(&mut world, now)[1..], [(Key::Book, true), (Key::Pin, false)]);
-        // Mira's stone, cheaper than the world's.
-        let mira = crate::orders::offers(&world).into_iter().find(|o| o.good == Good::Stone && !o.out).unwrap();
-        assert_eq!(mira.partner, Some(crate::orders::Mayor::Mira), "the world's stone came before Mira's");
-        handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Pin { harbour, good: Good::Stone, partner: mira.partner, out: false }, now);
-        assert_eq!(trunk(&mut world, now)[2..], [(Key::Pin, true), (Key::Sell, false)]);
-        let booked = |w: &World| crate::haul::boxes(w).iter().filter(|(t, ..)| t.good == Good::Stone && t.partner == mira.partner).count();
-        assert_eq!(booked(&world), 1, "the pin booked no stone");
+        let price = world.market.price(Good::Timber);
+        handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Trade { good: Good::Timber, boxes: 1, out: false }, now);
+        assert_eq!(trunk(&mut world, now)[1..], [(Key::Book, true), (Key::Sell, false)]);
+        assert!(world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
-        // A box of crates sold: out on the ferry, paid as it casts off;
-        // and the pin books Mira's stone again.
+        // A box of crates sold: out on the ferry, paid as it casts off.
         let before = world.treasury;
-        handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Book { harbour, good: Good::Crates, partner: None, out: true }, now);
+        handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::Trade { good: Good::Crates, boxes: 1, out: true }, now);
         let until = now + 2 * turn;
         while world.town.on(now).sold.get(&Good::Crates).is_none() && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
         let sold = world.town.on(now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
-        // What the depot spares over its own shelf, at the world's price.
-        assert!(sold > 0.0 && sold <= crate::economy::export(Good::Crates, 100.0) + 1e-6, "the box went out for {sold}");
+        // What the depot spares over its own shelf, at the market's price less freight.
+        assert!(sold > 0.0 && sold <= 100.0 * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the box went out for {sold}");
         assert!(world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
-        assert_eq!(trunk(&mut world, now)[3], (Key::Sell, true), "the box sold");
-        assert!(booked(&world) >= 2, "the pin did not book again as the ferry cast off");
+        assert_eq!(trunk(&mut world, now)[2], (Key::Sell, true), "the box sold");
         let _ = before;
     }
 

@@ -85,10 +85,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   stops delivering shows here before it shows in play.
 - **The opening, end to end:** `cargo test the_opening` plays it: the
   starter pack lands, the lorry fetches, a house waits for its timber,
-  its settlers come on the next ferry, a slot booked and one pinned, a
+  its settlers come on the next ferry, a box bought at the market, a
   box sold is paid for.
-  In a running game, `curl localhost:4801/sea` is the border as the server
-  has it, and `bun run act book|pin|unpin` work the deck by hand;
+  In a running game, `curl localhost:4801/sea` is the border and the
+  market as the server has it, and `bun run act buy|sell|send|order|cancel`
+  work them by hand;
   `bun run act missions` lists the town's missions (`docs/missions.md`).
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
@@ -129,6 +130,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--live x,y[,r]` the running game round a tile (from `/map`), numbered
   in the game's own tiles and drawn as the town grid will draw it. Most
   layout questions need only this; photographs are for light and height.
+- **The tractor's runs:** `bun run fields [name]` drives the sweep over
+  the fields in `server/fields/*.txt` (fixture text, each a farm on a
+  street with something awkward round it: forest, coast, a pond, houses,
+  a road), prints steps a tile, tiles driven again and turns, asserts
+  the run is short and the headland its own pass, and draws each run,
+  blue to red, on `.dev/fields/sheet.png`. Change the routing against it.
 - **The mayor's hand:** `bun run act road 7,78 7,85 0,85`, `build House
   5,86` (placed whole round the tile, the first way it fits; `build
   Depot 5,86 1` turned that way), `demolish 5,86` (the road there),

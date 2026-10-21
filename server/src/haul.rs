@@ -374,12 +374,11 @@ pub fn sea(world: &World) -> Sea {
                 lands: world.next_ferry(harbour).and_then(|f| world.next_call(f))?,
                 turn: world.turn(harbour)?,
                 outgoing: h.outgoing.clone(),
-                pins: h.pins.clone(),
             })
         })
         .collect();
     let lanes = world.lanes.as_ref().map_or(Vec::new(), |lanes| world.lines.values().flat_map(|l| &l.legs).flat_map(|leg| lanes.drawn(leg)).collect());
-    Sea { shipments, sailings, lanes, offers: crate::orders::offers(world) }
+    Sea { shipments, sailings, lanes, letters: crate::orders::letters(world) }
 }
 
 /// A depot's lorries, by id.
@@ -437,5 +436,7 @@ pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
             _ => None,
         })
         .collect();
-    json!({ "now": now, "summary": sea(world), "harbours": harbours, "lorries": lorries })
+    let mut market = world.market.prices();
+    market.goods.iter_mut().for_each(|q| q.history.clear());
+    json!({ "now": now, "summary": sea(world), "market": market, "harbours": harbours, "lorries": lorries })
 }

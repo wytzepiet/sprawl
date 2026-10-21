@@ -65,8 +65,9 @@ SQLite JSON shape, the wire format and the TypeScript types.
 
 ## Persistence
 
-SQLite, one table of objects as JSON, one of metadata. Only dirty objects
-are written, once a second, in one transaction. Trips are not saved: a
+SQLite, a row of JSON for each object and one for the rest of the world
+(the clock, the coins, the missions, the market's week). Only dirty
+objects are written, with that row, once a second, in one transaction. Trips are not saved: a
 loaded world is people standing still until they think. Terrain is not
 saved: it comes from the seed.
 

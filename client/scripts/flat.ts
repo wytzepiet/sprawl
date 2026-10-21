@@ -23,8 +23,7 @@ import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { mkdirSync } from "node:fs";
 import { args, flag, PORT, ROOT, word } from "./lib";
 import "./tsx";
-import type { GameObjectEntry, Lane, Mission, Operation, ServerMessage, TerrainChunk } from "../src/generated";
-import type { Neighbour } from "../src/generated/Neighbour";
+import type { GameObjectEntry, Lane, Mission, Neighbour, Operation, ServerMessage, TerrainChunk } from "../src/generated";
 
 const t0 = performance.now();
 const { drawFlat } = await import("../src/flat/draw");

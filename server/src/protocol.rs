@@ -296,9 +296,6 @@ pub struct Building {
     /// with the good to fill (`haul::lorry_wake`).
     #[serde(default)]
     pub outgoing: Vec<Trailer>,
-    /// A harbour's pinned slots, booked again for every sailing.
-    #[serde(default)]
-    pub pins: Vec<Pin>,
     /// Lorries bought for it beyond the one its row comes with.
     #[serde(default)]
     pub lorries: u8,
@@ -409,7 +406,6 @@ impl Building {
             site: (!materials.is_empty()).then(|| materials.iter().map(|&(g, n)| (g, crate::needs::Stock { level: 0.0, cap: n as f64 })).collect()),
             park: Vec::new(),
             outgoing: Vec::new(),
-            pins: Vec::new(),
             lorries: 0,
             land: Vec::new(),
             ruts: Vec::new(),
@@ -577,19 +573,6 @@ pub struct Trailer {
     pub price: f64,
 }
 
-/// A slot of the ferry's deck the mayor has pinned: a box of this good
-/// from or for this partner, booked again for every sailing
-/// (docs/trade.md §The deck).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Pin {
-    #[ts(type = "number")]
-    pub id: u64,
-    pub good: Good,
-    pub partner: Option<crate::orders::Mayor>,
-    pub out: bool,
-}
-
 /// A dock of a harbour's trailer park: where a box stands in it, a
 /// lorry's tail to the quay, and the box, if one is there.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
@@ -705,9 +688,8 @@ pub struct Sailing {
     /// From casting off to berthing again, by the line's timetable.
     #[ts(type = "number")]
     pub turn: u64,
-    /// Slots going out not yet filled, and the pinned slots.
+    /// Slots going out not yet filled.
     pub outgoing: Vec<Trailer>,
-    pub pins: Vec<Pin>,
 }
 
 /// The sea's part of an update: every shipment on its way, every
@@ -720,9 +702,9 @@ pub struct Sea {
     pub sailings: Vec<Sailing>,
     #[serde(default)]
     pub lanes: Vec<Lane>,
-    /// Every deal on offer for a slot of the deck.
+    /// What the open letters still want.
     #[serde(default)]
-    pub offers: Vec<crate::orders::Offer>,
+    pub letters: Vec<crate::orders::Letter>,
 }
 
 /// A stretch of a line's way as it lies on the map (`shipping::lanes`):
@@ -1023,12 +1005,13 @@ pub enum ClientMessage {
     /// The player's last action taken back (`undo.rs`).
     Undo,
     DespawnAllCars,
-    /// A box on a harbour's next sailing: of this good, from or for this
-    /// partner (None, the world), in or out (`orders::book`).
-    Book { #[ts(type = "number")] harbour: EntityId, good: Good, partner: Option<crate::orders::Mayor>, out: bool },
-    /// The same, booked again for every sailing.
-    Pin { #[ts(type = "number")] harbour: EntityId, good: Good, partner: Option<crate::orders::Mayor>, out: bool },
-    Unpin { #[ts(type = "number")] harbour: EntityId, #[ts(type = "number")] pin: u64 },
+    /// Boxes of a good bought from the market or sold to it (`market::trade`).
+    Trade { good: Good, boxes: u32, out: bool },
+    /// Boxes a letter wants, sent (`orders::send`).
+    Send { #[ts(type = "number")] letter: u64, boxes: u32 },
+    /// Boxes bought once the price falls to this, or sold once it rises to it.
+    Order { good: Good, out: bool, boxes: u32, price: f64 },
+    Cancel { #[ts(type = "number")] order: u64 },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
@@ -1093,6 +1076,9 @@ pub struct Growth {
     /// over it is days of imports left.
     pub income: f64,
     pub imports: f64,
+    /// Every standing depot's shelves added up, wherever the camera is:
+    /// none, no depot yet.
+    pub held: std::collections::BTreeMap<Good, crate::needs::Stock>,
 }
 
 /// Something landing on a building: coins as goods cross the border, a
@@ -1153,6 +1139,9 @@ pub enum ServerMessage {
     News(Vec<News>),
     /// The answer to an `Ask`.
     Hint(Hint),
+    /// The market's prices, its week and the orders waiting: on joining,
+    /// and whenever they change.
+    Market(crate::market::Prices),
 }
 
 /// A line of news, and the building a tap on it goes to.

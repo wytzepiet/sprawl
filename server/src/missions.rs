@@ -24,7 +24,6 @@ use crate::world::World;
 pub enum Key {
     Opening,
     Book,
-    Pin,
     Sell,
     Pump,
     Quarry,
@@ -50,8 +49,6 @@ pub enum Goal {
     Settled,
     /// A box booked to come in on the deck.
     Booked,
-    /// A slot of the deck pinned.
-    Pinned,
     /// Something sold over the sea.
     Sold,
     /// So many units of a good sailed for an order's town: counted by the
@@ -148,22 +145,15 @@ const ROWS: &[Row] = &[
     Row {
         key: Key::Book,
         when: When::After(Key::Opening),
-        title: "Book the ferry",
-        steps: &[(Goal::Booked, "Book a box of timber", "Tap the harbour: the ferry's deck has slots coming in and going out. Tap an empty slot coming in, pick timber, and pick who from: the world, or a mayor whose town makes it, for less. It lands on the next sailing, and the nearest depot with room fetches it.")],
-        reward: Reward::Coins(25.0),
-    },
-    Row {
-        key: Key::Pin,
-        when: When::After(Key::Book),
-        title: "Pin a slot",
-        steps: &[(Goal::Pinned, "Pin a box of stone", "Roads are laid on stone, and what the depot lacks comes express, at twice the price. Pin a slot of stone coming in, and it is booked again every sailing: one less thing to think of. Unpin it when the town makes its own.")],
+        title: "The market",
+        steps: &[(Goal::Booked, "Buy a box of timber", "Open the market: each good has a price that moves, and a graph of it. Tap timber and buy a box. It comes on the next ferry, and the nearest depot with room fetches it. Buying pushes the price up a little, and freight is on top.")],
         reward: Reward::Coins(25.0),
     },
     Row {
         key: Key::Sell,
-        when: When::After(Key::Pin),
+        when: When::After(Key::Book),
         title: "Sell over the sea",
-        steps: &[(Goal::Sold, "Sell a box of crates", "Book a slot going out: crates, for the world, or for a mayor whose letter asks for them, at a better price. A depot's lorry takes a box to the park, and the coins land as the ferry casts off.")],
+        steps: &[(Goal::Sold, "Sell a box of crates", "Sell crates at the market, or send them to a mayor whose letter asks for them, at a better price. A depot's lorry takes a box to the park, and the coins land as the ferry casts off.")],
         reward: Reward::Coins(25.0),
     },
     Row {
@@ -259,13 +249,6 @@ pub fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
     })
 }
 
-fn harbours(world: &World) -> impl Iterator<Item = &Building> {
-    world.harbours.keys().filter_map(|&h| match world.objects.get(h).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => Some(b),
-        _ => None,
-    })
-}
-
 /// Is the fact true of the town now.
 fn met(world: &World, goal: Goal) -> bool {
     match goal {
@@ -274,7 +257,6 @@ fn met(world: &World, goal: Goal) -> bool {
         Goal::Fetched => depots(world).any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
         Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
         Goal::Booked => crate::haul::boxes(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
-        Goal::Pinned => harbours(world).any(|b| !b.pins.is_empty()),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
         Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
     }
@@ -285,7 +267,7 @@ fn at(world: &World, goal: Goal) -> Option<EntityId> {
     match goal {
         Goal::Stands(_) | Goal::Settled => None,
         // The deck is the harbour's.
-        Goal::Booked | Goal::Pinned | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
+        Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
         _ => depots(world).next().map(|(id, _)| id),
     }
 }

@@ -142,6 +142,8 @@ pub struct World {
     pub placed: Vec<crate::undo::Placed>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
+    /// The market's prices and the orders waiting on them (`market.rs`). Saved.
+    pub market: crate::market::Market,
 }
 
 use crate::protocol::GridCoord;
@@ -201,6 +203,7 @@ impl World {
             undo: HashMap::default(),
             placed: Vec::new(),
             missions: Default::default(),
+            market: Default::default(),
         }
     }
 

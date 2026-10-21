@@ -49,7 +49,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), DAY_MS as GameTime / 2) } else { load_world(&db) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&db) };
     if let Some(dir) = &fixtures {
         sprawl::fixtures::build(&mut world, Path::new(dir));
     } else {
@@ -152,6 +152,7 @@ fn load_world(db: &persistence::Db) -> (World, GameTime) {
         if !meta.missions.is_empty() {
             world.missions.list = meta.missions;
         }
+        world.market = meta.market;
         world
     };
     // SPRAWL_ALL: a bottomless treasury, to test any building.
@@ -174,6 +175,7 @@ fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
         gdp: world.gdp,
         treasury: world.treasury,
         missions: world.missions.list.clone(),
+        market: world.market.clone(),
     };
     db.save(&changed, &removed, &meta);
     if !changed.is_empty() || !removed.is_empty() {

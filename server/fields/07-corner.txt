@@ -1,0 +1,32 @@
+# Hemmed in
+# Woods behind on one side and one flank: the field an L round them.
+....................................
+====================================
+................BBB.....TTTTTTTTTTTT
+................BBB.....TTTTTTTTTTTT
+................BBB.....TTTTTTTTTTTT
+................BBB.....TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+........................TTTTTTTTTTTT
+TTTTTTTTTTTTT...........TTTTTTTTTTTT
+TTTTTTTTTTTTTT..........TTTTTTTTTTTT
+TTTTTTTTTTTT............TTTTTTTTTTTT
+TTTTTTTTTTTTT...........TTTTTTTTTTTT
+TTTTTTTTTTTTTT..........TTTTTTTTTTTT
+TTTTTTTTTTTT............TTTTTTTTTTTT
+TTTTTTTTTTTTT...........TTTTTTTTTTTT
+TTTTTTTTTTTTTT..........TTTTTTTTTTTT
+TTTTTTTTTTTT............TTTTTTTTTTTT
+TTTTTTTTTTTTT...........TTTTTTTTTTTT
+TTTTTTTTTTTTTT..........TTTTTTTTTTTT
+TTTTTTTTTTTT............TTTTTTTTTTTT
+TTTTTTTTTTTTT...........TTTTTTTTTTTT
+TTTTTTTTTTTTTT..........TTTTTTTTTTTT
+TTTTTTTTTTTT............TTTTTTTTTTTT
+TTTTTTTTTTTTT...........TTTTTTTTTTTT
+TTTTTTTTTTTTTT..........TTTTTTTTTTTT

@@ -1,22 +1,14 @@
 /** @jsxImportSource ~ui */
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { builtVersion, eachEntity } from "../state/gameObjects";
+import { stocks } from "../state/market";
 import { aim } from "./buildMode";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { onMap } from "./kit";
 import type { Good } from "../generated";
 
-/** What the town has of a good: on its standing depots' shelves; or,
- *  asked of none, how many depots stand. */
-function inTown(good: Good | null): number {
-  let n = 0;
-  eachEntity((e) => {
-    if (e.object.kind !== "Building") return;
-    const b = e.object.data;
-    if (b.kind === "Depot" && !b.site) n += good ? (b.stocks[good]?.level ?? 0) : 1;
-  });
-  return n;
-}
+/** What the town has of a good on its standing depots' shelves; or,
+ *  asked of none, whether a depot stands. */
+const inTown = (good: Good | null) => (good ? (stocks()[good]?.level ?? 0) : Object.keys(stocks()).length);
 
 /** The building in hand's tag, over the far edge of its plot: its name,
  *  what it takes against what the town has, and whether it may be let go
@@ -24,7 +16,6 @@ function inTown(good: Good | null): number {
 export default function Held() {
   const lines = createMemo(() => {
     const p = aim();
-    builtVersion();
     // The town's first depot stands at once, for nothing.
     if (!p || (p.kind === "Depot" && !inTown(null))) return [];
     return (Object.entries(BLUEPRINTS[p.kind].materials) as [Good, number][]).map(([good, n]) => ({ good, n, have: inTown(good) }));

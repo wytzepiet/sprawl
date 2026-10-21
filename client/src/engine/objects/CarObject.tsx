@@ -10,14 +10,12 @@ import { simNow } from "../../network/clock";
 import { SOLID, type Look } from "./look";
 import type { Fix } from "./drawnPath";
 import type { Theme } from "../theme";
-import type { Strip } from "./strip";
-import { field, FIELD_Z, leaves } from "./BuildingObject";
+import { running as runs } from "./field";
 import { CAR, ROAD_Z, VAN } from "./roadGeometry";
 import { behind, boxShape, type BoxPart, DECK_Z, rigidShape, deckPose, FERRY_SHAPE, LORRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
 import type { Drive, Pose } from "./driver";
 import { aboard, ahead, carried, colourOf, driveOf, forgetDrive, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
-import { getEntity } from "../../state/gameObjects";
-import type { Building, Car, GameObjectEntry, Pose as Stand } from "../../generated";
+import type { Car, GameObjectEntry, Pose as Stand } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 import { HALF_LEVEL, heightAlong } from "../decks";
 import { beam, unbeam } from "../lights";
@@ -135,28 +133,20 @@ export function mountCar(
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
   parts.set(entry.id, [{ key: bucket, id: instanceId }]);
-  // On a run the ground turns behind the tractor to what the job leaves
-  // — earth under the plough, stubble behind the harvest — over the
-  // farm's land and nowhere else, laid over the field as it was.
-  let strip: Strip | null = null;
-  const tone = car.run && leaves(theme, car.run.job);
-  if (tone) {
-    const farm = getEntity(car.owner);
-    const land = new Set(farm?.object.kind === "Building" ? (farm.object.data as Building).land.map((t) => `${t.at.x},${t.at.y}`) : []);
-    strip = field(ctx, run!.drawn, land, FIELD_Z + 0.002, tone);
-  }
+  // On a run the farm's field turns behind the tractor to what the job
+  // leaves (`field.ts`).
+  if (car.run) runs.set(car.owner, car.run);
   const stop = ctx.beforeRender(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
     beam(entry.id, result.pos[0], result.pos[1], result.pos[2], result.rot[2] + Math.PI / 2);
-    strip?.reach(result.dist);
   });
   return () => {
     stop();
     unbeam(entry.id);
     pool.removeInstance(bucket, instanceId);
-    strip?.dispose();
+    if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
     carPoses.delete(entry.id);
     parts.delete(entry.id);
   };

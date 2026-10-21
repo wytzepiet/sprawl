@@ -9,6 +9,7 @@ import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
+import { hearMarket, hearStocks } from "./market";
 import { hearMissions } from "./missions";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
@@ -265,7 +266,7 @@ const Ctx = createContext<GameContext>();
 export type Connect = (onMessage: (msg: ServerMessage) => void) => Connection;
 
 /** What the dials and the camera have before the game first says. */
-const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0 };
+const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, held: {} };
 const NO_ISLAND: ChunkBounds = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
 
 export function GameProvider(props: ParentProps & { connect: Connect }) {
@@ -279,6 +280,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         syncFromClock(msg.data.clock);
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
+        hearStocks(msg.data.growth.held);
         hearSea(msg.data.sea);
         hearMissions(msg.data.missions, msg.data.neighbours);
         // Many at once when the view travels: spread over frames, in order.
@@ -308,6 +310,9 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         break;
       case "Hint":
         for (const f of hintListeners) f(msg.data);
+        break;
+      case "Market":
+        hearMarket(msg.data);
         break;
     }
   });

@@ -56,7 +56,11 @@ const ROOM = 200;
 const SEA_GLASS: [number, number, number] = [0.62, 0.86, 0.82];
 const COLOUR = 0.45;
 /** How much the sun's colour is cast through the glass. */
-const SUNLIT = 0.35;
+const SUNLIT = 0.26;
+/** How near black a pane is past its clear edge, and how far in, in CSS
+ *  pixels, it takes to get there. */
+const DEEP = 0.85;
+const RAMP = 56;
 /** How far a press's light spreads through the glass, in CSS pixels. */
 const GLOW = 40;
 
@@ -78,7 +82,7 @@ export const light = {
 };
 
 const WGSL = /* wgsl */ `
-struct Pane { box: vec4f, round: vec4f, dye: vec4f }
+struct Pane { box: vec4f, round: vec4f, dye: vec4f, even: vec4f }
 struct Run { first: u32, count: u32, pad0: u32, pad1: u32 }
 struct Glass {
   panes: array<Pane, ${PANES}>,
@@ -115,10 +119,10 @@ fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
 /** The rim's rise across the bezel, 0 at the edge to 1 where it is flat: a squircle. */
 fn rise(x: f32) -> f32 { return pow(1 - pow(1 - clamp(x, 0, 1), 4.0), 0.25); }
 
-struct Field { d: f32, dye: vec4f, size: f32 }
+struct Field { d: f32, dye: vec4f, size: f32, frost: f32, down: f32, quiet: f32 }
 fn field(p: vec2f, run: Run) -> Field {
   let k = glass.size.w;
-  var f = Field(1e6, vec4f(0), 0);
+  var f = Field(1e6, vec4f(0), 0, 0, 0, 0);
   for (var i = run.first; i < run.first + run.count; i++) {
     let pane = glass.panes[i];
     if (pane.round.y <= 0.002) { continue; }
@@ -131,6 +135,14 @@ fn field(p: vec2f, run: Run) -> Field {
     // The dye melts as the shapes do: a pane's colour to its edge, blended
     // only where it runs into another.
     f.dye = mix(f.dye, pane.dye, h);
+    f.frost = mix(f.frost, pane.round.w, h);
+    // How deep into the pane it is from its clear edge, the one facing the
+    // middle of the screen: the top of a pane low on it, the foot of one high.
+    let edge = select(p.y - (pane.box.y - pane.box.w), pane.box.y + pane.box.w - p.y, pane.box.y < 0.5 * glass.size.y);
+    // Even glass, behind what must read over the clear edge of another, has
+    // none: a quiet pane, half as deep all over, its rim fainter.
+    f.down = mix(f.down, select(smoothstep(0, ${RAMP} * glass.size.z, edge), 0.55, pane.even.x > 0.5), h);
+    f.quiet = mix(f.quiet, pane.even.x, h);
   }
   return f;
 }
@@ -176,7 +188,9 @@ fn field(p: vec2f, run: Run) -> Field {
   let bend = g * lens * ${BEND} * dpr * thick;
   let uv = (p + bend) / dims;
   let split = g * lens * 3 * dpr * thick / dims;
-  let frost = ${FROST};
+  // A frosted pane blurs it further, toward a wash of the ground's colour.
+  // Along its clear edge, barely any: the town as it is.
+  let frost = (${FROST} + 2.2 * f.frost) * mix(0.15, 1, f.down);
   let seen = vec3f(
     textureSampleLevel(under, soft, uv + split, frost).r,
     textureSampleLevel(under, soft, uv, frost).g,
@@ -186,7 +200,7 @@ fn field(p: vec2f, run: Run) -> Field {
   // mean round it, so busy ground does not fight what sits on the glass.
   // The rim, where the lens is, keeps it all.
   let around = textureSampleLevel(under, soft, uv, 4.5).rgb;
-  let seenCalm = mix(seen, around, ${CALM} * (1 - lens));
+  let seenCalm = mix(seen, around, (${CALM} + 0.4 * f.frost) * f.down * (1 - lens));
 
   // Pressed, the glass lights from inside, under the finger and out
   // through any glass near it: what is seen through it brightens and
@@ -197,10 +211,17 @@ fn field(p: vec2f, run: Run) -> Field {
   let vivid = max(mix(vec3f(luma(lit)), lit, 1 + 0.7 * glow), vec3f(0));
 
   // Its body: what is seen, washed with the light on a pane.
-  var body = mix(vivid, glass.tint.rgb, glass.tint.a * (1 - 0.6 * glow));
+  // Clear along its edge, it deepens past it to nearly black: the town's
+  // own colour multiplied down, richer, so it is a deep green over grass
+  // and a deep blue over sea, never a grey.
+  var body = mix(vivid, glass.tint.rgb, glass.tint.a * f.down * (1 - 0.6 * glow));
+  let rich = max(mix(vec3f(luma(vivid)), vivid, 1.5), vec3f(0)) * mix(vec3f(1), glass.tint.rgb / max(max(glass.tint.r, glass.tint.g), max(glass.tint.b, 1e-3)), 0.4);
+  body = mix(body, rich * 0.2, ${DEEP} * f.down * (1 - 0.6 * glow));
+  // A frosted pane is a little more solid too: less town, more of the light on it.
+  body = mix(body, glass.tint.rgb, 0.22 * f.frost * f.down * (1 - 0.6 * glow));
   // Lit by the sun: its colour cast through the whole pane, gold at dawn
   // and dusk, nothing at noon's white or by night.
-  body *= mix(vec3f(1), glass.sun.rgb, ${SUNLIT} * glass.sun.a);
+  body *= mix(vec3f(1), glass.sun.rgb, ${SUNLIT} * glass.sun.a * f.down);
   // Tinted glass keeps its colour: its hue and depth of colour hold, and
   // its lightness follows what is behind, within a band round its own.
   if (f.dye.a > 0.001) {
@@ -218,10 +239,14 @@ fn field(p: vec2f, run: Run) -> Field {
   // On tinted glass the light it catches takes its colour too, deep and
   // faint, so the rim stays one quiet piece with the body.
   let deep = mix(f.dye.rgb / max(f.dye.a, 1e-3), vec3f(1), 0.15);
+  // Where the glass is clear its rim shines brighter; where it is deep,
+  // dimmer, the light's colour kept rich rather than washed out.
+  let hue = rich / max(max(rich.r, rich.g), max(rich.b, 1e-3));
+  let shine = mix(1.6, 0.5, f.down) * (1 - 0.6 * f.quiet);
   let sky = mix(glass.sky.rgb, deep, f.dye.a);
-  let sun = mix(glass.sun.rgb, deep, f.dye.a);
+  let sun = mix(mix(glass.sun.rgb, hue, 0.5 * f.down), deep, f.dye.a);
   let fresnel = pow(1 - n.z, 3.0);
-  body = mix(body, sky, fresnel * 0.3);
+  body = mix(body, sky, fresnel * 0.3 * shine);
   let facing = dot(g, glass.toward.xy);
   // Brightest at the very edge and falling away fast, a soft tail behind.
   let line = exp(-max(-f.d, 0) / (0.8 * dpr));
@@ -230,7 +255,7 @@ fn field(p: vec2f, run: Run) -> Field {
 
   // And a light of its own: screened in, so it lifts the darks most.
   body = 1 - (1 - body) * (1 - 0.3 * glow);
-  caught *= 1 - 0.5 * f.dye.a;
+  caught *= (1 - 0.5 * f.dye.a) * shine;
   caught += line * glow * 0.9;
   // The rim takes the sun's own colour rather than being lit over, so a
   // gold sun is a gold edge even on light glass, which added light would
@@ -324,7 +349,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
   });
 
   // The uniforms: panes (box, round, dye: 12 floats), runs (4 u32), then seven vec4s.
-  const floats = PANES * 12 + RUNS * 4 + 7 * 4;
+  const floats = PANES * 16 + RUNS * 4 + 7 * 4;
   const data = new Float32Array(floats);
   const ints = new Uint32Array(data.buffer);
   const uniforms = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -413,7 +438,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
         if (i === PANES) break;
         glazed.push({ x: p.x, y: p.y, w: p.w, h: p.h, r: p.r });
         const [hx, hy] = [(p.w / 2) * dpr, (p.h / 2) * dpr];
-        const o = i * 12;
+        const o = i * 16;
         data[o] = (p.x + p.w / 2) * dpr;
         data[o + 1] = (p.y + p.h / 2) * dpr;
         data[o + 2] = hx;
@@ -421,17 +446,19 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
         data[o + 4] = Math.min(p.r * dpr, hx, hy);
         data[o + 5] = p.fade;
         data[o + 6] = Math.min(hx, hy);
+        data[o + 7] = p.frost ?? 0;
         const dye = p.dye ? hexRgb(p.dye) : null;
         if (dye) data.set([...dye, 1], o + 8);
+        data[o + 12] = p.even ? 1 : 0;
         box.x0 = Math.min(box.x0, p.x * dpr);
         box.y0 = Math.min(box.y0, p.y * dpr);
         box.x1 = Math.max(box.x1, (p.x + p.w) * dpr);
         box.y1 = Math.max(box.y1, (p.y + p.h) * dpr);
-        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""};`;
+        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""},${(p.frost ?? 0).toFixed(2)},${p.even ? 1 : 0};`;
         i++;
       }
       if (i === first) return false;
-      const o = PANES * 12 + runs.length * 4;
+      const o = PANES * 16 + runs.length * 4;
       ints[o] = first;
       ints[o + 1] = i - first;
       runs.push({
@@ -445,7 +472,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
     for (const panes of byRun.values()) run(panes);
     groups.push({ runs: runs.slice(), layer: null });
     for (const layer of ui?.read() ?? []) groups.push({ runs: layer.panes.length && run(layer.panes) ? [runs[runs.length - 1]] : [], layer });
-    const o = PANES * 12 + RUNS * 4;
+    const o = PANES * 16 + RUNS * 4;
     data.set([...light.tint.map((v, k) => v * (1 - COLOUR + COLOUR * SEA_GLASS[k])), WASH], o);
     data.set([...light.sun, light.sunStrength], o + 4);
     data.set([...light.toward, 0, 0], o + 8);

@@ -1,67 +1,77 @@
 /** @jsxImportSource ~ui */
-import { createMemo, createRoot, Index, Show } from "solid-js";
-import { eachEntity } from "../state/gameObjects";
-import { now, sea } from "../state/sea";
-import { GOOD_ORDER } from "../state/deals";
-import { GOODS } from "../blueprints";
-import { Shelf } from "./Depot";
-import type { Building, Good } from "../generated";
+import { For, Show } from "solid-js";
+import { dayAgo, market, quoteOf } from "../state/market";
+import { goodPage, held, money, named, Order, percent, tint, Tile } from "./Market";
+import { push } from "./pages";
 
-/** Every standing depot's shelves added up, a good at a time, with what
- *  is on its way in. */
-const totals = createRoot(() => createMemo(() => {
-  now();
-  const sum = new Map<Good, { level: number; cap: number }>();
-  eachEntity((e) => {
-    if (e.object.kind !== "Building") return;
-    const b = e.object.data as Building;
-    if (b.kind !== "Depot" || b.site) return;
-    for (const g of GOOD_ORDER) {
-      const s = b.stocks[g];
-      if (!s) continue;
-      const t = sum.get(g) ?? { level: 0, cap: 0 };
-      sum.set(g, { level: t.level + s.level, cap: t.cap + s.cap });
-    }
-  });
-  return GOOD_ORDER.filter((g) => sum.has(g)).map((good) => ({
-    good,
-    ...sum.get(good)!,
-    incoming: sea.shipments.filter((s) => s.good === good && !s.outbound).reduce((a, s) => a + s.units, 0),
-  }));
-}));
+/**
+ * The market's stock and orders, as a trading app's portfolio: what the
+ * town holds of each good across its depots, what that is worth at
+ * today's price and how that moved since yesterday; and the orders
+ * waiting on a price. A tap on a good opens its page.
+ */
 
-/** The stock tab's head: each good the town keeps, and how much of it. */
-export function StockHead() {
+/** Each good held, with its worth now and a day ago. */
+const holdings = () =>
+  market.goods
+    .filter((q) => (held().get(q.good)?.level ?? 0) >= 1)
+    .map((q) => {
+      const s = held().get(q.good)!;
+      return { good: q.good, ...s, worth: s.level * q.price, was: s.level * dayAgo(q) };
+    });
+const worth = () => holdings().reduce((a, h) => a + h.worth, 0);
+const moved = () => {
+  const was = holdings().reduce((a, h) => a + h.was, 0);
+  return was > 0 ? worth() / was - 1 : 0;
+};
+
+/** What the town holds: what it is all worth and how that moved today,
+ *  then each good. */
+export function Holdings() {
   return (
-    <Show
-      when={totals().length}
-      fallback={
-        <box pad={{ x: 16, top: 14, bottom: 14 }}>
-          <text size={14} weight={600} soft>Goods are kept in a depot</text>
+    <box pad={{ x: 12, bottom: 12 }} gap={6}>
+      <Show when={holdings().length} fallback={<box pad={{ x: 4, y: 8 }}><text size={14} weight={600} soft>Goods are kept in a depot</text></box>}>
+        <box dir="row" align="center" gap={10} pad={{ x: 4, bottom: 4 }}>
+          <box grow={1} gap={0}>
+            <text serif size={22}>{money(worth())}</text>
+            <text size={12} soft>held, at today's prices</text>
+          </box>
+          <text size={13} weight={600} ink={tint(moved())}>{percent(moved())} today</text>
         </box>
-      }
-    >
-      <box dir="row" align="center" justify="between" pad={{ x: 16, top: 14, bottom: 12 }}>
-        <Index each={totals()}>
-          {(t) => (
-            <box dir="row" align="center" gap={5}>
-              <box w={28} h={28} round={9} fill={GOODS[t().good].color} align="center" justify="center">
-                <icon d={GOODS[t().good].glyph} size={16} ink="white" />
+      </Show>
+      <For each={holdings()}>
+        {(h) => {
+          const q = () => quoteOf(h.good)!;
+          const c = () => q().price / dayAgo(q()) - 1;
+          return (
+            <box dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => push(goodPage(h.good))}>
+              <Tile good={h.good} />
+              <box grow={1} gap={1}>
+                <text size={14.5} weight={600}>{named(h.good)}</text>
+                <text size={12} soft>
+                  {Math.floor(h.level)} of {h.cap}
+                  {h.incoming > 0 ? `, ${Math.round(h.incoming)} coming` : ""}
+                </text>
               </box>
-              <text serif size={18}>{Math.floor(t().level)}</text>
+              <box align="end">
+                <text serif size={16}>{money(h.worth)}</text>
+                <text size={11.5} weight={600} ink={tint(c())}>{percent(c())}</text>
+              </box>
             </box>
-          )}
-        </Index>
-      </box>
-    </Show>
+          );
+        }}
+      </For>
+    </box>
   );
 }
 
-/** Drawn up: each good's shelves, all depots' as one, and what is coming. */
-export function StockBody() {
+/** The orders waiting on a price. */
+export function Orders() {
   return (
-    <box pad={{ x: 16, bottom: 12 }}>
-      <Index each={totals()}>{(t) => <Shelf good={t().good} level={t().level} cap={t().cap} incoming={t().incoming} />}</Index>
+    <box pad={{ x: 12, bottom: 12 }} gap={6}>
+      <For each={market.orders} fallback={<box pad={{ x: 4, y: 8 }}><text size={14} weight={600} soft>No orders waiting. A good's page sets one.</text></box>}>
+        {(o) => <Order o={o} named />}
+      </For>
     </box>
   );
 }

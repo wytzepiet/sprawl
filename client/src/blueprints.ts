@@ -16,6 +16,8 @@ export type Tab = (typeof TABS)[number];
 
 export interface Blueprint {
   label: string;
+  /** What it does, for its page in the build menu. */
+  about: string;
   /** Its colour on the map's pins and the toolbar. */
   color: string;
   /** Its colour as it stands in the town: the same family, as a material
@@ -132,6 +134,7 @@ export const middle = (b: Building): [number, number] => standing(b).at;
 export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Harbour: {
     label: "Harbour",
+    about: "The town's door. The ferry lands settlers and boxes on its quay and takes boxes away. Built on the coast with its back to the sea, from nothing.",
     color: "#2B6CA3",
     material: "#4E6A84",
     // A quay with a crane over it: the mast, the jib, and the hook.
@@ -145,6 +148,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Depot: {
     label: "Depot",
+    about: "Keeps the town's goods. Its lorry fetches boxes from the harbour and the makers; its two vans bring them to shops, pumps and building sites. Six jobs, six to six.",
     color: "#A0714A",
     material: "#7E6248",
     // A wide shed: the roof, a loading door and two bays.
@@ -157,6 +161,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   House: {
     label: "House",
+    about: "A home for two.",
     color: "#E8566F",
     material: "#B85A44",
     // A gabled roof over a body, the door cut out.
@@ -169,6 +174,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Apartment: {
     label: "Apartment",
+    about: "Homes for seven.",
     color: "#C73E5E",
     material: "#8E4A40",
     // A tall block, three floors of windows and a door.
@@ -181,6 +187,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Shop: {
     label: "Shop",
+    about: "Serves meals from its crates, nine to six. Two jobs.",
     color: "#3B78B8",
     material: "#56708A",
     // A storefront: scalloped awning, window and door beneath.
@@ -194,6 +201,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Office: {
     label: "Office",
+    about: "Twelve jobs, eight to five.",
     color: "#2D4E7E",
     material: "#3F4D5E",
     // A briefcase, the handle cut out.
@@ -209,6 +217,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Factory: {
     label: "Factory",
+    about: "Twelve jobs, six to three.",
     color: "#5C6470",
     material: "#7A7F86",
     // Sawtooth roofs and a chimney.
@@ -221,6 +230,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   GasStation: {
     label: "Gas station",
+    about: "Fills the town's tanks from its fuel, round the clock. One job at the kiosk, six to ten.",
     color: "#F2C230",
     material: "#C7A24E",
     // A pump: the body with its display, and the hose hooked to the side.
@@ -233,6 +243,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Supermarket: {
     label: "Supermarket",
+    about: "Meals for a whole district, eight to nine, from big shelves of crates. Six jobs.",
     color: "#6EC1E4",
     material: "#8FA7B3",
     // A basket: handle arcs over, three slats cut out.
@@ -245,6 +256,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Farm: {
     label: "Farm",
+    about: "Grows crates on the grass behind it, which its tractor ploughs, sows and harvests. Four jobs, six to three.",
     color: "#D9A23B",
     material: "#B79A62",
     // A barn: the gambrel roof, the big door, and a hayloft window.
@@ -258,6 +270,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Sawmill: {
     label: "Sawmill",
+    about: "Fells and saws the forest round it into timber. Built beside the woods. Four jobs, seven to four.",
     color: "#8A5A2B",
     material: "#7A5A3A",
     // A saw blade over a log: the teeth round, the log's rings below.
@@ -271,6 +284,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   },
   Quarry: {
     label: "Quarry",
+    about: "Breaks stone from the mountain beside it. Built at the mountain's foot. Four jobs, seven to four.",
     color: "#7D7F86",
     material: "#8C8A84",
     // A rock face, benched, a pick across the heap below.

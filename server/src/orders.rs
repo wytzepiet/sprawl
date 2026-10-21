@@ -10,13 +10,11 @@
 //! and the mayor's coins land at the harbour as it casts off (`sailed`).
 //! An order not filled by its day lapses as a ferry comes in.
 //!
-//! The deck is booked here too (docs/trade.md §The deck). Every slot is a
-//! deal with a partner: the world, which sells and buys anything a little
-//! off its price, or a mayor, who sells what their town makes for less,
-//! the less the better they stand, and buys what a letter asks for. A
-//! slot coming in rides the next ferry and lands for the nearest depot
-//! with room; a slot going out waits at the harbour for a depot's lorry to
-//! load it. A pinned slot is booked again as each ferry casts off.
+//! The deck is booked here too (docs/trade.md §The deck): a box from the
+//! market or for it (`market.rs`), or for a mayor whose letter asks for
+//! it. A slot coming in rides the next ferry and lands for the nearest
+//! depot with room; a slot going out waits at the harbour for a depot's
+//! lorry to load it.
 //!
 //! A mayor's standing with the town is read off the orders: what they
 //! started with, a point for each filled and half one off for each that
@@ -28,7 +26,7 @@ use ts_rs::TS;
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
 use crate::missions::{Goal, Key, Mission, Reward, Step};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Leg, News, Pin, Trailer, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Leg, News, Trailer, DAY_MS};
 use crate::world::World;
 
 /// Who writes: in the order they come to trust the town.
@@ -75,7 +73,8 @@ struct Who {
     colour: &'static str,
     /// What they ask for, most wanted first.
     goods: &'static [Good],
-    /// What their town makes, and sells.
+    /// What their town makes: what pushes the market's price down, as
+    /// what they want pushes it up.
     sells: &'static [Good],
     /// Boxes in a letter, before standing adds to it.
     boxes: u32,
@@ -171,7 +170,7 @@ const FILLED: f64 = 1.0;
 const LAPSED: f64 = 0.5;
 /// Standing with another mayor before Port Aldra writes.
 pub const GOOD: f64 = 3.0;
-/// Each point of standing adds this much to the price.
+/// Each point of standing adds this much to what a letter pays.
 const WARMTH: f64 = 0.1;
 
 fn orders(world: &World) -> impl Iterator<Item = &Mission> {
@@ -297,7 +296,7 @@ pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
         steps: vec![Step {
             goal: Goal::Delivered { good, units, sailed: 0.0 },
             title: format!("{} to {}", boxes(count, good), w.town),
-            text: format!("{}, mayor of {}: {letter}\n\nBook {} going out to {} on the ferry's deck: a depot's lorry takes each box to the park, and the coins land as it sails.", w.name, w.town, named(good), w.town),
+            text: format!("{}, mayor of {}: {letter}\n\nSend them from the letter's card: a depot's lorry takes each box to the park, and the coins land as it sails.", w.name, w.town),
             done: false,
             at: None,
         }],
@@ -319,51 +318,47 @@ pub fn sailed(world: &mut World, t: &Trailer) {
     world.missions.stir();
 }
 
-/// A deal on offer for a slot of the deck: a good from a partner coming
-/// in, or for one going out, at a price a unit. A mayor buys only what a
-/// letter of theirs asks for, so many boxes more.
+/// A letter's boxes still wanted, not yet booked, and what its mayor
+/// pays a unit: what the town can send them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct Offer {
+pub struct Letter {
+    #[ts(type = "number")]
+    pub letter: u64,
     pub good: Good,
-    pub partner: Option<Mayor>,
-    pub out: bool,
+    pub partner: Mayor,
     pub price: f64,
-    /// The letter a box going out fills, and how many boxes it still wants.
-    #[ts(type = "number | null")]
-    pub letter: Option<u64>,
-    pub boxes: Option<u32>,
+    pub boxes: u32,
 }
 
-const GOODS: [Good; 4] = [Good::Crates, Good::Fuel, Good::Timber, Good::Stone];
+/// What each mayor's town wants and makes: what pushes the market
+/// (`market.rs`).
+pub fn trades() -> impl Iterator<Item = (&'static [Good], &'static [Good])> {
+    WHO.iter().map(|w| (w.goods, w.sells))
+}
 
-/// Every deal on offer now, each way the cheapest coming in and the
-/// dearest going out first.
-pub fn offers(world: &World) -> Vec<Offer> {
-    let world_in = |good: Good| Offer { good, partner: None, out: false, price: crate::economy::import(good, 1.0), letter: None, boxes: None };
-    let world_out = |good: Good| Offer { good, partner: None, out: true, price: crate::economy::export(good, 1.0), letter: None, boxes: None };
-    let mut all: Vec<Offer> = GOODS.iter().flat_map(|&g| [world_in(g), world_out(g)]).collect();
-    // A mayor sells at the world's own price, a tenth off that for each
-    // two points of standing.
-    for w in WHO.iter().filter(|w| writes(world, w.mayor)) {
-        let off = 1.0 - WARMTH * standing(world, w.mayor) / 2.0;
-        all.extend(w.sells.iter().map(|&good| Offer { good, partner: Some(w.mayor), out: false, price: crate::economy::world_price(good) * off, letter: None, boxes: None }));
-    }
+/// Every open letter that wants boxes not yet booked.
+pub fn letters(world: &World) -> Vec<Letter> {
     let marked = crate::haul::boxes(world);
     let waiting: Vec<Trailer> = world.harbours.keys().filter_map(|&h| match world.objects.get(h).map(|e| &e.object) {
         Some(GameObject::Building(b)) => Some(b.outgoing.clone()),
         _ => None,
     }).flatten().collect();
-    for m in open(world) {
-        let (Key::Order(id), Goal::Delivered { good, units, sailed }, Reward::Order { coins, .. }) = (m.key, m.steps[0].goal, m.reward) else { continue };
-        let going: f64 = marked.iter().map(|(t, ..)| t).chain(&waiting).filter(|t| t.outbound && t.order == id).map(|t| t.units).sum();
-        let boxes = ((units - sailed - going) / good.per_box()).ceil().max(0.0) as u32;
-        if boxes > 0 {
-            all.push(Offer { good, partner: m.from, out: true, price: coins / units, letter: Some(id), boxes: Some(boxes) });
-        }
-    }
-    all.sort_by(|a, b| (a.good, a.out).cmp(&(b.good, b.out)).then(if a.out { b.price.total_cmp(&a.price) } else { a.price.total_cmp(&b.price) }));
-    all
+    open(world)
+        .filter_map(|m| {
+            let (Key::Order(id), Goal::Delivered { good, units, sailed }, Reward::Order { coins, .. }, Some(partner)) = (m.key, m.steps[0].goal, m.reward, m.from) else { return None };
+            let going: f64 = marked.iter().map(|(t, ..)| t).chain(&waiting).filter(|t| t.outbound && t.order == id).map(|t| t.units).sum();
+            let boxes = ((units - sailed - going) / good.per_box()).ceil().max(0.0) as u32;
+            (boxes > 0).then_some(Letter { letter: id, good, partner, price: coins / units, boxes })
+        })
+        .collect()
+}
+
+/// Send so many of the boxes a letter wants: each waits at the harbour
+/// for a depot's lorry. How many were booked.
+pub fn send(world: &mut World, letter: u64, boxes: u32) -> u32 {
+    let (Some(&harbour), Some(l)) = (world.harbours.keys().next(), letters(world).into_iter().find(|l| l.letter == letter)) else { return 0 };
+    (0..boxes.min(l.boxes)).take_while(|_| book(world, harbour, l.good, true, Some(l.partner), l.price, Some(letter))).count() as u32
 }
 
 fn harbour_mut(world: &mut World, harbour: EntityId) -> Option<&mut crate::protocol::Building> {
@@ -373,15 +368,14 @@ fn harbour_mut(world: &mut World, harbour: EntityId) -> Option<&mut crate::proto
     }
 }
 
-/// Book a slot of a harbour's deck: a box of a good from a partner on the
-/// next ferry in, as far as the treasury goes once what is already coming
-/// is paid for; or a box for one, to wait at the harbour for a lorry.
-/// Whether it was booked.
-pub fn book(world: &mut World, harbour: EntityId, good: Good, partner: Option<Mayor>, out: bool) -> bool {
-    let Some(offer) = offers(world).into_iter().find(|o| o.good == good && o.partner == partner && o.out == out) else { return false };
+/// Book a slot of a harbour's deck at a price a unit: a box of a good on
+/// the next ferry in, as far as the treasury goes once what is already
+/// coming is paid for; or a box going out, for a partner or the market,
+/// to wait at the harbour for a lorry. Whether it was booked.
+pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner: Option<Mayor>, price: f64, letter: Option<u64>) -> bool {
     let deck = crate::world::sea::DECK;
     let id = world.objects.reserve_id();
-    let t = Trailer { id, good, units: good.per_box(), to: None, outbound: out, order: offer.letter.unwrap_or(id), partner, price: offer.price };
+    let t = Trailer { id, good, units: good.per_box(), to: None, outbound: out, order: letter.unwrap_or(id), partner, price };
     if out {
         let Some(b) = harbour_mut(world, harbour).filter(|b| b.outgoing.len() < deck) else { return false };
         b.outgoing.push(t);
@@ -400,30 +394,4 @@ pub fn book(world: &mut World, harbour: EntityId, good: Good, partner: Option<Ma
     c.booked.push(t);
     world.missions.stir();
     true
-}
-
-/// Pin a slot: booked now, and again as each ferry casts off.
-pub fn pin(world: &mut World, harbour: EntityId, good: Good, partner: Option<Mayor>, out: bool) {
-    let id = world.objects.reserve_id();
-    let Some(b) = harbour_mut(world, harbour).filter(|b| b.pins.len() < crate::world::sea::DECK) else { return };
-    b.pins.push(Pin { id, good, partner, out });
-    book(world, harbour, good, partner, out);
-}
-
-pub fn unpin(world: &mut World, harbour: EntityId, pin: u64) {
-    if let Some(b) = harbour_mut(world, harbour) {
-        b.pins.retain(|p| p.id != pin);
-    }
-}
-
-/// A ferry cast off from the harbour: each pinned slot is booked again
-/// once its last box is off the border, fetched from the park or loaded
-/// for the ferry, so a pin runs only as fast as the town takes it.
-pub fn repeat(world: &mut World, harbour: EntityId) {
-    let border: Vec<Trailer> = crate::haul::boxes(world).into_iter().filter(|(t, l, _)| !t.outbound && matches!(l, Leg::Booked | Leg::Aboard | Leg::Parked)).map(|(t, ..)| t).collect();
-    let Some(b) = harbour_mut(world, harbour) else { return };
-    let pins: Vec<Pin> = b.pins.iter().filter(|p| !(if p.out { &b.outgoing } else { &border }).iter().any(|t| t.good == p.good && t.partner == p.partner)).copied().collect();
-    for p in pins {
-        book(world, harbour, p.good, p.partner, p.out);
-    }
 }

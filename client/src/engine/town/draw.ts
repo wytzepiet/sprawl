@@ -44,11 +44,11 @@ export const PAVED_Z = 0.02;
 export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
 /** The order the ground's layers are drawn in (a mesh's `renderOrder`;
  *  anything else is drawn at 100): from the top down, so a pixel covered by
- *  a roof, the paving or a road is thrown out by the depth test before the
+ *  a roof, the paving, a road or a field is thrown out by the depth test before the
  *  layers under it are shaded, as they would be if drawn first. Saves a
  *  frame a tenth or more over a town (`bun run cost`), more at night, when
  *  each shaded pixel pays for the lamps over it. */
-export const LAYER_ORDER = { mass: 80, pavement: 85, road: 90, ground: 120 };
+export const LAYER_ORDER = { mass: 80, pavement: 85, road: 90, field: 95, ground: 120 };
 /** The lines painted on a yard's asphalt, just over it: a worn white. */
 const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
 const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };

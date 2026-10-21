@@ -37,7 +37,7 @@ import { fillTriangles } from "./raster";
  *  zoom; further out the mipmaps smooth it away. */
 const SIDE = 256;
 const SPAN = 4;
-const BUMP = 0.25;
+const BUMP = 0.35;
 /** The bumps are finer than the glints: the grain over this many tiles. */
 const BUMP_SPAN = 6;
 /** Grass is mottled, as a field is from the air: its colour lighter and a
@@ -46,7 +46,7 @@ const BUMP_SPAN = 6;
  *  much. The rest of the land is its colour alone. */
 const PATCHES = 3;
 const SPECKS = 0.5;
-const MOTTLE = 0.12;
+const MOTTLE = 0.04;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the grain, specks and tufts, beats
  *  how far in it is, so it thins to its edge instead of stopping clean. */

@@ -566,7 +566,23 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
         treasury: world.treasury,
         income: town.revenue() - town.purchases(),
         imports: town.purchases(),
+        held: held(world),
     }
+}
+
+/// Every standing depot's shelves added up.
+fn held(world: &World) -> BTreeMap<Good, Stock> {
+    let mut sum: BTreeMap<Good, Stock> = BTreeMap::new();
+    for e in world.objects.iter() {
+        let GameObject::Building(b) = &e.object else { continue };
+        if b.kind != BuildingKind::Depot || b.site.is_some() { continue }
+        for (&g, s) in &b.stocks {
+            let t = sum.entry(g).or_insert(Stock { level: 0.0, cap: 0.0 });
+            t.level += s.level;
+            t.cap += s.cap;
+        }
+    }
+    sum
 }
 
 /// The town's page: the GDP it added today and what crossed the border,
@@ -691,7 +707,7 @@ mod tests {
         assert!(!depot(Farm) && makes(Farm, Good::Crates) && shelves(Farm) == [Good::Crates], "the farm is not a maker of crates");
         assert!(source(Farm, Good::Crates) && !source(Depot, Good::Crates));
         assert!(super::farm(Farm) && !super::farm(Office));
-        assert!((crop(Farm, 200) - 1944.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 1944.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
+        assert!((crop(Farm, 200) - 2592.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 2592.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
         assert_eq!(shelf(&world, farm, Good::Crates).level, 0.0, "the yard is founded with a harvest");
         assert!(hiring(&world, farm), "an empty yard offers no work");
         assert!(!buys(Farm, Good::Crates) && buys(Shop, Good::Crates) && buys(Depot, Good::Crates) && !buys(House, Good::Crates), "the rows buy the wrong things");

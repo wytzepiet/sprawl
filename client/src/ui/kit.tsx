@@ -16,13 +16,58 @@ import type { JSX } from "~ui/jsx-runtime";
  * white on the night's.
  */
 
-/** Something to press: it rises under the pointer, gives under the finger and springs back. */
+/** Something to press: it rises under the pointer, gives under the finger and springs back,
+ *  by a few pixels whatever its size: a button's twelfth, a row's hair. */
 export function Press(props: JSX.Box & { onTap: () => void }) {
   const [down, setDown] = createSignal(false);
   const [over, setOver] = createSignal(false);
-  const [s] = follow(() => (down() ? 0.92 : over() ? 1.08 : 1), { rest: 0.001 });
+  const [size, setSize] = createSignal(44);
+  const by = () => Math.min(0.08, 3.5 / size());
+  const [s] = follow(() => (down() ? 1 - by() : over() ? 1 + by() : 1), { rest: 0.001 });
   const [y] = follow(() => (over() && !down() ? -2 : 0));
-  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} />;
+  const sized = (w: number, h: number) => (setSize(Math.max(w, h, 1)), props.onSize?.(w, h));
+  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} onSize={sized} />;
+}
+
+/** A tab bar: one pill, and in it a darker one that slides to the tab
+ *  shown, its name turning light as it passes under it; `lit` false,
+ *  none is shown. */
+export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?: boolean; pick: (t: T) => void }) {
+  const [w, setW] = createSignal(0);
+  const seg = () => (w() - 6) / props.tabs.length;
+  const [at] = follow(() => props.tabs.indexOf(props.on));
+  const [shown] = follow(() => (props.lit ?? true ? 1 : 0), { rest: 0.001 });
+  const lit = (i: number) => Math.max(0, 1 - Math.abs(at() - i)) * Math.max(0, Math.min(1, shown()));
+  return (
+    <box pad={{ x: 12, top: 14, bottom: 12 }}>
+      {/* Glass of its own, even and frosted, so it reads over the clear edge of the sheet. */}
+      <glass layer="tabs" even frost={1} dir="row" h={38} round={19} pad={3} onSize={(ww) => setW(ww)}>
+        <box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.85" opacity={Math.max(0, Math.min(1, shown()))} />
+        <For each={props.tabs}>
+          {(t, i) => {
+            const name = t[0].toUpperCase() + t.slice(1);
+            return (
+              <box grow={1} h={32} align="center" justify="center" onTap={() => props.pick(t)}>
+                <text size={13} weight={600} ink={`ink/${(0.72 * (1 - lit(i()))).toFixed(3)}`}>{name}</text>
+                <box at={{ left: 0, top: 0 }} w={seg()} h={32} align="center" justify="center" opacity={lit(i())}>
+                  <text size={13} weight={600} ink="glass">{name}</text>
+                </box>
+              </box>
+            );
+          }}
+        </For>
+      </glass>
+    </box>
+  );
+}
+
+/** A little i on a tile: a tap opens what it is. */
+export function Info(props: { at?: JSX.Box["at"]; onTap: () => void }) {
+  return (
+    <Press at={props.at} w={18} h={18} round={9} align="center" justify="center" fill="ink/0.08" onTap={props.onTap}>
+      <text serif size={11.5} weight={600} ink="ink/0.6">i</text>
+    </Press>
+  );
 }
 
 /** False on the frame it is made, true from the next: what a spring in starts from. */
@@ -31,6 +76,14 @@ function born() {
   const frame = requestAnimationFrame(() => set(true));
   onCleanup(() => cancelAnimationFrame(frame));
   return is;
+}
+
+/** What a tab shows when it is switched to: it fades in, so one view
+ *  gives way to the next. */
+export function Fade(props: JSX.Box) {
+  const b = born();
+  const [o] = follow(() => (b() ? 1 : 0), { rest: 0.001 });
+  return <box {...props} opacity={Math.max(0, Math.min(1, o()))} />;
 }
 
 /** What answers a press: it springs in from small. */
