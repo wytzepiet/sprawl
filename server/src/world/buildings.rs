@@ -745,12 +745,7 @@ mod tests {
 
     /// A world with nothing in it but grass and the given road path.
     fn world_with_road(path: &[(i32, i32)]) -> World {
-        let mut world = World::new();
-        for y in -8..8 {
-            for x in -8..8 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-8..8, -8..8);
         let coords: Vec<GridCoord> = path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
         world.place_road_path(&coords);
         world
@@ -880,15 +875,8 @@ mod tests {
     /// a road joins it up, or starts again when the road is cut.
     #[test]
     fn a_road_that_reaches_nothing_is_an_island() {
-        let mut world = World::new();
-        for y in -8..8 {
-            for x in -8..140 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
         // The street's far end is its way out.
-        let street: Vec<GridCoord> = (0..130).map(|x| GridCoord { x, y: 0 }).collect();
-        world.place_road_path(&street);
+        let mut world = World::meadow(-8..140, -8..8).street(0..130);
         world.open_exit(world.road_node_at(GridCoord { x: 129, y: 0 }).unwrap());
         let joined = |world: &World, at: GridCoord| {
             let id = world.road_node_at(at).unwrap();

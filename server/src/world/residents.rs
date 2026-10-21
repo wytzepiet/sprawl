@@ -351,19 +351,11 @@ fn tiles_h(tiles: i32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, TerrainType};
+    use crate::protocol::BuildingKind;
 
     /// Grass, one long street, and whatever gets built beside it.
     fn town() -> World {
-        let mut world = World::new();
-        for y in -4..4 {
-            for x in -4..40 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
-        world.place_road_path(&street);
-        world
+        World::meadow(-4..40, -4..4).street(-2..40)
     }
 
     fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {

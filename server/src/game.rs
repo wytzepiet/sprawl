@@ -971,22 +971,15 @@ mod tests {
     /// The hand's act done, as the loop does it; a building refused is a
     /// test gone wrong.
     fn does(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, d: Do, now: GameTime) {
-        match d {
-            Do::Step(tool, from, to) => {
-                take_step(world, events, intersections, Build { tool, from, to, up: None , sides: None, road: false }, now);
-            }
-            Do::Book(harbour, good, partner, out) => {
-                crate::orders::book(world, harbour, good, partner, out);
-                crate::haul::call_lorries(world, events);
-            }
-            Do::Raze(at) => {
-                crate::undo::raze(world, events, intersections, 0, world.occupied[&(at.x, at.y)], now);
-            }
-            Do::Place(kind, at) => {
-                if let Some(no) = place(world, events, intersections, 0, kind, at, None, now) {
-                    panic!("{kind:?} at {at:?} refused: {}", no.sub);
-                }
-            }
+        let message = match d {
+            Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
+            Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
+            Do::Raze(at) => ClientMessage::Raze { building: world.occupied[&(at.x, at.y)] },
+            Do::Book(harbour, good, partner, out) => ClientMessage::Book { harbour, good, partner, out },
+        };
+        let news = handle_player_action(world, events, intersections, 0, message, now);
+        if let Do::Place(kind, at) = d {
+            assert!(world.occupied.contains_key(&(at.x, at.y)), "{kind:?} at {at:?} refused: {news:?}");
         }
     }
 
@@ -1149,7 +1142,7 @@ mod tests {
     #[test]
     fn undo_takes_back_a_drag_of_road_and_what_it_paid() {
         let mut world = street();
-        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        let depot = build(&mut world, 30, BuildingKind::Depot);
         if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
             b.stocks.get_mut(&Good::Stone).unwrap().level = 2.0;
         }
@@ -1181,8 +1174,8 @@ mod tests {
     #[test]
     fn undo_takes_back_a_placing_and_a_demolition_in_order() {
         let mut world = street();
-        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
-        let shop = build(&mut world, 12, BuildingKind::Shop, 1);
+        let depot = build(&mut world, 30, BuildingKind::Depot);
+        let shop = build(&mut world, 12, BuildingKind::Shop);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
@@ -1214,7 +1207,7 @@ mod tests {
     fn taking_down_what_was_just_built_gives_it_back() {
         let mut world = street();
         world.treasury = 1e9;
-        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        let depot = build(&mut world, 30, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
@@ -1374,7 +1367,7 @@ mod tests {
     #[test]
     fn a_road_is_laid_on_stone_from_the_depot() {
         let mut world = street();
-        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        let depot = build(&mut world, 30, BuildingKind::Depot);
         let stone = |w: &World| building_of(w, depot).stocks[&Good::Stone].level;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
             b.stocks.get_mut(&Good::Stone).unwrap().level = 2.0;
@@ -1394,7 +1387,7 @@ mod tests {
         assert!(world.lumps.iter().any(|l| l.building == harbour_of(&world) && l.coins < 0.0 && l.good == Some(Good::Stone)), "no lump at the harbour");
     }
 
-    fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
+    fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {
         world
             .place_on_street(GridCoord { x, y: 1 }, kind)
             .unwrap_or_else(|| panic!("the street should give a {kind:?} at x={x} its driveway"))
@@ -1405,12 +1398,7 @@ mod tests {
     /// before the mayor's tiles were counted, and took one from nought.
     #[test]
     fn a_saved_drive_opens_as_a_door() {
-        let mut world = World::new();
-        for y in -8..8 {
-            for x in -8..8 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-8..8, -8..8);
         world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 4, y: 2 }]);
         let house = world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2).unwrap();
         world.place_road_path(&[GridCoord { x: 2, y: 2 }, GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }]);
@@ -1467,14 +1455,10 @@ mod tests {
         for (dest_x, from_x) in [(40, 2), (0, 30)] {
             for start in (0..14_000).step_by(400) {
                 // Fifty tiles of street are all the two trips need.
-                let mut world = World::new();
-                for (x, y) in (-4..50).flat_map(|x| (-4..12).map(move |y| (x, y))) {
-                    world.terrain.insert((x, y), TerrainType::Grass);
-                }
-                world.place_road_path(&(-4..50).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-                let home = build(&mut world, 10, BuildingKind::House, 1);
-                let from = build(&mut world, from_x, BuildingKind::House, 1);
-                let shop = build(&mut world, dest_x, BuildingKind::Shop, 1);
+                let mut world = World::meadow(-4..50, -4..12).street(-4..50);
+                let home = build(&mut world, 10, BuildingKind::House);
+                let from = build(&mut world, from_x, BuildingKind::House);
+                let shop = build(&mut world, dest_x, BuildingKind::Shop);
                 let mut events = EventQueue::new();
                 let mut intersections = IntersectionRegistry::new();
                 let car = |world: &mut World, at: EntityId| {
@@ -1516,8 +1500,8 @@ mod tests {
     #[test]
     fn residents_commute_and_come_home() {
         let mut world = street();
-        let home = build(&mut world, 0, BuildingKind::House, 1);
-        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
+        let home = build(&mut world, 0, BuildingKind::House);
+        let shop = build(&mut world, 20, BuildingKind::Shop);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1548,8 +1532,8 @@ mod tests {
     #[test]
     fn a_warehouse_sends_its_own_truck_and_it_comes_home() {
         let mut world = street();
-        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
-        let warehouse = build(&mut world, 60, BuildingKind::Depot, 1);
+        let shop = build(&mut world, 20, BuildingKind::Shop);
+        let warehouse = build(&mut world, 60, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         sell(&mut world, &mut events, shop, 35.0, 0);
@@ -1577,9 +1561,9 @@ mod tests {
     #[test]
     fn a_buyer_takes_the_nearest_seller_with_stock() {
         let mut world = street();
-        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
-        let near = build(&mut world, 30, BuildingKind::Depot, 1);
-        let far = build(&mut world, 60, BuildingKind::Depot, 1);
+        let shop = build(&mut world, 20, BuildingKind::Shop);
+        let near = build(&mut world, 30, BuildingKind::Depot);
+        let far = build(&mut world, 60, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let empty = |world: &mut World, depot: EntityId| {
             if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
@@ -1596,11 +1580,11 @@ mod tests {
         sell(&mut world, &mut events, shop, 35.0, 0);
         assert_eq!(answered_by(&world), Some(near), "the nearer depot did not answer");
         // The order stands until it lands; another shop asks fresh.
-        let other = build(&mut world, 24, BuildingKind::Shop, 1);
+        let other = build(&mut world, 24, BuildingKind::Shop);
         empty(&mut world, near);
         sell(&mut world, &mut events, other, 35.0, 0);
         assert_eq!(answered_by(&world), Some(far), "an empty shelf answered");
-        let third = build(&mut world, 10, BuildingKind::Shop, 1);
+        let third = build(&mut world, 10, BuildingKind::Shop);
         empty(&mut world, far);
         sell(&mut world, &mut events, third, 35.0, 0);
         assert_eq!(answered_by(&world), None, "with nothing in town somebody answered");
@@ -1613,14 +1597,14 @@ mod tests {
 
     fn arrival_log(days: u64) -> Vec<Move> {
         let mut world = street();
-        build(&mut world, 0, BuildingKind::Apartment, 2);
-        build(&mut world, 6, BuildingKind::Apartment, 2);
-        build(&mut world, 30, BuildingKind::Shop, 1);
-        let office = build(&mut world, 60, BuildingKind::Office, 2);
+        build(&mut world, 0, BuildingKind::Apartment);
+        build(&mut world, 6, BuildingKind::Apartment);
+        build(&mut world, 30, BuildingKind::Shop);
+        let office = build(&mut world, 60, BuildingKind::Office);
         // Lunch: a shop beside the office, too far from home to staff.
-        let lunch = build(&mut world, 64, BuildingKind::Shop, 1);
+        let lunch = build(&mut world, 64, BuildingKind::Shop);
         // Fuel, or every few days the town goes without.
-        build(&mut world, 18, BuildingKind::GasStation, 1);
+        build(&mut world, 18, BuildingKind::GasStation);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1685,11 +1669,11 @@ mod tests {
     #[test]
     fn cars_stop_for_fuel_now_and_then() {
         let mut world = street();
-        build(&mut world, 0, BuildingKind::Apartment, 2);
-        build(&mut world, 6, BuildingKind::Apartment, 2);
-        build(&mut world, 60, BuildingKind::Office, 2);
-        build(&mut world, 40, BuildingKind::Shop, 1);
-        let station = build(&mut world, 30, BuildingKind::GasStation, 1);
+        build(&mut world, 0, BuildingKind::Apartment);
+        build(&mut world, 6, BuildingKind::Apartment);
+        build(&mut world, 60, BuildingKind::Office);
+        build(&mut world, 40, BuildingKind::Shop);
+        let station = build(&mut world, 30, BuildingKind::GasStation);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1799,7 +1783,7 @@ mod tests {
         let mut x = 0;
         for i in 0..40 {
             let kind = mix[i % mix.len()];
-            build(&mut world, x, kind, 1);
+            build(&mut world, x, kind);
             x += crate::blueprint::plot(kind, 0).size.0 as i32 + 1;
         }
         // A second lorry for each depot.
@@ -2084,7 +2068,7 @@ mod tests {
     fn every_build_leaves_the_town_settled() {
         let mut world = street();
         for (x, kind) in [(0, BuildingKind::House), (3, BuildingKind::House), (6, BuildingKind::Apartment), (12, BuildingKind::Shop), (30, BuildingKind::Office)] {
-            build(&mut world, x, kind, 1);
+            build(&mut world, x, kind);
         }
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -2170,8 +2154,8 @@ mod tests {
                 }
             }
         }
-        let quarry = build(&mut world, QUARRY_X, BuildingKind::Quarry, 1);
-        let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill, 1);
+        let quarry = build(&mut world, QUARRY_X, BuildingKind::Quarry);
+        let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill);
         let mut stood = 0;
         // Each midnight, a block of flats across the street, and a side
         // street beside it; and the letters read, and a slot booked going
@@ -2379,10 +2363,10 @@ mod tests {
     fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
         use crate::protocol::Stage;
         let mut world = street();
-        build(&mut world, 0, BuildingKind::House, 1);
-        build(&mut world, 3, BuildingKind::House, 1);
-        let farm = build(&mut world, 10, BuildingKind::Farm, 1);
-        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        build(&mut world, 0, BuildingKind::House);
+        build(&mut world, 3, BuildingKind::House);
+        let farm = build(&mut world, 10, BuildingKind::Farm);
+        let depot = build(&mut world, 30, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
@@ -2522,7 +2506,7 @@ mod tests {
                 world.terrain.insert((x, y), TerrainType::Mountain);
             }
         }
-        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        let depot = build(&mut world, 30, BuildingKind::Depot);
         for good in [Good::Stone, Good::Timber, Good::Crates, Good::Fuel] {
             shelve(&mut world, depot, good, if good == Good::Stone { 0.0 } else { 100.0 });
         }
@@ -2555,7 +2539,7 @@ mod tests {
         calls::turn(&mut world, &mut events, flats, 0);
         assert_eq!(quarry(&mut world), [false], "it opened twice");
         let before = world.treasury;
-        build(&mut world, QUARRY_X, BuildingKind::Quarry, 1);
+        build(&mut world, QUARRY_X, BuildingKind::Quarry);
         settle_and_wake(&mut world, &mut events);
         assert_eq!(quarry(&mut world), [true], "the quarry stands and the mission is open");
         assert!((world.treasury - before - 50.0).abs() < 1e-9, "the quarry's mission paid {}", world.treasury - before);
@@ -2569,7 +2553,7 @@ mod tests {
         use crate::missions::Key;
         use crate::needs::Need;
         let mut world = street();
-        let house = build(&mut world, 10, BuildingKind::House, 1);
+        let house = build(&mut world, 10, BuildingKind::House);
         let mut events = EventQueue::new();
         settle_and_wake(&mut world, &mut events);
         let id = world.household(house)[0];
@@ -2636,7 +2620,7 @@ mod tests {
         use crate::orders::{sourceable, GAP};
         let mut world = street();
         opening_done(&mut world);
-        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot, 1);
+        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
         let asks = |world: &mut World, from: u64| -> Vec<Good> {
             (0..9)
                 .map(|n| {
@@ -2653,7 +2637,7 @@ mod tests {
         assert!(!first.contains(&Good::Fuel), "asked for fuel nobody can make: {first:?}");
         assert_eq!(first[0], Good::Crates, "Tam writes first, for the crates a farm would make");
         // A farm stands: crates are made in town.
-        build(&mut world, 20, BuildingKind::Farm, 1);
+        build(&mut world, 20, BuildingKind::Farm);
         assert_eq!(sourceable(&world).0, [Good::Crates]);
         let then = asks(&mut world, 9);
         assert!(!then.contains(&Good::Fuel), "asked for fuel nobody can make: {then:?}");
@@ -2704,8 +2688,8 @@ mod tests {
         use crate::orders::{standing, Mayor, GAP, GOOD};
         let mut world = street();
         opening_done(&mut world);
-        build(&mut world, 20, BuildingKind::Farm, 1);
-        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot, 1);
+        build(&mut world, 20, BuildingKind::Farm);
+        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
         let mut t = 0;
         // Every order but Tam's lapses: the town keeps to one friend.
         while standing(&world, Mayor::Tam) < GOOD {
@@ -2736,7 +2720,7 @@ mod tests {
         use crate::orders::{post, standing, Mayor};
         let mut world = street();
         let harbour = harbour_of(&world);
-        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot, 1);
+        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);

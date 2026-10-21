@@ -338,7 +338,7 @@ fn dedup<T: PartialEq>(v: Vec<T>) -> Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Spot, TerrainType};
+    use crate::protocol::Spot;
 
     /// Open grass, and a hand that draws on it as the brush does: the
     /// whole drag so far, a tile on each time.
@@ -351,12 +351,7 @@ mod tests {
 
     impl Field {
         fn new() -> Field {
-            let mut world = World::new();
-            for y in -10..10 {
-                for x in -10..16 {
-                    world.terrain.insert((x, y), TerrainType::Grass);
-                }
-            }
+            let mut world = World::meadow(-10..16, -10..10);
             world.treasury = 1e9;
             Field { world, events: EventQueue::new(), intersections: IntersectionRegistry::new(), id: 0 }
         }

@@ -334,13 +334,7 @@ mod tests {
     use super::*;
 
     fn grass() -> World {
-        let mut world = World::new();
-        for y in -4..6 {
-            for x in -2..14 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world
+        World::meadow(-2..14, -4..6)
     }
 
     const fn at(x: i32, y: i32) -> GridCoord {

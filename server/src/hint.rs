@@ -91,14 +91,7 @@ mod tests {
 
     /// Grass, and a street along y = 0.
     fn street() -> World {
-        let mut world = World::new();
-        for y in -6..6 {
-            for x in -6..20 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(-6..20).map(|x| at(x, 0)).collect::<Vec<_>>());
-        world
+        World::meadow(-6..20, -6..6).street(-6..20)
     }
 
     fn area(x0: i32, y0: i32, x1: i32, y1: i32) -> Area {
@@ -188,12 +181,7 @@ mod bench {
     #[test]
     #[ignore]
     fn starts_over_a_view() {
-        let mut world = World::new();
-        for y in -40..40 {
-            for x in -60..60 {
-                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-60..60, -40..40);
         for k in -5..5 {
             world.place_road_path(&(-60..60).map(|x| GridCoord { x, y: k * 8 }).collect::<Vec<_>>());
             world.place_road_path(&(-40..40).map(|y| GridCoord { x: k * 12, y }).collect::<Vec<_>>());

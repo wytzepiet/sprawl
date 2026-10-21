@@ -708,20 +708,14 @@ fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
 #[cfg(test)]
 mod bench {
     use super::*;
-    use crate::protocol::{GridCoord, TerrainType};
+    use crate::protocol::GridCoord;
 
     /// Not an assertion: what one cheap evaluation costs, for whoever is
     /// sizing a survey over many tiles. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn how_dear_an_estimate_is() {
-        let mut world = World::new();
-        for y in -6..6 {
-            for x in -4..40 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(-2..38).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        let mut world = World::meadow(-4..40, -6..6).street(-2..38);
         world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
         let shop = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
         world.settle();

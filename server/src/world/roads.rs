@@ -349,6 +349,23 @@ impl World {
         self.place_road_path_of(path, false);
     }
 
+    /// A test's world: grass over these tiles, nothing on it.
+    #[cfg(test)]
+    pub fn meadow(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> World {
+        let mut world = World::new();
+        for (x, y) in xs.flat_map(|x| ys.clone().map(move |y| (x, y))) {
+            world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+        }
+        world
+    }
+
+    /// And a street along y = 0 over these tiles.
+    #[cfg(test)]
+    pub fn street(mut self, xs: std::ops::Range<i32>) -> World {
+        self.place_road_path(&xs.map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        self
+    }
+
     /// Lay a street or a road along a path and connect consecutive nodes
     /// both ways. Free: a fixture's roads are not the mayor's tiles.
     pub fn place_road_path_of(&mut self, path: &[GridCoord], road: bool) {
@@ -510,16 +527,10 @@ impl World {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::protocol::TerrainType;
 
     /// Grass, and a one-way street east along y = 0.
     fn eastward() -> World {
-        let mut world = World::new();
-        for y in -4..5 {
-            for x in -2..12 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-2..12, -4..5);
         world.place_one_way_of(&(0..10).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>(), false);
         world
     }
@@ -673,12 +684,7 @@ pub(super) mod tests {
     /// edges say, through cuts, rings and islands.
     #[test]
     fn the_network_follows_the_roads_laid_and_lifted() {
-        let mut world = World::new();
-        for y in -2..8 {
-            for x in -2..8 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-2..8, -2..8);
         let mut rng: u64 = 0x5eed;
         let mut roll = move |n: i32| {
             rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);

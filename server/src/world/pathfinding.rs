@@ -337,7 +337,7 @@ fn run_length(world: &World, nodes: &[EntityId]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{GameObject, GridCoord, TerrainType};
+    use crate::protocol::{GameObject, GridCoord};
 
     fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
         Routes::from(world, start).route_to(end)
@@ -412,12 +412,7 @@ mod tests {
     /// one broken off short, and two long diagonals across it, so a route
     /// has junctions of every kind to find its way through.
     fn a_town_of_streets() -> World {
-        let mut world = World::new();
-        for y in -2..100 {
-            for x in -2..100 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-2..100, -2..100);
         for (i, y) in (0..98).step_by(7).enumerate() {
             world.place_road_path(&(0..if i % 2 == 0 { 98 } else { 60 }).map(|x| GridCoord { x, y }).collect::<Vec<_>>());
         }
@@ -508,13 +503,7 @@ mod tests {
     }
 
     fn straight_world() -> World {
-        let mut world = World::new();
-        for y in -4..8 {
-            for x in -4..8 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world
+        World::meadow(-4..8, -4..8)
     }
 
     #[test]
@@ -579,12 +568,7 @@ mod tests {
     /// Two ways round, one short and one long, with a stub at each end so both
     /// junctions are real. The short way is taken until it jams.
     fn two_ways_round() -> (World, EntityId, EntityId) {
-        let mut world = World::new();
-        for y in -2..10 {
-            for x in -2..10 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-2..10, -2..10);
         let at = |x, y| GridCoord { x, y };
         // The short way: straight along the bottom.
         world.place_road_path(&(0..=6).map(|x| at(x, 0)).collect::<Vec<_>>());

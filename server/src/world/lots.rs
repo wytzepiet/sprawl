@@ -1173,19 +1173,11 @@ pub type Lots = HashMap<EntityId, Lot>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, TerrainType};
+    use crate::protocol::BuildingKind;
 
     /// Open land with one street along y = 0.
     fn street() -> World {
-        let mut world = World::new();
-        for y in -4..8 {
-            for x in -4..40 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        let path: Vec<GridCoord> = (-4..40).map(|x| GridCoord { x, y: 0 }).collect();
-        world.place_road_path(&path);
-        world
+        World::meadow(-4..40, -4..8).street(-4..40)
     }
 
     /// A car that finds the drive full stops at the door, unseen, rather
@@ -1335,14 +1327,7 @@ mod tests {
     /// ends half way along it is refused, one a tile on is placed.
     #[test]
     fn a_kerb_parker_needs_a_street_along_a_whole_side() {
-        let mut world = World::new();
-        for y in -4..8 {
-            for x in -4..12 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        let path: Vec<GridCoord> = (-4..3).map(|x| GridCoord { x, y: 0 }).collect();
-        world.place_road_path(&path);
+        let world = World::meadow(-4..12, -4..8).street(-4..3);
         assert_eq!(world.fit(BuildingKind::Office, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
         assert!(world.fit(BuildingKind::Office, GridCoord { x: 2, y: 1 }, 0).is_ok());
     }
