@@ -116,9 +116,11 @@ class Strips {
   readonly crops: Mesh[];
   readonly drawn: DrawnPath;
   readonly paint: Paint;
-  /** Where each piece lies, spills and all: its two edges, point by point
-   *  along, and how far along there. */
-  readonly pieces: { l: P; r: P; d: number }[][] = [];
+  /** Where each piece works: its own row, and past the land's edge its
+   *  spill, not where it spills over ground another piece works. Its two
+   *  edges point by point along, how far along there, and between which
+   *  distances along it works. */
+  readonly pieces: { lo: number; hi: number; rows: { l: P; r: P; d: number }[] }[] = [];
   private positions: Float32Array;
   private raised: Float32Array[];
   /** Each vertex out past its piece's tile, a little lower, so that where a
@@ -166,7 +168,7 @@ class Strips {
     const first = new Map<string, number>();
     nodes.forEach(({ x, y }, k) => { if (works(k) && !first.has(`${Math.floor(x)},${Math.floor(y)}`)) first.set(`${Math.floor(x)},${Math.floor(y)}`, k); });
     const spills = (k: number, x: number, y: number) => (first.get(`${Math.floor(x)},${Math.floor(y)}`) ?? Infinity) >= k;
-    const pieces: { k: number; from: number; to: number; samples: { p: P; d: number }[] }[] = [];
+    const pieces: { k: number; lo: number; hi: number; from: number; to: number; samples: { p: P; d: number }[] }[] = [];
     for (let k = 0; k <= last; k++) {
       if (!works(k)) continue;
       const [d0, d1] = [k > 0 ? bound(k) : atNode[0] - 0.5, k < last ? bound(k + 1) : atNode[last] + 0.5];
@@ -175,7 +177,8 @@ class Strips {
       const behind = k > 0 ? nodes[k - 1] : { x: 2 * nodes[0].x - nodes[1].x, y: 2 * nodes[0].y - nodes[1].y };
       const ahead = k < last ? nodes[k + 1] : { x: 2 * nodes[last].x - nodes[last - 1].x, y: 2 * nodes[last].y - nodes[last - 1].y };
       const [back, on] = [spills(k, behind.x, behind.y), spills(k, ahead.x, ahead.y)];
-      pieces.push({ k, from: back ? d0 : -1e9, to: on ? d1 : 1e9, samples: along(d0, d1, back ? SPILL : HAIR, on ? SPILL : HAIR) });
+      const [lo, hi] = [back && !off(behind.x, behind.y) ? d0 : -1e9, on && !off(ahead.x, ahead.y) ? d1 : 1e9];
+      pieces.push({ k, lo, hi, from: back ? d0 : -1e9, to: on ? d1 : 1e9, samples: along(d0, d1, back ? SPILL : HAIR, on ? SPILL : HAIR) });
     }
     // Under the passes, bare earth on each quarter of a tile but those at
     // an outside corner of the land, where the field rounds off: what
@@ -213,10 +216,10 @@ class Strips {
         v += 2;
       });
     }
-    for (const { k, from, to, samples } of pieces) {
+    for (const { k, lo, hi, from, to, samples } of pieces) {
       const at = nodes[k];
       const rows: { l: P; r: P; d: number }[] = [];
-      this.pieces.push(rows);
+      this.pieces.push({ lo, hi, rows });
       samples.forEach(({ p, d }, i) => {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -229,7 +232,8 @@ class Strips {
           const wide = 0.5 + (spill ? SPILL : HAIR);
           return (s ? 1 : -1) * ((s ? 1 : -1) * bend > 0 ? Math.min(wide, 0.9 / Math.abs(bend)) : wide);
         });
-        rows.push({ l: { x: p.x + n.x * across[0], y: p.y + n.y * across[0] }, r: { x: p.x + n.x * across[1], y: p.y + n.y * across[1] }, d });
+        const works = across.map((out, s) => (sides[s] === 2 ? out : Math.sign(out) * Math.min(0.5 + OVERLAP, Math.abs(out))));
+        rows.push({ l: { x: p.x + n.x * works[0], y: p.y + n.y * works[0] }, r: { x: p.x + n.x * works[1], y: p.y + n.y * works[1] }, d });
         sides.forEach((spill, s) => {
           const out = across[s];
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
@@ -268,6 +272,12 @@ class Strips {
     this.crops.forEach((crop, c) => updateMeshPositions(this.ctx.engine, crop, this.raised[c]));
   }
 
+  /** The crop cut as the tractor goes: its shadow drawn again every frame,
+   *  as a car's is, by moving it, by nothing, every frame. */
+  stir() {
+    for (const crop of this.crops) crop.position.z = crop.position.z ? 0 : 1e-6;
+  }
+
   /** Paint changed: every mesh reads it again. */
   repaint() {
     for (const mesh of [this.mesh, ...this.crops]) markMaterialUboDirty(mesh.material as TownMaterial);
@@ -287,6 +297,8 @@ const SUNK = 0.0015;
 const HAIR = 0.03;
 /** A side flag past spilling onto land (1) or off it (2): bare all over. */
 const BARE = 3;
+/** How far a pass takes the crop past its own row, into the next. */
+const OVERLAP = 0.05;
 /** Texels of \`Field.cuts\` to a tile's side. */
 const CUT_RES = 16;
 
@@ -364,14 +376,14 @@ class Field {
     updateTexture2DFromPixels(this.ctx.engine, this.cuts, this.reached(this.strips));
   }
 
-  /** \`cuts\` for these strips: each piece drawn as the GPU draws it, its
-   *  distance along read off where each texel's middle falls, the least
-   *  where pieces overlap. */
+  /** \`cuts\` for these strips: where each piece works, drawn as the GPU
+   *  draws it, its distance along read off where each texel's middle
+   *  falls, the least where pieces overlap. */
   private reached(strips: Strips | null): Uint8Array {
     const [w, h] = [this.span.x * CUT_RES, this.span.y * CUT_RES];
     const at = new Float32Array(w * h).fill(Infinity);
     const texel = (p: P) => ({ x: (p.x - this.corner.x) * CUT_RES - 0.5, y: (p.y - this.corner.y) * CUT_RES - 0.5 });
-    const triangle = (a: P, b: P, c: P, da: number, db: number, dc: number) => {
+    const triangle = (a: P, b: P, c: P, da: number, db: number, dc: number, lo: number, hi: number) => {
       const area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
       if (Math.abs(area) < 1e-9) return;
       const [x0, x1] = [Math.max(0, Math.ceil(Math.min(a.x, b.x, c.x))), Math.min(w - 1, Math.floor(Math.max(a.x, b.x, c.x)))];
@@ -381,15 +393,16 @@ class Field {
           const u = ((b.x - x) * (c.y - y) - (b.y - y) * (c.x - x)) / area;
           const v = ((c.x - x) * (a.y - y) - (c.y - y) * (a.x - x)) / area;
           if (u < -1e-6 || v < -1e-6 || u + v > 1 + 1e-6) continue;
-          at[y * w + x] = Math.min(at[y * w + x], u * da + v * db + (1 - u - v) * dc);
+          const d = u * da + v * db + (1 - u - v) * dc;
+          if (d >= lo && d <= hi) at[y * w + x] = Math.min(at[y * w + x], d);
         }
     };
-    for (const rows of strips?.pieces ?? [])
+    for (const { lo, hi, rows } of strips?.pieces ?? [])
       for (let i = 1; i < rows.length; i++) {
         const [a, b] = [rows[i - 1], rows[i]];
         const [al, ar, bl, br] = [texel(a.l), texel(a.r), texel(b.l), texel(b.r)];
-        triangle(al, ar, br, a.d, a.d, b.d);
-        triangle(al, br, bl, a.d, b.d, b.d);
+        triangle(al, ar, br, a.d, a.d, b.d, lo, hi);
+        triangle(al, br, bl, a.d, b.d, b.d, lo, hi);
       }
     const bytes = new Uint8Array(w * h * 4).fill(255);
     at.forEach((d, i) => {
@@ -410,6 +423,7 @@ class Field {
       const progress = (simNow() - out.run.started) / out.run.pace;
       const k = Math.min(Math.max(0, Math.floor(progress)), atNode.length - 2);
       strips.paint.reach = atNode[k] + (atNode[k + 1] - atNode[k]) * Math.min(1, Math.max(0, progress - k));
+      strips.stir();
     }
     strips.lift(FIELD_Z, out ? [this.look, out.after].map(heightOf) : [heightOf(this.look)]);
     strips.repaint();
