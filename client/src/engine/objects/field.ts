@@ -303,8 +303,10 @@ const OVERLAP = 0.05;
 const CUT_RES = 16;
 
 class Field {
-  /** The strips on show: the last run's, or the one out now's. */
+  /** The strips on show: the last run's, or the one out now's, and the
+   *  path they lie along. */
   private strips: Strips | null = null;
+  private path: GridCoord[];
   /** The run out now, or the last one, just over, and the look it leaves. */
   private out: { run: Run | null; after: Look } | null = null;
   private look: Look;
@@ -331,6 +333,7 @@ class Field {
     this.corner = { x: Math.min(...xs) - 1, y: Math.min(...ys) - 1 };
     this.span = { x: Math.max(...xs) - this.corner.x + 2, y: Math.max(...ys) - this.corner.y + 2 };
     this.cuts = createTexture2DFromPixels(ctx.engine, new Uint8Array(this.span.x * this.span.y * CUT_RES * CUT_RES * 4).fill(255), this.span.x * CUT_RES, this.span.y * CUT_RES);
+    this.path = ruts;
     this.strips = this.lay(ruts, JOB_OF[this.look.stage], [this.look]);
 
     // Each frame: a run begun or ended, how far it has got; and while the
@@ -367,10 +370,12 @@ class Field {
     if (!run) {
       if (this.out) this.out.run = null;
       if (this.strips && this.out) this.strips.paint.reach = 1e9;
+      if (this.out && lookOf(this.tiles).stage === this.out.after.stage) this.settle();
       return;
     }
     const after = leaves(run.job, this.look);
     this.out = { run, after };
+    this.path = run.path;
     this.strips?.drop();
     this.strips = this.lay(run.path, run.job, [this.look, after]);
     updateTexture2DFromPixels(this.ctx.engine, this.cuts, this.reached(this.strips));
@@ -433,6 +438,23 @@ class Field {
     return townMaterial([plugin(this.ctx.engine, paint, this.colours, which, this.cuts, this.corner)], 0.95);
   }
 
+  /** The farm's record again, its tiles' stages perhaps moved on: taken
+   *  up as the field's look once no run is out, a run's own drawing
+   *  standing until then. */
+  retile(tiles: Tile[]) {
+    this.tiles = tiles;
+    if (!this.out?.run && (this.out || lookOf(tiles).stage !== this.look.stage)) this.settle();
+  }
+
+  /** The look the tiles are at, over the last run's path. */
+  private settle() {
+    this.out = null;
+    this.look = lookOf(this.tiles);
+    this.strips?.drop();
+    this.strips = this.lay(this.path, JOB_OF[this.look.stage], [this.look]);
+    updateTexture2DFromPixels(this.ctx.engine, this.cuts, new Uint8Array(this.span.x * this.span.y * CUT_RES * CUT_RES * 4).fill(255));
+  }
+
   dispose(): void {
     this.stop();
     this.strips?.drop();
@@ -442,14 +464,20 @@ class Field {
 /**
  * Each farm's field, kept while its land and ruts are as they were: the
  * farm's record comes again with every crate and every worker, and a field
- * made again for each would stall the frame. Let go, it is dropped once the
- * batch that let it go has passed without taking it up again.
+ * made again for each would stall the frame. Not its tiles' stages: on a
+ * run they change tile by tile as the tractor works them, which the run
+ * itself draws; made again from them, the field would jump to the look
+ * after the run as soon as the last tile was worked, ahead of the
+ * tractor. A run's end brings new ruts, and the field is made again then.
+ * Let go, it is dropped once the batch that let it go has passed without
+ * taking it up again.
  */
 const FIELDS = new Map<number, { field: Field; was: string; theme: Theme; held: boolean }>();
 export function keepField(ctx: EngineContext, casters: Casters, farm: number, tiles: Tile[], ruts: GridCoord[], theme: Theme): () => void {
-  const was = JSON.stringify([tiles, ruts]);
+  const was = JSON.stringify([tiles.map((t) => t.at), ruts]);
   let kept = FIELDS.get(farm);
-  if (!kept || kept.was !== was || kept.theme !== theme) {
+  if (kept && kept.was === was && kept.theme === theme) kept.field.retile(tiles);
+  else {
     kept?.field.dispose();
     kept = { field: new Field(ctx, casters, farm, tiles, ruts, theme), was, theme, held: true };
     FIELDS.set(farm, kept);
