@@ -108,7 +108,7 @@ fn main() {
 
 /// What a car slows or stops for, said.
 fn why(game: &Game, car: EntityId) -> Option<String> {
-    let &(cause, accel) = game.world.why.get(&car)?;
+    let (cause, accel) = game.world.why(car)?;
     let pos = |id: EntityId| game.world.objects.get(id).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
     let what = match cause {
         Cause::Ahead(o) => format!("behind car {o}"),

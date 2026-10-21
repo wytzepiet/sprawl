@@ -815,6 +815,21 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub along: Vec<f64>,
+    /// Where it joined the run of road it is on, which way it set off, and
+    /// when: the direction names the run, since two runs can share both
+    /// ends (`RoadNetwork::observe_passage`).
+    #[serde(skip)]
+    #[ts(skip)]
+    pub joined: Option<(EntityId, EntityId, u64)>,
+    /// Standing where its gear changes, until when.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub standing: Option<u64>,
+    /// What it last slowed or stopped for, and how hard (`car::Cause`):
+    /// for a replay to read, never the game.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub why: Option<(crate::car::Cause, f64)>,
     /// The street nodes either side of the stretch a kerb bay is turned
     /// across, at the trip's start and its end: the street waits at both
     /// while the car turns (`car::simulation`).

@@ -249,11 +249,11 @@ impl Watch {
             // Standing, and not behind one on its way.
             let standing = |o: EntityId| {
                 speed(o) < 0.01
-                    && !matches!(world.why.get(&o), Some(&(crate::car::Cause::Ahead(a) | crate::car::Cause::Merging(a), _)) if speed(a) >= 0.01)
+                    && !matches!(world.why(o), Some((crate::car::Cause::Ahead(a) | crate::car::Cause::Merging(a), _)) if speed(a) >= 0.01)
             };
-            let held = match world.why.get(&e.id) {
-                Some(&(crate::car::Cause::Junction(j), a)) => Some((j, a, game.intersections.who(j).0)),
-                Some(&(crate::car::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.intersections.has_passage(j, e.id) && game.intersections.has_passage(j, l)).map(|&j| (j, a, vec![l])),
+            let held = match world.why(e.id) {
+                Some((crate::car::Cause::Junction(j), a)) => Some((j, a, game.intersections.who(j).0)),
+                Some((crate::car::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.intersections.has_passage(j, e.id) && game.intersections.has_passage(j, l)).map(|&j| (j, a, vec![l])),
                 _ => None,
             };
             if let Some((j, a, them)) = held
@@ -293,12 +293,12 @@ impl Watch {
                     self.standing.insert(e.id, game.now);
                     break;
                 }
-                match waits.and_then(|w| world.why.get(&w)) {
-                    Some(&(crate::car::Cause::Junction(j), _)) => {
+                match waits.and_then(|w| world.why(w)) {
+                    Some((crate::car::Cause::Junction(j), _)) => {
                         at_junction = Some(j);
                         break;
                     }
-                    Some(&(crate::car::Cause::Ahead(o) | crate::car::Cause::Merging(o), _)) => waits = Some(o),
+                    Some((crate::car::Cause::Ahead(o) | crate::car::Cause::Merging(o), _)) => waits = Some(o),
                     _ => break,
                 }
             }

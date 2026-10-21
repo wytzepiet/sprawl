@@ -25,7 +25,6 @@ pub fn park_car(
     car_id: EntityId,
     at_building: EntityId,
 ) {
-    world.car_segment.remove(&car_id);
     let mut owner = None;
     let trip_info = world.objects.get(car_id).and_then(|entry| {
         if let GameObject::Car(ref car) = entry.object {
@@ -704,7 +703,7 @@ pub fn handle_car_wake_up(
         },
         None => return,
     };
-    let Some(h) = advance(world, events, intersections, role, &trip, car_id, now) else { return };
+    let Some(h) = advance(world, events, intersections, role, &mut trip, car_id, now) else { return };
     let (waiting, turning_in) = lots(world, events, &h, &trip);
     let (mut held, tail_clears) = clear_behind(world, events, intersections, &h, &trip);
     // Its nose at the crossing on the link it is on, if there is one, or
@@ -748,13 +747,14 @@ pub fn handle_car_wake_up(
 /// Drive on to now: over each node the car has passed since it last
 /// looked, clearing the junctions behind it, timing the runs it finished,
 /// and parking it where its trip ends. Where it is now, unless parked.
-fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, role: CarRole, trip: &Trip, car_id: EntityId, now: GameTime) -> Option<Here> {
+fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, role: CarRole, trip: &mut Trip, car_id: EntityId, now: GameTime) -> Option<Here> {
     // === ADVANCE ===
     let (cur_progress, cur_speed) = trip.at(now);
 
     let mut ri = trip.route_index;
     let mut seg_start = trip.along[ri - 1];
     let old_ri = ri;
+    let (mut standing, mut joined) = (trip.standing, trip.joined);
 
     let stops_at = |k: usize| stops_at(world, trip, k);
     let gear = |k: usize| gear(trip, k);
@@ -769,7 +769,7 @@ fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
         }
         // A change of gear: it stands a moment before it pulls away.
         if gear(ri) {
-            world.cusps.insert(car_id, now + CUSP_MS);
+            standing = Some(now + CUSP_MS);
         }
 
         let node = trip.route[ri];
@@ -798,14 +798,14 @@ fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
             )
             .map_or(now, |t| trip.updated_at + (t * 1000.0) as u64);
 
-            if let Some(&(entered, first, at)) = world.car_segment.get(&car_id)
+            if let Some((entered, first, at)) = joined
                 && entered != node
                 && crossed_at > at
             {
                 world.network.observe_passage(entered, first, (crossed_at - at) as f64);
             }
             if let Some(&onward) = trip.route.get(ri + 1) {
-                world.car_segment.insert(car_id, (node, onward, crossed_at));
+                joined = Some((node, onward, crossed_at));
             }
         }
 
@@ -828,6 +828,7 @@ fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
         seg_start += seg_len;
         ri += 1;
     }
+    (trip.standing, trip.joined) = (standing, joined);
 
     leave_crossed(world, events, car_id, trip, old_ri, ri);
     // Through a junction: in the lane's queue beyond it where it is on the
@@ -1237,14 +1238,9 @@ fn road_ahead(world: &mut World, intersections: &IntersectionRegistry, h: &Here,
     // lot node, from its start. Where the gear changes, and at the end, a
     // stop on the node; at a change of gear, a moment standing.
     let backing = |k: usize| backs.iter().any(|&[a, b]| a < k && k <= b);
-    let mut standing = None;
-    if let Some(&until) = world.cusps.get(&car_id) {
-        if now < until {
-            obstacles.push((Obstacle::MustStop { distance: 0.0 }, Cause::Stop));
-            standing = Some(until - now);
-        } else {
-            world.cusps.remove(&car_id);
-        }
+    let standing = trip.standing.filter(|&until| now < until).map(|until| until - now);
+    if standing.is_some() {
+        obstacles.push((Obstacle::MustStop { distance: 0.0 }, Cause::Stop));
     }
     if backing(ri) {
         obstacles.push((Obstacle::SpeedLimit { distance: 0.0, speed: REVERSE_SPEED }, Cause::Slow));
@@ -1324,11 +1320,6 @@ fn settle(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, obs
         .iter()
         .map(|(o, c)| (o.required_accel(cur_speed), Some(*c)))
         .fold((ACCELERATION, None), |a, b| if b.0 < a.0 { b } else { a });
-    // What it slows or stops for, kept for a replay to read.
-    match cause {
-        Some(c) => world.why.insert(car_id, (c, new_accel)),
-        None => world.why.remove(&car_id),
-    };
 
     let mut wake_ms = obstacles
         .iter()
@@ -1422,6 +1413,10 @@ fn settle(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, obs
         t.speed = cur_speed;
         t.updated_at = now;
         t.route_index = ri;
+        t.standing = trip.standing;
+        t.joined = trip.joined;
+        // What it slows or stops for, kept for a replay to read.
+        t.why = cause.map(|c| (c, new_accel));
         if accel_changed {
             t.acceleration = new_accel;
         }

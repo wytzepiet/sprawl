@@ -44,12 +44,6 @@ pub struct World {
     /// committed road graph passes through, so nothing that lays or pulls up a
     /// road has to know this index exists.
     pub network: RoadNetwork,
-    /// Where each moving car joined the run of road it is on, which way it set
-    /// off, and when. The direction is what names the run: two runs can share
-    /// both ends, so the junction alone would not say which one is being
-    /// driven. Disposable — a car with no entry here simply does not report
-    /// its first stretch, and the next junction starts it off.
-    pub car_segment: HashMap<EntityId, (EntityId, EntityId, crate::engine::GameTime)>,
     /// Maps node_id → set of car_ids whose route passes through that node,
     /// in id order: a road taken up reroutes them in it.
     pub node_cars: HashMap<EntityId, BTreeSet<EntityId>>,
@@ -59,11 +53,6 @@ pub struct World {
     /// leaving the street there until it is parked. The street waits for it
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
     pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
-    /// Vehicles standing where their gear changes, and until when.
-    pub cusps: HashMap<EntityId, crate::engine::GameTime>,
-    /// What each car last slowed or stopped for, and how hard
-    /// (`car::Cause`): for a replay to read, never the game.
-    pub why: HashMap<EntityId, (crate::car::Cause, f64)>,
     pub terrain_seed: u32,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
@@ -170,11 +159,8 @@ impl World {
             lot_nodes: HashMap::default(),
             claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::default(),
             node_cars: HashMap::default(),
             manoeuvres: HashMap::default(),
-            cusps: HashMap::default(),
-            why: HashMap::default(),
             terrain_seed: 0,
             books: HashMap::default(),
             town: Default::default(),
@@ -214,11 +200,8 @@ impl World {
             lot_nodes: HashMap::default(),
             claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::default(),
             node_cars: HashMap::default(),
             manoeuvres: HashMap::default(),
-            cusps: HashMap::default(),
-            why: HashMap::default(),
             terrain_seed,
             books: HashMap::default(),
             town: Default::default(),
@@ -309,10 +292,18 @@ impl World {
         }
     }
 
+    /// What a car on its way last slowed or stopped for, and how hard
+    /// (`Trip::why`).
+    pub fn why(&self, car_id: EntityId) -> Option<(crate::car::Cause, f64)> {
+        match self.objects.get(car_id)?.object {
+            GameObject::Car(ref c) => c.trip.as_ref()?.why,
+            _ => None,
+        }
+    }
+
     /// Remove a car from the world entirely — scrap, not parking.
     pub fn despawn_car(&mut self, car_id: EntityId) {
         self.release_spot(car_id);
-        self.car_segment.remove(&car_id);
         self.remove_car_from_edges(car_id);
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position

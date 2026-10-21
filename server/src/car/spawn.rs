@@ -134,6 +134,11 @@ fn launch(
             route_index: 1,
             segment_lengths,
             along,
+            // The run it is setting off along starts here, so the first
+            // junction it reaches has something to measure against.
+            joined: Some((first_edge.0, first_edge.1, now)),
+            standing: None,
+            why: None,
             stretches,
             shift: None,
             signal: None,
@@ -151,9 +156,6 @@ fn launch(
         world.missions.stir();
     }
 
-    // The run it is setting off along starts here, so the first junction it
-    // reaches has something to measure against.
-    world.car_segment.insert(car_id, (route_nodes[0], route_nodes[1], now));
     world.register_car_route(car_id, &route_nodes);
     if let Some(seg) = world.edges.get_mut(&first_edge) {
         seg.push_back(car_id, first_lane);
