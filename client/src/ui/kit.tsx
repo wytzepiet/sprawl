@@ -17,13 +17,17 @@ import type { JSX } from "~ui/jsx-runtime";
  * white on the night's.
  */
 
-/** Something to press: it rises under the pointer, gives under the finger and springs back. */
+/** Something to press: it rises under the pointer, gives under the finger and springs back,
+ *  by a few pixels whatever its size: a button's twelfth, a row's hair. */
 export function Press(props: JSX.Box & { onTap: () => void }) {
   const [down, setDown] = createSignal(false);
   const [over, setOver] = createSignal(false);
-  const [s] = follow(() => (down() ? 0.92 : over() ? 1.08 : 1), { rest: 0.001 });
+  const [size, setSize] = createSignal(44);
+  const by = () => Math.min(0.08, 3.5 / size());
+  const [s] = follow(() => (down() ? 1 - by() : over() ? 1 + by() : 1), { rest: 0.001 });
   const [y] = follow(() => (over() && !down() ? -2 : 0));
-  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} />;
+  const sized = (w: number, h: number) => (setSize(Math.max(w, h, 1)), props.onSize?.(w, h));
+  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} onSize={sized} />;
 }
 
 /** A little i on a tile: a tap opens what it is. */
