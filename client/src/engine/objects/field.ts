@@ -570,7 +570,10 @@ let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoi
 // pixel (\`Field.cuts\`), read between the four texels round it where they
 // are of one pass; across from one pass to another, the nearest; and past
 // the strips' edge, the ones in them.
-let fieldCutP = (fieldW - material.fieldAfter.zw) * ${CUT_RES}. - 0.5;
+// Read a little off where the pixel is, by a wobble of its own, so every
+// edge of the standing crop is ragged, along the passes as across them.
+let fieldWobble = vec2f(fieldNoise(fieldW * 20. + vec2f(211., 17.)), fieldNoise(fieldW * 20. + vec2f(59., 233.))) - 0.5;
+let fieldCutP = (fieldW + 0.3 * fieldWobble - material.fieldAfter.zw) * ${CUT_RES}. - 0.5;
 let fieldCutI = vec2i(floor(fieldCutP));
 let fieldCutF = fract(fieldCutP);
 let fieldCutMax = vec2i(textureDimensions(fieldCuts)) - 1;
@@ -584,7 +587,11 @@ fieldCutS = select(fieldCutS, vec4f(fieldCutLo), fieldCutS > vec4f(65535.));
 let fieldCutNear = fieldCutS[select(0, 1, fieldCutF.x > 0.5) + select(0, 2, fieldCutF.y > 0.5)];
 let fieldCutSpread = max(max(fieldCutS.x, fieldCutS.y), max(fieldCutS.z, fieldCutS.w)) - fieldCutLo;
 let fieldReached = select(fieldCutNear, mix(mix(fieldCutS.x, fieldCutS.y, fieldCutF.x), mix(fieldCutS.z, fieldCutS.w, fieldCutF.x), fieldCutF.y), fieldCutSpread < 1.);
-let fieldLater = fieldReached < 65535. && fieldReached - fieldLook.z < 0.06 * (fieldEdge - 0.5);
+// The harvest's front ragged: the cut line wanders a few tenths of a tile
+// either way, and stalks stand a little behind it, clumps go a little
+// ahead.
+let fieldFront = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
+let fieldLater = fieldReached < 65535. && fieldReached - fieldLook.z < 0.22 * (fieldEdge - 0.5) + 0.3 * (fieldFront - 0.5);
 let fieldNow = select(fieldLook.xy, material.fieldAfter.xy, fieldLater);
 let fieldStage = u32(fieldNow.x + 0.5);
 // How far past its own tile the pixel is, across or past either end: out
