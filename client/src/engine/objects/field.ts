@@ -165,20 +165,37 @@ class Strips {
       const [back, on] = [spills(k, behind.x, behind.y), spills(k, ahead.x, ahead.y)];
       pieces.push({ k, from: back ? d0 : -1e9, to: on ? d1 : 1e9, samples: along(d0, d1, back ? SPILL : HAIR, on ? SPILL : HAIR) });
     }
-    const count = pieces.reduce((n, piece) => n + piece.samples.length, 0) + under.length * 2;
+    // Under the passes, bare earth on each quarter of a tile but those at
+    // an outside corner of the land, where the field rounds off: what
+    // shows where a turn cut a tile's corner.
+    const quarters = under.flatMap((t) =>
+      [0, 1].flatMap((qx) => [0, 1].filter((qy) => land.has(`${t.x + qx * 2 - 1},${t.y}`) || land.has(`${t.x},${t.y + qy * 2 - 1}`)).map((qy) => ({ x: t.x + qx * 0.5, y: t.y + qy * 0.5 }))),
+    );
+    // How much further each edge of the pass, half a tile out, goes than
+    // its middle, here: on a turn the outer edge more, the inner less.
+    const stretch = [-0.5, 0.5].map((out) => (d: number) => {
+      const i = Math.min(Math.max(1, past(d)), distances.length - 1);
+      const [a, b] = [points[i - 1], points[i]];
+      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const [ta, tb] = [drawn.path.wayAt(distances[i - 1] / drawn.length), drawn.path.wayAt(distances[i] / drawn.length)];
+      const [x, y] = [b.x - a.x - (tb.y - ta.y) * out, b.y - a.y + (tb.x - ta.x) * out];
+      return Math.max(0, (x * (b.x - a.x) + y * (b.y - a.y)) / (l * l));
+    });
+    const count = pieces.reduce((n, piece) => n + piece.samples.length, 0) + quarters.length * 2;
     this.positions = new Float32Array(count * 6);
     this.sunk = new Float32Array(count * 2);
     const data = new Float32Array(count * 16);
+    const tex = new Float32Array(count * 2);
     const indices: number[] = [];
     let v = 0;
-    // Under it all, each tile given bare, ploughed earth, drawn first:
-    // what shows where a turn cut a tile's corner.
-    for (const t of under) {
-      [t.y, t.y + 1].forEach((y, i) => {
-        [-0.5, 0.5].forEach((out, s) => {
-          this.positions.set([t.x + 0.5 - out, y, 0], (v + s) * 3);
+    for (const q of quarters) {
+      [q.y, q.y + 0.5].forEach((y, i) => {
+        [0, 0.5].forEach((across, s) => {
+          const out = across - (q.x % 1 === 0 ? 0.5 : 0);
+          this.positions.set([q.x + 0.5 - across, y, 0], (v + s) * 3);
           this.sunk[v + s] = 2 * SUNK;
           data.set([out, y, -1, 0, -1e9, 1e9, BARE, BARE], (v + s) * 8);
+          tex[v + s] = 1;
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -196,6 +213,7 @@ class Strips {
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
           this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
+          tex[v + s] = 1 + (stretch[s](d) - 1) * 2 * Math.abs(out);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -206,6 +224,7 @@ class Strips {
     this.mesh.receiveShadows = true;
     this.mesh.renderOrder = LAYER_ORDER.field;
     setMeshAttribute(ctx.engine, this.mesh, "strip", data);
+    setMeshAttribute(ctx.engine, this.mesh, "stripTex", tex);
     show(ctx.scene, this.mesh);
   }
 
@@ -403,10 +422,12 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
     getAttributes: () => [
       { name: "stripA", type: "vec4<f32>", buffer: "strip" },
       { name: "stripB", type: "vec4<f32>", buffer: "strip" },
+      { name: "stripTex", type: "f32" },
     ],
     getVaryings: () => [
       { name: "vStripA", type: "vec4f" },
       { name: "vStripB", type: "vec4f" },
+      { name: "vStripTex", type: "f32" },
     ],
     getSamplers: () => [
       { texture: "fieldGrain", sampler: "fieldGrainSampler" },
@@ -429,7 +450,7 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
     },
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_MAIN_END: "out.vStripA = stripA; out.vStripB = stripB;" }
+        ? { CUSTOM_VERTEX_MAIN_END: "out.vStripA = stripA; out.vStripB = stripB; out.vStripTex = stripTex;" }
         : { CUSTOM_FRAGMENT_DEFINITIONS: DEFINITIONS, CUSTOM_FRAGMENT_MAIN_BEGIN: BEGIN, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: DIFFUSE },
   };
 }
@@ -461,8 +482,18 @@ let fieldW = input.worldPos.xy;
 // Where along the wheat's texture: slid on by a slow swell across the
 // land, a few tiles from one to the next, so the same tile of it does not
 // come round on a grid; never across, where the rows and tramlines lie.
-let fieldTexV = fieldV + 0.7 * fieldNoise(fieldW * 0.3 + vec2f(97., 43.));
-let fieldDv = vec2f(dpdx(fieldTexV), dpdy(fieldTexV));
+// Round a turn each part of the pass runs at its own length (\`vStripTex\`,
+// how much further than the middle), so the outside is not drawn out
+// nor the inside crushed: two copies, each starting over every quarter
+// tile and faded out where it does, so neither shears far. On the
+// straight the two are one.
+let fieldSwell = 0.7 * fieldNoise(fieldW * 0.3 + vec2f(97., 43.));
+let fieldPhase = fieldV * 4.;
+let fieldTexVs = array<f32, 2>(
+  (floor(fieldPhase) + fract(fieldPhase) * input.vStripTex) / 4. + fieldSwell,
+  (floor(fieldPhase + 0.5) - 0.5 + fract(fieldPhase + 0.5) * input.vStripTex) / 4. + fieldSwell);
+let fieldTexW = 1. - abs(2. * fract(fieldPhase) - 1.);
+let fieldDv = vec2f(dpdx(fieldV), dpdy(fieldV)) * input.vStripTex;
 let fieldLook = material.fieldLook;
 // Broad, soft patches: wetter earth, a crop a little ahead or behind.
 let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
@@ -507,7 +538,7 @@ var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
 for (var i = 0; i < 2; i++) {
   let st = select(select(fieldFrom, fieldTo, i == 1), 0., fieldBare);
-  let t = fieldWheatAt(st, fieldU, fieldTexV, fieldDu, fieldDv);
+  let t = mix(fieldWheatAt(st, fieldU, fieldTexVs[1], fieldDu, fieldDv), fieldWheatAt(st, fieldU, fieldTexVs[0], fieldDu, fieldDv), fieldTexW);
   let soil = fieldSoil * select(select(1., 0.8, st > 5.5), 0.9, st < 0.5);
   var crop = fieldGreen;
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
