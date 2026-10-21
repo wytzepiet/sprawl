@@ -67,7 +67,7 @@ const FOAM_ROUGH = 0.95;
  *  the hour the clock wraps at), a crest of foam running in from this far
  *  out, in tiles, as wide as this; and as it breaks it runs up a beach as
  *  far as this, the sand drawing back from it (`ground.ts`). */
-export const WAVE_PERIOD = 6;
+const WAVE_PERIOD = 6;
 const WAVE_FROM = 1.6;
 const CREST = 0.035;
 /** And this share of that where the waves start, out to sea. */
@@ -102,7 +102,7 @@ const INSHORE_CALM = 0.2;
 export const SWASH = 0.26;
 /** The swash starts up the sand this far through a wave before the crest
  *  reaches it, as the broken water runs ahead of its white. */
-export const SWASH_LEAD = 0.06;
+const SWASH_LEAD = 0.06;
 /** And a wave runs up for this share of itself, back down for the rest. */
 const RISE = 0.3;
 /** A wave breaks where it is lost in the foam and leaves lace behind it,
@@ -135,7 +135,7 @@ const FUZZ_CHURN = 0.02;
  *  and read again this many tiles across, afresh for every wave, breaks
  *  each crest into pieces, where it is over this. The beach's swash reads
  *  them alike (`ground.ts`). */
-export const WAVE_STAGGER = [61, 1.6];
+const WAVE_STAGGER = [61, 1.6];
 /** The swell comes in from the wind's way, not square to every coast: a
  *  wave's phase climbs this much a tile along it, so its crests meet a
  *  shore at a slant and break along it in turn. */
@@ -143,14 +143,14 @@ const SLANT = [0.92, 0.39].map((v) => (v * Math.tan((8 * Math.PI) / 180)) / WAVE
 /** And each crest wiggles: the ripple's height, read this many tiles
  *  across, putting a stretch up to this many tiles ahead or behind. */
 const WIGGLE = [3.7, 0.13];
-export const WAVE_PIECES = [14, -0.05];
+const WAVE_PIECES = [14, -0.05];
 /** A wave's phase at a point of the map: `R(uv)` reads the ripple's height
  *  there, `t` the clock, `d` how far through it the point is. */
-export const wavePhase = (R: (uv: string) => string, at: string, t: string, d: string) =>
+const wavePhase = (R: (uv: string) => string, at: string, t: string, d: string) =>
   `(${t} / ${f(WAVE_PERIOD)} + ${d} + ${R(`${at} / ${f(WAVE_STAGGER[0])}`)} * ${f(WAVE_STAGGER[1])} + dot(${at}, vec2f(${f(SLANT[0])}, ${f(SLANT[1])})))`;
 /** Whether a wave of that phase reaches a point, 0 to 1. */
-export const wavePiece = (R: (uv: string) => string, at: string, phase: string, v2: string) =>
-  `smoothstep(${f(WAVE_PIECES[1] - 0.08)}, ${f(WAVE_PIECES[1] + 0.08)}, ${R(`${at} / ${f(WAVE_PIECES[0])} + floor(${phase}) * ${v2}(0.37, 0.61)`)})`;
+const wavePiece = (R: (uv: string) => string, at: string, phase: string) =>
+  `smoothstep(${f(WAVE_PIECES[1] - 0.08)}, ${f(WAVE_PIECES[1] + 0.08)}, ${R(`${at} / ${f(WAVE_PIECES[0])} + floor(${phase}) * vec2f(0.37, 0.61)`)})`;
 
 /** How far up the shore the water is, of its furthest, at a point `p` of
  *  the map at time `t`: from just before its wave's crest reaches the
@@ -158,7 +158,7 @@ export const wavePiece = (R: (uv: string) => string, at: string, phase: string, 
  *  the ripple's height. A WGSL function of that name, for the beach and the
  *  rock alike (`ground.ts`, `peaks.ts`). */
 export const swashFn = (R: (uv: string) => string, name: string) =>
-  `fn ${name}(t: f32, p: vec2f) -> f32 { let w = ${wavePhase(R, "p", "t", f(SWASH_LEAD))}; let s = fract(w); let up = 1. - min(s / ${f(RISE)}, 1.); return min(1. - up * up, 1. - smoothstep(${f(RISE)}, 1., s)) * mix(0.25, 1., ${wavePiece(R, "p", "(w - 1.)", "vec2f")}); }`;
+  `fn ${name}(t: f32, p: vec2f) -> f32 { let w = ${wavePhase(R, "p", "t", f(SWASH_LEAD))}; let s = fract(w); let up = 1. - min(s / ${f(RISE)}, 1.); return min(1. - up * up, 1. - smoothstep(${f(RISE)}, 1., s)) * mix(0.25, 1., ${wavePiece(R, "p", "(w - 1.)")}); }`;
 
 /** A tiling field of the surface's slope, two channels, and its height, a third, from waves of
  *  whole numbers of crests across it, so it meets itself at its edges:
@@ -237,51 +237,49 @@ function lace(engine: EngineContext): Texture2D {
 
 const f = (x: number) => x.toFixed(4);
 const water = () => {
-  const [at, here, time, v2, v3] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime", "vec2f", "vec3f"];
+  const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
   const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
   // Where a reading is on the texture: drifting, then turned.
   const drift = ([span, dx, dy, speed, , turn]: number[]) => {
     const [c, s] = [Math.cos(turn), Math.sin(turn)];
-    const p = `(${at} - ${v2}(${f(dx)}, ${f(dy)}) * ${f(speed)} * ${time})`;
-    return `${v2}(${p}.x * ${f(c)} - ${p}.y * ${f(s)}, ${p}.x * ${f(s)} + ${p}.y * ${f(c)}) / ${f(span)}`;
+    const p = `(${at} - vec2f(${f(dx)}, ${f(dy)}) * ${f(speed)} * ${time})`;
+    return `vec2f(${p}.x * ${f(c)} - ${p}.y * ${f(s)}, ${p}.x * ${f(s)} + ${p}.y * ${f(c)}) / ${f(span)}`;
   };
   // Its slope, turned back to the map's frame.
   const slope = LAYERS.map((l, i) => {
     const [c, s] = [Math.cos(l[5]), Math.sin(l[5])];
     const g = i === 0 ? "ripple.rg" : `${read("waterRipple", drift(l))}.rg`;
-    return `${v2}(${g}.x * ${f(c)} + ${g}.y * ${f(s)}, ${g}.y * ${f(c)} - ${g}.x * ${f(s)}) * ${f(l[4])}`;
+    return `vec2f(${g}.x * ${f(c)} + ${g}.y * ${f(s)}, ${g}.y * ${f(c)} - ${g}.x * ${f(s)}) * ${f(l[4])}`;
   }).join(" + ");
   // The slate at the pixel, as the cliff's shader reads it for its edge.
   const slateTop = `textureSampleBias(waterSlate, waterSlateSampler, ${at} / ${f(SLATE_SPAN)}, ${f(CALM)})`;
   // The ripple's height, for the waves' timing: broad, read whole, as
   // each wave reads it afresh, a jump the sampler would take for a blur.
   const height = (uv: string) => `textureSampleLevel(waterRipple, waterRippleSampler, ${uv}, 0.).b`;
-  const let_ = (name: string, _type: string) => `let ${name} = `;
   // The crest's white is whole up to here through a wave, its lip, then
   // trails off out to sea.
   const lip = 1 - CREST_TAIL / WAVE_FROM;
-  const [colour, end] = ["baseColor = (", ");"];
   return [
     // The shore's distance and the cliff's, one texture between them.
-    `${let_("fields", "vec4f")}${read("waterFields", `${here} / ${f(CHUNK_SIZE)}`)};`,
-    `${let_("shore", "float")}fields.r * ${f(SHORE_REACH)};`,
+    `let fields = ${read("waterFields", `${here} / ${f(CHUNK_SIZE)}`)};`,
+    `let shore = fields.r * ${f(SHORE_REACH)};`,
     // The sea's broadest ripple: its slope, and its height, the swell.
-    `${let_("ripple", "vec4f")}${read("waterRipple", drift(LAYERS[0]))};`,
-    `${let_("swell", "float")}ripple.b;`,
-    `${let_("foamEdge", "float")}${f(FOAM)} * (0.5 + 0.5 * swell) * (0.85 + 0.15 * sin(1.3 * ${time}));`,
-    `${let_("cliffField", "float")}fields.g;`,
+    `let ripple = ${read("waterRipple", drift(LAYERS[0]))};`,
+    `let swell = ripple.b;`,
+    `let foamEdge = ${f(FOAM)} * (0.5 + 0.5 * swell) * (0.85 + 0.15 * sin(1.3 * ${time}));`,
+    `let cliffField = fields.g;`,
     // As far as the field reaches is no cliff near at all, whatever the slate.
-    `${let_("slate", "vec4f")}${slateTop};`,
-    `${let_("cliffFoot", "float")}(cliffField - 0.5) * ${f(2 * CLIFF_REACH)} - (slate.b * 2. - 1.) * ${f(CLIFF_WANDER)} - ${f(CLIFF_OUT + CLIFF_RUN)} + step(0.995, cliffField) * 9.;`,
-    `${let_("ashore", "float")}min(shore, max(cliffFoot, 0.));`,
+    `let slate = ${slateTop};`,
+    `let cliffFoot = (cliffField - 0.5) * ${f(2 * CLIFF_REACH)} - (slate.b * 2. - 1.) * ${f(CLIFF_WANDER)} - ${f(CLIFF_OUT + CLIFF_RUN)} + step(0.995, cliffField) * 9.;`,
+    `let ashore = min(shore, max(cliffFoot, 0.));`,
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
     // Worked out here, where every pixel goes, as a neighbour's reading is.
-    `${let_("acrossX", "vec2f")}dpdx(${at});`,
-    `${let_("acrossY", "vec2f")}dpdy(${at});`,
-    `${let_("climb", "vec2f")}${v2}(dpdx(ashore), dpdy(ashore));`,
-    `${let_("climbs", "vec2f")}${v2}(acrossY.y * climb.x - acrossX.y * climb.y, acrossX.x * climb.y - acrossY.x * climb.x) * sign(acrossX.x * acrossY.y - acrossX.y * acrossY.x);`,
-    `${let_("seaward", "vec2f")}climbs / max(length(climbs), 1e-6);`,
+    `let acrossX = dpdx(${at});`,
+    `let acrossY = dpdy(${at});`,
+    `let climb = vec2f(dpdx(ashore), dpdy(ashore));`,
+    `let climbs = vec2f(acrossY.y * climb.x - acrossX.y * climb.y, acrossX.x * climb.y - acrossY.x * climb.x) * sign(acrossX.x * acrossY.y - acrossX.y * acrossY.x);`,
+    `let seaward = climbs / max(length(climbs), 1e-6);`,
     // Nothing of the coast reaches past the shore's field, so the sea there,
     // and every chunk with no shore, does none of what follows: whole
     // stretches of pixels skip it together, so the branch costs nothing;
@@ -292,66 +290,66 @@ const water = () => {
     // The waves keep time by the cliff's smooth outline, not its foot's
     // wander along the slate, so their crests run smooth to the rock; and
     // wiggle of their own, a stretch a little ahead or behind.
-    `${let_("wave", "float")}${wavePhase(height, at, time, `(min(shore, max(cliffFoot + (slate.b * 2. - 1.) * ${f(CLIFF_WANDER)}, 0.)) + ${height(`${at} / ${f(WIGGLE[0])}`)} * ${f(WIGGLE[1])}) / ${f(WAVE_FROM)}`)};`,
+    `let wave = ${wavePhase(height, at, time, `(min(shore, max(cliffFoot + (slate.b * 2. - 1.) * ${f(CLIFF_WANDER)}, 0.)) + ${height(`${at} / ${f(WIGGLE[0])}`)} * ${f(WIGGLE[1])}) / ${f(WAVE_FROM)}`)};`,
     // How far through its wave the water is since its crest passed; how
     // far its waves have yet to come in, fading out where they start; and
     // how far out, from the shore's foam to where they start.
-    `${let_("phase", "float")}fract(wave);`,
+    `let phase = fract(wave);`,
     // Whether the crest this belongs to has a piece here: asked after by the
     // lip its swell rises to, which the crest's white and the lace it
     // leaves agree on wherever they show; soft for the swell, and on or
     // off for the white, not the soft fade the beach's swash takes it with.
-    `${let_("owned", "float")}${wavePiece(height, at, `(wave + ${f(SWELL_FRONT - SWELL_AHEAD)} - 1.)`, v2)};`,
-    `${let_("ownedWhite", "float")}smoothstep(0.35, 0.65, owned);`,
-    `${let_("breaking", "float")}1. - smoothstep(${f(WAVE_FROM * 0.6)}, ${f(WAVE_FROM)}, ashore);`,
+    `let owned = ${wavePiece(height, at, `(wave + ${f(SWELL_FRONT - SWELL_AHEAD)} - 1.)`)};`,
+    `let ownedWhite = smoothstep(0.35, 0.65, owned);`,
+    `let breaking = 1. - smoothstep(${f(WAVE_FROM * 0.6)}, ${f(WAVE_FROM)}, ashore);`,
     // Off rock the water stays deep to the stone: the swell runs in whole
     // and breaks white only close to it, not far out across a shelf as on a
     // beach. Rock where the cliff's foot is nearer than the shore's line,
     // a beach where the shore's is nearer.
-    `${let_("rocky", "float")}1. - smoothstep(-0.3, 0.1, cliffFoot - shore);`,
-    `${let_("whiteFrom", "float")}mix(${f(WAVE_FROM)}, ${f(ROCK_BREAK)}, rocky);`,
-    `${let_("breakingWhite", "float")}1. - smoothstep(whiteFrom * 0.6, whiteFrom, ashore);`,
-    `${let_("farOut", "float")}smoothstep(${f(FOAM)}, ${f(WAVE_FROM)}, ashore);`,
+    `let rocky = 1. - smoothstep(-0.3, 0.1, cliffFoot - shore);`,
+    `let whiteFrom = mix(${f(WAVE_FROM)}, ${f(ROCK_BREAK)}, rocky);`,
+    `let breakingWhite = 1. - smoothstep(whiteFrom * 0.6, whiteFrom, ashore);`,
+    `let farOut = smoothstep(${f(FOAM)}, ${f(WAVE_FROM)}, ashore);`,
     // The lace a crest leaves behind, fresh for every wave, drawn back out
     // as the swash runs back; read as finely as the map runs under it, not
     // as its jump from one wave's pattern to the next would have it, a line
     // of blur.
-    `${let_("lace", "float")}textureSampleGrad(waterLace, waterLaceSampler, (${at} - seaward * ${f(LACE_DRIFT)} * smoothstep(0.25, 1., phase)) / ${f(LACE_TILES)} + floor(wave) * ${v2}(0.37, 0.61), acrossX / ${f(LACE_TILES)}, acrossY / ${f(LACE_TILES)}).r;`,
-    `${let_("cover", "float")}max(ownedWhite * (1. - smoothstep(0., ${f(LACE_LIFE)}, phase)) * mix(1., ${f(LACE_FAR)}, smoothstep(${f(FOAM)}, ${f(LACE_REACH)}, ashore)) * breakingWhite, ${f(LACE_LEFT)} * (1. - smoothstep(foamEdge * 0.5, foamEdge, ashore)));`,
+    `let lace = textureSampleGrad(waterLace, waterLaceSampler, (${at} - seaward * ${f(LACE_DRIFT)} * smoothstep(0.25, 1., phase)) / ${f(LACE_TILES)} + floor(wave) * vec2f(0.37, 0.61), acrossX / ${f(LACE_TILES)}, acrossY / ${f(LACE_TILES)}).r;`,
+    `let cover = max(ownedWhite * (1. - smoothstep(0., ${f(LACE_LIFE)}, phase)) * mix(1., ${f(LACE_FAR)}, smoothstep(${f(FOAM)}, ${f(LACE_REACH)}, ashore)) * breakingWhite, ${f(LACE_LEFT)} * (1. - smoothstep(foamEdge * 0.5, foamEdge, ashore)));`,
     // Two grains of lace drifting across each other: the crest's and the
     // rock's foam.
-    `${let_("fuzz", "float")}textureSampleGrad(waterLace, waterLaceSampler, (${at} + ${v2}(1., 0.6) * ${f(FUZZ_CHURN)} * ${time}) / ${f(FUZZ_TILES)}, acrossX / ${f(FUZZ_TILES)}, acrossY / ${f(FUZZ_TILES)}).r + textureSampleGrad(waterLace, waterLaceSampler, (${at} - ${v2}(0.5, 1.) * ${f(FUZZ_CHURN)} * ${time}) / ${f(FUZZ_TILES * 0.6)} + 0.5, acrossX / ${f(FUZZ_TILES * 0.6)}, acrossY / ${f(FUZZ_TILES * 0.6)}).r;`,
+    `let fuzz = textureSampleGrad(waterLace, waterLaceSampler, (${at} + vec2f(1., 0.6) * ${f(FUZZ_CHURN)} * ${time}) / ${f(FUZZ_TILES)}, acrossX / ${f(FUZZ_TILES)}, acrossY / ${f(FUZZ_TILES)}).r + textureSampleGrad(waterLace, waterLaceSampler, (${at} - vec2f(0.5, 1.) * ${f(FUZZ_CHURN)} * ${time}) / ${f(FUZZ_TILES * 0.6)} + 0.5, acrossX / ${f(FUZZ_TILES * 0.6)}, acrossY / ${f(FUZZ_TILES * 0.6)}).r;`,
     // The wave coming in: its height across its phase, a hollow front
     // ashore curving up to its lip and a long back out to sea, faced as it
     // slopes (`SWELL_FRONT`).
-    `${let_("swellAt", "float")}fract(phase + ${f(SWELL_FRONT - SWELL_AHEAD)});`,
+    `let swellAt = fract(phase + ${f(SWELL_FRONT - SWELL_AHEAD)});`,
     `swellSlope = ${f(SWELL_HEIGHT / WAVE_FROM)} * select(${f(-Math.PI / 2 / (1 - SWELL_FRONT))} * sin(${f(Math.PI / (1 - SWELL_FRONT))} * (swellAt - ${f(SWELL_FRONT)})), ${f(SWELL_CURL / SWELL_FRONT)} * pow(swellAt / ${f(SWELL_FRONT)}, ${f(SWELL_CURL - 1)}) * (1. - smoothstep(${f(SWELL_FRONT * (1 - SWELL_ROUND))}, ${f(SWELL_FRONT)}, swellAt)), swellAt < ${f(SWELL_FRONT)}) * owned * breaking;`,
     // Its crest's white: a band up to the lip, narrower further out, and
     // trailing off out to sea past it, timed a little behind the wave so
     // the trail is its own; its edge going round the grain's cells; cut,
     // its cracks the grain's strands, wider further out, cutting it and
     // never adding to it, so none spills past it; and thinned in patches.
-    `${let_("crestAt", "float")}wave - ${f(CREST_TAIL / WAVE_FROM)};`,
-    `${let_("crestPhase", "float")}fract(crestAt);`,
-    `${let_("crestWide", "float")}${f(CREST / WAVE_FROM)} * mix(1., ${f(CREST_FAR)}, farOut);`,
-    `${let_("crestBand", "float")}smoothstep(${f(lip)} - crestWide, ${f(lip)}, crestPhase) * (1. - smoothstep(${f(lip)}, 1., crestPhase)) * ownedWhite * breakingWhite * (1. + ${f(2 * CREST_SHAPE)} * (0.25 - fuzz * 0.5));`,
-    `${let_("crest", "float")}smoothstep(0.12, 0.35, crestBand - fuzz * 0.5 * ${f(CREST_JAG)} * (1. + ${f(CREST_SPARSE)} * farOut)) * (1. - ${f(CREST_MOTTLE)} * (1. - smoothstep(0.5, 0.75, 1. - fuzz * 0.5)));`,
+    `let crestAt = wave - ${f(CREST_TAIL / WAVE_FROM)};`,
+    `let crestPhase = fract(crestAt);`,
+    `let crestWide = ${f(CREST / WAVE_FROM)} * mix(1., ${f(CREST_FAR)}, farOut);`,
+    `let crestBand = smoothstep(${f(lip)} - crestWide, ${f(lip)}, crestPhase) * (1. - smoothstep(${f(lip)}, 1., crestPhase)) * ownedWhite * breakingWhite * (1. + ${f(2 * CREST_SHAPE)} * (0.25 - fuzz * 0.5));`,
+    `let crest = smoothstep(0.12, 0.35, crestBand - fuzz * 0.5 * ${f(CREST_JAG)} * (1. + ${f(CREST_SPARSE)} * farOut)) * (1. - ${f(CREST_MOTTLE)} * (1. - smoothstep(0.5, 0.75, 1. - fuzz * 0.5)));`,
     // The lace as solid as it is thick: a strand's middle whole, its edges
     // see-through, so as it ages it fades from its edges in, the thickest
     // of it last, dissolving into the sea.
     // As the lace thins, more of the texture falls under its cut and its
     // whole is less opaque; none past a full cut.
-    `${let_("laceCut", "float")}1.05 - 1.15 * cover;`,
-    `${let_("foam", "float")}max(smoothstep(laceCut, laceCut + ${f(LACE_SOFT)}, lace) * mix(${f(LACE_SHOW)}, 1., cover), crest);`,
+    `let laceCut = 1.05 - 1.15 * cover;`,
+    `let foam = max(smoothstep(laceCut, laceCut + ${f(LACE_SOFT)}, lace) * mix(${f(LACE_SHOW)}, 1., cover), crest);`,
     // The rock's foam, thick at its foot.
-    `${let_("rock", "float")}1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot);`,
+    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot);`,
     `frothed = max(foam, rock * smoothstep(0.2, 0.7, fuzz * 0.6 + rock * rock * 0.6) * 0.85);`,
     `}`,
     // The open sea's ripples, calmed where the waves come in, so theirs is
     // the shape there, and the swell's.
-    `N = normalize(N + ${v3}(-(${slope}) * mix(${f(INSHORE_CALM)}, 1., smoothstep(${f(WAVE_FROM * 0.5)}, ${f(SHORE_REACH)}, ashore)) - seaward * swellSlope, 0.));`,
-    `${colour}mix(baseColor * ${f(DEEP)}, mix(${v3}(${TURQUOISE.map(f).join(", ")}), ${v3}(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)}))${end}`,
-    `${colour}mix(baseColor, ${v3}(mix(${f(FOAM_THIN)}, ${f(FOAM_WHITE)}, pow(frothed, ${f(FOAM_SCARCE)}))), frothed)${end}`,
+    `N = normalize(N + vec3f(-(${slope}) * mix(${f(INSHORE_CALM)}, 1., smoothstep(${f(WAVE_FROM * 0.5)}, ${f(SHORE_REACH)}, ashore)) - seaward * swellSlope, 0.));`,
+    `baseColor = (mix(baseColor * ${f(DEEP)}, mix(vec3f(${TURQUOISE.map(f).join(", ")}), vec3f(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)})));`,
+    `baseColor = (mix(baseColor, vec3f(mix(${f(FOAM_THIN)}, ${f(FOAM_WHITE)}, pow(frothed, ${f(FOAM_SCARCE)}))), frothed));`,
     // Foam is matte, its light scattered every way, not the sea's gloss.
     `roughness = mix(roughness, ${f(FOAM_ROUGH)}, frothed);`,
   ].join("\n");

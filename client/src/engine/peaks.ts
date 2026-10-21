@@ -74,64 +74,65 @@ const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
 const [c2, s2] = [Math.cos(SECOND[1]), Math.sin(SECOND[1])];
 
-/** The slate at a point of the map, both sizes of it: its facing's x and y
- *  in `xy`, the turned one's turned back, and its height in `z`, -1 to 1.
- *  `T(uv)` reads the texture. */
-const read = (T: (uv: string) => string, v2: string, head: string, decl: string) => `${head} {
-  ${decl} a = ${T(`p / ${f(SPAN)}`)};
-  ${decl} b = ${T(`${v2}(p.x * ${f(c2)} - p.y * ${f(s2)}, p.x * ${f(s2)} + p.y * ${f(c2)}) / ${f(SPAN * SECOND[0])}`)};
-  ${decl === "let" ? "let" : v2} bf = b.rg * 2. - 1.;
-  return mix(a.rgb * 2. - 1., ${v2 === "vec2f" ? "vec3f" : "vec3"}(bf.x * ${f(c2)} + bf.y * ${f(s2)}, bf.y * ${f(c2)} - bf.x * ${f(s2)}, b.b * 2. - 1.), ${f(SECOND[2])});
+/** `slateRead(p)`: the slate at a point of the map, both sizes of it: its
+ *  facing's x and y in `xy`, the turned one's turned back, and its height
+ *  in `z`, -1 to 1. */
+const SLATE_READ = (() => {
+  const T = (uv: string) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`;
+  return `fn slateRead(p: vec2f) -> vec3f {
+  let a = ${T(`p / ${f(SPAN)}`)};
+  let b = ${T(`vec2f(p.x * ${f(c2)} - p.y * ${f(s2)}, p.x * ${f(s2)} + p.y * ${f(c2)}) / ${f(SPAN * SECOND[0])}`)};
+  let bf = b.rg * 2. - 1.;
+  return mix(a.rgb * 2. - 1., vec3f(bf.x * ${f(c2)} + bf.y * ${f(s2)}, bf.y * ${f(c2)} - bf.x * ${f(s2)}, b.b * 2. - 1.), ${f(SECOND[2])});
 }`;
+})();
 
-/** The rock's height at a point of the map, from the texture of the chunk
- *  whose heights start at `corner`, and its slope: the four texels round it blended here, not by the sampler,
- *  whose blend steps in 256ths of a texel and makes the slope shimmer from
- *  one pixel to the next. `L(x, y)` reads a texel, `v2`, `v3` and `vi`
- *  the vectors. */
-const heightFn = (L: (c: string) => string, v2: string, v3: string, vi: string, head: string, decl: string) => `${head} {
-  ${decl === "let" ? "let" : v2} t = (p - corner) * ${f(PEAK_SAMPLES)};
-  ${decl === "let" ? "let" : v2} i = clamp(floor(t), ${v2}(0.), ${v2}(${f(PEAK_SIDE - 2)}));
-  ${decl === "let" ? "let" : v2} u = t - i;
-  ${decl} a = ${L(`${vi}(i)`)};
-  ${decl} b = ${L(`${vi}(i) + ${vi}(1, 0)`)};
-  ${decl} c = ${L(`${vi}(i) + ${vi}(0, 1)`)};
-  ${decl} d = ${L(`${vi}(i) + ${vi}(1, 1)`)};
-  return ${v3}(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), ${v2}(mix(b - a, d - c, u.y), mix(c - a, d - b, u.x)) * ${f(PEAK_SAMPLES)});
+/** `peakHeightAt(p, corner)`: the rock's height at a point of the map,
+ *  from the texture of the chunk whose heights start at `corner`, and its
+ *  slope: the four texels round it blended here, not by the sampler, whose
+ *  blend steps in 256ths of a texel and makes the slope shimmer from one
+ *  pixel to the next. */
+const HEIGHT_AT = (() => {
+  const L = (c: string) => `textureLoad(peakHeights, ${c}, 0).r`;
+  return `fn peakHeightAt(p: vec2f, corner: vec2f) -> vec3f {
+  let t = (p - corner) * ${f(PEAK_SAMPLES)};
+  let i = clamp(floor(t), vec2f(0.), vec2f(${f(PEAK_SIDE - 2)}));
+  let u = t - i;
+  let a = ${L("vec2i(i)")};
+  let b = ${L("vec2i(i) + vec2i(1, 0)")};
+  let c = ${L("vec2i(i) + vec2i(0, 1)")};
+  let d = ${L("vec2i(i) + vec2i(1, 1)")};
+  return vec3f(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), vec2f(mix(b - a, d - c, u.y), mix(c - a, d - b, u.x)) * ${f(PEAK_SAMPLES)});
 }`;
+})();
 
-/** A pixel's layer cut and lit, in a shader's own words: `at` its place on
- *  the map (the mesh is laid there). Every texture read comes before the
- *  discard, as WGSL asks. */
-const peakCut = (at: string) => {
-  const [decl, vec, wgsl] = ["let", "let", true];
-  return `${vec} peakCorner = floor(${at}.xy / ${f(CHUNK_SIZE)}) * ${f(CHUNK_SIZE)} - ${f(PEAK_APRON)};
-${wgsl ? "let" : "vec3"} peakRock = peakHeightAt(${at}.xy, peakCorner);
-${decl} peakOwn = peakRock.x;
-${vec} peakFall = -peakRock.yz;
-${wgsl ? "let" : "vec3"} peakSlate = slateRead(${at}.xy);
-${decl} peakSteep = max(length(peakFall), 0.05);
-${decl} peakLayer = floor(${at}.z / ${f(LAYER)} + 0.5);
-${decl} peakS = peakOwn + clamp(${f(WANDER)} * min(peakSteep, ${f(STEEPEST)}) * peakSlate.z * 0.5 * min(1., peakOwn / ${f(JAG_FOOT)}), ${f(-0.9 * REACH)}, ${f(0.9 * REACH)});
-${vec} peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
-${decl} peakIn = (peakS - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
-${decl} peakBelow = (${f(EDGE)} + peakLayer * ${f(LAYER)} - peakS) / peakSteep;
+/** A pixel's layer cut and lit, at its place on the map (the mesh is laid
+ *  there). Every texture read comes before the discard, as WGSL asks. */
+const PEAK_CUT = (() => {
+  const at = "input.vPeakAt";
+  return `let peakCorner = floor(${at}.xy / ${f(CHUNK_SIZE)}) * ${f(CHUNK_SIZE)} - ${f(PEAK_APRON)};
+let peakRock = peakHeightAt(${at}.xy, peakCorner);
+let peakOwn = peakRock.x;
+let peakFall = -peakRock.yz;
+let peakSlate = slateRead(${at}.xy);
+let peakSteep = max(length(peakFall), 0.05);
+let peakLayer = floor(${at}.z / ${f(LAYER)} + 0.5);
+let peakS = peakOwn + clamp(${f(WANDER)} * min(peakSteep, ${f(STEEPEST)}) * peakSlate.z * 0.5 * min(1., peakOwn / ${f(JAG_FOOT)}), ${f(-0.9 * REACH)}, ${f(0.9 * REACH)});
+let peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
+let peakIn = (peakS - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
+let peakBelow = (${f(EDGE)} + peakLayer * ${f(LAYER)} - peakS) / peakSteep;
 if (peakLayer > 0.5 && peakIn < 0.) { discard; }`;
-};
+})();
 /** And, where it is seen rather than casting: the rock under the layer
  *  above hidden, and its colour, shine and facing. */
-const peakLook = () => {
-  const [v3, decl] = ["vec3f", "let"];
-  const choose = (no: string, yes: string, when: string) => `select(${no}, ${yes}, ${when})`;
-  return `if (peakBelow < ${f(-HIDDEN)}) { discard; }
-${decl} peakLip = ${choose("0.", `1. - smoothstep(0., ${f(LIP)}, peakIn)`, "peakLayer > 0.5")};
-${decl} peakCliff = 1. - smoothstep(${f(CLIFF * 0.6)}, ${f(CLIFF)}, peakBelow);
-${decl} peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
-baseColor = ${v3}(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
-${decl} peakShine = 1. - ${f(DULL)} * peakHollow;
+const PEAK_LOOK = `if (peakBelow < ${f(-HIDDEN)}) { discard; }
+let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5);
+let peakCliff = 1. - smoothstep(${f(CLIFF * 0.6)}, ${f(CLIFF)}, peakBelow);
+let peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
+baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
+let peakShine = 1. - ${f(DULL)} * peakHollow;
 townShine = ${f(ROCK_SHINE)} * peakShine;
-N = normalize(${v3}(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
-};
+N = normalize(vec3f(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 
 /** Each scene's slate: flat until the worker has baked it. The cliffs the
  *  land stands on break along it too (`ground.ts`). */
@@ -174,10 +175,10 @@ export function peakMaterial(engine: EngineContext, heights: Uint16Array) {
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: "out.vPeakAt = position;" }
         : {
-            CUSTOM_FRAGMENT_DEFINITIONS: `${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
-${heightFn((c) => `textureLoad(peakHeights, ${c}, 0).r`, "vec2f", "vec3f", "vec2i", "fn peakHeightAt(p: vec2f, corner: vec2f) -> vec3f", "let")}`,
-            CUSTOM_FRAGMENT_UPDATE_ALPHA: peakCut("input.vPeakAt"),
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: peakLook(),
+            CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
+${HEIGHT_AT}`,
+            CUSTOM_FRAGMENT_UPDATE_ALPHA: PEAK_CUT,
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: PEAK_LOOK,
           },
   };
   const material = lacquer(townMaterial([plugin]), "rock");
@@ -206,21 +207,19 @@ const ROCK_REACHED = 0.5;
  *  out, turned by the slate, the slate's grain over them; past that
  *  nothing, the beach or the water showing; far inside, the grass. Only the facing: the
  *  colour is the stone's own. */
-const landCliff = (T: (uv: string) => string, v2: string, v3: string, decl: string, at: string, local: string, ax: string, ay: string) => {
-  const vec = decl === "let" ? "let" : v2;
+const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
-  const field = (uv: string) => `((${T(uv)}.r - 0.5) * ${f(2 * CLIFF_REACH)})`;
-  const choose = (no: string, yes: string, when: string) => (v3 === "vec3f" ? `select(${no}, ${yes}, ${when})` : `(${when} ? ${yes} : ${no})`);
-  return `${vec} cliffUv = ${local}.xy / ${f(CHUNK_SIZE)};
-${decl} cliffFar = ${field("cliffUv")} - ${f(CLIFF_OUT)} - (cliffSlateTop(${at}.xy) * 2. - 1.) * ${f(CLIFF_WANDER)};
-${vec} cliffGrad = ${v2}(${field(`cliffUv + ${v2}(${e}, 0.)`)} - ${field(`cliffUv - ${v2}(${e}, 0.)`)}, ${field(`cliffUv + ${v2}(0., ${e})`)} - ${field(`cliffUv - ${v2}(0., ${e})`)});
-${decl === "let" ? "let" : "vec3"} cliffSlate = slateRead(${at}.xy);
+  const field = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.).r - 0.5) * ${f(2 * CLIFF_REACH)})`;
+  return `let cliffUv = input.vCliffAt.xy / ${f(CHUNK_SIZE)};
+let cliffFar = ${field("cliffUv")} - ${f(CLIFF_OUT)} - (cliffSlateTop(input.worldPos.xy) * 2. - 1.) * ${f(CLIFF_WANDER)};
+let cliffGrad = vec2f(${field(`cliffUv + vec2f(${e}, 0.)`)} - ${field(`cliffUv - vec2f(${e}, 0.)`)}, ${field(`cliffUv + vec2f(0., ${e})`)} - ${field(`cliffUv - vec2f(0., ${e})`)});
+let cliffSlate = slateRead(input.worldPos.xy);
 if (cliffFar > ${f(CLIFF_RUN)} || cliffFar < ${f(-CLIFF_INNER)}) { discard; }
-${decl} cliffTilt = ${choose("1. - smoothstep(0., " + f(LIP) + ", -cliffFar)", f(CLIFF_TILT), "cliffFar > 0.")} * ${choose(f(ROLL), "1.", "cliffFar > 0.")};
-${vec} cliffOut = normalize(normalize(cliffGrad.x * ${ax} + cliffGrad.y * ${ay} + 1e-6) + cliffSlate.xy * ${f(TURN)});
-baseColor = ${v3}(${rgb(STONE)});
-N = normalize(${v3}(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
-};
+let cliffTilt = select(1. - smoothstep(0., ${f(LIP)}, -cliffFar), ${f(CLIFF_TILT)}, cliffFar > 0.) * select(${f(ROLL)}, 1., cliffFar > 0.);
+let cliffOut = normalize(normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6) + cliffSlate.xy * ${f(TURN)});
+baseColor = vec3f(${rgb(STONE)});
+N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
+})();
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), the
  *  waves washing up its foot where it stands in the sea, not on a beach
@@ -247,10 +246,10 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: U
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
-            CUSTOM_FRAGMENT_DEFINITIONS: `${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
+            CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
 fn cliffSlateTop(p: vec2f) -> f32 { return textureSampleBias(slate, slateSampler, p / ${f(SPAN)}, ${f(CALM)}).b; }
 ${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}`,
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${landCliff((uv) => `textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.)`, "vec2f", "vec3f", "let", "input.worldPos", "input.vCliffAt", "input.vCliffX", "input.vCliffY")}
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
 // The sea washing up its foot and back, the rock wet behind it.
 let cliffSea = ${f(CLIFF_RUN)} - cliffFar;
 let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (cliffSea + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
