@@ -325,7 +325,7 @@ class Field {
   constructor(private ctx: EngineContext, private casters: Casters, farm: number, private tiles: Tile[], ruts: GridCoord[], theme: Theme) {
     this.colours = [theme.earth, theme.growing, theme.ripe, theme.stubble];
     this.land = new Set(tiles.map((t) => key(t.at)));
-    this.head = (t) => [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => !this.land.has(`${t.x + dx},${t.y + dy}`)));
+    this.head = (t) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !this.land.has(`${t.x + dx},${t.y + dy}`));
     this.look = lookOf(tiles);
     const [xs, ys] = [tiles.map((t) => t.at.x), tiles.map((t) => t.at.y)];
     this.corner = { x: Math.min(...xs) - 1, y: Math.min(...ys) - 1 };

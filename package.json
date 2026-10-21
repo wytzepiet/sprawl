@@ -9,6 +9,7 @@
     "osm": "bun client/scripts/osm.ts",
     "plan": "bun client/scripts/plan.ts",
     "flat": "bun client/scripts/flat.ts",
+    "fields": "bun client/scripts/fields.ts",
     "jolt": "bun client/scripts/jolt.ts",
     "act": "bun client/scripts/act.ts",
     "look": "bun client/scripts/look.ts",
