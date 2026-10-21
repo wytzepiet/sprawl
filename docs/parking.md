@@ -411,7 +411,7 @@ had a lot seats seven at once, what its lot held (`blueprint::seats`).
 The ring is replaced. One tile deep it cannot be driven: its corners turn
 at 0.2 and a car turns no tighter than 0.45, and every lot that turns a
 car round inside one tile is the same. Drawn out at the game's scale in
-`sketches/car-park*.png` (`bun sketches/car-park.ts`), bays placed by
+`sketches/car-park*.png`, which last lived at `53a9ca6`, bays placed by
 test:
 
 - **An aisle** is a straight one-way lane 0.22 wide with bays at 60° on

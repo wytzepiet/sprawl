@@ -243,7 +243,8 @@ round it (`facts.ts`): tiles beside a street in one run from its quiet
 end (a depot's docks) or its busy one (a supermarket's car park, three
 cars to a tile of shop), until it held enough; and a supermarket two
 tiles each way took deliveries in a lorry-sized corner cut from it, the
-corner picked by which side had a street (`sketches/loading-bay.svg`).
+corner picked by which side had a street (`sketches/loading-bay.svg`, last
+lived at `53a9ca6`).
 
 **Why shelved.** The server lays a building's lot out by its own rule,
 by the way it faces, and the two disagreed: a street laid beside a
