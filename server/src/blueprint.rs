@@ -209,12 +209,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // day's work feeds sixty people, a fifth of what a modern farm
         // manages and about what a market garden does. The make grows on
         // its land, the grass behind it that its tractor ploughs in a
-        // shift, seeds the next day and harvests the day after, each tile's
-        // crop landing in the yard as it is cut (§12.8). A depot's lorry
-        // fetches from it. Its yard is a harvest: three days of four hands'
-        // nine hours at eighteen crates an hour.
+        // shift, seeds the next day and harvests two days after, each
+        // tile's crop landing in the yard as it is cut (§12.8). A depot's
+        // lorry fetches from it. Its yard is a harvest: four days of four
+        // hands' nine hours at eighteen crates an hour.
         (Farm, Blueprint {
-            shelves: &[(Good::Crates, 1944)],
+            shelves: &[(Good::Crates, 2592)],
             makes: Some(Good::Crates),
             vehicles: &[CarRole::Tractor],
             farm: true,

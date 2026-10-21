@@ -48,7 +48,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), DAY_MS as GameTime / 2) } else { load_world(&db_path) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&db_path) };
     if let Some(dir) = &fixtures {
         sprawl::fixtures::build(&mut world, Path::new(dir));
     } else {

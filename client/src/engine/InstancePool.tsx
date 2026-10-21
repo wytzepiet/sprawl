@@ -101,7 +101,7 @@ export class InstancePool {
   constructor(
     private engine: EngineContext,
     private scene: SceneContext,
-    private casters: Casters,
+    readonly casters: Casters,
   ) {}
 
   ensureBucket(

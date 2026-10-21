@@ -133,6 +133,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--live x,y[,r]` the running game round a tile (from `/map`), numbered
   in the game's own tiles and drawn as the town grid will draw it. Most
   layout questions need only this; photographs are for light and height.
+- **The tractor's runs:** `bun run fields [name]` drives the sweep over
+  the fields in `server/fields/*.txt` (fixture text, each a farm on a
+  street with something awkward round it: forest, coast, a pond, houses,
+  a road), prints steps a tile, tiles driven again and turns, asserts
+  the run is short and the headland its own pass, and draws each run,
+  blue to red, on `.dev/fields/sheet.png`. Change the routing against it.
 - **The mayor's hand:** `bun run act road 7,78 7,85 0,85`, `build House
   5,86` (placed whole round the tile, the first way it fits; `build
   Depot 5,86 1` turned that way), `demolish 5,86` (the road there),

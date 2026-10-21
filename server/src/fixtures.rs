@@ -14,7 +14,7 @@
 //! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
-//! M supermarket  D depot  P harbour  W sawmill  Q quarry
+//! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm
 //! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
@@ -63,12 +63,13 @@ fn building(c: char) -> Option<BuildingKind> {
         'P' => Harbour,
         'W' => Sawmill,
         'Q' => Quarry,
+        'B' => Farm,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDPWQ".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOFGMDPWQB".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -102,6 +103,7 @@ pub fn build(world: &mut World, dir: &Path) {
         x0 += w + GAP;
     }
     finish_sites(world);
+    till_farms(world);
     println!("fixtures: built {} from {}", placed.len(), dir.display());
     let _ = PLACED.set(placed);
 }
@@ -209,6 +211,39 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
 pub fn build_text(world: &mut World, text: &str) {
     lay(world, text, 0, "fixture");
     finish_sites(world);
+}
+
+/// When fixtures stand still: noon, on the third day, so a field sown
+/// two days before can stand ripe.
+pub const NOON: crate::engine::GameTime = crate::protocol::DAY_MS as crate::engine::GameTime * 5 / 2;
+
+/// The farms, east to west as a fixture reads, each worked to the next
+/// stage of the cycle, so one row of them shows every look a field has:
+/// ploughed; sown just now, a quarter grown, green, ripe; cut; and the
+/// tractor half way through a harvest, and through ploughing the stubble.
+fn till_farms(world: &mut World) {
+    use crate::protocol::Job::*;
+    use crate::world::fields::RIPEN;
+    let now = NOON;
+    let sown = |k: f64| now - (RIPEN as f64 * k) as crate::engine::GameTime;
+    let mut farms: Vec<(i32, crate::protocol::EntityId)> = world.objects.iter().filter_map(|e| match e.object {
+        GameObject::Building(ref b) if b.kind == BuildingKind::Farm => Some((-e.position?.x, e.id)),
+        _ => None,
+    }).collect();
+    farms.sort();
+    for (i, (_, farm)) in farms.into_iter().enumerate() {
+        let (jobs, going): (Vec<_>, _) = match i % 8 {
+            0 => (vec![(Plough, now)], None),
+            1 => (vec![(Plough, 0), (Seed, sown(0.02))], None),
+            2 => (vec![(Plough, 0), (Seed, sown(0.3))], None),
+            3 => (vec![(Plough, 0), (Seed, sown(0.6))], None),
+            4 => (vec![(Plough, 0), (Seed, 0)], None),
+            5 => (vec![(Plough, 0), (Seed, 0), (Harvest, now)], None),
+            6 => (vec![(Plough, 0), (Seed, 0)], Some((Harvest, 0.5))),
+            _ => (vec![(Plough, 0), (Seed, 0), (Harvest, 0)], Some((Plough, 0.5))),
+        };
+        world.play(farm, &jobs, going, now);
+    }
 }
 
 /// A town written by hand stands as written: no site waits for its
