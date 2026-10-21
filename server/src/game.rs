@@ -133,7 +133,6 @@ impl Game {
     /// A message from a client, done.
     pub fn command(&mut self, client_id: ClientId, message: ClientMessage) {
         match message {
-            ClientMessage::Ping => self.send(client_id, ServerMessage::Pong(self.now)),
             ClientMessage::SetSpeed(s) => {
                 self.speed = s.min(MAX_SPEED);
                 // Paused, nothing goes dirty and no update would ever be
@@ -253,7 +252,7 @@ pub fn clock(now: GameTime, speed: u32) -> Clock {
 }
 
 /// Every update carries the ambient world state alongside its ops, so a client
-/// never has to ask for the seed or the island's extent separately.
+/// never has to ask for the island's extent separately.
 pub fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock) -> ServerMessage {
     ServerMessage::Update(StateUpdate {
         ops,
@@ -263,7 +262,6 @@ pub fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: C
         sea: crate::haul::sea(world),
         missions: world.missions.shown(clk.now),
         neighbours: crate::orders::neighbours(world),
-        terrain_seed: world.terrain_seed,
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
     })
 }
@@ -305,7 +303,7 @@ fn handle_player_action(
         }
         ClientMessage::Unpin { harbour, pin } => crate::orders::unpin(world, harbour, pin),
         ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
-        ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ping | ClientMessage::Ask(_) => {
+        ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) => {
             unreachable!("handled by Game::command")
         }
     }
@@ -697,8 +695,6 @@ fn try_reroute(
         t.acceleration = ACCELERATION;
         t.updated_at = now;
         t.seg_start_dist = 0.0;
-        t.seg_fraction = 0.0;
-        t.seg_length = t.segment_lengths[1];
     }
 
     // Register on first edge and wake up

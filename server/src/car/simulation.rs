@@ -1457,13 +1457,6 @@ fn settle(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, obs
         t.speed = cur_speed;
         t.updated_at = now;
         t.route_index = ri;
-        let seg_len = trip.segment_lengths[ri];
-        t.seg_fraction = if seg_len > 1e-9 {
-            (cur_progress - seg_start) / seg_len
-        } else {
-            0.0
-        };
-        t.seg_length = seg_len;
         t.seg_start_dist = seg_start;
         if accel_changed {
             t.acceleration = new_accel;

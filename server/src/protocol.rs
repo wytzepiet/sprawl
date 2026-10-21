@@ -814,11 +814,8 @@ pub struct Trip {
     #[ts(type = "number")]
     pub updated_at: u64,
     /// Current segment (1-based). The car is between route[ri-1] and route[ri].
+    #[ts(skip)]
     pub route_index: usize,
-    /// Fraction (0–1) of the current segment the car has traveled.
-    pub seg_fraction: f64,
-    /// Arc length of the current segment (for extrapolation).
-    pub seg_length: f64,
     /// Cumulative distance to start of current segment.
     #[serde(skip)]
     #[ts(skip)]
@@ -841,6 +838,7 @@ pub struct Trip {
     /// The lane it waits to get into, with no room there yet: whoever
     /// comes along behind in it may drop back and let it in.
     #[serde(default)]
+    #[ts(skip)]
     pub signal: Option<u8>,
 }
 
@@ -989,12 +987,6 @@ pub struct GameObjectEntry {
     pub position: Option<GridCoord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct ErrorMessage {
-    pub message: String,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ChunkBounds {
@@ -1042,7 +1034,6 @@ pub enum ClientMessage {
     SetSpeed(u32),
     ResetWorld,
     SetChunks(ChunkBounds),
-    Ping,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -1140,8 +1131,6 @@ pub struct StateUpdate {
     /// The mayors of the towns beyond the edge, and how they stand.
     #[serde(default)]
     pub neighbours: Vec<crate::orders::Neighbour>,
-    #[ts(type = "number")]
-    pub terrain_seed: u32,
     /// The island's map, which the client keeps its camera inside.
     pub island: ChunkBounds,
 }
@@ -1155,8 +1144,6 @@ pub enum ServerMessage {
     Update(StateUpdate),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
-    Error(ErrorMessage),
-    Pong(#[ts(type = "number")] u64),
     /// What the town did with the mayor's coins of its own accord, or more
     /// than it was asked: a box a rule bought, stone bought express. And
     /// what the hand did, to its player alone: an undo, a building refused.

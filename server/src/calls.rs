@@ -13,7 +13,6 @@
 //! the border, so nothing it carries is paid for.
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 use crate::blueprint::blueprint;
 use crate::economy;
@@ -24,8 +23,7 @@ use crate::world::pathfinding::Routes;
 use crate::world::World;
 
 /// What a call is for, and so who answers it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CallKind {
     /// A stock at its reorder point, or a site's material: answered by the
     /// nearest depot with the good and a van free.

@@ -131,8 +131,6 @@ fn launch(
             total_route_length: total_len,
             updated_at: now,
             route_index: 1,
-            seg_fraction: 0.0,
-            seg_length: segment_lengths[1],
             seg_start_dist: 0.0,
             segment_lengths,
             stretches,

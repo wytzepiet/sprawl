@@ -547,6 +547,7 @@ them made here.
 
 **To bring back.** A mayor carries a plain description (features, mood)
 and one function draws it; missions and orders never know how. Start
-with the Nintendo way, or VRM if Lite loads it. The seam is built
-(2026-10-12): `Neighbour.looks` is the description, and
-`client/src/flat/crest.ts` the one function, drawing a crest for now.
+with the Nintendo way, or VRM if Lite loads it. The seam is
+`client/src/flat/crest.ts`, the one function, drawing a crest for now;
+the description (`Neighbour.looks`, sent and read by nothing, went
+2026-10-21) comes back with the faces.

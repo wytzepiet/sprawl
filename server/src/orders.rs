@@ -62,9 +62,6 @@ pub struct Neighbour {
     pub toward: Compass,
     /// The town's colour, the crest's ground.
     pub colour: String,
-    /// The face, in words: what a portrait would be drawn from
-    /// (docs/shelved.md §Faces). The crest is drawn for now.
-    pub looks: String,
     pub standing: f64,
     /// Writes to the town yet.
     pub writes: bool,
@@ -76,7 +73,6 @@ struct Who {
     town: &'static str,
     toward: Compass,
     colour: &'static str,
-    looks: &'static str,
     /// What they ask for, most wanted first.
     goods: &'static [Good],
     /// What their town makes, and sells.
@@ -98,7 +94,6 @@ const WHO: [Who; 4] = [
         town: "Saltmere",
         toward: Compass::West,
         colour: "#3f7fa8",
-        looks: "an old fisherman, white beard, oilskin hat, pipe",
         goods: &[Good::Crates, Good::Fuel],
         sells: &[Good::Crates],
         boxes: 1,
@@ -115,7 +110,6 @@ const WHO: [Who; 4] = [
         town: "Northgate",
         toward: Compass::North,
         colour: "#6b5b7b",
-        looks: "a miner, dark hair cropped short, soot on one cheek, lamp helmet under her arm",
         goods: &[Good::Timber],
         sells: &[Good::Stone],
         boxes: 2,
@@ -132,7 +126,6 @@ const WHO: [Who; 4] = [
         town: "Fernhollow",
         toward: Compass::South,
         colour: "#c98a2b",
-        looks: "a farmer, round red cheeks, straw hat, a sprig of wheat",
         goods: &[Good::Stone, Good::Timber],
         sells: &[Good::Crates, Good::Timber],
         boxes: 2,
@@ -149,7 +142,6 @@ const WHO: [Who; 4] = [
         town: "Port Aldra",
         toward: Compass::East,
         colour: "#a33b3b",
-        looks: "a lord, grey whiskers, a chain of office, monocle",
         goods: &[Good::Crates, Good::Timber, Good::Stone, Good::Fuel],
         sells: &[Good::Fuel, Good::Timber],
         boxes: 4,
@@ -212,7 +204,6 @@ pub fn neighbours(world: &World) -> Vec<Neighbour> {
             town: w.town.into(),
             toward: w.toward,
             colour: w.colour.into(),
-            looks: w.looks.into(),
             standing: standing(world, w.mayor),
             writes: writes(world, w.mayor),
         })

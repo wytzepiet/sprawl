@@ -792,7 +792,7 @@ mod tests {
                     GameObject::Car(ref c) => {
                         let t = c.trip.as_ref()?;
                         let (a, b) = (t.route_positions.get(t.route_index.checked_sub(1)?)?, t.route_positions.get(t.route_index)?);
-                        let f = t.seg_fraction;
+                        let f = (t.progress - t.seg_start_dist) / t.segment_lengths[t.route_index].max(1e-9);
                         let p = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
                         ((p[0] - corner[0]).hypot(p[1] - corner[1]) < 0.2).then_some(e.id)
                     }

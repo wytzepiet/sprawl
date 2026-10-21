@@ -7,7 +7,7 @@ import {
 } from "solid-js";
 import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
-import { syncClock, syncFromClock } from "../network/clock";
+import { syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
 import { hearMissions } from "./missions";
 import type { Place } from "../engine/pen";
@@ -34,13 +34,6 @@ function posKey(x: number, y: number): string {
 
 const entities = new Map<string, GameObjectEntry>();
 const spatial = new Map<string, number[]>();
-
-/**
- * Who the server says we are. Module-level rather than owned by the provider
- * because the ops pass reads it, and that runs outside any component.
- */
-const [me, setMe] = createSignal(0);
-export { me };
 
 /**
  * What carries a pin: every building. Kept as ops arrive, with a version the
@@ -257,15 +250,11 @@ function* applying(ops: Operation[], lumps: Lump[]) {
 // --- Context (thin — just what UI needs) ---
 
 interface GameContext {
-  /** Who this client is. */
-  me(): number;
-  terrainSeed(): number;
   /** The island's map, in chunks: the camera stays over it. */
   island(): ChunkBounds;
   /** The two dials: the city's level, and what the mayor has to spend. */
   growth(): Growth;
   send(msg: ClientMessage): boolean;
-  getObjectsAt(x: number, y: number): GameObjectEntry[];
 }
 
 const Ctx = createContext<GameContext>();
@@ -279,7 +268,6 @@ const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0,
 const NO_ISLAND: ChunkBounds = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
 
 export function GameProvider(props: ParentProps & { connect: Connect }) {
-  const [terrainSeed, setTerrainSeed] = createSignal(0);
   const [growth, setGrowth] = createSignal<Growth>(NO_GROWTH);
   const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
@@ -287,16 +275,12 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
-        if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
         hearSea(msg.data.sea);
         hearMissions(msg.data.missions, msg.data.neighbours);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
-        break;
-      case "Error":
-        console.error("[ws] server error:", msg.data.message);
         break;
       case "TerrainChunk":
         ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
@@ -305,14 +289,8 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
       case "UnloadChunk":
         terrainListener?.unloadChunk(msg.data);
         break;
-      case "Welcome":
-        setMe(msg.data);
-        break;
       case "News":
         for (const n of msg.data) tell(n.text, n.sub, n.at, true);
-        break;
-      case "Pong":
-        syncClock(msg.data);
         break;
       case "Hint":
         for (const f of hintListeners) f(msg.data);
@@ -323,7 +301,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ me, terrainSeed, island, growth, send, getObjectsAt }}>
+    <Ctx.Provider value={{ island, growth, send }}>
       {props.children}
     </Ctx.Provider>
   );
@@ -333,7 +311,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
  *  see and has no one to tell. */
 export function OfflineGame(props: ParentProps) {
   return (
-    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => NO_ISLAND, growth: () => NO_GROWTH, send: () => true, getObjectsAt: () => [] }}>
+    <Ctx.Provider value={{ island: () => NO_ISLAND, growth: () => NO_GROWTH, send: () => true }}>
       {props.children}
     </Ctx.Provider>
   );
