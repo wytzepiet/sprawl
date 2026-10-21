@@ -148,7 +148,7 @@ props. Sketches, to be argued:
   tapers merges. The rest of a junction's shape is as today.
 - **Simulation**: a link with lanes is that many queues; a car keeps its
   lane and changes only at a node, by the wiring rule. Kerb parking and
-  stops are `parking.md` step 1 and §5.
+  stops are `parking.md` §4 and §5.
 - **Order**: the network type and the check in the sandbox; the car park,
   the depot's docks and the supermarket's loading bay re-made as
   templates, deleting their hand-drawn strips in `dressing.ts` (if they

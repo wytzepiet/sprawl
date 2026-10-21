@@ -278,7 +278,7 @@ diagonal walls the playtest found. A yard is now the server's, drawn
 where its lot is (`look.md` §Facts), and a supermarket is a box.
 
 **To bring back.** A car park as the server's own lot, laid out as
-aisles for both (`parking.md` §3.9, `look.md` §Into the game step 5);
+aisles for both (`parking.md` §8, `look.md` §Into the game step 5);
 a loading bay as a stop of `network.md`. Never the look's guess again.
 The code last lived at `a501124`.
 

@@ -379,7 +379,7 @@ diagonal.
 - **The rings go.** A house parks on its drive pair, as now. A building
   whose kind keeps a yard has the yard read off its shape (`facts.ts`):
   the depot's docks, the port's lanes, the supermarket's car park, laid
-  out as aisles (`parking.md` §3.9). Everyone else parks on the row's
+  out as aisles (`parking.md` §8). Everyone else parks on the row's
   slots until kerb bays come.
 
 What changes, in the order it can be built and seen:
@@ -414,7 +414,7 @@ What changes, in the order it can be built and seen:
    `objects/lots.ts` are deleted.
 4. **The toolbar.** The build menu becomes the way to pick a tool; the
    shelf goes.
-5. **The car park** (`parking.md` §3.9): the supermarket's yard laid out
+5. **The car park** (`parking.md` §8): the supermarket's yard laid out
    as aisles, on the server as lot nodes and in the drawing as asphalt
    and bays, one layout for both.
 

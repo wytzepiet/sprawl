@@ -22,7 +22,7 @@ each, and since when, is in its own header, and only there.
 | `look.md` | How the town looks: the perimeter block, the town grid (a tile's look from its neighbours and a few facts), the ladders each kind climbs, the concept loop. |
 | `style.md` | How to judge a new thing that is seen: the feel, every verdict so far as a rule and its why, the three layers of checking, where to find real places, the canon awaiting sign-off. Read before building anything seen. |
 | `network.md` | What vehicles touch, from a few primitives: links with lanes each way and a kind, stops, areas, faces, props; the check that every stop can be reached; facilities as templates that place links and stops and never draw. |
-| `parking.md` | Lots as road: spot tables, trips to spots, giving way by length, reverse gear, reservation windows, the test lot; the gridlock between drives and what curbs it. |
+| `parking.md` | Lots as road: the house's drive, yards with docks, kerb bays, reservation windows, changes of gear, giving way at a lot, car parks where the kerb runs out, and the gridlock between drives and what curbs it. |
 | `shelved.md` | Ideas built or argued and set aside, with why and what bringing them back would take. |
 | `archive/` | Documents done in full: the price economy (`economy.md`), services as placeables (`services.md`), the brief of 2026-10-10 (`plan.md`), that day's playtest, and older ones. Read only for archaeology. |
 
