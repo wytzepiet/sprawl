@@ -186,7 +186,8 @@ fn field(p: vec2f, run: Run) -> Field {
   let uv = (p + bend) / dims;
   let split = g * lens * 3 * dpr * thick / dims;
   // A frosted pane blurs it further, toward a wash of the ground's colour.
-  let frost = ${FROST} + 2.2 * f.frost;
+  // Along its clear edge, barely any: the town as it is.
+  let frost = (${FROST} + 2.2 * f.frost) * mix(0.15, 1, f.down);
   let seen = vec3f(
     textureSampleLevel(under, soft, uv + split, frost).r,
     textureSampleLevel(under, soft, uv, frost).g,
@@ -196,7 +197,7 @@ fn field(p: vec2f, run: Run) -> Field {
   // mean round it, so busy ground does not fight what sits on the glass.
   // The rim, where the lens is, keeps it all.
   let around = textureSampleLevel(under, soft, uv, 4.5).rgb;
-  let seenCalm = mix(seen, around, (${CALM} + 0.4 * f.frost) * (1 - lens));
+  let seenCalm = mix(seen, around, (${CALM} + 0.4 * f.frost) * f.down * (1 - lens));
 
   // Pressed, the glass lights from inside, under the finger and out
   // through any glass near it: what is seen through it brightens and
