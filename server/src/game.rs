@@ -945,9 +945,9 @@ fn flush_dirty(
 
 #[cfg(test)]
 mod tests {
-    /// Wakes one resident may take in a day. The full town takes about 30,
-    /// the bare one about 58; with the overtake bug of 2026-09-04 put back
-    /// they take 146 and 231 in a day, and thousands once the storm has
+    /// Wakes one resident may take in a day; `a_town_thinks_within_budget`
+    /// prints what the towns take. With the overtake bug of 2026-09-04 put
+    /// back they took 146 and 231 in a day, and thousands once the storm has
     /// grown. A change that legitimately moves the count moves this number
     /// with it, on purpose.
     const WAKE_BUDGET: u64 = 120;
@@ -1837,10 +1837,9 @@ mod tests {
     /// The budget: how much thinking a day of town life is allowed to take.
     /// A resident wakes when something changes for them — a shift, a meal,
     /// an arrival — which is a few dozen times a day. A storm is thousands.
-    /// Counted, not timed, so it is the same on every machine. The two
-    /// towns take half a minute even optimised, so they are not in the
-    /// everyday run: `cargo test town -- --ignored --nocapture` runs them
-    /// with the benchmark below, for a look every now and then.
+    /// Counted, not timed, so it is the same on every machine. It is not in
+    /// the everyday run: `cargo test town -- --ignored --nocapture` runs it
+    /// with the benchmarks below, for a look every now and then.
     ///
     /// Two towns: one with everything, and one with nothing but homes and
     /// jobs, where meals and evenings out go wanting. Wanting is where the
@@ -1867,7 +1866,7 @@ mod tests {
     /// frontier and every call and every choice still walked them all to
     /// find a depot, a van or a resident, and the clock stalled for
     /// seconds at a time. The same day of the same town, with that much
-    /// road laid out of reach, costs about the same.
+    /// road laid out of reach, costs at most half as much again.
     #[test]
     #[ignore]
     fn a_town_thinks_as_fast_in_a_wide_world() {
@@ -1982,9 +1981,9 @@ mod tests {
     }
 
     /// A build costs the loop what it changes, not what the town holds:
-    /// the same tap in a town twice the size costs about the same. Every
-    /// player building at once shares the one loop, so a build that grew
-    /// with the world would stall all of them. Settling the whole town
+    /// the same tap in a town twice the size costs at most half as much
+    /// again. Every player building at once shares the one loop, so a build
+    /// that grew with the world would stall all of them. Settling the whole town
     /// after every build cost 2 ms a house here, and 6 ms in two towns.
     /// Timed, so `#[ignore]`d with the other town benchmarks.
     #[test]

@@ -1050,12 +1050,16 @@ fn scenarios_meet_their_expectations() {
         let s = Scenario::parse(name, &text);
         println!("{name}{}", s.pending.as_ref().map_or(String::new(), |p| format!(" (pending: {p})")));
         let started = std::time::Instant::now();
-        let mut sim = Sim::new(&s);
-        sim.run();
+        // The same scenario twice, side by side, is the same run.
+        let [sim, again] = std::thread::scope(|t| {
+            [(); 2].map(|_| t.spawn(|| {
+                let mut sim = Sim::new(&s);
+                sim.run();
+                sim
+            }))
+            .map(|h| h.join().unwrap())
+        });
         let m = sim.metrics();
-        // The same scenario again is the same run.
-        let mut again = Sim::new(&s);
-        again.run();
         assert_eq!(sim.log, again.log, "{name}: two runs differ");
         println!("{}", sim.pages.join("\n"));
         println!("  the company: {}", ["links", "idle_lines", "by_road", "via_world", "first_sailing", "flow_to_line", "forecast_ratio", "near_empty", "wait_max"].map(|k| format!("{k} {:.2}", m[k])).join(", "));

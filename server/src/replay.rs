@@ -413,17 +413,22 @@ mod tests {
     #[test]
     fn nothing_goes_wrong_in_a_kept_replay() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/replays");
-        for path in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "json")) {
-            let replay: Replay = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            let mut play = Playback::new(&replay);
-            let mut watch = Watch::default();
-            while play.session.game.now < Session::end(&replay) {
-                let _ = play.step();
-                let wrong = watch.look(&play.session.game);
-                assert!(wrong.is_empty(), "{}: {}", path.display(), wrong.join("; "));
+        // Each on a thread of its own: the slowest is the test's time.
+        std::thread::scope(|t| {
+            for path in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "json")) {
+                t.spawn(move || {
+                    let replay: Replay = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                    let mut play = Playback::new(&replay);
+                    let mut watch = Watch::default();
+                    while play.session.game.now < Session::end(&replay) {
+                        let _ = play.step();
+                        let wrong = watch.look(&play.session.game);
+                        assert!(wrong.is_empty(), "{}: {}", path.display(), wrong.join("; "));
+                    }
+                    let s = &play.session;
+                    assert_ne!(s.level.phase(), crate::level::Phase::Jammed, "{}: {}", path.display(), s.level.state(&s.game).message);
+                });
             }
-            let s = &play.session;
-            assert_ne!(s.level.phase(), crate::level::Phase::Jammed, "{}: {}", path.display(), s.level.state(&s.game).message);
-        }
+        });
     }
 }

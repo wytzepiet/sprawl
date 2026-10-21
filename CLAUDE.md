@@ -67,7 +67,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   life and asserts how often residents wake (a storm is ten times the
   budget) and prints simulated days per second, to see whether it drifted;
   and it times a house, a shop, their demolition and a road in a town and
-  in one twice the size, and asserts the bigger town costs about the same;
+  in one twice the size, and asserts the bigger town costs at most half as
+  much again;
   and it runs the server's own loop over every fixture for six hours and
   prints what a settle step costs against the steps between.
   A build costs what it changed: `World::settle` reads only the buildings
@@ -95,7 +96,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Does it still hold?** `cd server && cargo test && cargo check`, then
   `cd client && bunx tsc --noEmit -p . && bun test` (`bun run wasm` first
   after changing the server: `pen.test.ts` plays drags against it). Nothing runs these but you, so run
-  them before you push. The suite takes about ten seconds: the test profile
+  them before you push. The suite takes about eight seconds: the test profile
   is optimised (`[profile.test]` in `Cargo.toml`, assertions and overflow
   checks still on) and the town tests skip the ticks nothing is due at. A
   rebuild after an edit costs a few seconds more than a debug one; a day of
