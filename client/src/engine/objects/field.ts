@@ -1,9 +1,9 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, setThinInstances, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
 import type { Casters } from "../DayNightCycle";
 import { drop, meshOf, show } from "../geometry";
 import { grain } from "../ground";
-import { CAST_ONLY, townMaterial, type TownMaterial } from "../material";
+import { townMaterial, type TownMaterial } from "../material";
 import { LAYER_ORDER } from "../town/draw";
 import type { Rgb } from "../rgb";
 import type { Theme } from "../theme";
@@ -92,9 +92,9 @@ function workedAt(path: GridCoord[], land: Set<string>, head: (t: GridCoord) => 
   return worked;
 }
 
-/** What a strip's material reads: the look it is in, and how far along
- *  the path it is laid. */
-type Paint = { look: number[]; reach: number };
+/** What a strip's material reads: the look it is in, how far along the
+ *  path it is laid, and how far the tractor is along a run over it. */
+type Paint = { look: number[]; reach: number; progress: number };
 
 /**
  * A run's strips: a tile wide along the drawn path, a piece for each step
@@ -106,18 +106,28 @@ type Paint = { look: number[]; reach: number };
  * ends.
  */
 class Strips {
+  /** The earth, and over it the crop, at its height, casting its shadow
+   *  on the earth between the plants: two meshes of the one strip. */
   readonly mesh: Mesh;
+  readonly crop: Mesh;
   readonly drawn: DrawnPath;
   readonly paint: Paint;
   private positions: Float32Array;
+  private raised: Float32Array;
+  /** Each vertex's stretch along the pass (see the shader), and the step
+   *  of a run over it that takes its crop: never, until one does. */
+  private tex: Float32Array;
+  /** The tile each vertex's piece is laid over. */
+  private tile: string[] = [];
   /** Each vertex out past its piece's tile, a little lower, so that where a
    *  piece's spill lies over a tile another piece works, that piece shows. */
   private sunk: Float32Array;
   private z = -1;
+  private h = -1;
 
-  constructor(ctx: EngineContext, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, under: GridCoord[], material: (paint: Paint) => TownMaterial, look: Look) {
+  constructor(private ctx: EngineContext, private casters: Casters, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, under: GridCoord[], material: (paint: Paint, crop: boolean) => TownMaterial, look: Look) {
     this.drawn = drawn;
-    this.paint = { look: vec(look), reach: 1e9 };
+    this.paint = { look: vec(look), reach: 1e9, progress: 1e9 };
     const { points, distances, atNode } = drawn;
     const last = nodes.length - 1;
     const bound = (k: number) => (atNode[k - 1] + atNode[k]) / 2;
@@ -179,13 +189,13 @@ class Strips {
       const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
       const [ta, tb] = [drawn.path.wayAt(distances[i - 1] / drawn.length), drawn.path.wayAt(distances[i] / drawn.length)];
       const [x, y] = [b.x - a.x - (tb.y - ta.y) * out, b.y - a.y + (tb.x - ta.x) * out];
-      return Math.max(0, (x * (b.x - a.x) + y * (b.y - a.y)) / (l * l));
+      return l < 1e-3 ? 1 : Math.min(3, Math.max(0, (x * (b.x - a.x) + y * (b.y - a.y)) / (l * l)));
     });
     const count = pieces.reduce((n, piece) => n + piece.samples.length, 0) + quarters.length * 2;
     this.positions = new Float32Array(count * 6);
     this.sunk = new Float32Array(count * 2);
     const data = new Float32Array(count * 16);
-    const tex = new Float32Array(count * 2);
+    const tex = (this.tex = new Float32Array(count * 4));
     const indices: number[] = [];
     let v = 0;
     for (const q of quarters) {
@@ -195,7 +205,8 @@ class Strips {
           this.positions.set([q.x + 0.5 - across, y, 0], (v + s) * 3);
           this.sunk[v + s] = 2 * SUNK;
           data.set([out, y, -1, 0, -1e9, 1e9, BARE, BARE], (v + s) * 8);
-          tex[v + s] = 1;
+          tex.set([1, 1e9], (v + s) * 2);
+          this.tile[v + s] = `${Math.floor(q.x)},${Math.floor(q.y)}`;
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -208,32 +219,63 @@ class Strips {
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
         const sides = [-1, 1].map((side) => (spills(k, at.x + n.x * side, at.y + n.y * side) ? (off(at.x + n.x * side, at.y + n.y * side) ? 2 : 1) : 0));
+        // On the inside of a turn tighter than the pass is wide, the edge
+        // stops short of the turn's middle, or it would fold back on itself.
+        const bend = (2 * ((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x))) / (Math.hypot(p.x - a.x, p.y - a.y) * Math.hypot(b.x - p.x, b.y - p.y) * l || 1);
         sides.forEach((spill, s) => {
-          const out = (s ? 1 : -1) * (0.5 + (spill ? SPILL : HAIR));
+          const wide = 0.5 + (spill ? SPILL : HAIR);
+          const out = (s ? 1 : -1) * ((s ? 1 : -1) * bend > 0 ? Math.min(wide, 0.9 / Math.abs(bend)) : wide);
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
           this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
-          tex[v + s] = 1 + (stretch[s](d) - 1) * 2 * Math.abs(out);
+          tex.set([1 + (stretch[s](d) - 1) * 2 * Math.abs(out), 1e9], (v + s) * 2);
+          this.tile[v + s] = `${Math.floor(at.x)},${Math.floor(at.y)}`;
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
       });
     }
-    this.mesh = meshOf(ctx.engine, name, { positions: this.positions, normals: Array.from({ length: count * 2 }, () => [0, 0, 1]).flat(), indices });
-    this.mesh.material = material(this.paint);
-    this.mesh.receiveShadows = true;
-    this.mesh.renderOrder = LAYER_ORDER.field;
-    setMeshAttribute(ctx.engine, this.mesh, "strip", data);
-    setMeshAttribute(ctx.engine, this.mesh, "stripTex", tex);
-    show(ctx.scene, this.mesh);
+    this.raised = this.positions.slice();
+    const normals = Array.from({ length: count * 2 }, () => [0, 0, 1]).flat();
+    [this.mesh, this.crop] = [false, true].map((crop) => {
+      const mesh = meshOf(ctx.engine, `${name}${crop ? "_crop" : ""}`, { positions: crop ? this.raised : this.positions, normals, indices });
+      mesh.material = material(this.paint, crop);
+      mesh.receiveShadows = true;
+      mesh.renderOrder = LAYER_ORDER.field;
+      setMeshAttribute(ctx.engine, mesh, "strip", data);
+      setMeshAttribute(ctx.engine, mesh, "stripTex", tex);
+      show(ctx.scene, mesh);
+      return mesh;
+    });
+    casters.add(this.crop);
   }
 
-  /** The strips at this height. */
-  lift(engine: Engine, z: number) {
-    if (Math.abs(z - this.z) < 0.001) return;
-    this.z = z;
-    for (let i = 0; i < this.sunk.length; i++) this.positions[i * 3 + 2] = z - this.sunk[i];
-    updateMeshPositions(engine, this.mesh, this.positions);
+  /** The earth at this height, the crop this far over it. */
+  lift(z: number, h: number) {
+    if (Math.abs(z - this.z) < 0.0005 && Math.abs(h - this.h) < 0.002) return;
+    [this.z, this.h] = [z, h];
+    for (let i = 0; i < this.sunk.length; i++) {
+      this.positions[i * 3 + 2] = z - this.sunk[i];
+      this.raised[i * 3 + 2] = z - this.sunk[i] + 0.001 + h;
+    }
+    updateMeshPositions(this.ctx.engine, this.mesh, this.positions);
+    updateMeshPositions(this.ctx.engine, this.crop, this.raised);
+  }
+
+  /** The crop on each tile taken at the step of a run that takes it. */
+  cut(step: (tile: string) => number | undefined) {
+    this.tile.forEach((t, i) => (this.tex[i * 2 + 1] = step(t) ?? 1e9));
+    setMeshAttribute(this.ctx.engine, this.crop, "stripTex", this.tex);
+  }
+
+  /** Paint changed: both meshes read it again. */
+  repaint() {
+    for (const mesh of [this.mesh, this.crop]) markMaterialUboDirty(mesh.material as TownMaterial);
+  }
+
+  drop() {
+    this.casters.remove(this.crop);
+    for (const mesh of [this.mesh, this.crop]) drop(this.ctx.scene, mesh);
   }
 }
 
@@ -249,15 +291,12 @@ const BARE = 3;
 class Field {
   private ruts: Strips | null = null;
   /** The run out now, or the last one, just over: the look it leaves,
-   *  its strips, which step works each tile. */
-  private out: { run: Run | null; after: Look; strips: Strips | null; worked: Map<string, number> } | null = null;
+   *  and its strips. */
+  private out: { run: Run | null; after: Look; strips: Strips | null } | null = null;
   private look: Look;
   private colours: Rgb[];
   private land: Set<string>;
   private head: (t: GridCoord) => boolean;
-  /** The land's tiles, cast at the height of what stands on each. */
-  private sheet: Mesh;
-  private heights: number[];
   private stop: () => void;
 
   constructor(private ctx: EngineContext, private casters: Casters, farm: number, private tiles: Tile[], ruts: GridCoord[], theme: Theme) {
@@ -266,11 +305,6 @@ class Field {
     this.head = (t) => [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => !this.land.has(`${t.x + dx},${t.y + dy}`)));
     this.look = lookOf(tiles);
     this.ruts = this.strips("ruts", ruts, tiles.map((t) => t.at), this.look, JOB_OF[this.look.stage]);
-    this.sheet = meshOf(ctx.engine, `field_${farm}`, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
-    this.sheet.material = townMaterial([CAST_ONLY]);
-    this.heights = tiles.map(() => -1);
-    show(ctx.scene, this.sheet);
-    casters.add(this.sheet);
 
     // Each frame: a run begun or ended, how far it has got; and while the
     // crop grows, how far, now and then.
@@ -295,11 +329,12 @@ class Field {
     const drawn = path.length > 1 && job ? drawnPath(nodes, 0, 0, 0) : null;
     if (!drawn || !job) return null;
     const worked = workedAt(path, this.land, this.head, job);
-    return new Strips(this.ctx, `field_${name}`, nodes, drawn, (k) => worked.get(key(path[k])) === k, this.land, under, (paint) => this.material(paint), look);
+    return new Strips(this.ctx, this.casters, `field_${name}`, nodes, drawn, (k) => worked.get(key(path[k])) === k, this.land, under, (paint, crop) => this.material(paint, crop), look);
   }
 
   /** A run out over the field, or none: its strips laid over the last
-   *  run's. A run just over leaves what it did until the farm's new
+   *  run's, the crop taken from each tile as the tractor passes its
+   *  middle. A run just over leaves what it did until the farm's new
    *  record comes to say so, and the field is made again from it. */
   private follow(run: Run | null) {
     if (!run) {
@@ -307,9 +342,11 @@ class Field {
       if (this.out?.strips) this.out.strips.paint.reach = 1e9;
       return;
     }
-    if (this.out?.strips) drop(this.ctx.scene, this.out.strips.mesh);
+    this.out?.strips?.drop();
     const after = leaves(run.job, this.look);
-    this.out = { run, after, strips: this.strips("run", run.path, [], after, run.job), worked: workedAt(run.path, this.land, this.head, run.job) };
+    const worked = workedAt(run.path, this.land, this.head, run.job);
+    this.out = { run, after, strips: this.strips("run", run.path, [], after, run.job) };
+    this.ruts?.cut((t) => worked.get(t));
   }
 
   /** The tractor's progress, in steps of its path, now. */
@@ -318,50 +355,31 @@ class Field {
     return run ? (simNow() - run.started) / run.pace : 1e9;
   }
 
-  /** The strips laid as far as the tractor, at the top of what stands;
-   *  each tile of the sheet at the height of what stands on it: the
-   *  crop, until the tractor is past its middle. */
+  /** The strips laid as far as the tractor, a run's over the field's,
+   *  each crop at the height it stands. */
   private raise() {
     const progress = this.progress();
-    const after = this.out?.after ?? this.look;
-    const [hb, ha] = [heightOf(this.look), heightOf(after)];
-    const top = FIELD_Z + Math.max(hb, ha);
-    this.ruts?.lift(this.ctx.engine, top);
+    if (this.ruts) {
+      this.ruts.paint.progress = progress;
+      this.ruts.lift(FIELD_Z, heightOf(this.look));
+    }
     const strips = this.out?.strips;
     if (strips) {
       const { atNode } = strips.drawn;
       const k = Math.min(Math.max(0, Math.floor(progress)), atNode.length - 2);
       if (this.out?.run) strips.paint.reach = atNode[k] + (atNode[k + 1] - atNode[k]) * Math.min(1, Math.max(0, progress - k));
-      strips.lift(this.ctx.engine, top + 0.002);
+      strips.lift(FIELD_Z + 0.002, heightOf(this.out!.after));
     }
-    for (const s of [this.ruts, strips]) if (s) markMaterialUboDirty(s.mesh.material as TownMaterial);
-    let changed = false;
-    const heights = this.tiles.map((t, i) => {
-      const k = this.out?.worked.get(key(t.at));
-      const h = k !== undefined && k + 0.5 < progress ? ha : hb;
-      if (Math.abs(h - this.heights[i]) > 0.002) changed = true;
-      return h;
-    });
-    if (!changed) return;
-    this.heights = heights;
-    const matrices = new Float32Array(this.tiles.length * 16);
-    this.tiles.forEach(({ at }, i) => {
-      const m = i * 16;
-      [matrices[m], matrices[m + 5], matrices[m + 10], matrices[m + 15]] = [1, 1, 1, 1];
-      [matrices[m + 12], matrices[m + 13], matrices[m + 14]] = [at.x, at.y, FIELD_Z + heights[i]];
-    });
-    setThinInstances(this.sheet, matrices, this.tiles.length);
+    for (const s of [this.ruts, strips]) s?.repaint();
   }
 
-  private material(paint: Paint): TownMaterial {
-    return townMaterial([plugin(this.ctx.engine, paint, this.colours)], 0.95);
+  private material(paint: Paint, crop: boolean): TownMaterial {
+    return townMaterial([plugin(this.ctx.engine, paint, this.colours, crop)], 0.95);
   }
 
   dispose(): void {
     this.stop();
-    for (const s of [this.ruts, this.out?.strips]) if (s) drop(this.ctx.scene, s.mesh);
-    this.casters.remove(this.sheet);
-    drop(this.ctx.scene, this.sheet);
+    for (const s of [this.ruts, this.out?.strips]) s?.drop();
   }
 }
 
@@ -415,19 +433,19 @@ function wheat(engine: Engine): Texture2D {
 /** The field's paint (see the top), where across and along its strip a
  *  vertex is, which way across is, and where its piece's tile begins and
  *  ends along it. */
-function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
+function plugin(engine: Engine, paint: Paint, colours: Rgb[], crop: boolean): MaterialPlugin {
   return {
     name: "Field",
     priority: 210,
     getAttributes: () => [
       { name: "stripA", type: "vec4<f32>", buffer: "strip" },
       { name: "stripB", type: "vec4<f32>", buffer: "strip" },
-      { name: "stripTex", type: "f32" },
+      { name: "stripTex", type: "vec2<f32>" },
     ],
     getVaryings: () => [
       { name: "vStripA", type: "vec4f" },
       { name: "vStripB", type: "vec4f" },
-      { name: "vStripTex", type: "f32" },
+      { name: "vStripTex", type: "vec2f" },
     ],
     getSamplers: () => [
       { texture: "fieldGrain", sampler: "fieldGrainSampler" },
@@ -437,6 +455,7 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
     getUniforms: () => ({
       ubo: [
         { name: "fieldLook", type: "vec4<f32>" },
+        { name: "fieldCut", type: "vec4<f32>" },
         { name: "fieldEarth", type: "vec4<f32>" },
         { name: "fieldGrowing", type: "vec4<f32>" },
         { name: "fieldRipe", type: "vec4<f32>" },
@@ -445,13 +464,14 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
     }),
     writeUbo: (data, offsets) => {
       const put = (name: string, v: number[]) => data.set(v, offsets.get(name)! / 4);
-      put("fieldLook", [paint.look[0], paint.look[1], paint.reach, 0]);
+      put("fieldLook", [paint.look[0], paint.look[1], paint.reach, crop ? 1 : 0]);
+      put("fieldCut", [paint.progress, 0, 0, 0]);
       ["fieldEarth", "fieldGrowing", "fieldRipe", "fieldStubble"].forEach((name, i) => put(name, [colours[i].r, colours[i].g, colours[i].b, 1]));
     },
     getCustomCode: (stage) =>
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: "out.vStripA = stripA; out.vStripB = stripB; out.vStripTex = stripTex;" }
-        : { CUSTOM_FRAGMENT_DEFINITIONS: DEFINITIONS, CUSTOM_FRAGMENT_MAIN_BEGIN: BEGIN, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: DIFFUSE },
+        : { CUSTOM_FRAGMENT_DEFINITIONS: DEFINITIONS, CUSTOM_FRAGMENT_UPDATE_ALPHA: BEGIN, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: DIFFUSE },
   };
 }
 
@@ -490,10 +510,13 @@ let fieldW = input.worldPos.xy;
 let fieldSwell = 0.7 * fieldNoise(fieldW * 0.3 + vec2f(97., 43.));
 let fieldPhase = fieldV * 4.;
 let fieldTexVs = array<f32, 2>(
-  (floor(fieldPhase) + fract(fieldPhase) * input.vStripTex) / 4. + fieldSwell,
-  (floor(fieldPhase + 0.5) - 0.5 + fract(fieldPhase + 0.5) * input.vStripTex) / 4. + fieldSwell);
+  (floor(fieldPhase) + fract(fieldPhase) * input.vStripTex.x) / 4. + fieldSwell,
+  (floor(fieldPhase + 0.5) - 0.5 + fract(fieldPhase + 0.5) * input.vStripTex.x) / 4. + fieldSwell);
 let fieldTexW = 1. - abs(2. * fract(fieldPhase) - 1.);
-let fieldDv = vec2f(dpdx(fieldV), dpdy(fieldV)) * input.vStripTex;
+// Where a tight turn folds the pass on itself, \`fieldV\` leaps across a
+// pixel; read no blurrier there than across.
+let fieldDvRaw = vec2f(dpdx(fieldV), dpdy(fieldV)) * input.vStripTex.x;
+let fieldDv = fieldDvRaw * min(1., 2. * length(fieldDu) * ${WHEAT_TEXELS}. / max(1e-6, length(fieldDvRaw) * ${WHEAT_TEXELS}.));
 let fieldLook = material.fieldLook;
 // Broad, soft patches: wetter earth, a crop a little ahead or behind.
 let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
@@ -505,16 +528,8 @@ let fieldStage = u32(fieldLook.x + 0.5);
 let fieldOut = max(max(select(-1., -fieldU, input.vStripB.z > 0.5), select(-1., fieldU - 1., input.vStripB.w > 0.5)), max(fieldV - fieldLook.z, max(input.vStripB.x - fieldV, fieldV - input.vStripB.y)));
 let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
 let fieldRag = 0.09 + 0.06 * fieldEdge;
-if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldOut - fieldRag))) { discard; }`;
-
-/**
- * The paint: the stage of the wheat the field is at (ploughed; sown, by
- * how far grown, drilled, seedlings, grown, in ear, ripe; stubble), and
- * between two, the next showing through in patches as it comes, so a
- * field ripens in waves, not all at once. Each texel its earth's colour
- * or the crop's, as light as it was baked, its facing turned as baked.
- */
-const DIFFUSE = `let fieldDirt = material.fieldEarth.rgb;
+if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldOut - fieldRag))) { discard; }
+let fieldDirt = material.fieldEarth.rgb;
 // The earth: a dark grey-brown, the field's earth greyed and darkened.
 let fieldSoil = mix(fieldDirt, vec3f(dot(fieldDirt, vec3f(0.3, 0.55, 0.15))), 0.45) * 0.55;
 let fieldLeaf = material.fieldGrowing.rgb;
@@ -536,6 +551,7 @@ let fieldOff = max(select(-1., -fieldU, input.vStripB.z > 1.5), select(-1., fiel
 let fieldBare = fieldOff > 0.04 + 0.06 * (fieldEdge - 0.5) + 0.04 * (fieldCrumb - 0.5) || input.vStripB.z > 2.5;
 var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
+var fieldCover = 0.;
 for (var i = 0; i < 2; i++) {
   let st = select(select(fieldFrom, fieldTo, i == 1), 0., fieldBare);
   let t = mix(fieldWheatAt(st, fieldU, fieldTexVs[1], fieldDu, fieldDv), fieldWheatAt(st, fieldU, fieldTexVs[0], fieldDu, fieldDv), fieldTexW);
@@ -544,12 +560,26 @@ for (var i = 0; i < 2; i++) {
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
   if (st > 4.5) { crop = fieldGold; }
   if (st > 5.5) { crop = fieldStraw; }
-  let c = mix(soil, crop, t.a) * t.b * 1.25;
+  let c = select(soil, crop, fieldLook.w > 0.5) * t.b * 1.25;
   let w = select(1. - fieldAhead, fieldAhead, i == 1);
   fieldColour += c * w;
   fieldFacing += vec3f(t.rg * 2. - 1., 0.) * w;
+  fieldCover += t.a * w;
 }
-let fieldN = vec3f(fieldFacing.xy, sqrt(max(0.05, 1. - dot(fieldFacing.xy, fieldFacing.xy))));
+// The crop stands over the earth: on its own mesh, raised, only where a
+// plant is, as many as the texel holds, and cast just so; until the
+// tractor, cutting, comes to its tile. The earth under it is all earth.
+let fieldCrop = fieldLook.w > 0.5;
+if (fieldCrop && (fieldBare || fieldCover < 0.3 + 0.4 * fieldCrumb || input.vStripTex.y + 0.5 < material.fieldCut.x)) { discard; }`;
+
+/**
+ * The paint: the stage of the wheat the field is at (ploughed; sown, by
+ * how far grown, drilled, seedlings, grown, in ear, ripe; stubble), and
+ * between two, the next showing through in patches as it comes, so a
+ * field ripens in waves, not all at once. Each texel its earth's colour
+ * or the crop's, as light as it was baked, its facing turned as baked.
+ */
+const DIFFUSE = `let fieldN = vec3f(fieldFacing.xy, sqrt(max(0.05, 1. - dot(fieldFacing.xy, fieldFacing.xy))));
 // A gentle tint, a few in a hundred either way, and no more.
 baseColor = fieldColour * (0.94 + 0.12 * fieldMottle);
 N = normalize(vec3f(fieldAcross * fieldN.x + vec2f(fieldAcross.y, -fieldAcross.x) * fieldN.y, fieldN.z));`;
