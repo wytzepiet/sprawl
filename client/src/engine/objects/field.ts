@@ -23,8 +23,9 @@ import recipe from "../wheat.ts?raw";
  * it (`running` in `motion.ts`), each later pass over the earlier where
  * they meet. Laid only where the job was done, as the server does it: a
  * tile on the visit it is worked, the lands on the first pass over them,
- * the headland on its own pass round, after the lands when ploughing,
- * before them otherwise (`fields.rs`); never on a turn or the way home.
+ * the headland on its own pass round, after the lands when ploughing or
+ * sowing, before them when harvesting (`fields.rs`); never on a turn or
+ * the way home.
  * So the headland ring runs on unbroken round its corners on the
  * tractor's own arc, and the lands' passes stop where they turned.
  *
