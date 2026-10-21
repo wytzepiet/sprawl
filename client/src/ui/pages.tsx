@@ -1,6 +1,6 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createMemo, createSignal, For, onCleanup, untrack, type Accessor } from "solid-js";
-import { follow, LOOSE } from "../engine/spring";
+import { follow, type Feel } from "../engine/spring";
 import { Line, Press } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 
@@ -28,6 +28,8 @@ export const clear = () => setPages([]);
 export const PEEK = 10;
 const BEHIND = 2;
 const SHRINK = 0.04;
+/** How a page slides in and settles: barely past where it stops. */
+const SLIDE: Feel = { stiff: 320, ratio: 0.85 };
 /** How long a page takes to go. */
 const LEAVE_MS = 380;
 
@@ -102,11 +104,11 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
             const frame = requestAnimationFrame(() => setBorn(true));
             onCleanup(() => cancelAnimationFrame(frame));
             const at = () => (depth() === 0 ? { h: fits(), s: 1, ink: 1 } : behind(front(), depth()));
-            const [h] = follow(() => at().h, { feel: LOOSE });
+            const [h] = follow(() => at().h, { feel: SLIDE });
             const [sc] = follow(() => at().s, { rest: 0.001 });
             const [ink] = follow(() => at().ink, { rest: 0.001 });
             // In from below the screen, and out the same way.
-            const [y] = follow(() => (born() && !s.gone() ? pull() : fits() + props.bottom + 40), { feel: LOOSE });
+            const [y] = follow(() => (born() && !s.gone() ? pull() : fits() + props.bottom + 40), { feel: SLIDE });
             const roll = (by: number) => setScroll(Math.max(0, Math.min(own() - props.room, scroll() + by)));
             /** A finger dragging it down from its top takes it away, past a
              *  little way; short of that it springs back. Else it scrolls. */
