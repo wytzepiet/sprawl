@@ -9,7 +9,7 @@
 >   a path rule, at any angle or curve. A bay is a spot like any other: a
 >   node hung off the street's edge, booked by a window.
 > - **Car parks and garages are placed buildings**, where the kerb runs
->   out: a surface car park, later a multi-storey on the tree.
+>   out: a surface car park, later a multi-storey.
 > - **A building keeps a yard only where work needs one**: a
 >   warehouse's bays, a port's quay. Homes and shops park in public.
 > - **A trip ends at the nearest free spot within reach of the door**,

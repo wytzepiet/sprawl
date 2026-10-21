@@ -1,6 +1,10 @@
 # The network: what vehicles touch, built from a few primitives
 
-Status: design, 2026-10-02. Nothing built. Argued from the ferry port of
+Status: design, 2026-10-02. Built since by other roads: links with lanes
+each way, one-way, priority and levels, through the interchange
+(`plan-interchange.md` §Built), and drives and yards as road
+(`world/lots.rs`). Not built: the check, and facilities as templates.
+Argued from the ferry port of
 the same day, which looked wrong and could not work: its yard was drawn
 cars in drawn lanes, and the back rows had no way in or out. A road never
 fails that way, because a road is not drawn: it is a link, and the

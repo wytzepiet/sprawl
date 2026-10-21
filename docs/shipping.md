@@ -5,7 +5,7 @@ open. The ferry harbour is built (§Built: the ferry harbour, at the end);
 the container port, lines between harbours, the planner, charters and the
 sea's lanes are not. Gathers what `trade.md` §Shipping said and the sea of
 `multiplayer.md` §2.1, brought up to date. `trade.md` keeps the money:
-coins, the world's prices, listings, contracts, top-up rules.
+coins, the world's prices, the deck, listings, contracts.
 
 ## The idea
 

@@ -164,6 +164,28 @@ as the city filled out (`EARN_PER_BUILDING`), which is what kept growth
 from running away with itself — fixed prices need money to do that job.
 Last lived at `8f86867`.
 
+## The skill tree (2026-09-05 to 2026-10-20)
+
+**What.** The build as a town plan: a small map whose roads were the
+edges and whose buildings were the nodes, in four avenues (homes,
+commerce, industry, roads), drawn by the client from the server's map
+(`SkillTree.tsx`, `/tree`). Points came from the level; a node could be
+taken when a neighbour was; each node unlocked a kind or a road kind, or
+took a discount off a class's price. The build was the one door every
+question went through: what may be placed, which roads drawn, how much
+road (`archive/services.md` §4 and §8).
+
+**Why shelved.** Switched off on 2026-10-10, when its avenues named kinds
+that were gone or going and it read and played poorly; then dropped on
+2026-10-20 for good (`plan-market.md` §No tree): what a building is built
+from is the gate, and a chain's cost is what specialising costs.
+Missions and the build menu give the guidance it gave.
+
+**To bring back.** `server/src/tree.rs` with its `MAP` and `LEGEND`,
+`client/src/ui/SkillTree.tsx` and `client/src/state/tree.ts`, and the
+growth update's taken nodes. Last lived at `bdd32a5`; `tree.rs` is a
+stub with everything open since.
+
 ## Build mode: drafts, commit, discard
 
 **What.** Roads and hand-placed buildings were drafts — world objects

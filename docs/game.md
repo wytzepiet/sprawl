@@ -198,17 +198,13 @@ sea, slowly.
 
 ## The build
 
-**Switched off, to be designed again.** The skill tree as built is old: its
-avenues and nodes name kinds that are gone or going, it reads poorly and
-it plays poorly. Until the roster settles (`buildings.md`) everything is
-unlocked and the tree's screen is hidden; the level, which is GDP to date
-(`trade.md` §GDP), still counts. The tree that replaces it is designed
-from the roster, with a look of its own.
-
-What it should keep from the old idea: the build is a town plan, the one
-gate for what may be built, how much road, which road kinds and how big
-the door is; a kind arrives after the map has shown the need for it; it
-says what may exist and in what proportion, never where.
+**What a building is built from is the gate** (`plan-market.md` §No
+tree). Any kind may be placed any time; what it waits on is its
+materials, bought in if the town lacks them. There is no tree
+(`shelved.md`). Guidance comes from the missions, which say what is next
+(`missions.md`), and from the build menu, which gives beside each kind
+what it takes against what the depots hold. The level is GDP to date
+(`trade.md` §GDP), and gates nothing.
 
 ## People
 

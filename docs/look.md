@@ -1,9 +1,9 @@
 # The look: a town that knows what it is next to
 
-Status: direction, 2026-09-28; the town grid's state as of 2026-10-02.
-Built: the palette, the fixture sheet (the pen, an ink line round
-everything, dropped 2026-10-02), and in the sandbox the
-town grid (§The town grid), which goes into the game with parking. How to
+Status: direction, 2026-09-28. Built: the palette, the fixture sheet
+(the pen, an ink line round everything, dropped 2026-10-02), and the
+town grid (§The town grid), which draws the game (`engine/TownLayer.ts`)
+as it draws the sandbox. How to
 judge a new thing, and every verdict so far, is `style.md`. The concepts it was argued from are the pattern
 book (https://claude.ai/artifact/XUGqKzMYVtypqraRp9R8tE), where every
 drawing carries the verdict it was given.
@@ -351,7 +351,7 @@ nothing, on the new asphalt, and a drive drawn to a door on the
 diagonal.
 
 - **One toolbar, drag for everything.** Select, each kind of road, each
-  kind of building the tree has opened, demolish. Pick one and drag on
+  kind of building, demolish. Pick one and drag on
   the map, or tap: it is built as the drag goes. The card shelf's
   drag-to-place, its ghost and `/site` go.
 - **The world is tiles and links, and buildings are worked out from

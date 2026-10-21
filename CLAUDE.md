@@ -50,7 +50,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 
 - **Package manager:** bun
 - **Dev stack:** `bun run dev` — runs client and server together in a TUI. The
-  server rebuilds and restarts on save, so it cannot fall behind its source.
+  server rebuilds and restarts on save, so it cannot fall behind its source:
+  its `src/` and `host/src/`, that is; it neither watches `web/` nor builds
+  the wasm, which the client builds once on start (`bun run wasm`).
   `./dev.sh --headless` runs the same processes without a TUI, `--stop` stops
   them. Both write to `.dev/<name>.log`.
 - **Is it current?** `curl localhost:4801/health` → `built_ago_s` is the age of
@@ -100,8 +102,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   town at opt-level 0 cost a minute. `cargo check` is not redundant: `cargo test` compiles
   the crate with `cfg(test)` on, so a stray `#[cfg(test)]` above something the
   game needs passes the suite and leaves a server that will not build.
-- **Does every seed still start?** After touching `terrain.rs` or
-  `road_gen.rs`, `cargo test every_seed -- --ignored` checks the first
+- **Does every seed still start?** After touching `terrain.rs`, `cargo
+  test every_seed -- --ignored` checks the first
   twenty seeds are islands in one ocean and seats their starting towns;
   `DRAW=1` draws the ones that fail. It also finds ships' ways from the
   home coast to the edge and to every island, and times them (50 ms
@@ -223,8 +225,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   whether it still plays as it was played, what went wrong on the way (a
   car through another, one standing for good, one on a priority road
   made to wait for a minor one: `Watch`), and every car
-  there, how fast and what it slows or stops for (`World::why`). `cargo
-  test replay` plays every kept one on today's game and asserts nothing
+  there, how fast and what it slows or stops for (`why`, in
+  `bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.
 - **Generated types:** a full `cargo test` in `server/` writes them into
   `client/src/generated` (`server/.cargo/config.toml`); `cd client && bun
@@ -235,11 +237,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   is the migration (the server says so if it cannot read one). Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is
-  forty tiles in from its island's coast. `SPRAWL_ALL=1` gives
-  a bottomless treasury. Any fixed seed gives
-  the same map back, so a change in behaviour is a change in the code.
-  `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole
-  map, sixteen tiles to a character.
+  forty tiles in from its island's coast. `SPRAWL_ALL=1` gives a
+  bottomless treasury. Any fixed seed gives the same map back, so a
+  change in behaviour is a change in the code. `SPRAWL_SEED=7 cargo test
+  draw_the_land -- --ignored --nocapture` prints the whole map, sixteen
+  tiles to a character.
 
 ## Solid 1.x
 
