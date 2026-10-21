@@ -129,22 +129,22 @@ export function BuildBody() {
     <Show when={group()} keyed>
       {(g) => (
         <Fade>
-    <Show when={g !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
-      <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
-        <For each={kinds()}>
-          {(kind) => (
-            <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
-              <Picture kind={kind} />
-              <box dir="row" align="center" gap={4}>
-                <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
-                <Info onTap={() => info({ kind })} />
-              </box>
-              <Materials kind={kind} />
+          <Show when={g !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
+            <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
+              <For each={kinds()}>
+                {(kind) => (
+                  <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+                    <Picture kind={kind} />
+                    <box dir="row" align="center" gap={4}>
+                      <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
+                      <Info onTap={() => info({ kind })} />
+                    </box>
+                    <Materials kind={kind} />
+                  </box>
+                )}
+              </For>
             </box>
-          )}
-        </For>
-      </box>
-    </Show>
+          </Show>
         </Fade>
       )}
     </Show>
