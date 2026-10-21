@@ -5,7 +5,7 @@ use tokio::time::{Instant, interval, Duration};
 
 use sprawl::engine::GameTime;
 use sprawl::engine::tracked::Tracked;
-use sprawl::game::{Game, STEP_MS, restore};
+use sprawl::game::{Game, STEP_MS};
 use sprawl::protocol::{DAY_MS, ServerMessage};
 use sprawl::world::World;
 
@@ -58,7 +58,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         }
         island(&mut world);
         if !world.objects.is_empty() {
-            restore(&mut world);
+            world.restore();
             println!("loaded {} objects from db", world.objects.len());
         }
     }

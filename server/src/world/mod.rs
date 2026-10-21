@@ -201,47 +201,7 @@ impl World {
     }
 
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
-        let mut world = Self {
-            spatial: HashMap::default(),
-            edges: HashMap::default(),
-            lots: HashMap::default(),
-            lot_nodes: HashMap::default(),
-            claims: HashMap::default(),
-            network: RoadNetwork::default(),
-            node_cars: HashMap::default(),
-            manoeuvres: HashMap::default(),
-            terrain_seed,
-            books: HashMap::default(),
-            town: Default::default(),
-            gdp: 0.0,
-            treasury: 0.0,
-            lumps: Vec::new(),
-            news: Vec::new(),
-            laid: 0,
-            frame: None,
-            terrain: HashMap::default(),
-            peaks: Default::default(),
-            water: Default::default(),
-            lines: Default::default(),
-            lanes: None,
-            junctions: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::default(),
-            chunk_crossings: Vec::new(),
-            built: HashSet::default(),
-            occupied: HashMap::default(),
-            roads: HashMap::default(),
-            decks: HashMap::default(),
-            calls: Vec::new(),
-            harbours: Default::default(),
-            aims: HashMap::default(),
-            people: HashMap::default(),
-            unsettled: BTreeSet::new(),
-            vacancies: BTreeSet::new(),
-            sites: BTreeSet::new(),
-            undo: HashMap::default(),
-            missions: Default::default(),
-            objects,
-        };
+        let mut world = Self { objects, terrain_seed, treasury: 0.0, ..Self::new() };
         // Rebuild the spatial index and the road index from loaded objects.
         for entry in world.objects.iter().chain(world.objects.roads()) {
             if let Some(pos) = entry.position {
@@ -258,6 +218,17 @@ impl World {
             }
         }
         world
+    }
+
+    /// What a save does not keep, rebuilt from what it does, as the game
+    /// opens it: after the terrain, which a door's drive is read against.
+    pub fn restore(&mut self) {
+        self.rebuild_edges();
+        self.rebuild_node_cars();
+        self.rebuild_occupied();
+        self.restore_spots();
+        self.rebuild_laid();
+        self.doors_from_drives();
     }
 
     /// Rebuild edges from the road graph. Only needed when loading saved state.

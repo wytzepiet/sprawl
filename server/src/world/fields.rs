@@ -41,7 +41,7 @@ pub const RIPEN: GameTime = DAY_MS as GameTime / 2;
 /// shift over the pace, less the ground driven between rows. What a
 /// farm's land comes to at capacity, and what its yard is divided by.
 pub fn capacity(kind: crate::protocol::BuildingKind) -> f64 {
-    (economy::shift_hours(kind) * economy::HOUR / PACE as f64 * 0.9).round()
+    (economy::shift_hours(kind) * crate::protocol::HOUR as f64 / PACE as f64 * 0.9).round()
 }
 
 /// The eight ways off a tile: straight first, then the diagonals.

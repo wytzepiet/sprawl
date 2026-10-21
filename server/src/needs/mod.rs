@@ -4,11 +4,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::engine::GameTime;
-use crate::protocol::{Good, DAY_MS};
+use crate::protocol::{Good, DAY_MS, HOUR};
 use curve::Curve;
-
-const H: u32 = DAY_MS / 24;
-const HOUR: f64 = H as f64;
 
 /// Something a resident has to do: what a tap serves, some of it drawn
 /// off a shelf of a good (`good`). Three kinds, by where the
@@ -70,7 +67,7 @@ impl Need {
 
     /// How long a fill takes: twenty minutes at the pump, so the pump's
     /// rate is the tank over that.
-    pub const FILL_MS: f64 = HOUR / 3.0;
+    pub const FILL_MS: f64 = HOUR as f64 / 3.0;
 
     /// Holds its level: the world's curves say when, not the stock.
     pub fn constant(self) -> bool {
@@ -93,13 +90,13 @@ impl Need {
     /// The most that can be held, in milliseconds of need.
     pub fn cap(self) -> f64 {
         match self {
-            Need::Work | Need::Home => 24.0 * HOUR,
-            Need::Rest => 12.0 * HOUR,
-            Need::Eat => 0.5 * HOUR,
+            Need::Work | Need::Home => 24.0 * HOUR as f64,
+            Need::Rest => 12.0 * HOUR as f64,
+            Need::Eat => 0.5 * HOUR as f64,
             // What an empty tank costs: the afternoon it takes to be towed
             // and filled. A near-empty tank then beats an evening in and
             // loses to a shift, as it should.
-            Need::Fuel => 2.0 * HOUR,
+            Need::Fuel => 2.0 * HOUR as f64,
         }
     }
 
@@ -107,7 +104,7 @@ impl Need {
     /// tank, an hour of labour. A shelf counts them.
     pub fn unit(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Rest => HOUR,
+            Need::Work | Need::Home | Need::Rest => HOUR as f64,
             Need::Eat | Need::Fuel => self.cap(),
         }
     }
@@ -272,7 +269,7 @@ pub fn check() {
     let day = DAY_MS as u64;
     // N1: what is used up fits in a day.
     let asked: f64 = Need::ALL.iter().map(|n| n.daily_ms()).sum();
-    assert!(asked <= day as f64, "needs ask for {:.1}h of a 24h day", asked / HOUR);
+    assert!(asked <= day as f64, "needs ask for {:.1}h of a 24h day", asked / HOUR as f64);
 }
 
 #[cfg(test)]
@@ -286,7 +283,7 @@ mod tests {
 
     #[test]
     fn rest_asks_for_eight_hours() {
-        assert!((Need::Rest.daily_ms() - 8.0 * HOUR).abs() < 1.0);
+        assert!((Need::Rest.daily_ms() - 8.0 * HOUR as f64).abs() < 1.0);
     }
 
     #[test]

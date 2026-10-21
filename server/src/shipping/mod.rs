@@ -17,10 +17,10 @@ pub mod lines;
 mod sim;
 
 use crate::engine::GameTime;
-use crate::protocol::{Pose, Sail, CHUNK_SIZE, DAY_MS};
+use crate::protocol::{Pose, Sail, CHUNK_SIZE};
 
-/// An hour of the clock.
-pub const HOUR: GameTime = DAY_MS as GameTime / 24;
+/// An hour of the clock, as the sea counts time.
+pub const HOUR: GameTime = crate::protocol::HOUR as GameTime;
 /// How long a ship at full speed takes to cross a tile of open water: a
 /// fifth of a second, five tiles a second at speed one. The map's sea is
 /// compressed (islands thirty-odd tiles apart), and so are its ships: at

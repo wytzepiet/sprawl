@@ -13,9 +13,7 @@ use std::sync::LazyLock;
 
 use crate::needs::curve::Curve;
 use crate::needs::{Need, Tap};
-use crate::protocol::{BuildingKind, CarRole, Good, DAY_MS};
-
-const H: u32 = DAY_MS / 24;
+use crate::protocol::{BuildingKind, CarRole, Good, DAY_MS, HOUR as H};
 
 pub struct Blueprint {
     /// How many the settlement moves in of its own accord. Zero for

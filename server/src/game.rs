@@ -33,17 +33,6 @@ const SETTLE_MS: GameTime = 500;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
 
-/// What a save does not keep, rebuilt from what it does, as the game
-/// opens it.
-pub fn restore(world: &mut World) {
-    world.rebuild_edges();
-    world.rebuild_node_cars();
-    world.rebuild_occupied();
-    world.restore_spots();
-    world.rebuild_laid();
-    world.doors_from_drives();
-}
-
 /// The game, whole and without a clock on the wall: a world, what is due in
 /// it, its junctions, and who is watching. Whatever drives it (the server's
 /// loop, a browser's worker) calls `tick` as often as it likes and carries
@@ -1388,7 +1377,7 @@ mod tests {
         }
         world.laid = 0;
 
-        restore(&mut world);
+        world.restore();
 
         assert!(world.objects.get(drive).is_none(), "the drive went");
         let street = world.road_node_at(GridCoord { x: 2, y: 1 }).unwrap();
@@ -1402,7 +1391,7 @@ mod tests {
     fn a_fresh_world_is_the_bare_island() {
         let mut world = World::new();
         world.terrain = crate::terrain::generate(7);
-        restore(&mut world);
+        world.restore();
         world.resettle();
         assert!(world.objects.roads().next().is_none(), "a road was born with the map");
         assert!(world.all_buildings().is_empty() && world.resident_ids().is_empty(), "something stood on the island");

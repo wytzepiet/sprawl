@@ -6,7 +6,7 @@ use crate::blueprint::blueprint;
 use crate::economy;
 use crate::needs::{Bucket, Need, Tap};
 use crate::world::pathfinding::Routes;
-use crate::protocol::{BuildingKind, EntityId, GameObject, Resident, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -454,7 +454,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         && served > 0.0
     {
         let out = rate * served;
-        economy::served(world, at, need, out / HOUR, now);
+        economy::served(world, at, need, out / HOUR as f64, now);
         if let Some(r) = resident_mut(world, id) {
             r.tab += out / need.unit();
         }
@@ -552,7 +552,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
         "last_update": crate::card::hhmm(r.last_update),
         "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
             "need": b.need,
-            "short_h": b.stock.short() / HOUR,
+            "short_h": b.stock.short() / HOUR as f64,
             "full": 1.0 - b.stock.weight(),
             "option": v.describe(now),
         })).collect::<Vec<_>>(),
@@ -567,7 +567,7 @@ impl Verdict {
                 "rate": rate,
                 "score": score,
                 "departure": crate::card::hhmm(departure),
-                "wait_h": (departure - now) as f64 / HOUR,
+                "wait_h": (departure - now) as f64 / HOUR as f64,
                 "leave": crate::card::hhmm(leave),
             }),
             Verdict::Nothing => json!("nothing"),
@@ -583,8 +583,6 @@ fn whereabouts(world: &World, at: EntityId) -> String {
         _ => "gone".into(),
     }
 }
-
-const HOUR: f64 = (DAY_MS / 24) as f64;
 
 /// Clock time, with the day in front when it is not today's.
 fn resident(world: &World, id: EntityId) -> Option<&Resident> {
@@ -727,7 +725,7 @@ mod bench {
         let started = std::time::Instant::now();
         let mut hits = 0u32;
         for i in 0..n {
-            let now = (i as u64 * 977) % DAY_MS as u64;
+            let now = (i as u64 * 977) % crate::protocol::DAY_MS as u64;
             let mut bucket = b.clone();
             bucket.stock.take((i % 100) as f64 * 1000.0);
             if let Verdict::Go { .. } = evaluate(&world, shop, tap, &bucket, now, 1, 60_000, false) {

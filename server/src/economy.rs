@@ -27,10 +27,8 @@ use serde_json::{json, Value};
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
 use crate::needs::{Need, Stock, Tap};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, TerrainType, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, TerrainType, DAY_MS, HOUR};
 use crate::world::World;
-
-pub const HOUR: f64 = DAY_MS as f64 / 24.0;
 
 /// What the world beyond the border reckons a unit of a good is worth,
 /// in coins. Tuned so that one farm's crates, sold abroad, keep a small
@@ -90,7 +88,7 @@ pub const LEAD_MS: GameTime = DAY_MS as GameTime / 12;
 
 /// Hours of the shift a kind's row posts.
 pub fn shift_hours(kind: BuildingKind) -> f64 {
-    blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / HOUR)
+    blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / HOUR as f64)
 }
 
 /// The shelves a kind keeps, and their caps.

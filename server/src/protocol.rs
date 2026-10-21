@@ -1059,6 +1059,8 @@ pub enum Operation {
 /// sprawling city at four, which is what earns a highway. At two minutes, the
 /// length this was, that same crossing took two days.
 pub const DAY_MS: u32 = 1_200_000;
+/// An hour of the clock.
+pub const HOUR: u32 = DAY_MS / 24;
 
 /// The simulation's clock, as the client needs to see it.
 ///
