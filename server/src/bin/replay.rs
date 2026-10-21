@@ -85,7 +85,7 @@ fn main() {
         })
         .filter(|(_, t)| near(s.game.world.objects.get(t.route[t.route_index]).and_then(|e| e.position)))
         .map(|(id, t)| {
-            let (_, v) = sprawl::car::physics::catch_up(t.progress, t.speed, t.acceleration, (s.game.now - t.updated_at) as f64 / 1000.0);
+            let (_, v) = t.at(s.game.now);
             let at = |n: EntityId| s.game.world.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
             let tile = format!("{} {} → {}", t.route[t.route_index], at(t.route[t.route_index - 1]), at(t.route[t.route_index]));
             let lane = t.lanes.get(t.route_index).copied().unwrap_or(0);

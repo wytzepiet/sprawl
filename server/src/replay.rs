@@ -20,13 +20,12 @@ use std::hash::Hasher;
 
 use serde::{Deserialize, Serialize};
 
-use crate::car::physics::catch_up;
 use crate::car::{nose, tail};
 use crate::engine::GameTime;
 use crate::fixed::{HashMap, HashSet};
 use crate::game::Game;
 use crate::level::Level;
-use crate::protocol::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId, Trip};
+use crate::protocol::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId};
 
 /// The one player a session has.
 const ME: u64 = 1;
@@ -212,7 +211,6 @@ impl Watch {
     pub fn look(&mut self, game: &Game) -> Vec<String> {
         let world = &game.world;
         let mut out = Vec::new();
-        let at = |t: &Trip| catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0);
         for (edge, seg) in &world.edges {
             for lane in 0..seg.lanes as usize {
                 // On it, not yet coming to it by another road.
@@ -222,7 +220,7 @@ impl Watch {
                         Some(GameObject::Car(car)) => {
                             let t = car.trip.as_ref()?;
                             let i = t.route_index;
-                            ((t.route[i - 1], t.route[i]) == *edge).then(|| (at(t).0 - t.segment_lengths[1..i].iter().sum::<f64>(), c, car.role))
+                            ((t.route[i - 1], t.route[i]) == *edge).then(|| (t.at(game.now).0 - t.along[i - 1], c, car.role))
                         }
                         _ => None,
                     })
@@ -245,7 +243,7 @@ impl Watch {
             // Held at a junction, or for one let in there before it that is
             // standing at its line, not coming in ahead of it.
             let speed = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
-                Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| at(t).1),
+                Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| t.at(game.now).1),
                 _ => 0.0,
             };
             // Standing, and not behind one on its way.
@@ -260,14 +258,14 @@ impl Watch {
             };
             if let Some((j, a, them)) = held
                 && a < -0.3
-                && at(t).1 < crate::car::CRUISE_SPEED / 4.0
+                && t.at(game.now).1 < crate::car::CRUISE_SPEED / 4.0
                 && on_priority(world, e.id, j) == Some(true)
             {
                 // Not one in the junction already, past its line, held up on
                 // its way out: the jam holds them both, not the junction.
                 let inside = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
                     Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
-                        (1..t.route.len()).find(|&k| t.route[k] == j).is_none_or(|k| t.segment_lengths[1..=k].iter().sum::<f64>() - at(t).0 < t.segment_lengths[k] / 2.0)
+                        (1..t.route.len()).find(|&k| t.route[k] == j).is_none_or(|k| t.along[k] - t.at(game.now).0 < t.segment_lengths[k] / 2.0)
                     }),
                     _ => false,
                 };
@@ -277,7 +275,7 @@ impl Watch {
                     }
                 }
             }
-            if at(t).1 > 0.01 || t.acceleration > 0.0 {
+            if t.at(game.now).1 > 0.01 || t.acceleration > 0.0 {
                 self.standing.remove(&e.id);
                 continue;
             }
@@ -287,7 +285,7 @@ impl Watch {
             let mut waits = Some(e.id);
             let mut at_junction = None;
             let going = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
-                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| at(t).1 > 0.01 || t.acceleration > 0.0),
+                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| t.at(game.now).1 > 0.01 || t.acceleration > 0.0),
                 _ => false,
             };
             for _ in 0..64 {

@@ -1,4 +1,4 @@
-use crate::car::{nose, physics, tail, ACCELERATION, CRUISE_SPEED, LOT_SPEED, MIN_GAP};
+use crate::car::{nose, tail, ACCELERATION, CRUISE_SPEED, LOT_SPEED, MIN_GAP};
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, Trip};
@@ -93,10 +93,11 @@ fn launch(
     let stands = world.pose_held(car_id);
     let first_edge = (route[0], route[1]);
     let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot, &backing);
+    let along = along(&segment_lengths);
     let total_len: f64 = segment_lengths.iter().sum();
     // The lot's edges are the ones into and out of it: as many at each end
     // as there are lot nodes there, since the street node closes each run.
-    let lot_len: f64 = segment_lengths[1..=from_lot].iter().sum::<f64>()
+    let lot_len: f64 = along[from_lot]
         + segment_lengths[segment_lengths.len() - to_lot..].iter().sum::<f64>();
     let street_len = total_len - lot_len;
     let route_positions = world.route_positions(&route);
@@ -121,7 +122,7 @@ fn launch(
             lanes,
             from_lot,
             to_lot,
-            cusps: cusps(&backing, &segment_lengths),
+            cusps: cusps(&backing, &along),
             leaves,
             stands,
             backing,
@@ -131,8 +132,8 @@ fn launch(
             total_route_length: total_len,
             updated_at: now,
             route_index: 1,
-            seg_start_dist: 0.0,
             segment_lengths,
+            along,
             stretches,
             shift: None,
             signal: None,
@@ -168,15 +169,9 @@ fn room_at_start(world: &World, first_edge: (EntityId, EntityId), lane: usize, r
         && let Some(entry) = world.objects.get(last_id)
         && let GameObject::Car(ref blocker) = entry.object
         && let Some(ref blocker_trip) = blocker.trip
-        && let Some(edge_start) = blocker_edge_start(blocker_trip, first_edge)
+        && let Some(edge_start) = blocker_trip.start_of(first_edge)
     {
-        let dt = (now - blocker_trip.updated_at) as f64 / 1000.0;
-        let (bp, _) = physics::catch_up(
-            blocker_trip.progress,
-            blocker_trip.speed,
-            blocker_trip.acceleration,
-            dt,
-        );
+        let (bp, _) = blocker_trip.at(now);
         if bp - edge_start < MIN_GAP + nose(role) + tail(blocker.role) {
             return false;
         }
@@ -202,7 +197,7 @@ pub fn drive_through(world: &mut World, events: &mut EventQueue, car_id: EntityI
     let ahead = world.edges.get(&(route[0], route[1])).and_then(|seg| seg.back(lane));
     let speed = ahead
         .and_then(|id| match world.objects.get(id).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => c.trip.as_ref().map(|t| physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0).1),
+            Some(GameObject::Car(c)) => c.trip.as_ref().map(|t| t.at(now).1),
             _ => None,
         })
         .map_or(CRUISE_SPEED, |v| v.min(CRUISE_SPEED));
@@ -255,18 +250,15 @@ pub fn parts(backing: &[[usize; 2]], n: usize) -> Vec<(usize, usize)> {
 
 /// How far along the route each change of gear is, as its physics measures
 /// it: where a vehicle stops and pulls away the other way.
-pub fn cusps(backing: &[[usize; 2]], segment_lengths: &[f64]) -> Vec<f64> {
-    let n = segment_lengths.len();
-    parts(backing, n).iter().skip(1).map(|&(i, _)| segment_lengths[1..=i].iter().sum()).collect()
+pub fn cusps(backing: &[[usize; 2]], along: &[f64]) -> Vec<f64> {
+    parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
 }
 
-/// Find the cumulative distance to the start of an edge in a trip's route.
-fn blocker_edge_start(trip: &Trip, edge: (EntityId, EntityId)) -> Option<f64> {
-    let (from, to) = edge;
-    for i in 1..trip.route.len() {
-        if trip.route[i - 1] == from && trip.route[i] == to {
-            return Some(trip.segment_lengths[1..i].iter().sum());
-        }
-    }
-    None
+/// How far along a route each node of it is, from its segments' lengths:
+/// `segment_lengths[1..=k]` summed, in the same order.
+pub fn along(segment_lengths: &[f64]) -> Vec<f64> {
+    std::iter::once(0.0).chain(segment_lengths.iter().skip(1).scan(0.0, |d, &l| {
+        *d += l;
+        Some(*d)
+    })).collect()
 }

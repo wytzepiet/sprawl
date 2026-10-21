@@ -166,7 +166,7 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
             // one standing at the node, waiting for it. Others still on
             // their way out are measured so too, or two would stand in one
             // order on a stretch and the other on the next.
-            let mine = queued_at(trip, at) - trip.segment_lengths[1..k].iter().sum::<f64>();
+            let mine = queued_at(trip, at) - trip.along[k - 1];
             let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
             // Ahead of whoever is behind it: a car asleep on its way joins
             // the run late, and is not behind everyone on it.
@@ -188,7 +188,7 @@ fn requeue(world: &mut World, car_id: EntityId, trip: &Trip, ri: usize, p: f64, 
         if !world.edges.get(&e).is_some_and(|s| s.contains(car_id)) {
             break;
         }
-        let mine = p - trip.segment_lengths[1..k].iter().sum::<f64>();
+        let mine = p - trip.along[k - 1];
         for lane in 0..2 {
             if !world.edges[&e].in_lane(car_id, lane) {
                 continue;
@@ -214,8 +214,8 @@ fn from_another_arm(world: &World, car_id: EntityId, junction: EntityId, mine: E
 fn position_on(world: &World, car_id: EntityId, edge: EdgeKey, now: GameTime) -> Option<f64> {
     let GameObject::Car(ref c) = world.objects.get(car_id)?.object else { return None };
     let t = c.trip.as_ref()?;
-    let (p, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
-    Some(queued_at(t, p) - edge_start_dist(t, edge)?)
+    let (p, _) = t.at(now);
+    Some(queued_at(t, p) - t.start_of(edge)?)
 }
 
 /// The cars on the street at a node: everyone queued on an edge into or
@@ -327,8 +327,8 @@ fn gap_at(world: &World, car_id: EntityId, trip: &Trip, now: GameTime) -> bool {
                 return true;
             }
             let Some(k) = (t.route_index - 1..t.route.len()).find(|&k| t.route[k] == street) else { return true };
-            let (p, v) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
-            let d = t.segment_lengths[1..=k].iter().sum::<f64>() - p;
+            let (p, v) = t.at(now);
+            let d = t.along[k] - p;
             // Standing on the node shuts it; coming, and too near to stop,
             // shuts it; one standing in a queue short of it lets the car
             // out ahead of it, as drivers in a queue do.
@@ -358,8 +358,8 @@ fn clear_to_turn_in(world: &World, car_id: EntityId, trip: &Trip, now: GameTime)
         if t.route[k - 1] == from {
             return true;
         }
-        let (p, v) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
-        let d = t.segment_lengths[1..=k].iter().sum::<f64>() - p;
+        let (p, v) = t.at(now);
+        let d = t.along[k] - p;
         v < 0.05 || d - nose(c.role) > headway(v, 0.0) + 1.0
     })
 }
@@ -570,13 +570,11 @@ fn lead_car_obstacle(
     let lead_role = lead.role;
     let lead = lead.trip.as_ref()?;
 
-    // Both cars must be on this edge — find their seg_start_dist for the edge.
-    let my_seg_start = edge_start_dist(trip, edge)?;
-    let lead_seg_start = edge_start_dist(lead, edge)?;
+    // Both cars must be on this edge — find where it starts along each route.
+    let my_seg_start = trip.start_of(edge)?;
+    let lead_seg_start = lead.start_of(edge)?;
 
-    let dt = (now - lead.updated_at) as f64 / 1000.0;
-    let (lead_progress, lead_speed) =
-        physics::catch_up(lead.progress, lead.speed, lead.acceleration, dt);
+    let (lead_progress, lead_speed) = lead.at(now);
 
     let my_pos = cur_progress - my_seg_start;
     let lead_pos = lead_progress - lead_seg_start;
@@ -594,7 +592,7 @@ fn lead_car_obstacle(
     let room = gap - MIN_GAP - nose(role) - tail(lead_role);
     let on = (lead.route[lead.route_index - 1], lead.route[lead.route_index]);
     let here = (1..trip.route.len()).find(|&i| (trip.route[i - 1], trip.route[i]) == on).is_some_and(|i| {
-        let start = trip.segment_lengths[1..i].iter().sum::<f64>();
+        let start = trip.along[i - 1];
         start <= cur_progress && cur_progress < start + trip.segment_lengths[i]
     });
     let changing = |t: &Trip| t.shift.is_some_and(|s| s.from != s.to);
@@ -664,22 +662,9 @@ fn signalling(world: &World, car: EntityId) -> Option<u8> {
 /// Where a car `p` along its trip stands in the street's queues: on its
 /// way out of a lot, at the street node.
 fn queued_at(t: &Trip, p: f64) -> f64 {
-    if t.from_lot > 0 && t.route_index <= t.from_lot + 1 { p.max(t.segment_lengths[1..=t.from_lot].iter().sum()) } else { p }
+    if t.from_lot > 0 && t.route_index <= t.from_lot + 1 { p.max(t.along[t.from_lot]) } else { p }
 }
 
-/// Find the cumulative distance to the start of an edge for a trip.
-/// The edge (from, to) starts at the route index where `from` is route[k] and `to` is route[k+1].
-fn edge_start_dist(trip: &Trip, edge: EdgeKey) -> Option<f64> {
-    let (from, to) = edge;
-    for i in 1..trip.route.len() {
-        if trip.route[i - 1] == from && trip.route[i] == to {
-            // seg_start_dist for route_index i = sum of segment_lengths[1..i]
-            let dist: f64 = trip.segment_lengths[1..i].iter().sum();
-            return Some(dist);
-        }
-    }
-    None
-}
 /// Where a car is as it wakes, caught up to now: the node it drives to
 /// (`ri`), where along its route the edge to it starts, how far it has
 /// come and how fast it goes. Each part of its look ahead reads this.
@@ -765,12 +750,10 @@ pub fn handle_car_wake_up(
 /// and parking it where its trip ends. Where it is now, unless parked.
 fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, role: CarRole, trip: &Trip, car_id: EntityId, now: GameTime) -> Option<Here> {
     // === ADVANCE ===
-    let dt = (now - trip.updated_at) as f64 / 1000.0;
-    let (cur_progress, cur_speed) =
-        physics::catch_up(trip.progress, trip.speed, trip.acceleration, dt);
+    let (cur_progress, cur_speed) = trip.at(now);
 
     let mut ri = trip.route_index;
-    let mut seg_start = trip.seg_start_dist;
+    let mut seg_start = trip.along[ri - 1];
     let old_ri = ri;
 
     let stops_at = |k: usize| stops_at(world, trip, k);
@@ -789,27 +772,7 @@ fn advance(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
             world.cusps.insert(car_id, now + CUSP_MS);
         }
 
-        // --- WARN: crossing node route[ri] ---
         let node = trip.route[ri];
-
-        // Crossing a turn too fast?
-        if ri > 0 && ri < trip.route.len() - 1 {
-            let expected = physics::turn_speed(world.turn_cos_angle(&trip.route, ri));
-            if cur_speed > expected + 0.3 {
-                eprintln!(
-                    "WARN [car {}] crossed node {} (ri={}) at speed {:.2}, turn_speed={:.2} (dt={:.0}ms)",
-                    car_id, node, ri, cur_speed, expected, dt * 1000.0
-                );
-            }
-        }
-
-        // Crossing a blocked intersection?
-        if gates(world, trip, ri).iter().filter(|g| !g.crossing()).any(|g| !intersections.has_passage(g.id, car_id)) {
-            eprintln!(
-                "WARN [car {}] crossed BLOCKED intersection {} (ri={}) at speed {:.2} (dt={:.0}ms)",
-                car_id, node, ri, cur_speed, dt * 1000.0
-            );
-        }
 
         // A run of road ends here, so whatever it took to drive is now known.
         //
@@ -1028,7 +991,7 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
             // Ahead of it on the road, not only in a queue that has them
             // the other way about on another stretch; each measured alike,
             // one still in its lot at the lot's mouth.
-            let mine = queued_at(trip, cur_progress) - edge_start_dist(trip, edge)?;
+            let mine = queued_at(trip, cur_progress) - trip.start_of(edge)?;
             position_on(world, a, edge, now).is_some_and(|p| p > mine).then_some(a)
         })
     };
@@ -1171,7 +1134,7 @@ fn leads(world: &World, intersections: &IntersectionRegistry, h: &Here, trip: &T
     // where this car can drop back for it without braking hard; looked for
     // as far as a car stops from cruising.
     for k in ri..trip.route.len() {
-        if trip.segment_lengths[1..k].iter().sum::<f64>() - cur_progress > COURTESY {
+        if trip.along[k - 1] - cur_progress > COURTESY {
             break;
         }
         // Along its way, queued there yet or not: one that looked only as
@@ -1182,9 +1145,9 @@ fn leads(world: &World, intersections: &IntersectionRegistry, h: &Here, trip: &T
         let mine = trip.lanes[k];
         for o in seg.lane(1 - mine as usize).filter(|&o| o != car_id && signalling(world, o) == Some(mine)) {
             let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { continue };
-            let (Some(t), Some(mine_at)) = (c.trip.as_ref(), edge_start_dist(trip, edge)) else { continue };
-            let Some(its_at) = edge_start_dist(t, edge) else { continue };
-            let (q, vo) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+            let (Some(t), Some(mine_at)) = (c.trip.as_ref(), trip.start_of(edge)) else { continue };
+            let Some(its_at) = t.start_of(edge) else { continue };
+            let (q, vo) = t.at(now);
             // Dropping back to the gap it needs to cut in (`headway`, as
             // `room` asks), and a little more; not for one it is inside
             // that already, or could only leave braking hard.
@@ -1230,7 +1193,7 @@ fn leads(world: &World, intersections: &IntersectionRegistry, h: &Here, trip: &T
                 break 'gates;
             }
             let out = (trip.route[k], trip.route[k + 1]);
-            let Some(mine) = edge_start_dist(trip, out).map(|s| cur_progress - s) else { continue };
+            let Some(mine) = trip.start_of(out).map(|s| cur_progress - s) else { continue };
             for l in intersections.merging(g.id, car_id) {
                 if position_on(world, l, out, now).is_some_and(|p| p > mine) {
                     // The gap is wanted at the merge, not yet: short of it, it
@@ -1269,6 +1232,7 @@ fn road_ahead(world: &mut World, intersections: &IntersectionRegistry, h: &Here,
     // what the corner allows. Held to zero instead, so it carries the speed it
     // slowed to through the turn rather than only up to it.
     let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - nose(role);
+    let line_ri = (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0);
     // Backing, a walking pace; in a lot, a crawl, on any edge that ends at a
     // lot node, from its start. Where the gear changes, and at the end, a
     // stop on the node; at a change of gear, a moment standing.
@@ -1296,7 +1260,7 @@ fn road_ahead(world: &mut World, intersections: &IntersectionRegistry, h: &Here,
         obstacles.push((Obstacle::MustStop { distance: 0.0 }, Cause::Line));
     }
     if turning_in {
-        obstacles.push((Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) }, Cause::TurningIn));
+        obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::TurningIn));
     }
     // A car turning off or onto the street ahead: stop short of it.
     let mut turn_ahead = false;
@@ -1307,10 +1271,10 @@ fn road_ahead(world: &mut World, intersections: &IntersectionRegistry, h: &Here,
     // once the car reached the line meant a car in the last half edge before a
     // junction it has no claim on had nothing left telling it to wait.
     if let Some(g) = gates(world, trip, ri).iter().filter(|g| !g.crossing() || !reached).find(|g| !intersections.has_passage(g.id, car_id)) {
-        obstacles.push((Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) }, Cause::Junction(g.id)));
+        obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::Junction(g.id)));
     }
     if let Some(holder) = held(world, car_id, trip.route[ri]) {
-        obstacles.push((Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) }, Cause::Turn(holder)));
+        obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::Turn(holder)));
         turn_ahead = true;
     }
 
@@ -1319,18 +1283,19 @@ fn road_ahead(world: &mut World, intersections: &IntersectionRegistry, h: &Here,
     for k in (ri + 1)..trip.route.len().min(ri + LOOKAHEAD) {
         node_dist += trip.segment_lengths[k];
         let entry_k = node_dist - 0.5 * trip.segment_lengths[k] - nose(role);
+        let line_k = (entry_k - INTERSECTION_STOP_MARGIN).max(0.0);
 
         let node = trip.route[k];
 
         // A trip that ends on a junction stops there; it never registered
         // for passage, so waiting for it would be waiting for ever.
         if let Some(g) = gates(world, trip, k).into_iter().find(|g| !intersections.has_passage(g.id, car_id)) {
-            obstacles.push((Obstacle::MustStop { distance: (entry_k - INTERSECTION_STOP_MARGIN).max(0.0) }, Cause::Junction(g.id)));
+            obstacles.push((Obstacle::MustStop { distance: line_k }, Cause::Junction(g.id)));
             break;
         }
 
         if let Some(holder) = held(world, car_id, node).filter(|_| !turn_ahead) {
-            obstacles.push((Obstacle::MustStop { distance: (entry_k - INTERSECTION_STOP_MARGIN).max(0.0) }, Cause::Turn(holder)));
+            obstacles.push((Obstacle::MustStop { distance: line_k }, Cause::Turn(holder)));
             turn_ahead = true;
         }
         if world.lot_nodes.contains_key(&node) {
@@ -1457,7 +1422,6 @@ fn settle(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, obs
         t.speed = cur_speed;
         t.updated_at = now;
         t.route_index = ri;
-        t.seg_start_dist = seg_start;
         if accel_changed {
             t.acceleration = new_accel;
         }
@@ -1541,7 +1505,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
     if !(ri..=end).all(wide) {
         return short;
     }
-    let to_end = trip.segment_lengths[1..=end].iter().sum::<f64>() - p;
+    let to_end = trip.along[end] - p;
     let lane = trip.lanes[ri];
     let other = 1 - lane;
     let (want, to_want) = exit.map_or((None, to_end), |(w, d)| (Some(w), d));
@@ -1626,7 +1590,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
         if !world.edges.get(&e).is_some_and(|seg| seg.contains(car_id)) {
             break;
         }
-        let mine = p - trip.segment_lengths[1..j].iter().sum::<f64>();
+        let mine = p - trip.along[j - 1];
         let behind: Vec<EntityId> = world.edges[&e].lane(to as usize).filter(|&o| position_on(world, o, e, now).is_some_and(|q| q < mine)).collect();
         world.edges.get_mut(&e).unwrap().insert_before(car_id, to as usize, |o| behind.contains(&o));
         for b in world.car_behind_on_edge(e, car_id) {
@@ -1652,7 +1616,7 @@ fn not_in_lane(world: &World, car_id: EntityId, role: CarRole, trip: &Trip, ri: 
     let mine = trip.lanes[ri];
     let swaps = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
         Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
-            let (q, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+            let (q, _) = t.at(now);
             t.lanes.get(t.route_index) == Some(&want) && exit_lane(world, t, t.route_index, q).is_some_and(|(w, _)| w == mine)
         }),
         _ => false,
@@ -1678,7 +1642,7 @@ fn exit_lane(world: &World, trip: &Trip, ri: usize, p: f64) -> Option<(u8, f64)>
         return None;
     }
     loop {
-        let d = trip.segment_lengths[1..=k].iter().sum::<f64>() - p;
+        let d = trip.along[k] - p;
         if d > GET_IN {
             return None;
         }
@@ -1708,7 +1672,7 @@ fn neighbours(world: &World, car_id: EntityId, trip: &Trip, ri: usize, end: usiz
     for k in ri.saturating_sub(BACK).max(1)..=end {
         let e = (trip.route[k - 1], trip.route[k]);
         let Some(seg) = world.edges.get(&e) else { continue };
-        let mine = p - trip.segment_lengths[1..k].iter().sum::<f64>();
+        let mine = p - trip.along[k - 1];
         // Behind a junction, a car's lane there is not its lane here: it
         // may come out of the junction in another. Its lane here is the
         // one it means to be in on this car's edge.
@@ -1718,8 +1682,8 @@ fn neighbours(world: &World, car_id: EntityId, trip: &Trip, ri: usize, end: usiz
         for o in cars.into_iter().filter(|&o| o != car_id) {
             let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { continue };
             let Some(t) = c.trip.as_ref() else { continue };
-            let Some(start) = edge_start_dist(t, e) else { continue };
-            let (q, vo) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+            let Some(start) = t.start_of(e) else { continue };
+            let (q, vo) = t.at(now);
             let d = q - start - mine;
             let slot = usize::from(d <= 0.0);
             if out[slot].is_none_or(|(n, ..)| d.abs() < n.abs()) {
@@ -1740,12 +1704,12 @@ const COURTESY: f64 = 6.0;
 fn coming(world: &World, car_id: EntityId, trip: &Trip, ri: usize, p: f64, lane: usize, now: GameTime) -> Vec<EntityId> {
     let mut out = Vec::new();
     for k in (1..=ri).rev() {
-        if p - trip.segment_lengths[1..k].iter().sum::<f64>() > COURTESY + trip.segment_lengths[k] {
+        if p - trip.along[k - 1] > COURTESY + trip.segment_lengths[k] {
             break;
         }
         let e = (trip.route[k - 1], trip.route[k]);
         let Some(seg) = world.edges.get(&e) else { continue };
-        let mine = p - trip.segment_lengths[1..k].iter().sum::<f64>();
+        let mine = p - trip.along[k - 1];
         out.extend(seg.lane(lane).filter(|&o| o != car_id && position_on(world, o, e, now).is_some_and(|q| q < mine)));
     }
     out

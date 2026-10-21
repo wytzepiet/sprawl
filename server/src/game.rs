@@ -682,7 +682,8 @@ fn try_reroute(
         t.lanes = lanes;
         t.from_lot = 0;
         t.to_lot = to_lot;
-        t.cusps = crate::car::spawn::cusps(&backing, &segment_lengths);
+        t.along = crate::car::spawn::along(&segment_lengths);
+        t.cusps = crate::car::spawn::cusps(&backing, &t.along);
         t.leaves = None;
         t.stands = stands;
         t.backing = backing;
@@ -694,7 +695,6 @@ fn try_reroute(
         t.speed = 0.0;
         t.acceleration = ACCELERATION;
         t.updated_at = now;
-        t.seg_start_dist = 0.0;
     }
 
     // Register on first edge and wake up
@@ -1449,7 +1449,7 @@ mod tests {
     fn whereabouts(world: &World, car: EntityId, now: GameTime) -> Option<([f64; 2], f64, usize)> {
         let GameObject::Car(ref c) = world.objects.get(car)?.object else { return None };
         let t = c.trip.as_ref()?;
-        let (p, v) = crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+        let (p, v) = t.at(now);
         let mut s = 0.0;
         for k in 1..t.route.len() {
             let len = t.segment_lengths[k];

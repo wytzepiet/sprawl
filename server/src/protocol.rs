@@ -805,15 +805,16 @@ pub struct Trip {
     /// Current segment (1-based). The car is between route[ri-1] and route[ri].
     #[ts(skip)]
     pub route_index: usize,
-    /// Cumulative distance to start of current segment.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub seg_start_dist: f64,
     /// Precomputed arc length of each segment. segment_lengths[i] = length from
     /// route[i-1] to route[i]. Index 0 is unused (always 0.0).
     #[serde(skip)]
     #[ts(skip)]
     pub segment_lengths: Vec<f64>,
+    /// How far along the route each node is: `along[k]` is
+    /// `segment_lengths[1..=k]` summed (`car::spawn::along`).
+    #[serde(skip)]
+    #[ts(skip)]
+    pub along: Vec<f64>,
     /// The street nodes either side of the stretch a kerb bay is turned
     /// across, at the trip's start and its end: the street waits at both
     /// while the car turns (`car::simulation`).
