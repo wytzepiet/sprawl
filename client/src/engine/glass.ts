@@ -235,10 +235,14 @@ fn field(p: vec2f, run: Run) -> Field {
   // On tinted glass the light it catches takes its colour too, deep and
   // faint, so the rim stays one quiet piece with the body.
   let deep = mix(f.dye.rgb / max(f.dye.a, 1e-3), vec3f(1), 0.15);
+  // Where the glass is clear its rim shines brighter; where it is deep,
+  // dimmer, the light's colour kept rich rather than washed out.
+  let hue = rich / max(max(rich.r, rich.g), max(rich.b, 1e-3));
+  let shine = mix(1.6, 0.5, f.down);
   let sky = mix(glass.sky.rgb, deep, f.dye.a);
-  let sun = mix(glass.sun.rgb, deep, f.dye.a);
+  let sun = mix(mix(glass.sun.rgb, hue, 0.5 * f.down), deep, f.dye.a);
   let fresnel = pow(1 - n.z, 3.0);
-  body = mix(body, sky, fresnel * 0.3);
+  body = mix(body, sky, fresnel * 0.3 * shine);
   let facing = dot(g, glass.toward.xy);
   // Brightest at the very edge and falling away fast, a soft tail behind.
   let line = exp(-max(-f.d, 0) / (0.8 * dpr));
@@ -247,7 +251,7 @@ fn field(p: vec2f, run: Run) -> Field {
 
   // And a light of its own: screened in, so it lifts the darks most.
   body = 1 - (1 - body) * (1 - 0.3 * glow);
-  caught *= 1 - 0.5 * f.dye.a;
+  caught *= (1 - 0.5 * f.dye.a) * shine;
   caught += line * glow * 0.9;
   // The rim takes the sun's own colour rather than being lit over, so a
   // gold sun is a gold edge even on light glass, which added light would
