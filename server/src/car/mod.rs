@@ -1,4 +1,5 @@
 pub mod physics;
+pub mod reroute;
 pub mod simulation;
 pub mod spawn;
 

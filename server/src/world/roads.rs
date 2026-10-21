@@ -454,6 +454,7 @@ impl World {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
+    use crate::protocol::BuildingKind;
 
     /// Grass, and a one-way street east along y = 0.
     fn eastward() -> World {
@@ -635,5 +636,40 @@ pub(super) mod tests {
             agrees_with_the_edges(&world);
         }
         assert!(cut && joined, "the churn should both cut networks apart and join them");
+    }
+
+    /// A save from when a drive was a road the mayor laid opens with it
+    /// as the house's door, and the tile back. The drive used to go
+    /// before the mayor's tiles were counted, and took one from nought.
+    #[test]
+    fn a_saved_drive_opens_as_a_door() {
+        let mut world = World::meadow(-8..8, -8..8);
+        world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 4, y: 2 }]);
+        let house = world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2).unwrap();
+        world.place_road_path(&[GridCoord { x: 2, y: 2 }, GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }]);
+        let drive = world.road_node_at(GridCoord { x: 2, y: 0 }).unwrap();
+        if let Some(GameObject::RoadNode(n)) = world.objects.get_mut(drive).map(|e| &mut e.object) {
+            n.laid = true;
+        }
+        world.laid = 0;
+
+        world.restore();
+
+        assert!(world.objects.get(drive).is_none(), "the drive went");
+        let street = world.road_node_at(GridCoord { x: 2, y: 1 }).unwrap();
+        assert_eq!(world.door_of(house), Some((GridCoord { x: 2, y: 0 }, street)));
+        assert_eq!(world.laid, 0);
+    }
+
+    /// A fresh world is the bare island: no road is born with the map, and
+    /// nothing stands on it until the mayor builds.
+    #[test]
+    fn a_fresh_world_is_the_bare_island() {
+        let mut world = World::new();
+        world.terrain = crate::terrain::generate(7);
+        world.restore();
+        world.resettle();
+        assert!(world.objects.roads().next().is_none(), "a road was born with the map");
+        assert!(world.all_buildings().is_empty() && world.resident_ids().is_empty(), "something stood on the island");
     }
 }

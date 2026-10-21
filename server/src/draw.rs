@@ -12,7 +12,7 @@
 //! them (`sides`): along a road already there, followed, nothing laid; a
 //! one-way beside a road that runs against it, the road moving over
 //! (`World::moving_over`); into a road there; the middle; on along the
-//! side it is on. Of these, the first the world allows (`game::may_step`),
+//! side it is on. Of these, the first the world allows (`hand::may_step`),
 //! judged with the drag's next step where it is drawn (`plan`); where
 //! nothing may, the drag stops there. Where roads may stand is the world's
 //! one rule of their shapes (`world/clear.rs`), not the plan's.
@@ -125,7 +125,7 @@ fn lay_on(world: &mut World, stroke: &Stroke, steps: &mut Vec<Laid>, now: GameTi
         let fresh = world.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s).is_none();
         let purse = Purse::of(world);
         if fresh {
-            let laid = crate::game::lay(world, link);
+            let laid = crate::hand::lay(world, link);
             crate::economy::paved(world, to, laid, now);
         } else if let Some((a, b)) = world.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s)
             && world.is_road_between(a, b) != stroke.road
@@ -309,12 +309,12 @@ fn follows(world: &World, tool: Tool, from: GridCoord, pf: Place, to: GridCoord,
 }
 
 /// May the step be laid, the drag going on from it that way, if it does,
-/// and to `then`, if that is known (`game::may_step_on`).
+/// and to `then`, if that is known (`hand::may_step_on`).
 #[allow(clippy::too_many_arguments)]
 fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord, pt: Place, on: Option<Step>, then: Option<End>) -> bool {
     let up = (pf.h > 0 || pt.h > 0).then_some([pf.h, pt.h]);
     let sides = (pf.s != MIDDLE || pt.s != MIDDLE).then_some([pf.s, pt.s]);
-    crate::game::may_step_on(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road }, on, then)
+    crate::hand::may_step_on(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road }, on, then)
 }
 
 fn linked(world: &World, a: EntityId, b: EntityId) -> bool {

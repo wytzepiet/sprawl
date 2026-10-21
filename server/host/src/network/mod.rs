@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn only_neighbouring_updates_merge() {
         let world = sprawl::world::World::new();
-        let update = |id| ServerMessage::Update(StateUpdate { ops: vec![Operation::Delete(id)], ..sprawl::game::state_update(&world, Clock { now: id, speed: 1, day_ms: DAY_MS }) });
+        let update = |id| ServerMessage::Update(StateUpdate { ops: vec![Operation::Delete(id)], ..sprawl::view::state_update(&world, Clock { now: id, speed: 1, day_ms: DAY_MS }) });
         let mut out = Vec::new();
         for msg in [update(1), update(2), ServerMessage::UnloadChunk(ChunkCoord { cx: 0, cy: 0 }), update(3), update(4)] {
             queue(&mut out, msg);

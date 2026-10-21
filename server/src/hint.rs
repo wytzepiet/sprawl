@@ -1,6 +1,6 @@
 //! Where the hand may go, as the game sees it: what the brush shows before
 //! it acts (`Ask`), answered by the same rules that refuse it
-//! (`game::may_step`, `draw::plan`, `World::fit`), so the dots and the
+//! (`hand::may_step`, `draw::plan`, `World::fit`), so the dots and the
 //! world never part. The client asks as the view moves, as a drag goes on,
 //! and as a building is held; it waits for the answer.
 
@@ -42,7 +42,7 @@ fn starts_at(world: &World, hand: Holding, at: GridCoord) -> bool {
         Holding::Tool { tool: Tool::Light, .. } => world.nodes_on(at).into_iter().any(|(_, id)| world.is_intersection(id)),
         // What a tap takes, or a drag cuts.
         Holding::Tool { tool: Tool::Demolish, .. } => {
-            let tap = |h: u8, side| crate::game::may_step(world, Build { tool: Tool::Demolish, from: at, to: at, up: Some([h, h]), sides: Some([side, side]), road: false });
+            let tap = |h: u8, side| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to: at, up: Some([h, h]), sides: Some([side, side]), road: false });
             tap(0, crate::world::decks::MIDDLE)
                 || world.nodes_on(at).into_iter().any(|(h, id)| {
                     let stand = Stand { h, side: world.side_of(id) };
@@ -74,7 +74,7 @@ fn erase_from(world: &World, at: GridCoord, stand: Stand) -> Vec<Option<Stand>> 
                 .into_iter()
                 .filter(|&(_, id)| world.edges.contains_key(&(here, id)) || world.edges.contains_key(&(id, here)))
                 .map(|(h, id)| Stand { h, side: world.side_of(id) })
-                .filter(|s| crate::game::may_step(world, Build { tool: Tool::Demolish, from: at, to, up: Some([stand.h, s.h]), sides: Some([stand.side, s.side]), road: false }))
+                .filter(|s| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to, up: Some([stand.h, s.h]), sides: Some([stand.side, s.side]), road: false }))
                 .min_by_key(|s| s.h.abs_diff(stand.h))
         })
         .collect()

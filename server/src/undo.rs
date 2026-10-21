@@ -137,7 +137,7 @@ pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, intersection
     for step in steps.iter().rev() {
         let [a, b] = step.nodes;
         if step.fresh && (world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))) {
-            crate::game::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::car::reroute::handle_link_demolish(world, events, intersections, a, b, now);
         }
         paid.add(step.paid.clone());
     }
@@ -342,7 +342,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
         }
         Act::Cut(links) => {
             for l in &links {
-                crate::game::lay(world, *l);
+                crate::hand::lay(world, *l);
             }
             say(format!("Undone: {} put back", tiles(&links)), "for nothing".into(), 0)
         }
@@ -400,7 +400,7 @@ fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
 fn take_up(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
         if let Some((a, b)) = world.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
-            crate::game::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::car::reroute::handle_link_demolish(world, events, intersections, a, b, now);
         }
     }
 }

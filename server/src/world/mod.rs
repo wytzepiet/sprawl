@@ -71,7 +71,7 @@ pub struct World {
     /// What the town bought of its own accord since the last flush, said
     /// to every player.
     pub news: Vec<crate::protocol::News>,
-    /// Tiles of road the mayor has laid, which `game::lay` counts to price.
+    /// Tiles of road the mayor has laid, which `hand::lay` counts to price.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
     /// A level's map, corner to corner: no road is laid off it, and the

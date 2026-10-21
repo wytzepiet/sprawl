@@ -354,3 +354,94 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     turn(world, events, call.at, now);
     dispatch(world, events, now);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::tests::*;
+    use crate::intersection::IntersectionRegistry;
+    use crate::protocol::{BuildingKind, Good, DAY_MS};
+    use crate::engine::event_queue::EventQueue;
+
+    /// Sell `units` off a shop's shelf, as visits would, and let it call.
+    fn sell(world: &mut World, events: &mut EventQueue, shop: EntityId, units: f64, now: GameTime) {
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+            b.stocks.get_mut(&Good::Crates).unwrap().take(units);
+        }
+        crate::calls::turn(world, events, shop, now);
+    }
+
+    /// The first shelf, as a fraction of full.
+    fn stock(world: &World, building: EntityId) -> f64 {
+        match world.objects.get(building).unwrap().object {
+            GameObject::Building(ref b) => {
+                let s = &b.stocks[&crate::economy::shelves(b.kind)[0]];
+                s.level / s.cap
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// With a warehouse in town with crates on its shelf, its own van
+    /// answers, and comes home.
+    #[test]
+    fn a_warehouse_sends_its_own_truck_and_it_comes_home() {
+        let mut world = street();
+        let shop = build(&mut world, 20, BuildingKind::Shop);
+        let warehouse = build(&mut world, 60, BuildingKind::Depot);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        sell(&mut world, &mut events, shop, 35.0, 0);
+        let truck = world.calls[0].answered_by.expect("the warehouse answers");
+        assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
+        // The shop learned how long a delivery from next door takes, and
+        // reorders later for it.
+        let before = crate::economy::reorder(&world, shop, Good::Crates);
+
+        // Out through one ring and home through another, at lot speed, on
+        // top of the drive: under three hours.
+        pump(&mut world, &mut events, &mut intersections, 0, 3 * DAY_MS as u64 / 24);
+        assert!(world.calls.is_empty());
+        let e = world.objects.get(truck).expect("the warehouse keeps its truck");
+        assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
+        assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
+        assert_eq!(stock(&world, shop), 1.0, "the shelves are full again");
+        assert!(crate::economy::reorder(&world, shop, Good::Crates) < before, "the shop did not learn the lead time");
+    }
+
+    /// The building's turn: a buyer takes the nearest seller with stock,
+    /// by road. Of two depots the nearer answers; one with an empty shelf
+    /// is no seller, and the farther answers; with nothing in town on a
+    /// shelf, nobody does: the world comes only by sea.
+    #[test]
+    fn a_buyer_takes_the_nearest_seller_with_stock() {
+        let mut world = street();
+        let shop = build(&mut world, 20, BuildingKind::Shop);
+        let near = build(&mut world, 30, BuildingKind::Depot);
+        let far = build(&mut world, 60, BuildingKind::Depot);
+        let mut events = EventQueue::new();
+        let empty = |world: &mut World, depot: EntityId| {
+            if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+                b.stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
+            }
+        };
+        let answered_by = |world: &World| {
+            let truck = world.calls.last().unwrap().answered_by?;
+            match world.objects.get(truck).unwrap().object {
+                GameObject::Car(ref c) => Some(c.owner),
+                _ => unreachable!(),
+            }
+        };
+        sell(&mut world, &mut events, shop, 35.0, 0);
+        assert_eq!(answered_by(&world), Some(near), "the nearer depot did not answer");
+        // The order stands until it lands; another shop asks fresh.
+        let other = build(&mut world, 24, BuildingKind::Shop);
+        empty(&mut world, near);
+        sell(&mut world, &mut events, other, 35.0, 0);
+        assert_eq!(answered_by(&world), Some(far), "an empty shelf answered");
+        let third = build(&mut world, 10, BuildingKind::Shop);
+        empty(&mut world, far);
+        sell(&mut world, &mut events, third, 35.0, 0);
+        assert_eq!(answered_by(&world), None, "with nothing in town somebody answered");
+    }
+}
