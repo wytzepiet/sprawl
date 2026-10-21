@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS missions (
     id INTEGER PRIMARY KEY,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS market (
+    id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL
+);
 ";
 
 /// Everything about a world that is not one of its objects.
@@ -42,6 +46,8 @@ pub struct Meta {
     pub taken: Vec<Cell>,
     /// The town's missions, open and finished, a row each in order.
     pub missions: Vec<sprawl::missions::Mission>,
+    /// The market's prices, their week and the orders waiting.
+    pub market: sprawl::market::Market,
 }
 
 /// A whole number of hundredths, which is what the metadata table can hold.
@@ -129,10 +135,18 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
         })
         .unwrap_or_default();
 
+    // A market this build cannot read starts again at the world's prices.
+    let market = conn
+        .query_row("SELECT data FROM market WHERE id = 0", [], |row| row.get::<_, String>(0))
+        .ok()
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default();
+
     (
         entries,
         Meta {
             missions,
+            market,
             next_id,
             terrain_seed,
             sim_time,
@@ -183,6 +197,12 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         )
         .expect("failed to save a mission");
     }
+
+    tx.execute(
+        "INSERT OR REPLACE INTO market (id, data) VALUES (0, ?1)",
+        [serde_json::to_string(&meta.market).expect("failed to serialize")],
+    )
+    .expect("failed to save the market");
 
     let taken: Vec<(String, i64)> = meta.taken.iter().map(|c| (format!("taken:{},{}", c.x, c.y), 1)).collect();
     for (key, value) in [

@@ -12,6 +12,7 @@ pub mod haul;
 pub mod hint;
 pub mod intersection;
 pub mod level;
+pub mod market;
 pub mod missions;
 pub mod mountains;
 pub mod needs;

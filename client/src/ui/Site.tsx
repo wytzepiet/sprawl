@@ -4,7 +4,7 @@ import { useGame } from "../state/gameObjects";
 import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { cheapest } from "../state/deals";
+import { quoteOf, total } from "../state/market";
 import { Btn, coins, GoodDot, Section, StepBar, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingKind, Good, Stock } from "../generated";
@@ -32,7 +32,7 @@ type Call = { good: Good; answered_by: Link | null };
  * A site's card: each material it waits on, and where that is — on the
  * van, in stock at the depot, in a maker's yard, in the trailer park, on
  * the boat — and, where it is stuck, the one tap that frees it: a box
- * booked on the next ferry, from whoever sells it cheapest.
+ * bought at the market, on the next ferry.
  * docs/game.md §Buildings.
  */
 export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
@@ -88,15 +88,13 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   };
   const coming = () => inbound().find((s) => s.leg !== "Parked") ?? null;
   const boxes = () => Math.max(1, Math.ceil(props.short / box()));
-  const offer = () => cheapest(g());
-  const cost = () => boxes() * box() * (offer()?.price ?? 0);
+  const quote = () => quoteOf(g());
+  const cost = () => (quote() ? total(quote()!, boxes(), false) : 0);
   const sailing = () => sea.sailings[0];
   const [ordered, setOrdered] = createSignal(false);
   const order = () => {
-    const o = offer();
-    const s = sailing();
-    if (!o || !s) return;
-    for (let i = 0; i < boxes(); i++) send({ type: "Book", data: { harbour: s.harbour, good: g(), partner: o.partner, out: false } });
+    if (!quote() || !sailing()) return;
+    send({ type: "Trade", data: { good: g(), boxes: boxes(), out: false } });
     setOrdered(true);
   };
   return (
@@ -123,7 +121,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
             text={ordered() ? `Booked: lands ${x ? clockAt(landsAt(x)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
             sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(landsAt(x))}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={
-              <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !offer() || growth().treasury < cost()}>
+              <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !quote() || growth().treasury < cost()}>
                 {ordered() ? "Booked ✓" : `Book ${label()}`}
               </Btn>
             }

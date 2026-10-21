@@ -4,8 +4,9 @@ import { eachEntity, groundOf, useGame } from "../state/gameObjects";
 import { missionKey, neighbours, shownMissions } from "../state/missions";
 import { clockAt, news, sea, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { deals, home, offerOf, setSpread, spread, stepsOf, type Deal } from "../state/deals";
-import { trade } from "./sheet";
+import { deals, letterOf, setSpread, spread, stepsOf, type Deal } from "../state/deals";
+import { quoteOf, total } from "../state/market";
+import { toMarket } from "./Market";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
@@ -13,7 +14,7 @@ import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
 import { Appear, Btn, coins, Crest, EYE, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
-import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../generated";
+import type { BuildingKind, Good, Mission, Step, TerrainType } from "../generated";
 import type { Mayor } from "../generated/Mayor";
 import type { JSX } from "~ui/jsx-runtime";
 
@@ -99,7 +100,6 @@ function NewsCard(props: { news: News }) {
 }
 
 const COINS = "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 9.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12c0 1.7-3.6 3-8 3s-8-1.3-8-3zM4 15.5c0 1.7 3.6 3 8 3s8-1.3 8-3V18c0 1.7-3.6 3-8 3s-8-1.3-8-3z";
-const PIN = "M15 3l6 6-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z";
 const GLOBE = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
 const LETTER = "M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2zM3 7l9 6 9-6";
 const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
@@ -130,28 +130,24 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   const color = () => (d().done ? "#57A773" : GOODS[d().good].color);
   const lead = () => d().boxes[0];
   const count = () => d().boxes.length + d().wanted;
-  const offer = () => offerOf(d().good, d().partner, d().out);
+  const letter = () => letterOf(d().good, d().partner);
+  /** A box more, from the market or for it, at what it pays or costs a box now. */
+  const more = () => {
+    const q = d().partner === null && d().key !== "gift" ? quoteOf(d().good) : undefined;
+    return q && total(q, 1, d().out);
+  };
   const title = () => (d().key === "gift" ? "The starter pack" : `${GOODS[d().good].label[0].toUpperCase()}${GOODS[d().good].label.slice(1)} ${d().out ? "for" : "from"} ${nameOf(d().partner)}`);
   /** Where it is, in words: its furthest box, or what it waits for. */
   const status = () => {
     if (d().done) return d().out ? "sold, and paid for" : "in the depot";
     const l = lead();
     if (l) return l.words;
-    if (d().wanted) return `wants ${d().wanted} ${d().wanted === 1 ? "box" : "boxes"}`;
-    return "booked again as the ferry sails";
+    return `wants ${d().wanted} ${d().wanted === 1 ? "box" : "boxes"}`;
   };
   const when = () => (d().done ? null : lead()?.eta ?? (lead() ? null : d().due));
-  const book = (n: number) => {
-    const h = home();
-    if (h === null) return;
-    for (let i = 0; i < n; i++) send({ type: "Book", data: { harbour: h, good: d().good, partner: d().partner, out: d().out } });
-  };
-  const pin = () => {
-    const h = home();
-    if (h === null) return;
-    const p = d().pin;
-    if (p !== null) send({ type: "Unpin", data: { harbour: h, pin: p } });
-    else send({ type: "Pin", data: { harbour: h, good: d().good, partner: d().partner, out: d().out } });
+  const sendAll = () => {
+    const l = letter();
+    if (l) send({ type: "Send", data: { letter: l.letter, boxes: l.boxes } });
   };
   const money = () => (d().coins >= 0 ? "#3F8F5C" : "ink");
   return (
@@ -167,7 +163,6 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
             <box dir="row" align="center" gap={6}>
               <text size={14.5} weight={600} lines={1}>{title()}</text>
               <Show when={count() > 1}><text size={14.5} weight={600} soft>×{count()}</text></Show>
-              <Show when={d().pin !== null}><icon d={PIN} size={13} ink="ink/0.72" /></Show>
             </box>
             <text size={12.5} soft lines={1}>{status()}</text>
           </box>
@@ -196,23 +191,21 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
               <text serif size={17} ink={money()}>{coins(d().coins)}</text>
             </Show>
             <box grow={1} />
-            <Show when={d().wanted > 0 && offer()}>
-              <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill="#B7791F" onTap={() => book(d().wanted)}>
-                <text size={14} weight={600} ink="white">Send {d().wanted}</text>
-                <text serif size={14} ink="white">{coins(offer()!.price * GOODS[d().good].box * d().wanted)}</text>
-              </Press>
+            <Show when={letter()}>
+              {(l) => (
+                <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill="#B7791F" onTap={sendAll}>
+                  <text size={14} weight={600} ink="white">Send {l().boxes}</text>
+                  <text serif size={14} ink="white">{coins(l().price * GOODS[d().good].box * l().boxes)}</text>
+                </Press>
+              )}
             </Show>
-            <Show when={d().wanted === 0 && offer() && d().key !== "gift"}>
-              <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => book(1)}>
-                <text size={14} weight={600} soft>+ Box</text>
-                <text serif size={14} soft>{coins((d().out ? 1 : -1) * offer()!.price * GOODS[d().good].box)}</text>
-              </Press>
-            </Show>
-            <Show when={d().letter === null && offer() && d().key !== "gift"}>
-              <Press dir="row" align="center" gap={6} h={36} pad={{ x: 12 }} round={18} fill={d().pin !== null ? "ink/0.85" : undefined} stroke={d().pin !== null ? undefined : [2, "ink/0.15"]} onTap={pin}>
-                <icon d={PIN} size={14} ink={d().pin !== null ? "glass" : "ink/0.6"} />
-                <text size={14} weight={600} ink={d().pin !== null ? "glass" : "ink/0.6"}>Every sailing</text>
-              </Press>
+            <Show when={more()}>
+              {(c) => (
+                <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => send({ type: "Trade", data: { good: d().good, boxes: 1, out: d().out } })}>
+                  <text size={14} weight={600} soft>+ Box</text>
+                  <text serif size={14} soft>{coins((d().out ? 1 : -1) * c())}</text>
+                </Press>
+              )}
             </Show>
           </box>
         </Appear>
@@ -336,9 +329,8 @@ function Act(props: { step: Step }) {
           case "Settled":
             return <Btn onTap={() => hold("House")}>Take a house</Btn>;
           case "Booked":
-          case "Pinned":
           case "Sold":
-            return <Btn big onTap={() => (goal.kind === "Pinned" ? setSpread(true) : trade(goal.kind === "Sold"))} color={BLUEPRINTS.Harbour.color}>{goal.kind === "Pinned" ? "Open the deals" : "A new deal"}</Btn>;
+            return <Btn big onTap={() => toMarket(goal.kind === "Sold" ? "Crates" : "Timber")} color={BLUEPRINTS.Harbour.color}>Open the market</Btn>;
         }
       }}
     </>

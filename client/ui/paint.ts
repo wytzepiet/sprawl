@@ -23,6 +23,10 @@ export interface Pane {
   r: number;
   fade: number;
   dye?: string;
+  /** How much more the town under it is blurred: 0 to 1. */
+  frost?: number;
+  /** Dark all over, with no clear edge. */
+  even?: boolean;
 }
 
 /** A layer: its panes, and what lies on them. */
@@ -281,7 +285,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
           layers.push((l = { panes: [], boxes: [boxCount, 0], glyphs: [glyphCount, 0] }));
           layer.set(p.layer, l);
         }
-        l.panes.push({ x, y, w, h, r, fade: f, dye: p.dye });
+        l.panes.push({ x, y, w, h, r, fade: f, dye: p.dye, frost: p.frost, even: p.even });
       }
       if (c.tag === "box" && (p.fill || p.stroke)) box(x, y, w, h, r, rgba(p.fill, f), rgba(p.stroke?.[1], f), (p.stroke?.[0] ?? 0) * cs, !!p.shadow, clip, k);
       if (c.tag === "text") {
