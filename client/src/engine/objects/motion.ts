@@ -4,7 +4,7 @@ import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
-import type { Car, GridCoord, RoadNode, Trailer, Trip, Pose as Stand } from "../../generated";
+import type { Car, RoadNode, Trailer, Trip, Pose as Stand } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
 
 /**
@@ -57,7 +57,7 @@ export function travelled(t: Trip, now: number): [number, number] {
 
 /** The rig a vehicle steers as: a lorry's cab and the box on its hitch, a
  *  bobtail cab, or a car. */
-export const rigOf = (car: Car): Rig => (car.role !== "Truck" ? CAR_RIG : car.hitched ? LORRY_RIG : { axle: LORRY_RIG.axle });
+const rigOf = (car: Car): Rig => (car.role !== "Truck" ? CAR_RIG : car.hitched ? LORRY_RIG : { axle: LORRY_RIG.axle });
 
 /** Each vehicle's drive, kept while its trip's route and lanes are the
  *  same; a change of lanes, driven across from the lanes it left. */

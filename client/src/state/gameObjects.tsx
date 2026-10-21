@@ -65,7 +65,6 @@ function land(lumps: Lump[]) {
   setLumps((l) => [...l.filter((s) => since - s.since < LUMP_MS), ...lumps.map((s) => ({ ...s, key: lumpKey++, since }))]);
   setTimeout(() => setLumps((l) => l.filter((s) => performance.now() - s.since < LUMP_MS)), LUMP_MS + 50);
 }
-export { LUMP_MS };
 
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
@@ -147,12 +146,12 @@ export function setOpsListener(fn: OpsListener | null) {
 }
 
 /** The ground of every chunk heard of, kept after it is out of view, since
- *  it never changes: the minimap draws the island as far as it was seen. */
+ *  it never changes: the feed reads the island as far as it was seen. */
 const ground = new Map<string, Uint8Array>();
 export const groundOf = (cx: number, cy: number) => ground.get(`${cx},${cy}`);
 
 /** Terrain arrives per chunk rather than as entities, so it bypasses ops. */
-export interface TerrainListener {
+interface TerrainListener {
   setChunk(chunk: TerrainChunk): void;
   unloadChunk(coord: ChunkCoord): void;
 }

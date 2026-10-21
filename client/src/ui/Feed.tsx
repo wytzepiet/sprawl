@@ -13,7 +13,7 @@ import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
 import { Appear, Btn, coins, Crest, EYE, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
-import type { BuildingKind, Good, Mission, Offer, Step, TerrainType, Mayor } from "../generated";
+import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
 
 /** Where the feed starts, and the room it leaves below it: on a wide

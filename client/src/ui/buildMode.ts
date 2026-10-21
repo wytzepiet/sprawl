@@ -33,10 +33,6 @@ export const turn = (by: number) => {
  *  pointer to it. */
 export const inHand = () => tool() !== null || held() !== null;
 
-/** The tools that lay road. */
-export const ROADS = ["Street", "OneWay", "Wide"] as const;
-export const isRoad = (t: Tool | null) => (ROADS as readonly unknown[]).includes(t);
-
 /** Where the building in hand would be placed if let go now, which way
  *  it would face, and why it may not, if it may not, as the game says
  *  (`World::placing`). The brush sets it; the town draws it, and the hand's label

@@ -186,11 +186,6 @@ function Signs() {
   );
 }
 
-/**
- * Drawn over the scene: everything past the map's edge under a fog, each
- * gate's label at its stub with how many wait there, and where a test
- * jammed.
- */
 /** Something said for a moment at the foot of the screen. */
 const [told, setTold] = createSignal<string | null>(null);
 let toldTimer: ReturnType<typeof setTimeout> | undefined;
@@ -239,6 +234,11 @@ async function copyReplay(line: LevelConnection | null, name: string) {
   }
 }
 
+/**
+ * Drawn over the scene: everything past the map's edge under a fog, each
+ * gate's label at its stub with how many wait there, and where a test
+ * jammed.
+ */
 function Frame(props: { state: () => LevelState | null }) {
   const { scene, canvas, afterRender } = useEngine();
   const el = document.createElement("canvas");
@@ -254,7 +254,6 @@ function Frame(props: { state: () => LevelState | null }) {
     g.clearRect(0, 0, innerWidth, innerHeight);
     if (!s) return;
     const p = projector(scene, canvas);
-    const projector_ = p;
     const corners = [[s.min_x, s.min_y], [s.max_x + 1, s.min_y], [s.max_x + 1, s.max_y + 1], [s.min_x, s.max_y + 1]].map(([x, y]) => p.at(x, y, 0));
     // The fog: the whole screen, less the map.
     g.fillStyle = "rgba(236,240,232,0.62)";
@@ -300,14 +299,14 @@ function Frame(props: { state: () => LevelState | null }) {
       const shown = e.object.data.light;
       for (const [dx, dy] of arms) {
         const green = shown !== ALL_RED && phases[shown]?.some(([px, py]) => px === dx && py === dy);
-        const p = projector_.at(at.x + 0.5 + dx * 0.42 + dy * 0.2, at.y + 0.5 + dy * 0.42 - dx * 0.2, 0.2);
+        const lamp = p.at(at.x + 0.5 + dx * 0.42 + dy * 0.2, at.y + 0.5 + dy * 0.42 - dx * 0.2, 0.2);
         g.fillStyle = "#1f1d22";
         g.beginPath();
-        g.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
+        g.arc(lamp.sx, lamp.sy, 6, 0, Math.PI * 2);
         g.fill();
         g.fillStyle = green ? "#3ad16b" : "#e2412f";
         g.beginPath();
-        g.arc(p.sx, p.sy, 4, 0, Math.PI * 2);
+        g.arc(lamp.sx, lamp.sy, 4, 0, Math.PI * 2);
         g.fill();
       }
     });

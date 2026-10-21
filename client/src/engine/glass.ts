@@ -533,7 +533,6 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
       uniforms.destroy();
     },
   };
-  if (import.meta.env.DEV) (window as unknown as { sprawlGlass: unknown }).sprawlGlass = light;
   addTask(scene, task);
   buildFrameGraphTask(getFrameGraph(scene), task);
   /** A press on the UI the GPU draws, which lights the glass as one on the page does. */

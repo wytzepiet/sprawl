@@ -47,7 +47,8 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
 }
 
 /** Where the camera looks and how much ground it sees either way, as of
- *  the last frame; and a way to send it somewhere, for the minimap. How
+ *  the last frame; and a way to send it somewhere, for the feed's
+ *  news. How
  *  much of the screen's foot the dock's sheet covers, in CSS pixels: what
  *  the camera follows sits in the middle of the rest. */
 export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, below: 0, go(_x: number, _y: number) {} };

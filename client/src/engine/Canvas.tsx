@@ -49,7 +49,7 @@ export type EngineContext = {
   registered: () => boolean;
 };
 
-export const BabylonContext = createContext<EngineContext>();
+const BabylonContext = createContext<EngineContext>();
 
 /** What is drawn, once the scene is registered (`registered`). */
 export function Registered(props: ParentProps) {

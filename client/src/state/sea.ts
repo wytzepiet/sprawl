@@ -83,9 +83,6 @@ export function until(t: number): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** A harbour's timetable. */
-export const sailingOf = (harbour: number): Sailing | undefined => sea.sailings.find((s) => s.harbour === harbour);
-
 /** How far through its leg of the timetable a ferry is, 0 to 1: the
  *  round from casting off to berthing while it is away, the stay while
  *  it is at the ramp. */

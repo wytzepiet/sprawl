@@ -1,11 +1,10 @@
-import type { JSX } from "solid-js";
 import type { Building, BuildingKind, Good, GridCoord } from "./generated";
 
 /**
  * Every kind of building, one row each, as the client draws it: its colour,
- * its glyph, how far out its pin holds before collapsing to a dot, and the
- * shape it stands as on the map. The server's `blueprint.rs` holds what a kind
- * *does*; this holds what it looks like. Adding a kind is one row in each.
+ * its glyph, and the shape it stands as on the map. The server's
+ * `blueprint.rs` holds what a kind *does*; this holds what it looks like.
+ * Adding a kind is one row in each.
  *
  * Colours are chosen mid-dark so a white glyph reads on them, and spread far
  * enough apart in hue to be told apart at a dot's size. Glyphs are filled
@@ -24,8 +23,6 @@ export interface Blueprint {
   material: string;
   /** SVG path of the glyph, on a 24-unit grid. */
   glyph: string;
-  /** Half-height of view, in tiles, beyond which the pin becomes a dot. */
-  pinUntil: number;
   /** Which silhouette it stands as. */
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
@@ -61,7 +58,7 @@ export function sideOf(tiles: GridCoord[], [dx, dy]: [number, number]): GridCoor
   return tiles.filter((t) => !on(t.x + dx, t.y + dy)).sort((a, b) => along(a) - along(b));
 }
 
-export interface Plot {
+interface Plot {
   size: [number, number];
   building: [[number, number], [number, number]];
   lot: [[number, number], [number, number]] | null;
@@ -132,13 +129,6 @@ export function standing(b: Building): { at: [number, number]; size: [number, nu
 /** Where a building stands: the middle of its bounds, its yard left out. */
 export const middle = (b: Building): [number, number] => standing(b).at;
 
-/** The bulk of a city: somewhere people live or work, and there are hundreds. */
-const COMMON = 7;
-/** Places people go, which is what makes them worth finding from further off. */
-const NOTABLE = 28;
-/** Rare enough to be a landmark. */
-const SPECIAL = 45;
-
 export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Harbour: {
     label: "Harbour",
@@ -146,7 +136,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#4E6A84",
     // A quay with a crane over it: the mast, the jib, and the hook.
     glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.5],
     materials: {}, tab: "trade",
@@ -160,7 +149,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#7E6248",
     // A wide shed: the roof, a loading door and two bays.
     glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.6],
     materials: { Timber: 10 }, tab: "trade",
@@ -173,7 +161,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#B85A44",
     // A gabled roof over a body, the door cut out.
     glyph: "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z",
-    pinUntil: COMMON,
     shape: "gabled",
     heights: [0],
     materials: { Timber: 4 }, tab: "homes",
@@ -186,7 +173,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#8E4A40",
     // A tall block, three floors of windows and a door.
     glyph: "M5 2h14v20H5zM8 5h3v3H8zM13 5h3v3h-3zM8 10h3v3H8zM13 10h3v3h-3zM8 15h3v3H8zM13 15h3v3h-3zM10.5 19h3v3h-3z",
-    pinUntil: COMMON,
     shape: "box",
     heights: [0.85, 1.15, 1.5],
     materials: { Timber: 12, Stone: 8 }, tab: "homes",
@@ -200,7 +186,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // A storefront: scalloped awning, window and door beneath.
     glyph:
       "M3 3h18l2 5.5a2.5 2.5 0 0 1-4.7 1.2A2.5 2.5 0 0 1 14.2 9.7a2.5 2.5 0 0 1-4.4 0 2.5 2.5 0 0 1-4.1 0A2.5 2.5 0 0 1 1 8.5zM4 12h16v10H4zM6 14h6v4H6zM14 14h4v8h-4z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.45, 0.55],
     materials: { Timber: 4 }, tab: "shops",
@@ -214,7 +199,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // A briefcase, the handle cut out.
     glyph:
       "M9 3h6a1.5 1.5 0 0 1 1.5 1.5V7H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5V4.5A1.5 1.5 0 0 1 9 3zm.5 2v2h5V5zM2 12h20v1.5H2z",
-    pinUntil: COMMON,
     shape: "box",
     // Tall, and worth varying: a few towers among them is what gives a
     // business district a skyline instead of a plateau.
@@ -229,7 +213,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#7A7F86",
     // Sawtooth roofs and a chimney.
     glyph: "M17 2h4v8.5l-4 0zM2 22V10.5l6 3v-3l6 3v-3l6 3V22zM5 16h3v3H5zM10 16h3v3h-3zM15 16h3v3h-3z",
-    pinUntil: COMMON,
     shape: "sawtooth",
     heights: [0],
     materials: { Timber: 14, Stone: 8 }, tab: "work",
@@ -242,7 +225,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#C7A24E",
     // A pump: the body with its display, and the hose hooked to the side.
     glyph: "M3 2h11v20H3zM5.5 4.5h6v5h-6zM15.5 7h2.2l3.3 3.3V19a2.5 2.5 0 0 1-5 0v-1h2v1a.5.5 0 0 0 1 0v-7.9L17 9.2h-1.5z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.3],
     materials: { Timber: 6, Stone: 4 }, tab: "services",
@@ -255,7 +237,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#8FA7B3",
     // A basket: handle arcs over, three slats cut out.
     glyph: "M12 2.5c3 0 5.5 2.4 6.3 5.5H21l-2 13H5L3 8h2.7C6.5 4.9 9 2.5 12 2.5zm0 2c-1.9 0-3.5 1.5-4.2 3.5h8.4C15.5 6 13.9 4.5 12 4.5zM7.5 11h1.6v6H7.5zm3.7 0h1.6v6h-1.6zm3.7 0h1.6v6h-1.6z",
-    pinUntil: SPECIAL,
     shape: "box",
     heights: [0.5],
     materials: { Timber: 16, Stone: 10 }, tab: "services",
@@ -268,7 +249,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#B79A62",
     // A barn: the gambrel roof, the big door, and a hayloft window.
     glyph: "M12 2 21 8.5V22H3V8.5zM10.5 6.5h3v3h-3zM8 13h8v9H8zm1.6 1.6v5.8h4.8v-5.8z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.4],
     materials: { Timber: 8 }, tab: "work",
@@ -282,7 +262,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#7A5A3A",
     // A saw blade over a log: the teeth round, the log's rings below.
     glyph: "M12 2l1.6 2.2 2.6-.8.4 2.7 2.7.4-.8 2.6L20.7 11l-2.2 1.6.8 2.6-2.7.4-.4 2.7-2.6-.8L12 19.7l-1.6-2.2-2.6.8-.4-2.7-2.7-.4.8-2.6L3.3 11l2.2-1.6-.8-2.6 2.7-.4.4-2.7 2.6.8zm0 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM3 20h18v2H3z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.35],
     materials: { Timber: 6 }, tab: "work",
@@ -296,7 +275,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     material: "#8C8A84",
     // A rock face, benched, a pick across the heap below.
     glyph: "M2 21 8 7l3 4 4-7 7 17zM9.5 13.5l2 2.5 2-3.5 2.5 5.5h-8zM3 22h18v1H3z",
-    pinUntil: NOTABLE,
     shape: "box",
     heights: [0.3],
     materials: { Timber: 8 }, tab: "work",
@@ -308,15 +286,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
 
 /** Every kind the mayor may put down, the opening's first: the harbour, the depot. */
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
-
-/** The glyph for a kind, as an SVG that takes the current colour. */
-export function BuildingIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { kind: BuildingKind }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
-      <path d={BLUEPRINTS[props.kind].glyph} />
-    </svg>
-  );
-}
 
 /**
  * Every good, as the client shows it: its name, its colour, its glyph, and
@@ -354,12 +323,3 @@ export const GOODS: Record<Good, { label: string; color: string; glyph: string; 
   },
 };
 
-
-/** A good's glyph, as an SVG that takes the current colour. */
-export function GoodIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { good: Good }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
-      <path d={GOODS[props.good].glyph} />
-    </svg>
-  );
-}

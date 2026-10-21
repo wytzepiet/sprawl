@@ -3,7 +3,7 @@ import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { follow } from "../engine/spring";
 import { useEngine } from "../engine/Canvas";
 import { eye } from "../engine/OrthoCamera";
-import { held, hold, setTool, tool } from "./buildMode";
+import { held, setTool, tool } from "./buildMode";
 import { BLUEPRINTS } from "../blueprints";
 import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
@@ -61,7 +61,6 @@ export default function Dock() {
     show(t, tab() === t ? !open() : t !== "select");
   };
   const onKey = (e: KeyboardEvent) => {
-    if ((e.target as HTMLElement)?.closest?.("input, textarea")) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
     if (e.key === "Escape") return tool() || held() ? setTool(null) : open() && tab() !== "select" ? setOpen(false) : select(null);

@@ -33,8 +33,6 @@ const CURVE_SEGMENTS = 8;
 // outlines it: 0.03 over the grass, and still 0.02 over a terrain patch
 // laid on the grass. Lots, their markings and cars sit relative to it.
 export const ROAD_Z = 0.03;
-export const CHEVRON_Z = 0.04;
-const CHEVRON_DEPTH = 0.12;
 
 // --- Geometry helpers ---
 

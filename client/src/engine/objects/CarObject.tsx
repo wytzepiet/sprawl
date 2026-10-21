@@ -1,6 +1,6 @@
 import type { MaterialPlugin } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
-import { rgb, WHITE, type Rgb } from "../rgb";
+import { WHITE, type Rgb } from "../rgb";
 import type { MeshGeometry } from "../geometry";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";

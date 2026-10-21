@@ -11,7 +11,7 @@ import { slab, type P } from "./geometry";
 import { pinned, reached } from "../state/gameObjects";
 import { subject } from "../state/selection";
 import { BLUEPRINTS, standing } from "../blueprints";
-import type { Building, BuildingKind, GameObjectEntry } from "../generated";
+import type { Building, BuildingKind } from "../generated";
 
 /**
  * What a building says it is, made in the world, not on the page, lit by

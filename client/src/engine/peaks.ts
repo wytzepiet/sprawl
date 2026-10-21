@@ -104,7 +104,7 @@ const heightFn = (L: (c: string) => string, v2: string, v3: string, vi: string, 
  *  the map (the mesh is laid there). Every texture read comes before the
  *  discard, as WGSL asks. */
 const peakCut = (at: string) => {
-  const [v2, v3, decl, vec, wgsl] = ["vec2f", "vec3f", "let", "let", true];
+  const [decl, vec, wgsl] = ["let", "let", true];
   return `${vec} peakCorner = floor(${at}.xy / ${f(CHUNK_SIZE)}) * ${f(CHUNK_SIZE)} - ${f(PEAK_APRON)};
 ${wgsl ? "let" : "vec3"} peakRock = peakHeightAt(${at}.xy, peakCorner);
 ${decl} peakOwn = peakRock.x;

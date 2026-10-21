@@ -12,12 +12,11 @@ import {
   getEntity,
   getObjectsAt,
   reached,
-  useGame,
 } from "../state/gameObjects";
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
 import type { Operation, GameObjectEntry } from "../generated";
 
-import type { Building, RoadNode, TerrainType } from "../generated";
+import type { Building, RoadNode } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
@@ -109,7 +108,6 @@ export default function World(props: { brush?: () => JSX.Element }) {
     for (const k of [...was, ...keys]) terrain.markTrees(...(k.split(",").map(Number) as [number, number]));
   }));
   createEffect(on(news, () => setPlaced(null), { defer: true }));
-  if (import.meta.env.DEV) Object.assign(window, { sprawlHeldMs: town.previewMs });
 
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {

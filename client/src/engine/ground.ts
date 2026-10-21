@@ -211,7 +211,7 @@ const n = (x: number) => x.toFixed(4);
 // warmer: more red and green, less blue, darker ones the other way.
 const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fray, fraySpan, tuftSpan] = [n(FRAY), n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
-const [slateSpan, calm, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(CALM), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
+const [slateSpan, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
 // How far up a beach the water runs, at most (`swashFn`); and wet sand,
 // this much darker.
 const [swash, wet] = [n(SWASH), n(0.18)];

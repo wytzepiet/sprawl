@@ -6,8 +6,7 @@ import { dress, type Dressing } from "./dressing";
 import { asphalt, pavement } from "./surface";
 import { facts } from "./facts";
 import { area, type Polygon, type Pt } from "./footprint";
-import type { Tile, Town } from "./grid";
-import type { RGB } from "./mass";
+import type { Town } from "./grid";
 import { townMesh, type Paint, type Prop } from "./roof";
 
 /** A piece of the town to draw: one mesh, one material. */

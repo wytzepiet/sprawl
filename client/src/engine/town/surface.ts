@@ -33,7 +33,7 @@ export type Way = [number, number, boolean, (Flow | "d")?, Pt?];
 /** A rectangle of a tile's asphalt in the tile's own frame (0 to 1, its
  *  middle at a half), x0, y0, x1, y1; and the sides of it that run on
  *  into the next tile's, a bit each: x0, y0, x1, y1. */
-export type Rect = [number, number, number, number, number];
+type Rect = [number, number, number, number, number];
 
 export interface Surface {
   /** A through road's, drawn in its own colour over the streets. */
@@ -108,7 +108,7 @@ const baysAlong = (len: number, square: boolean) => Math.max(0, Math.floor((len 
 /** A car's bay at the kerb: where its middle is, which way it faces
  *  (radians from +x, y down), and the street tile it is before, the way
  *  to the building (`side`), and how far along that tile from its middle. */
-export interface Bay {
+interface Bay {
   x: number;
   y: number;
   angle: number;
@@ -228,8 +228,8 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
     {
       shift: [0, 0],
       through: town.through(c, r),
-      light: !!town.light?.(c, r),
-      arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: town.flow?.(c, r, c + dc, r + dr) ?? "t", shift: [0, 0], through: town.through(c, r) && town.through(c + dc, r + dr) })),
+      light: false,
+      arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: "t", shift: [0, 0], through: town.through(c, r) && town.through(c + dc, r + dr) })),
     },
   ];
   return views.map(({ shift, through, light, arms, height = 0, climb, run }) => {
@@ -473,7 +473,6 @@ export function shapeOf(surface: Surface): Polygon[] {
   const { ways, rects } = surface;
   const p = pointOf(surface);
   const roads = roadsOf(carried(surface));
-  const run = runOf(p, roads);
   const parts: Polygon[] = [];
   // An arm from where the road stands out over its seam.
   const arm = (w: Way, from: number, past: number) => {

@@ -109,8 +109,6 @@ export class TownLayer {
   private preview = new Map<string, Shown>();
   private heldWorker = new Worker(new URL("./townWorker.ts", import.meta.url), { type: "module" });
   private previewer = Comlink.wrap<TownApi>(this.heldWorker);
-  /** How long each drawing of a held building took, from asking to shown, in ms. */
-  readonly previewMs: number[] = [];
 
   /** The masses' material, every chunk's: their buildings' colours read
    *  off the tints, their roofs tiled, lacquered as a building is. And each
@@ -280,8 +278,6 @@ export class TownLayer {
     const snapshot: Snapshot = {
       box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside)), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS,
     };
-    // Kept, in development, to time the drawing alone, off the page.
-    if (import.meta.env.DEV) Object.assign(window, { sprawlHeldSnapshot: { ...snapshot, ground: [...snapshot.ground] } });
     this.previewing = true;
     this.previewer
       .draw(snapshot)
@@ -294,7 +290,6 @@ export class TownLayer {
           if (real) this.want(real, false);
           this.preview.set(c.key, this.make(c, window, g.byId));
         }
-        this.previewMs.push(performance.now() - started);
         perfCount("town.heldMs", performance.now() - started);
       })
       .catch((e) => console.error("[town] the building held could not be drawn", e))
@@ -479,8 +474,6 @@ export class TownLayer {
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
       },
       through: (c, r) => !!road(c, r)?.road.length,
-      light: (c, r) => road(c, r)?.light != null,
-      flow: (c0, r0, c1, r1) => flowOf(road(c0, r0)!, road(c1, r1)!),
       roadsOn: (c, r): RoadView[] =>
         built.has(key(c, r))
           ? []

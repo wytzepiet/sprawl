@@ -22,7 +22,7 @@ interface Town {
 }
 
 const [open, setOpen] = createSignal(false);
-export { open as boardOpen, setOpen as setBoardOpen };
+export { setOpen as setBoardOpen };
 
 /** How often the open board asks again. */
 const REFRESH_MS = 1000;
