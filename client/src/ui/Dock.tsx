@@ -9,7 +9,7 @@ import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
 import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, take } from "./Roads";
 import { BuildBody, BuildHead } from "./Build";
-import { MarketBody, MarketHead } from "./Market";
+import { MarketBody, MarketHead, OPAQUE } from "./Market";
 import { StockBody, StockHead } from "./Stock";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { Press, view, wide } from "./kit";
@@ -115,6 +115,8 @@ export default function Dock() {
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
+  // The market's and the stock's lines and moves want solid glass under them.
+  const [opaque] = follow(() => (tab() === "market" || tab() === "stock" ? OPAQUE : 0), { rest: 0.001 });
   createEffect(() => (eye.below = barBottom() + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
@@ -134,7 +136,7 @@ export default function Dock() {
       <box at={{ left: 0, right: 0, bottom: barBottom() }} align="center">
         <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One glass: the shown tab's sheet, grown up out of the bar. */}
-          <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} clip>
+          <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} opaque={opaque()} clip>
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>

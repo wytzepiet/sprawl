@@ -21,6 +21,8 @@ import type { Good, Quote, When } from "../generated";
  * Prices are a box's, the unit a deck and an order trade in.
  */
 
+/** How solid the glass under a chart is: its red and green read over any town. */
+export const OPAQUE = 0.75;
 const UP = "#2E9D6A";
 const DOWN = "#D9483B";
 /** The most boxes a ferry's deck takes: the most bought or sold at once. */
@@ -124,7 +126,7 @@ export function MarketHead() {
 export const MarketBody = () => <List />;
 
 /** A good's page, as the page stack shows it. */
-export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} /> });
+export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} />, opaque: OPAQUE });
 /** The market, and a good's page over it: a mission's step. */
 export const toMarket = (g: Good | null) => (show("market", true), g && push(goodPage(g)));
 
