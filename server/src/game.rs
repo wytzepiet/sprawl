@@ -1998,7 +1998,7 @@ mod tests {
     fn a_town_of_every_fixture_settles() {
         let mut world = World::new();
         crate::fixtures::build(&mut world, &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"));
-        let mut game = Game::new(world, DAY_MS as GameTime / 2, 1, Box::new(World::new));
+        let mut game = Game::new(world, crate::fixtures::NOON, 1, Box::new(World::new));
         let (mut settles, mut others) = (Vec::new(), Vec::new());
         for _ in 0..DAY_MS as GameTime / 4 / STEP_MS {
             let settling = game.now % SETTLE_MS == 0 || !game.world.unsettled.is_empty();
