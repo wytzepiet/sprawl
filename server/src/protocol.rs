@@ -270,15 +270,9 @@ pub struct Building {
     /// is, the tile it is known by.
     #[serde(default)]
     pub tiles: Vec<GridCoord>,
-    /// A save's plot from before a building was its tiles, read once at
-    /// load into `tiles` (`World::rebuild_occupied`) and never written.
-    #[serde(default, skip_serializing)]
-    #[ts(skip)]
-    pub size: Option<(u8, u8)>,
     /// Which side of the building the lot and the street are on; see
     /// `blueprint::FACINGS`. The client lays the building and the lot out
     /// within the footprint from this.
-    #[serde(default = "south")]
     pub facing: u8,
     /// Its stocks, by good: the shelf of what it serves or keeps — meals,
     /// tanks, a farm's crates — drawn down by visits and loads and filled
@@ -410,7 +404,6 @@ impl Building {
         Building {
             kind,
             tiles,
-            size: None,
             facing,
             stocks: Default::default(),
             site: (!materials.is_empty()).then(|| materials.iter().map(|&(g, n)| (g, crate::needs::Stock { level: 0.0, cap: n as f64 })).collect()),
@@ -423,10 +416,6 @@ impl Building {
             door: None,
         }
     }
-}
-
-fn south() -> u8 {
-    2
 }
 
 /// What a car is for, which is who drives it and what it looks like.

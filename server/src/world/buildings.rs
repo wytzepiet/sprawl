@@ -722,21 +722,14 @@ impl World {
         }
     }
 
-    /// Rebuild the tile→building index from the stored buildings, reading
-    /// a save's plot into its tiles on the way.
+    /// Rebuild the tile→building index from the stored buildings.
     pub fn rebuild_occupied(&mut self) {
         self.occupied.clear();
-        let ids: Vec<EntityId> = self.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
-        for id in ids {
-            let Some(entry) = self.objects.get_mut_silent(id) else { continue };
-            let pos = entry.position;
-            let GameObject::Building(ref mut b) = entry.object else { continue };
-            if let (Some(size), Some(pos)) = (b.size.take(), pos) {
-                b.tiles = Self::footprint(pos, size).collect();
-            }
-            for tile in b.tiles.clone() {
-                self.occupied.insert((tile.x, tile.y), id);
-                self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(id);
+        for e in self.objects.iter() {
+            let GameObject::Building(ref b) = e.object else { continue };
+            for &tile in &b.tiles {
+                self.occupied.insert((tile.x, tile.y), e.id);
+                self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(e.id);
                 self.built.insert(crate::world::chunk_of(tile));
             }
         }

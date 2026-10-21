@@ -219,7 +219,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `client/src/generated` (`server/.cargo/config.toml`); `cd client && bun
   run generate` also clears the ones whose type went and lists the rest
   in its `index.ts`.
-- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
+- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`; a save
+  is its build's, so after a change to what is saved, `rm server/sprawl.db`
+  is the migration (the server says so if it cannot read one). Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is
   forty tiles in from its island's coast. `SPRAWL_ALL=1` gives

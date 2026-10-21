@@ -45,10 +45,11 @@ const BEHIND: Duration = Duration::from_millis(250);
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
+    let mut db = persistence::Db::open(&db_path);
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), DAY_MS as GameTime / 2) } else { load_world(&db_path) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), DAY_MS as GameTime / 2) } else { load_world(&db) };
     if let Some(dir) = &fixtures {
         sprawl::fixtures::build(&mut world, Path::new(dir));
     } else {
@@ -64,7 +65,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let speed = if fixtures.is_some() { 0 } else { 1 };
     let fresh_db = db_path.clone();
     let fresh = Box::new(move || {
-        let _ = std::fs::remove_file(&fresh_db);
+        persistence::Db::open(&fresh_db).clear();
         let mut world = World::new();
         world.terrain_seed = new_seed();
         island(&mut world);
@@ -117,7 +118,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         }
 
         if last_persist.elapsed() >= PERSIST_INTERVAL {
-            persist(&mut game.world, &db_path, game.now);
+            persist(&mut game.world, &mut db, game.now);
             last_persist = Instant::now();
         }
     }
@@ -135,8 +136,8 @@ fn inspect(game: &mut Game, query: Debug) -> String {
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
 
-fn load_world(db_path: &Path) -> (World, GameTime) {
-    let (entries, meta) = persistence::load(db_path);
+fn load_world(db: &persistence::Db) -> (World, GameTime) {
+    let (entries, meta) = db.load();
     // A new town opens at nine in the morning, so the opening, and its
     // first ferry, are played by daylight rather than in the dark.
     let sim_time = if entries.is_empty() { meta.sim_time.max(DAY_MS as GameTime * 9 / 24) } else { meta.sim_time };
@@ -160,30 +161,22 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     (world, sim_time)
 }
 
-fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
-    let (changed_ids, removed_ids) = world.objects.drain_persist_dirty();
-    if changed_ids.is_empty() && removed_ids.is_empty() {
-        return;
+/// The objects changed since the last save, and the rest of the world as
+/// it stands, saved even when no object changed: a paused town's coins
+/// and clock are worth keeping too.
+fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
+    let (changed, removed) = world.objects.drain_persist_dirty();
+    let changed: Vec<_> = changed.iter().filter_map(|&id| world.objects.get(id)).filter(|e| persistence::kept(e)).collect();
+    let meta = persistence::Meta {
+        next_id: world.objects.next_id(),
+        terrain_seed: world.terrain_seed,
+        sim_time,
+        gdp: world.gdp,
+        treasury: world.treasury,
+        missions: world.missions.list.clone(),
+    };
+    db.save(&changed, &removed, &meta);
+    if !changed.is_empty() || !removed.is_empty() {
+        println!("persisted {} changed, {} removed", changed.len(), removed.len());
     }
-
-    let changed: Vec<_> = changed_ids
-        .iter()
-        .filter_map(|id| world.objects.get(*id))
-        .cloned()
-        .collect();
-
-    persistence::save(
-        db_path,
-        &changed,
-        &removed_ids,
-        persistence::Meta {
-            next_id: world.objects.next_id(),
-            terrain_seed: world.terrain_seed,
-            sim_time,
-            gdp: world.gdp,
-            treasury: world.treasury,
-            missions: world.missions.list.clone(),
-        },
-    );
-    println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
 }
