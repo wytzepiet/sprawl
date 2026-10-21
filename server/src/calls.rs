@@ -231,7 +231,7 @@ pub fn stable(world: &mut World, facility: EntityId) {
         return;
     }
     let tile = world.objects.get(facility).and_then(|e| e.position);
-    let have = fleet_of(world, facility).into_iter().filter(|&c| !matches!(world.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == CarRole::Ferry)).count();
+    let have = world.objects.fleet(facility).filter(|&c| !matches!(world.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == CarRole::Ferry)).count();
     for role in vehicles.into_iter().skip(have) {
         let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
         if role == CarRole::Tug {
@@ -246,7 +246,7 @@ pub fn stable(world: &mut World, facility: EntityId) {
 fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<(EntityId, EntityId)> {
     let door = world.street_of(facility)?;
     stable(world, facility);
-    let car = fleet_of(world, facility).into_iter().find(|&car| {
+    let car = world.objects.fleet(facility).find(|&car| {
         world.claims.get(&car).is_none_or(|&b| b == facility)
             && matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && !(role == CarRole::Truck && c.hitched.is_some()))
     })?;
@@ -259,11 +259,6 @@ pub fn load(world: &mut World, car: EntityId, load: Option<(Good, f64)>) -> Opti
         Some(GameObject::Car(c)) => std::mem::replace(&mut c.load, load),
         _ => None,
     }
-}
-
-/// The vehicles a facility owns, in id order.
-fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
-    world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == facility)).map(|e| e.id).collect()
 }
 
 /// A vehicle woke while parked. Private cars have nothing to think about;

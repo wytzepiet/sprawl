@@ -10,6 +10,10 @@ pub struct Tracked {
     /// resident has no business walking it.
     roads: BTreeSet<EntityId>,
     things: BTreeSet<EntityId>,
+    /// Each owner's cars, by id: a facility's fleet, a household's car.
+    /// A car's owner is its own from `Car::new` to its scrapping, so the
+    /// two places a car is filed and taken out keep this.
+    fleets: HashMap<EntityId, BTreeSet<EntityId>>,
     dirty: HashSet<EntityId>,
     removed: Vec<EntityId>,
     persist_dirty: HashSet<EntityId>,
@@ -23,6 +27,7 @@ impl Tracked {
             data: HashMap::default(),
             roads: BTreeSet::new(),
             things: BTreeSet::new(),
+            fleets: HashMap::default(),
             dirty: HashSet::default(),
             removed: Vec::new(),
             persist_dirty: HashSet::default(),
@@ -42,6 +47,9 @@ impl Tracked {
     fn file(&mut self, entry: GameObjectEntry) {
         let pile = if matches!(entry.object, GameObject::RoadNode(_)) { &mut self.roads } else { &mut self.things };
         pile.insert(entry.id);
+        if let GameObject::Car(ref c) = entry.object {
+            self.fleets.entry(c.owner).or_default().insert(entry.id);
+        }
         self.data.insert(entry.id, entry);
     }
 
@@ -87,7 +95,15 @@ impl Tracked {
     }
 
     pub fn remove(&mut self, id: EntityId) {
-        if self.data.remove(&id).is_some() {
+        if let Some(entry) = self.data.remove(&id) {
+            if let GameObject::Car(ref c) = entry.object {
+                if let Some(fleet) = self.fleets.get_mut(&c.owner) {
+                    fleet.remove(&id);
+                    if fleet.is_empty() {
+                        self.fleets.remove(&c.owner);
+                    }
+                }
+            }
             self.roads.remove(&id);
             self.things.remove(&id);
             self.dirty.remove(&id);
@@ -120,6 +136,11 @@ impl Tracked {
     /// the town two thirds more instructions.
     pub fn iter(&self) -> impl Iterator<Item = &GameObjectEntry> {
         self.things.iter().map(|id| &self.data[id])
+    }
+
+    /// The cars an owner has, by id.
+    pub fn fleet(&self, owner: EntityId) -> impl Iterator<Item = EntityId> + '_ {
+        self.fleets.get(&owner).into_iter().flatten().copied()
     }
 
     /// The road nodes, by id.

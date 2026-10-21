@@ -144,9 +144,9 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
     }
     let fleet: Vec<Value> = world
         .objects
-        .iter()
-        .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == id && c.role != CarRole::Private))
-        .map(|e| link(world, e.id))
+        .fleet(id)
+        .filter(|&car| matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != CarRole::Private))
+        .map(|car| link(world, car))
         .collect();
     let calls: Vec<Value> = world
         .calls
