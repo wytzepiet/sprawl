@@ -8,7 +8,7 @@ import { GOODS } from "../blueprints";
 import { Shelf } from "./Depot";
 import { Line, Press } from "./kit";
 import { good, setGood, setOpen, sheetWidth } from "./sheet";
-import type { Building, Good, Quote } from "../generated";
+import type { Building, Good, Quote, When } from "../generated";
 
 /**
  * The market tab (docs/plan-market.md §The first version): every good,
@@ -27,16 +27,16 @@ const DECK = 15;
 const BACK = "M15 5l-7 7 7 7";
 
 /** A box's worth, to the coin from a hundred and to the tenth below. */
-const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1));
-const box = (g: Good, unit: number) => unit * GOODS[g].box;
-const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].label.slice(1);
+export const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1));
+export const box = (g: Good, unit: number) => unit * GOODS[g].box;
+export const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].label.slice(1);
 /** A move's colour: up, down, or too small to call. */
-const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : DOWN);
-const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
+export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : DOWN);
+export const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
 
 /** Every standing depot's shelves added up, a good at a time, with what
  *  is on its way in. */
-const held = createRoot(() =>
+export const held = createRoot(() =>
   createMemo(() => {
     now();
     const sum = new Map<Good, { level: number; cap: number; incoming: number }>();
@@ -106,7 +106,7 @@ function Spark(props: { q: Quote }) {
 }
 
 /** A good's tile: its glyph on a square of its colour. */
-const Tile = (props: { good: Good; size?: number }) => (
+export const Tile = (props: { good: Good; size?: number }) => (
   <box w={props.size ?? 32} h={props.size ?? 32} round={(props.size ?? 32) * 0.3} fill={GOODS[props.good].color} align="center" justify="center">
     <icon d={GOODS[props.good].glyph} size={(props.size ?? 32) * 0.58} ink="white" />
   </box>
@@ -180,6 +180,23 @@ function List() {
           </Press>
         )}
       </For>
+    </box>
+  );
+}
+
+/** An order waiting on a price, as a sentence, and the cross that takes
+ *  it back; `named`, with its good's name, where goods are mixed. */
+export function Order(props: { o: When; named?: boolean }) {
+  const { send } = useGame();
+  return (
+    <box dir="row" align="center" gap={10} pad={{ left: 10, right: 4, y: 4 }} round={14} fill="ink/0.05">
+      <box w={6} h={26} round={3} fill="#7A5BC0" />
+      <text size={13.5} grow={1}>
+        {props.o.out ? "Sell" : "Buy"} {props.o.boxes}{props.named ? ` ${GOODS[props.o.good].label}` : ""} when it {props.o.out ? "rises to" : "falls to"} <text serif>{money(box(props.o.good, props.o.price))}</text>
+      </text>
+      <Press w={32} h={32} round={16} align="center" justify="center" onTap={() => send({ type: "Cancel", data: { order: props.o.id } })}>
+        <Line d="M7 7l10 10M17 7L7 17" size={14} width={2.4} ink="ink/0.6" />
+      </Press>
     </box>
   );
 }
@@ -285,19 +302,7 @@ function Page(props: { good: Good }) {
       </box>
 
       <box gap={6}>
-        <For each={orders()}>
-          {(o) => (
-            <box dir="row" align="center" gap={10} pad={{ left: 10, right: 4, y: 4 }} round={14} fill="ink/0.05">
-              <box w={6} h={26} round={3} fill="#7A5BC0" />
-              <text size={13.5} grow={1}>
-                {o.out ? "Sell" : "Buy"} {o.boxes} when it {o.out ? "rises to" : "falls to"} <text serif>{money(box(o.good, o.price))}</text>
-              </text>
-              <Press w={32} h={32} round={16} align="center" justify="center" onTap={() => send({ type: "Cancel", data: { order: o.id } })}>
-                <Line d="M7 7l10 10M17 7L7 17" size={14} width={2.4} ink="ink/0.6" />
-              </Press>
-            </box>
-          )}
-        </For>
+        <For each={orders()}>{(o) => <Order o={o} />}</For>
         {/* An order, as a sentence: each part a tap to change. */}
         <box dir="row" align="center" gap={6} wrap>
           <Press h={30} pad={{ x: 12 }} round={15} justify="center" fill="ink/0.07" onTap={() => (setOut(!out()), setAt(null))}>

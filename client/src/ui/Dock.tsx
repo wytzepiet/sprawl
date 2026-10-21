@@ -10,6 +10,7 @@ import { InspectBody, InspectHead } from "./Card";
 import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsBody, RoadsHead, take } from "./Roads";
 import { BuildBody, BuildHead } from "./Build";
 import { MarketBody, MarketHead } from "./Market";
+import { StockBody, StockHead } from "./Stock";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { Press, view, wide } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
@@ -18,6 +19,7 @@ const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 const BUILD = "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z";
 /** A price's line, rising. */
 const MARKET = "M3 20.5h18v-2H3zM3 15.5l5-5 4 3.5 6.5-7.5L21 9V3.5h-5.5l2 2-5 5.8-4-3.5L3 13z";
+const STOCK = "M3 13h8v8H3zM13 13h8v8h-8zM8 3.5h8v8H8z";
 
 /** The dock's measure: a tab every 52px, the bar 60 tall. */
 const SLOT = 52;
@@ -32,6 +34,7 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
   roads: { head: RoadsHead, body: RoadsBody },
   build: { head: BuildHead, body: BuildBody },
   market: { head: MarketHead, body: MarketBody },
+  stock: { head: StockHead, body: StockBody },
 };
 
 /**
@@ -41,7 +44,7 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
  * rest under it as tall as it is up to its room, and taller scrolls;
  * dragged down from its top, it sinks again. The bare hand, whose
  * sheet is the card of what it tapped; the roads, and the demolisher
- * with them; the build menu; the market.
+ * with them; the build menu; the market; the town's stock.
  *
  * What is in hand, in its colour, rides under its tab as dyed glass.
  */
@@ -68,6 +71,7 @@ export default function Dock() {
     if (key === "X") return take("Demolish");
     if (key === "B") return press("build");
     if (key === "M") return press("market");
+    if (key === "S") return press("stock");
     if (key !== "R") return;
     // Again: the next road.
     const roads = ROAD_KINDS.filter((r) => r.id !== "Demolish");
@@ -94,7 +98,8 @@ export default function Dock() {
     t === "select" ? SELECT
     : t === "roads" ? road(roadInHand() ?? lastRoad()).glyph
     : t === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD)
-    : MARKET;
+    : t === "market" ? MARKET
+    : STOCK;
 
   // The sheet's content, its height and the room it may take; with
   // nothing to show the dock is the bar alone, as narrow as its tabs.
