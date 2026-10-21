@@ -41,9 +41,9 @@ import recipe from "../wheat.ts?raw";
  * Between runs the field is the last run's strips (the farm's `ruts`) in
  * the look it left. On a run (`running`), the run's strips are laid over
  * them in the look the job leaves, as far as the tractor has got. A
- * standing crop stands: a sheet of the land's tiles at its height, cast
- * and never seen, throws its shadow onto the grass beside it and onto the
- * stubble behind the harvest; the strips lie at the top of it.
+ * crop stands on its own mesh over the earth, at its height, casting its
+ * shadow; the last run's crop goes wherever the run's strips are laid, on
+ * the line the tractor drives (\`Field.cuts\`).
  */
 
 /** What a field shows: a stage of the cycle, and how far grown. */
@@ -92,9 +92,10 @@ function workedAt(path: GridCoord[], land: Set<string>, head: (t: GridCoord) => 
   return worked;
 }
 
-/** What a strip's material reads: the look it is in, how far along the
- *  path it is laid, and how far the tractor is along a run over it. */
-type Paint = { look: number[]; reach: number; progress: number };
+/** What a strip's material reads: the look it is in, how far along its
+ *  path it is laid, and how far along a run's path the run has taken its
+ *  crop (\`Field.cuts\`). */
+type Paint = { look: number[]; reach: number; cut: number };
 
 /**
  * A run's strips: a tile wide along the drawn path, a piece for each step
@@ -112,6 +113,9 @@ class Strips {
   readonly crop: Mesh;
   readonly drawn: DrawnPath;
   readonly paint: Paint;
+  /** Where each piece lies, spills and all: its two edges, point by point
+   *  along, and how far along there. */
+  readonly pieces: { l: P; r: P; d: number }[][] = [];
   private positions: Float32Array;
   private raised: Float32Array;
   /** Each vertex out past its piece's tile, a little lower, so that where a
@@ -122,7 +126,7 @@ class Strips {
 
   constructor(private ctx: EngineContext, private casters: Casters, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, under: GridCoord[], material: (paint: Paint, crop: boolean) => TownMaterial, look: Look) {
     this.drawn = drawn;
-    this.paint = { look: vec(look), reach: 1e9, progress: -1e9 };
+    this.paint = { look: vec(look), reach: 1e9, cut: -1 };
     const { points, distances, atNode } = drawn;
     const last = nodes.length - 1;
     const bound = (k: number) => (atNode[k - 1] + atNode[k]) / 2;
@@ -208,6 +212,8 @@ class Strips {
     }
     for (const { k, from, to, samples } of pieces) {
       const at = nodes[k];
+      const rows: { l: P; r: P; d: number }[] = [];
+      this.pieces.push(rows);
       samples.forEach(({ p, d }, i) => {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -216,9 +222,13 @@ class Strips {
         // On the inside of a turn tighter than the pass is wide, the edge
         // stops short of the turn's middle, or it would fold back on itself.
         const bend = (2 * ((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x))) / (Math.hypot(p.x - a.x, p.y - a.y) * Math.hypot(b.x - p.x, b.y - p.y) * l || 1);
-        sides.forEach((spill, s) => {
+        const across = sides.map((spill, s) => {
           const wide = 0.5 + (spill ? SPILL : HAIR);
-          const out = (s ? 1 : -1) * ((s ? 1 : -1) * bend > 0 ? Math.min(wide, 0.9 / Math.abs(bend)) : wide);
+          return (s ? 1 : -1) * ((s ? 1 : -1) * bend > 0 ? Math.min(wide, 0.9 / Math.abs(bend)) : wide);
+        });
+        rows.push({ l: { x: p.x + n.x * across[0], y: p.y + n.y * across[0] }, r: { x: p.x + n.x * across[1], y: p.y + n.y * across[1] }, d });
+        sides.forEach((spill, s) => {
+          const out = across[s];
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
           this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
@@ -272,6 +282,8 @@ class Strips {
 const SPILL = 0.16;
 const SUNK = 0.0015;
 const HAIR = 0.03;
+/** Texels of \`Field.cuts\` to a tile's side. */
+const CUT_RES = 16;
 /** A side flag past spilling onto land (1) or off it (2): bare all over. */
 const BARE = 3;
 
@@ -284,10 +296,11 @@ class Field {
   private colours: Rgb[];
   private land: Set<string>;
   private head: (t: GridCoord) => boolean;
-  /** Where a run takes the standing crop, a texel a tile over the land's
-   *  bounds from \`corner\`: the step the tractor reaches the tile at (two
-   *  bytes; all ones, never) and which way it crosses it, so the crop
-   *  goes as the tractor comes. */
+  /** Where the last run takes the standing crop: over the land's bounds
+   *  and a tile round from \`corner\`, \`CUT_RES\` texels to a tile, how far along its path
+   *  its strips first cover each, in 256ths of a tile in three bytes (all
+   *  ones, never). The crop goes where the run has got further than that,
+   *  so it goes as the tractor comes, on the line it drives. */
   private cuts: Texture2D;
   private corner: GridCoord;
   private span: GridCoord;
@@ -299,9 +312,10 @@ class Field {
     this.head = (t) => [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => !this.land.has(`${t.x + dx},${t.y + dy}`)));
     this.look = lookOf(tiles);
     const [xs, ys] = [tiles.map((t) => t.at.x), tiles.map((t) => t.at.y)];
-    this.corner = { x: Math.min(...xs), y: Math.min(...ys) };
-    this.span = { x: Math.max(...xs) - this.corner.x + 1, y: Math.max(...ys) - this.corner.y + 1 };
-    this.cuts = createTexture2DFromPixels(ctx.engine, new Uint8Array(this.span.x * this.span.y * 4).fill(255), this.span.x, this.span.y, { mipmaps: false, minFilter: "nearest", magFilter: "nearest" });
+    // The land's bounds and a tile round, for the spills past its edge.
+    this.corner = { x: Math.min(...xs) - 1, y: Math.min(...ys) - 1 };
+    this.span = { x: Math.max(...xs) - this.corner.x + 2, y: Math.max(...ys) - this.corner.y + 2 };
+    this.cuts = createTexture2DFromPixels(ctx.engine, new Uint8Array(this.span.x * this.span.y * CUT_RES * CUT_RES * 4).fill(255), this.span.x * CUT_RES, this.span.y * CUT_RES);
     this.ruts = this.strips("ruts", ruts, tiles.map((t) => t.at), this.look, JOB_OF[this.look.stage]);
 
     // Each frame: a run begun or ended, how far it has got; and while the
@@ -342,15 +356,52 @@ class Field {
     this.out?.strips?.drop();
     const after = leaves(run.job, this.look);
     this.out = { run, after, strips: this.strips("run", run.path, [], after, run.job) };
-    const cuts = new Uint8Array(this.span.x * this.span.y * 4).fill(255);
-    const { path } = run;
-    workedAt(path, this.land, this.head, run.job).forEach((k, t) => {
-      const [x, y] = t.split(",").map(Number);
-      const [a, b] = [path[Math.max(0, k - 1)], path[Math.min(path.length - 1, k + 1)]];
-      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-      cuts.set([k >> 8, k & 255, Math.round(((b.x - a.x) / l / 2 + 0.5) * 255), Math.round(((b.y - a.y) / l / 2 + 0.5) * 255)], ((y - this.corner.y) * this.span.x + x - this.corner.x) * 4);
+    updateTexture2DFromPixels(this.ctx.engine, this.cuts, this.covered(this.out.strips));
+  }
+
+  /** How far along a run's path its strips first cover each texel of
+   *  \`cuts\`: each piece drawn as the GPU draws it, its distance along
+   *  read off where the texel's middle falls; where a piece lies, the
+   *  crop under it goes when it is laid. */
+  private covered(strips: Strips | null): Uint8Array {
+    const [w, h] = [this.span.x * CUT_RES, this.span.y * CUT_RES];
+    const at = new Float32Array(w * h).fill(Infinity);
+    const texel = (p: P) => ({ x: (p.x - this.corner.x) * CUT_RES - 0.5, y: (p.y - this.corner.y) * CUT_RES - 0.5 });
+    const triangle = (a: P, b: P, c: P, da: number, db: number, dc: number) => {
+      const area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      if (Math.abs(area) < 1e-9) return;
+      const [x0, x1] = [Math.max(0, Math.ceil(Math.min(a.x, b.x, c.x))), Math.min(w - 1, Math.floor(Math.max(a.x, b.x, c.x)))];
+      const [y0, y1] = [Math.max(0, Math.ceil(Math.min(a.y, b.y, c.y))), Math.min(h - 1, Math.floor(Math.max(a.y, b.y, c.y)))];
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++) {
+          const u = ((b.x - x) * (c.y - y) - (b.y - y) * (c.x - x)) / area;
+          const v = ((c.x - x) * (a.y - y) - (c.y - y) * (a.x - x)) / area;
+          if (u < -1e-6 || v < -1e-6 || u + v > 1 + 1e-6) continue;
+          const d = u * da + v * db + (1 - u - v) * dc;
+          if (d < at[y * w + x]) at[y * w + x] = d;
+        }
+    };
+    for (const rows of strips?.pieces ?? [])
+      for (let i = 1; i < rows.length; i++) {
+        const [a, b] = [rows[i - 1], rows[i]];
+        const [al, ar, bl, br] = [texel(a.l), texel(a.r), texel(b.l), texel(b.r)];
+        triangle(al, ar, br, a.d, a.d, b.d);
+        triangle(al, br, bl, a.d, b.d, b.d);
+      }
+    // The corner a turn cuts goes with the turn: up to half a tile from
+    // the strips, the soonest beside.
+    for (let pass = 0; pass < CUT_RES / 2; pass++) {
+      const was = at.slice();
+      for (let i = 0; i < at.length; i++)
+        if (was[i] === Infinity) at[i] = Math.min(i % w > 0 ? was[i - 1] : Infinity, i % w < w - 1 ? was[i + 1] : Infinity, was[i - w] ?? Infinity, was[i + w] ?? Infinity);
+    }
+    const bytes = new Uint8Array(w * h * 4).fill(255);
+    at.forEach((d, i) => {
+      if (d === Infinity) return;
+      const q = Math.min(0xfffffe, Math.max(0, Math.round(d * 256)));
+      bytes.set([q >> 16, (q >> 8) & 255, q & 255], i * 4);
     });
-    updateTexture2DFromPixels(this.ctx.engine, this.cuts, cuts);
+    return bytes;
   }
 
   /** The tractor's progress, in steps of its path, now. */
@@ -363,11 +414,11 @@ class Field {
    *  each crop at the height it stands. */
   private raise() {
     const progress = this.progress();
+    const strips = this.out?.strips;
     if (this.ruts) {
-      this.ruts.paint.progress = progress;
+      this.ruts.paint.cut = strips?.paint.reach ?? -1;
       this.ruts.lift(FIELD_Z, heightOf(this.look));
     }
-    const strips = this.out?.strips;
     if (strips) {
       const { atNode } = strips.drawn;
       const k = Math.min(Math.max(0, Math.floor(progress)), atNode.length - 2);
@@ -454,7 +505,7 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[], crop: boolean, cut
     getSamplers: () => [
       { texture: "fieldGrain", sampler: "fieldGrainSampler" },
       { texture: "fieldWheat", sampler: "fieldWheatSampler" },
-      { texture: "fieldCutAt", sampler: "fieldCutAtSampler" },
+      { texture: "fieldCuts", sampler: "fieldCutsSampler" },
     ],
     bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: wheat(engine) }, { texture: cuts }),
     getUniforms: () => ({
@@ -470,7 +521,7 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[], crop: boolean, cut
     writeUbo: (data, offsets) => {
       const put = (name: string, v: number[]) => data.set(v, offsets.get(name)! / 4);
       put("fieldLook", [paint.look[0], paint.look[1], paint.reach, crop ? 1 : 0]);
-      put("fieldCut", [paint.progress, corner.x, corner.y, 0]);
+      put("fieldCut", [paint.cut, corner.x, corner.y, 0]);
       ["fieldEarth", "fieldGrowing", "fieldRipe", "fieldStubble"].forEach((name, i) => put(name, [colours[i].r, colours[i].g, colours[i].b, 1]));
     },
     getCustomCode: (stage) =>
@@ -575,10 +626,22 @@ for (var i = 0; i < 2; i++) {
 // plant is, as many as the texel holds, and cast just so; until the
 // tractor, cutting, comes. The earth under it is all earth.
 let fieldCrop = fieldLook.w > 0.5;
-// A run takes it as the tractor crosses each tile, the way it crosses.
-let fieldCutT = textureSampleLevel(fieldCutAt, fieldCutAtSampler, (floor(fieldW) - material.fieldCut.yz + 0.5) / vec2f(textureDimensions(fieldCutAt)), 0.) * 255.;
-let fieldCutK = round(fieldCutT.r) * 256. + round(fieldCutT.g);
-let fieldCut = fieldCutK < 65535. && fieldCutK + dot(fract(fieldW) - 0.5, normalize(fieldCutT.ba / 127.5 - 1.)) < material.fieldCut.x;
+// A run takes it where it has got past how far along its path it first
+// covers the pixel: read between the four texels round it, where they
+// are of one pass; across from one pass to another, the nearest.
+let fieldCutP = (fieldW - material.fieldCut.yz) * ${CUT_RES}. - 0.5;
+let fieldCutI = vec2i(floor(fieldCutP));
+let fieldCutF = fract(fieldCutP);
+let fieldCutMax = vec2i(textureDimensions(fieldCuts)) - 1;
+var fieldCutS = vec4f(0.);
+for (var i = 0; i < 4; i++) {
+  let t = textureLoad(fieldCuts, clamp(fieldCutI + vec2i(i & 1, i >> 1), vec2i(0), fieldCutMax), 0) * 255.;
+  fieldCutS[i] = (round(t.r) * 65536. + round(t.g) * 256. + round(t.b)) / 256.;
+}
+let fieldCutNear = fieldCutS[select(0, 1, fieldCutF.x > 0.5) + select(0, 2, fieldCutF.y > 0.5)];
+let fieldCutSpread = max(max(fieldCutS.x, fieldCutS.y), max(fieldCutS.z, fieldCutS.w)) - min(min(fieldCutS.x, fieldCutS.y), min(fieldCutS.z, fieldCutS.w));
+let fieldCutAt = select(fieldCutNear, mix(mix(fieldCutS.x, fieldCutS.y, fieldCutF.x), mix(fieldCutS.z, fieldCutS.w, fieldCutF.x), fieldCutF.y), fieldCutSpread < 1.);
+let fieldCut = fieldCutAt < 65535. && fieldCutAt < material.fieldCut.x;
 if (fieldCrop && (fieldBare || fieldCut || fieldCover < 0.3 + 0.4 * fieldCrumb)) { discard; }`;
 
 /**
