@@ -13,20 +13,12 @@
  * comes in as it does in play; then zooming in and out with the wheel.
  * Desktop Chrome's WebGPU.
  */
-import { launch } from "./browser";
+import { args, CLIENT, flag, launch, ROOT } from "./lib";
 import { readFileSync } from "node:fs";
 import type { Report } from "../src/engine/PerfReport";
-import { resolve } from "node:path";
 
-const ROOT = resolve(import.meta.dir, "../..");
-const CLIENT = `http://localhost:${process.env.SPRAWL_CLIENT_PORT ?? 4800}`;
 const [W, H] = [1200, 800];
 
-const args = process.argv.slice(2);
-const flag = (name: string, or: number) => {
-  const i = args.indexOf(name);
-  return i < 0 ? or : Number(args.splice(i, 2)[1]);
-};
 const t = flag("--t", 0.5);
 const PHASE_MS = flag("--phase", 15) * 1000;
 const [x, y, half = 15] = (args[0] ?? "6,80").split(",").map(Number);

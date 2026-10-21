@@ -13,11 +13,11 @@
  * SPRAWL_PORT's.
  */
 import { decode, encode } from "@msgpack/msgpack";
+import { PORT } from "./lib";
 import "./tsx";
 import type { GameObjectEntry, Operation, ServerMessage } from "../src/generated";
 
 const { moment } = await import("../src/engine/objects/motion");
-const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
 const [x, y, r = 12] = (process.argv[2] ?? "0,0").split(",").map(Number);
 const seconds = Number(process.argv[3] ?? 20);
 const entities = new Map<number, GameObjectEntry>();

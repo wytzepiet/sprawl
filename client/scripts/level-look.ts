@@ -6,18 +6,17 @@
  * verdict, in .dev/look/.
  */
 import { mkdirSync, readFileSync } from "node:fs";
-import { launch, open } from "./browser";
+import { args, CLIENT, launch, open, ROOT } from "./lib";
 
-const [name = "01-first-road", stepsFile] = process.argv.slice(2);
-const port = process.env.SPRAWL_CLIENT_PORT ?? "4800";
-const out = new URL("../../.dev/look/", import.meta.url).pathname;
+const [name = "01-first-road", stepsFile] = args;
+const out = `${ROOT}/.dev/look/`;
 mkdirSync(out, { recursive: true });
 
 const browser = await launch();
 const page = await open(browser, { width: 1280, height: 800 });
 page.on("console", (m) => (m.type() === "error" || m.type() === "warning") && console.log(`[page ${m.type()}]`, m.text()));
 page.on("pageerror", (e) => console.log("[page error]", e.message));
-await page.goto(`http://localhost:${port}/interchange?l=${name}`);
+await page.goto(`${CLIENT}/interchange?l=${name}`);
 await page.waitForFunction(() => (window as any).sprawlLevel?.state(), null, { timeout: 60_000 });
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${out}${name}-empty.png` });

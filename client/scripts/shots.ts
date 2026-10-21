@@ -14,28 +14,25 @@
  * paused; this points the camera at each and writes `.dev/shots/<name>.png`
  * and `.dev/shots/sheet.png`, every fixture on one page.
  */
-import { launch } from "./browser";
+import { args, has, launch, ROOT, sheet } from "./lib";
 import { mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
 
-const ROOT = resolve(import.meta.dir, "../..");
 const OUT = `${ROOT}/.dev/shots`;
 const SERVER_PORT = 4811;
 const CLIENT_PORT = 4810;
 /** Tiles of grass shown round a fixture. */
 const MARGIN = 3;
 /** Long enough for the chunks, the buildings and the ink to arrive; in
- *  software (`browser.ts`) far longer: SETTLE=60000. */
+ *  software (`lib.ts`) far longer: SETTLE=60000. */
 const SETTLE_MS = Number(process.env.SETTLE ?? 2500);
 const VIEW = { width: 900, height: 600 };
 
 type Placed = { name: string; title: string; x: number; y: number; w: number; h: number };
 
-const keep = process.argv.includes("--keep");
+const keep = has("--keep");
 /** The sandbox draws each fixture alone from its text: no server to build
  *  or wait for, and the look as the town grid has it (`engine/town`). */
-const sandbox = process.argv.includes("--sandbox");
-const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const sandbox = has("--sandbox");
 mkdirSync(OUT, { recursive: true });
 rmSync(`${ROOT}/.dev/fixtures.db`, { force: true });
 
@@ -98,7 +95,7 @@ try {
   await page.waitForTimeout(SETTLE_MS * 2);
 
   const aspect = VIEW.width / VIEW.height;
-  const shot = fixtures.filter((f) => !only.length || only.includes(f.name));
+  const shot = fixtures.filter((f) => !args.length || args.includes(f.name));
   for (const f of shot) {
     if (sandbox) {
       // The sandbox frames a fixture itself when it opens one.
@@ -119,18 +116,8 @@ try {
   }
 
   const png = async (name: string) => Buffer.from(await Bun.file(`${OUT}/${name}.png`).arrayBuffer()).toString("base64");
-  const cells = (
-    await Promise.all(shot.map(async (f) => `<figure><img src="data:image/png;base64,${await png(f.name)}"><figcaption><b>${f.name}</b> ${f.title}</figcaption></figure>`))
-  ).join("");
-  const sheet = await browser.newPage({ viewport: { width: 1800, height: 800 } });
-  await sheet.setContent(`<style>
-    body { margin: 16px; font: 13px system-ui; background: #fff; }
-    main { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    figure { margin: 0; } img { width: 100%; display: block; border-radius: 4px; }
-    figcaption { padding: 4px 2px; color: #444; }
-  </style><main>${cells}</main>`);
-  await sheet.waitForLoadState("load");
-  await sheet.screenshot({ path: `${OUT}/sheet.png`, fullPage: true });
+  const cells = await Promise.all(shot.map(async (f) => `<figure><img src="data:image/png;base64,${await png(f.name)}"><figcaption><b>${f.name}</b> ${f.title}</figcaption></figure>`));
+  await sheet(await browser.newPage(), cells, 3, `${OUT}/sheet.png`);
   await browser.close();
   console.log(`${shot.length} fixtures → ${OUT}/sheet.png`);
 } finally {

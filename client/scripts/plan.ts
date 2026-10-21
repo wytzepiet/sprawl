@@ -27,21 +27,16 @@
 import { mkdirSync, readdirSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { $ } from "bun";
+import { args, has, launch, PORT, ROOT, sheet, word } from "./lib";
 import "./tsx";
 
-const ROOT = resolve(import.meta.dir, "../..");
 const OUT = `${ROOT}/.dev/plan`;
 /** Pixels to a tile. */
 const PX = Number(process.env.PX ?? 24);
 
-const args = process.argv.slice(2);
-const flag = (name: string) => {
-  const i = args.indexOf(name);
-  return i < 0 ? undefined : args.splice(i, 2)[1];
-};
-const png = args.includes("--png") && (args.splice(args.indexOf("--png"), 1), true);
-const crop = flag("--crop")?.split(",").map(Number) as [number, number, number, number] | undefined;
-const at = flag("--at");
+const png = has("--png");
+const crop = word("--crop")?.split(",").map(Number) as [number, number, number, number] | undefined;
+const at = word("--at");
 // `--paths`, or `--paths=12,34` for those cars' trips alone.
 const pathsArg = args.find((a) => a.startsWith("--paths"));
 if (pathsArg) args.splice(args.indexOf(pathsArg), 1);
@@ -49,12 +44,11 @@ const only = pathsArg?.split("=")[1]?.split(",").map(Number);
 const paths = pathsArg
   ? (await import("./paths")).trace(JSON.parse(readFileSync(`${ROOT}/.dev/paths.json`, "utf8")).filter((t: { car: number }) => !only || only.includes(t.car)))
   : undefined;
-const live = flag("--live")?.split(",");
+const live = word("--live")?.split(",");
 if (live) {
   const [x, y, r = "20"] = live;
-  const port = process.env.SPRAWL_PORT ?? 4801;
-  const map = await fetch(`http://localhost:${port}/map?x=${x}&y=${y}&r=${r}`).then((res) => res.text()).catch(() => {
-    throw new Error(`no game on port ${port}: bun run dev`);
+  const map = await fetch(`http://localhost:${PORT}/map?x=${x}&y=${y}&r=${r}`).then((res) => res.text()).catch(() => {
+    throw new Error(`no game on port ${PORT}: bun run dev`);
   });
   await Bun.write(`${ROOT}/.dev/plan/live.txt`, map);
   args.push(`${ROOT}/.dev/plan/live.txt`);
@@ -97,8 +91,7 @@ for (const path of files) {
 }
 
 if (png) {
-  const { chromium } = await import("playwright-core");
-  const browser = await chromium.launch({ executablePath: process.env.CHROME ?? "/opt/pw-browsers/chromium" }).catch(() => chromium.launch({ channel: "chrome" }));
+  const browser = await launch();
   const page = await browser.newPage({ deviceScaleFactor: 2 });
   for (const d of drawn) {
     const svg = readFileSync(d.file, "utf8");
@@ -107,15 +100,8 @@ if (png) {
     await page.setContent(`<body style="margin:0">${svg}</body>`);
     await page.screenshot({ path: d.file.replace(/\.svg$/, ".png") });
   }
-  const cells = drawn.map((d) => `<figure>${readFileSync(d.file, "utf8")}<figcaption><b>${d.name}</b> ${d.title}</figcaption></figure>`).join("");
-  await page.setViewportSize({ width: 1800, height: 800 });
-  await page.setContent(`<style>
-    body { margin: 16px; font: 13px system-ui; background: #fff; }
-    main { display: grid; grid-template-columns: repeat(${at ? 2 : 3}, 1fr); gap: 16px; align-items: start; }
-    figure { margin: 0; } svg { width: 100%; height: auto; display: block; border-radius: 4px; }
-    figcaption { padding: 4px 2px; color: #444; }
-  </style><main>${cells}</main>`);
-  await page.screenshot({ path: `${OUT}/sheet.png`, fullPage: true });
+  const cells = drawn.map((d) => `<figure>${readFileSync(d.file, "utf8")}<figcaption><b>${d.name}</b> ${d.title}</figcaption></figure>`);
+  await sheet(page, cells, at ? 2 : 3, `${OUT}/sheet.png`);
   await browser.close();
   console.log(`${drawn.length} plans → ${OUT}/sheet.png`);
 }

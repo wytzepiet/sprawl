@@ -48,9 +48,9 @@
  * its history to undo is its own and outlives the command.
  */
 import { decode, encode } from "@msgpack/msgpack";
+import { PORT, ROOT } from "./lib";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
 
-const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
 /** The server's chunk, in tiles (`CHUNK_SIZE` in `protocol.rs`). */
 const CHUNK = 32;
 /** Quiet this long and the server has said all it will about a command;
@@ -181,7 +181,7 @@ function listed(): string[] {
  *  tighter than a car turns, by where on the trip they are. */
 function watched(): string[] {
   const all = [...trips.values()];
-  Bun.write(`${import.meta.dir}/../../.dev/paths.json`, JSON.stringify(all));
+  Bun.write(`${ROOT}/.dev/paths.json`, JSON.stringify(all));
   const tight = { out: [] as number[], street: [] as number[], in: [] as number[] };
   let worst = { r: Infinity, at: [0, 0], car: 0, part: "" };
   const traced = trace(all);

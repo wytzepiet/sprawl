@@ -21,7 +21,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { args, flag, PORT, ROOT, word } from "./lib";
 import "./tsx";
 import type { GameObjectEntry, Lane, Mission, Operation, ServerMessage, TerrainChunk } from "../src/generated";
 import type { Neighbour } from "../src/generated/Neighbour";
@@ -32,18 +32,12 @@ const { moment } = await import("../src/engine/objects/motion");
 const { CHUNK_SIZE } = await import("../src/engine/objects/terrainGeometry");
 const { markedFor } = await import("../src/state/missions");
 
-const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
-const OUT = `${resolve(import.meta.dir, "../..")}/.dev/flat`;
-const args = process.argv.slice(2);
-const flag = (name: string, or: string) => {
-  const i = args.indexOf(name);
-  return i < 0 ? or : args.splice(i, 2)[1];
-};
-const px = Number(flag("--px", "32"));
-const frames = Number(flag("--frames", "1"));
-const every = Number(flag("--every", "500"));
-const follow = Number(flag("--follow", "NaN"));
-const name = flag("--name", "flat");
+const OUT = `${ROOT}/.dev/flat`;
+const px = flag("--px", 32);
+const frames = flag("--frames", 1);
+const every = flag("--every", 500);
+const follow = flag("--follow", NaN);
+const name = word("--name") ?? "flat";
 const [x, y, r = 12] = (args[0] ?? "0,0").split(",").map(Number);
 
 // What the server has said, as the client keeps it.

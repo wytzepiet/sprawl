@@ -24,24 +24,16 @@
  *
  * Tiles are the game's, as `bun run plan --live` numbers them. Writes
  * `.dev/look/frame-<n>.png` and `.dev/look/strip.png`. The game is the one
- * `bun run dev` runs, or SPRAWL_CLIENT_PORT's, in `browser.ts`'s browser.
+ * `bun run dev` runs, or SPRAWL_CLIENT_PORT's, in `lib.ts`'s browser.
  */
-import { launch, open } from "./browser";
+import { args, CLIENT, flag, has, launch, open, ROOT, sheet, word } from "./lib";
 import { mkdirSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
 
-const ROOT = resolve(import.meta.dir, "../..");
 const OUT = `${ROOT}/.dev/look`;
-const CLIENT = `http://localhost:${process.env.SPRAWL_CLIENT_PORT ?? 4800}`;
 const VIEW = { width: 800, height: 800 };
 
-const args = process.argv.slice(2);
-const flag = (name: string, or: number) => {
-  const i = args.indexOf(name);
-  return i < 0 ? or : Number(args.splice(i, 2)[1]);
-};
 /** Long enough for the chunks, the buildings and the cars to arrive; in
- *  software (`browser.ts`) far longer: `--settle 30000`. */
+ *  software (`lib.ts`) far longer: `--settle 30000`. */
 const SETTLE_MS = flag("--settle", 6000);
 const frames = flag("--frames", 1);
 const chosen = flag("--select", -1);
@@ -50,19 +42,15 @@ const [x, y, half = 10] = (args[0] ?? "0,0").split(",").map(Number);
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
-const word = (name: string) => {
-  const i = args.indexOf(name);
-  return i < 0 ? null : args.splice(i, 2)[1];
-};
 const held = word("--hold")?.match(/^(\w+)@(-?\d+),(-?\d+)(?:,(\d))?$/);
-const menu = args.includes("--menu") && !!args.splice(args.indexOf("--menu"), 1);
+const menu = has("--menu");
 const size = word("--size")?.split("x").map(Number) ?? [1280, 860];
 const taps: string[] = [];
 for (let t = word("--tap"); t; t = word("--tap")) taps.push(t);
 for (let t = word("--click"); t; t = word("--click")) taps.push(`@${t}`);
 const evals: string[] = [];
 for (let t = word("--eval"); t; t = word("--eval")) evals.push(t);
-const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu || taps.length > 0;
+const ui = has("--ui") || chosen >= 0 || !!held || menu || taps.length > 0;
 const browser = await launch();
 const page = ui ? await open(browser, { width: size[0], height: size[1] }) : await browser.newPage({ viewport: VIEW });
 // As that player.
@@ -97,10 +85,8 @@ for (let n = 0; n < frames; n++) {
 }
 if (frames > 1) {
   const png = async (n: number) => Buffer.from(await Bun.file(`${OUT}/frame-${n}.png`).arrayBuffer()).toString("base64");
-  const cells = (await Promise.all(Array.from({ length: frames }, async (_, n) => `<img src="data:image/png;base64,${await png(n)}">`))).join("");
-  const strip = await browser.newPage({ viewport: { width: 400 * Math.min(frames, 4), height: 400 } });
-  await strip.setContent(`<style>body{margin:0;display:grid;grid-template-columns:repeat(${Math.min(frames, 4)},400px);gap:2px;background:#fff}img{width:400px}</style>${cells}`);
-  await strip.screenshot({ path: `${OUT}/strip.png`, fullPage: true });
+  const cells = await Promise.all(Array.from({ length: frames }, async (_, n) => `<figure><img src="data:image/png;base64,${await png(n)}"></figure>`));
+  await sheet(await browser.newPage(), cells, Math.min(frames, 4), `${OUT}/strip.png`);
 }
 await browser.close();
 console.log(`${frames} frame${frames > 1 ? "s" : ""} → ${OUT}/${frames > 1 ? "strip" : "frame-0"}.png`);
