@@ -352,8 +352,9 @@ impl World {
     /// field — the outside, the coast, the barn and the lane, a house in
     /// the middle — driven round as a ring, each outline of the field
     /// followed tile by tile. The inside is the rest, in straight rows
-    /// along the grain, worked block by block, back and forth, every turn
-    /// made on the headland. The plough and the drill do the rows first
+    /// along the grain, worked block by block, back and forth, each row
+    /// driven right out onto the headland and turned there, plough up.
+    /// On the diagonal only where an edge runs diagonally. The plough and the drill do the rows first
     /// and the headland last, as a farmer does, so the scuffs of the turns
     /// are turned under and no turn is made on fresh seed; the harvest
     /// does the headland first, to have room to turn. Then home along the
@@ -477,11 +478,16 @@ impl World {
                     runs.push(run);
                 }
             }
-            // Each turned on the headland: out onto it, along, and back
-            // into the next, over the headland and the row where it can.
-            for run in runs {
-                let turn: HashSet<(i32, i32)> = head.iter().copied().chain(run.iter().map(|t| (t.x, t.y))).collect();
-                drive(path, &run, &turn);
+            // Each driven right out onto the headland at both ends, and
+            // turned there, plough up, into the next: never a turn on the
+            // rows themselves.
+            let (ax, ay) = if along_x { (1, 0) } else { (0, 1) };
+            for mut run in runs {
+                let (a, b) = (run[0], run[run.len() - 1]);
+                let s = if (b.x - a.x) * ax + (b.y - a.y) * ay >= 0 { 1 } else { -1 };
+                run.insert(0, GridCoord { x: a.x - s * ax, y: a.y - s * ay });
+                run.push(GridCoord { x: b.x + s * ax, y: b.y + s * ay });
+                drive(path, &run, &head);
             }
         };
         let mut path = vec![yard];
@@ -538,6 +544,9 @@ impl World {
             }
             for (dx, dy) in AROUND {
                 if heading.is_some_and(|(hx, hy)| hx * dx + hy * dy < 0) {
+                    continue;
+                }
+                if !square(ground, (x, y), (dx, dy)) {
                     continue;
                 }
                 let n = (x + dx, y + dy);
@@ -624,6 +633,9 @@ fn escapable(ground: &HashSet<(i32, i32)>, home: GridCoord) -> HashSet<State> {
         if !ground.contains(&before) {
             continue;
         }
+        if !square(ground, before, (dx, dy)) {
+            continue;
+        }
         for (bx, by) in AROUND {
             if bx * dx + by * dy >= 0 && seen.insert((before, Some((bx, by)))) {
                 queue.push_back((before, Some((bx, by))));
@@ -675,6 +687,24 @@ fn outlines(land: &HashSet<(i32, i32)>) -> Vec<Vec<GridCoord>> {
         rings.push(ring);
     }
     rings
+}
+
+/// Whether a step keeps to the lie of the ground: straight, or on the
+/// diagonal only along an edge that runs diagonally — past a missing
+/// corner the ground goes on missing along that diagonal, as a coast or
+/// a road on the slant does — never across the corner of a square edge
+/// or squeezed between two things.
+fn square(ground: &HashSet<(i32, i32)>, (x, y): (i32, i32), (dx, dy): (i32, i32)) -> bool {
+    if dx == 0 || dy == 0 {
+        return true;
+    }
+    let missing = |(tx, ty): (i32, i32)| !ground.contains(&(tx, ty));
+    let slant = |(cx, cy): (i32, i32)| missing((cx - dx, cy - dy)) || missing((cx + dx, cy + dy));
+    match (missing((x + dx, y)), missing((x, y + dy))) {
+        (true, false) => slant((x + dx, y)),
+        (false, true) => slant((x, y + dy)),
+        _ => false,
+    }
 }
 
 /// Steps between two tiles, eight ways: the longer of the two distances.
