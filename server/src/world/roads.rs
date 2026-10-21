@@ -1,5 +1,3 @@
-use crate::fixed::HashSet;
-
 use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
@@ -492,9 +490,11 @@ impl World {
     /// than out, as where two lanes become one. There who goes first is
     /// the junction's and the merge's to say, as anywhere ways meet.
     pub fn is_intersection(&self, node_id: EntityId) -> bool {
-        let lanes = |edges: Vec<(EntityId, EntityId)>| edges.iter().filter_map(|e| self.edges.get(e)).map(|s| s.lanes as usize).sum::<usize>();
-        let arms = self.arms_of(node_id, false);
-        self.unique_connection_count(node_id) > 2 || lanes(arms.iter().map(|&n| (n, node_id)).collect()) > lanes(arms.iter().map(|&n| (node_id, n)).collect())
+        let Some(GameObject::RoadNode(node)) = self.objects.get(node_id).map(|e| &e.object) else { return false };
+        let arms = || node.outgoing.iter().chain(&node.incoming).copied();
+        let lanes = |edge| self.edges.get(&edge).map_or(0, |s| s.lanes as usize);
+        let distinct = arms().enumerate().filter(|&(i, n)| !arms().take(i).any(|m| m == n)).count();
+        distinct > 2 || arms().map(|n| lanes((n, node_id))).sum::<usize>() > arms().map(|n| lanes((node_id, n))).sum::<usize>()
     }
 
     /// Count what the mayor has laid, from the nodes' own flags.
@@ -504,11 +504,6 @@ impl World {
             .roads()
             .filter(|e| matches!(e.object, GameObject::RoadNode(ref n) if n.laid))
             .count() as u32;
-    }
-
-    pub(super) fn unique_connection_count(&self, node_id: EntityId) -> usize {
-        let unique: HashSet<EntityId> = self.arms_of(node_id, false).into_iter().collect();
-        unique.len()
     }
 }
 

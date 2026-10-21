@@ -65,7 +65,9 @@ impl World {
     ///
     fn is_driveway_stub(&self, coord: GridCoord) -> bool {
         let Some(node) = self.road_node_at(coord) else { return false };
-        if self.unique_connection_count(node) > 1 {
+        let Some(GameObject::RoadNode(node)) = self.objects.get(node).map(|e| &e.object) else { return false };
+        let mut arms = node.outgoing.iter().chain(&node.incoming);
+        if let Some(first) = arms.next() && arms.any(|a| a != first) {
             return false;
         }
         if self.occupied.contains_key(&(coord.x, coord.y)) {
