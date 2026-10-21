@@ -80,9 +80,9 @@ export declare namespace JSX {
     /** Panes of one layer melt together; a later layer lies over an earlier one. */
     layer: string;
     dye?: string;
-    /** How little of the town shows through it, 0 to 1: more where what
-     *  is on it must read whatever is under, a chart's red and green. */
-    opaque?: number;
+    /** How much more the town under it is blurred, 0 to 1: more where
+     *  what is on it must read whatever is under, a chart's red and green. */
+    frost?: number;
   }
 
   interface Text extends Common {

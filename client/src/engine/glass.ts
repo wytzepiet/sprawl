@@ -115,7 +115,7 @@ fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
 /** The rim's rise across the bezel, 0 at the edge to 1 where it is flat: a squircle. */
 fn rise(x: f32) -> f32 { return pow(1 - pow(1 - clamp(x, 0, 1), 4.0), 0.25); }
 
-struct Field { d: f32, dye: vec4f, size: f32, opaque: f32 }
+struct Field { d: f32, dye: vec4f, size: f32, frost: f32 }
 fn field(p: vec2f, run: Run) -> Field {
   let k = glass.size.w;
   var f = Field(1e6, vec4f(0), 0, 0);
@@ -131,7 +131,7 @@ fn field(p: vec2f, run: Run) -> Field {
     // The dye melts as the shapes do: a pane's colour to its edge, blended
     // only where it runs into another.
     f.dye = mix(f.dye, pane.dye, h);
-    f.opaque = mix(f.opaque, pane.round.w, h);
+    f.frost = mix(f.frost, pane.round.w, h);
   }
   return f;
 }
@@ -177,7 +177,8 @@ fn field(p: vec2f, run: Run) -> Field {
   let bend = g * lens * ${BEND} * dpr * thick;
   let uv = (p + bend) / dims;
   let split = g * lens * 3 * dpr * thick / dims;
-  let frost = ${FROST};
+  // A frosted pane blurs it further, toward a wash of the ground's colour.
+  let frost = ${FROST} + 2.2 * f.frost;
   let seen = vec3f(
     textureSampleLevel(under, soft, uv + split, frost).r,
     textureSampleLevel(under, soft, uv, frost).g,
@@ -187,7 +188,7 @@ fn field(p: vec2f, run: Run) -> Field {
   // mean round it, so busy ground does not fight what sits on the glass.
   // The rim, where the lens is, keeps it all.
   let around = textureSampleLevel(under, soft, uv, 4.5).rgb;
-  let seenCalm = mix(seen, around, ${CALM} * (1 - lens));
+  let seenCalm = mix(seen, around, (${CALM} + 0.4 * f.frost) * (1 - lens));
 
   // Pressed, the glass lights from inside, under the finger and out
   // through any glass near it: what is seen through it brightens and
@@ -199,8 +200,6 @@ fn field(p: vec2f, run: Run) -> Field {
 
   // Its body: what is seen, washed with the light on a pane.
   var body = mix(vivid, glass.tint.rgb, glass.tint.a * (1 - 0.6 * glow));
-  // An opaque pane lets less of the town through, the light on it more.
-  body = mix(body, glass.tint.rgb, f.opaque * (1 - 0.6 * glow));
   // Lit by the sun: its colour cast through the whole pane, gold at dawn
   // and dusk, nothing at noon's white or by night.
   body *= mix(vec3f(1), glass.sun.rgb, ${SUNLIT} * glass.sun.a);
@@ -424,14 +423,14 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
         data[o + 4] = Math.min(p.r * dpr, hx, hy);
         data[o + 5] = p.fade;
         data[o + 6] = Math.min(hx, hy);
-        data[o + 7] = p.opaque ?? 0;
+        data[o + 7] = p.frost ?? 0;
         const dye = p.dye ? hexRgb(p.dye) : null;
         if (dye) data.set([...dye, 1], o + 8);
         box.x0 = Math.min(box.x0, p.x * dpr);
         box.y0 = Math.min(box.y0, p.y * dpr);
         box.x1 = Math.max(box.x1, (p.x + p.w) * dpr);
         box.y1 = Math.max(box.y1, (p.y + p.h) * dpr);
-        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""},${(p.opaque ?? 0).toFixed(2)};`;
+        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""},${(p.frost ?? 0).toFixed(2)};`;
         i++;
       }
       if (i === first) return false;

@@ -15,8 +15,8 @@ export interface Page {
   /** The same page pushed again comes to the front, not twice. */
   key: string;
   view: () => JSX.Element;
-  /** How little of the town shows through its glass (`opaque`). */
-  opaque?: number;
+  /** How much more its glass blurs the town (`frost`). */
+  frost?: number;
 }
 
 const [pages, setPages] = createSignal<Page[]>([]);
@@ -121,7 +121,7 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
               setPull(0);
             };
             return (
-              <glass layer={`page:${s.page.key}`} round={30} at={{ left: 0, bottom: 0 }} w={props.width} h={Math.max(1, h())} y={y()} scale={sc()} origin={[0.5, 1]} opaque={s.page.opaque} clip onScroll={drag}>
+              <glass layer={`page:${s.page.key}`} round={30} at={{ left: 0, bottom: 0 }} w={props.width} h={Math.max(1, h())} y={y()} scale={sc()} origin={[0.5, 1]} frost={s.page.frost} clip onScroll={drag}>
                 <box w={props.width} y={-scroll()} opacity={Math.max(0, Math.min(1, ink()))} onSize={(_, hh) => setOwn(hh)}>
                   <box at={{ left: props.width / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
                   {untrack(() => s.page.view())}
