@@ -11,7 +11,7 @@ html, body {
 
 /* The interchange's panes are glass the GPU draws under every element
    marked `data-glass` (`engine/glass.ts`); what is here is what sits on
-   it. Its ink takes the light (`ui/Glass.tsx` sets these as the day turns). */
+   it. Its ink takes the light (`ui/Glass.ts` sets these as the day turns). */
 :root {
   --glass: 255 255 255;
   --ink: 47 61 56;

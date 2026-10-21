@@ -79,7 +79,5 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
-    rolldownOptions: {},
   },
-  dev: {},
 });

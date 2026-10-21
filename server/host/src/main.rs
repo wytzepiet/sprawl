@@ -6,7 +6,6 @@ mod persistence;
 use sprawl::{blueprint, fixtures, needs};
 use axum::Router;
 use tokio::sync::mpsc;
-use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
 use network::AppState;
@@ -31,7 +30,6 @@ async fn main() {
         .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
         .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
-        .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
 

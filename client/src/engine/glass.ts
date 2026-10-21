@@ -60,7 +60,7 @@ const SUNLIT = 0.35;
 /** How far a press's light spreads through the glass, in CSS pixels. */
 const GLOW = 40;
 
-/** The light the glass is held up in, set as the day turns (`ui/Glass.tsx`). */
+/** The light the glass is held up in, set as the day turns (`ui/Glass.ts`). */
 export const light = {
   /** The pane's own colour, the light through it: 0–1. */
   tint: [1, 1, 1] as [number, number, number],
