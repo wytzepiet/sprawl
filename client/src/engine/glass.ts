@@ -57,6 +57,8 @@ const SEA_GLASS: [number, number, number] = [0.62, 0.86, 0.82];
 const COLOUR = 0.45;
 /** How much the sun's colour is cast through the glass. */
 const SUNLIT = 0.26;
+/** How near black a pane is at its foot: clear at its top, deepening down. */
+const DEEP = 0.85;
 /** How far a press's light spreads through the glass, in CSS pixels. */
 const GLOW = 40;
 
@@ -115,10 +117,10 @@ fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
 /** The rim's rise across the bezel, 0 at the edge to 1 where it is flat: a squircle. */
 fn rise(x: f32) -> f32 { return pow(1 - pow(1 - clamp(x, 0, 1), 4.0), 0.25); }
 
-struct Field { d: f32, dye: vec4f, size: f32, frost: f32 }
+struct Field { d: f32, dye: vec4f, size: f32, frost: f32, down: f32 }
 fn field(p: vec2f, run: Run) -> Field {
   let k = glass.size.w;
-  var f = Field(1e6, vec4f(0), 0, 0);
+  var f = Field(1e6, vec4f(0), 0, 0, 0);
   for (var i = run.first; i < run.first + run.count; i++) {
     let pane = glass.panes[i];
     if (pane.round.y <= 0.002) { continue; }
@@ -132,6 +134,8 @@ fn field(p: vec2f, run: Run) -> Field {
     // only where it runs into another.
     f.dye = mix(f.dye, pane.dye, h);
     f.frost = mix(f.frost, pane.round.w, h);
+    // How far down the pane it is, 0 at its top to 1 at its foot.
+    f.down = mix(f.down, clamp(0.5 + 0.5 * (p.y - pane.box.y) / pane.box.w, 0, 1), h);
   }
   return f;
 }
@@ -199,7 +203,9 @@ fn field(p: vec2f, run: Run) -> Field {
   let vivid = max(mix(vec3f(luma(lit)), lit, 1 + 0.7 * glow), vec3f(0));
 
   // Its body: what is seen, washed with the light on a pane.
-  var body = mix(vivid, glass.tint.rgb, glass.tint.a * (1 - 0.6 * glow));
+  // Clear at its top, it deepens down to nearly black at its foot.
+  var body = mix(vivid, glass.tint.rgb, glass.tint.a * mix(0.3, 1, f.down) * (1 - 0.6 * glow));
+  body = mix(body, glass.tint.rgb * 0.12, ${DEEP} * pow(f.down, 1.6) * (1 - 0.6 * glow));
   // A frosted pane is a little more solid too: less town, more of the light on it.
   body = mix(body, glass.tint.rgb, 0.22 * f.frost * (1 - 0.6 * glow));
   // Lit by the sun: its colour cast through the whole pane, gold at dawn
