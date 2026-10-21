@@ -2,7 +2,7 @@
 
 Status: plan, 2026-10-10. This is a brief for one long session. It
 builds on what runs (`shipping.md` §Built: one ferry per harbour, a tug,
-a trailer park, depots' lorries, rules), and covers `plan.md` item 10:
+a trailer park, depots' lorries, rules), and covers `archive/plan.md` item 10:
 the container port and the network. Where it parts from `shipping.md`
 it says so and gives the reason. Change the other documents to match as
 each stage lands.

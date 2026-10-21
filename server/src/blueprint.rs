@@ -49,7 +49,7 @@ pub struct Blueprint {
     /// quay behind it (`world/sea.rs`).
     pub quay: bool,
     /// A farm: its land is what its tractor ploughs in a shift, and its
-    /// yard holds a harvest, the cycle's make (docs/economy.md §12.8).
+    /// yard holds a harvest, the cycle's make (`world/fields.rs`).
     pub farm: bool,
 }
 

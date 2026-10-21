@@ -7,7 +7,7 @@ has to stay in the tree to be remembered.
 
 ## The price economy (2026-10-10)
 
-**What.** `economy.md` as built through §12.10: every building posting a
+**What.** `archive/economy.md` as built through §12.10: every building posting a
 price for what it fills and nudging it by its stock, never below unit
 cost; a buyer taking the cheapest delivered seller; money entering the
 score as hours of the mover's wage (Becker); households posting an ask
@@ -21,7 +21,7 @@ the `season` test asserting the band, no ringing, no harm and tenure.
 **Why shelved.** It held together and was not a game. Its own rule 8,
 ignoring prices never hurts, said that a player did not need it, and a
 player who could not predict what placing a building would do to the
-reserve read the result as weather. Most of `economy.md` §13 was the
+reserve read the result as weather. Most of `archive/economy.md` §13 was the
 calibration of a system the player was designed not to need. The
 decisions moved to the border, where the player can make them
 (`trade.md`): inside a town a buyer takes the nearest seller with stock,
@@ -30,7 +30,7 @@ and a shipment that can be followed.
 
 **To bring back.** Only if a town grows owners the player is not, so
 that a price inside it decides something the player could not. The
-mechanisms are in `economy.md` §4 to §8 and §12, each with its referent.
+mechanisms are in `archive/economy.md` §4 to §8 and §12, each with its referent.
 The code last lived at `7364679`, the commit before milestone 0's cut
 of it.
 
@@ -68,7 +68,7 @@ rate for the client to run the dials forward between updates. Placing
 cost hours of need served, discounted by the build.
 
 **Why shelved.** Money became its own quantity, in purses, moved by sales
-(`economy.md`). Level is still hours served, but banked in lumps as each
+(`archive/economy.md`). Level is still hours served, but banked in lumps as each
 visit ends, like everything else; and a dial that steps is an event that
 happened on the map, where a dial that glides is a rate.
 
@@ -78,7 +78,7 @@ change of `at` or `selected`. Last lived at `0954125`.
 
 ## Purses, floats, the sweep and rent
 
-**What.** `economy.md` §8.2 as first built: every resident had a wallet
+**What.** `archive/economy.md` §8.2 as first built: every resident had a wallet
 and every building a balance, in hours of the edge's wage. A visit's
 price left the wallet and landed on the building as a lump; a shift left
 the building and landed in the wallet. Every purse kept a float — a
@@ -102,7 +102,7 @@ is their wage, a building's is its books.
 not — a firm that moved in by itself, a landlord — so that a transfer
 between purses changes who has what. Then `wallet` and `balance` on the
 structs, `sale` moving money instead of writing lines, and §8.2 as it
-was. Last lived at the commit before `economy.md` step 4.
+was. Last lived at the commit before `archive/economy.md` step 4.
 
 ## Zoning
 
@@ -333,7 +333,7 @@ runs between them with an acute-angle rule, a ring laid past the frontier
 so arriving from off the map was a long haul, and the starting town's
 streets laid the same way. The `Edge` building stood where a road left the
 survey, with every tap and the world's prices; everything the town lacked
-was served there (`economy.md` §8.1).
+was served there (`archive/economy.md` §8.1).
 
 **Why shelved.** Decided 2026-09-23. The first road is the player's, from
 the ramp, and a road born with the map was a road the player did not
@@ -347,7 +347,7 @@ Last lived at `df49b81`.
 
 ## Services as a good
 
-**What.** `economy.md` §12.5: services as a need drawn by the day by every
+**What.** `archive/economy.md` §12.5: services as a need drawn by the day by every
 household and a fifth of every firm's labour, made by the office at its
 row's rate, delivered by a consultant's car from an office in town or from
 beyond the edge, with the office as the town's export base before there
@@ -367,7 +367,7 @@ on homes and firms, `economy::draw`, `services()`, the fifth on
 
 ## Wear, parts and the workshop
 
-**What.** `economy.md` §12.6: a second per-tile stock on every car, put
+**What.** `archive/economy.md` §12.6: a second per-tile stock on every car, put
 right at a workshop that bought parts from beyond the edge or the
 warehouse, priced as a service every two and a half tanks.
 
@@ -397,7 +397,7 @@ costs, and both are trucks on the road.
 
 ## The port's own ship
 
-**What.** `economy.md` §12.10 as built: the port a depot whose lorry is a
+**What.** `archive/economy.md` §12.10 as built: the port a depot whose lorry is a
 ship, sailing from the quay to the map's edge when a shelf ran low and
 landing every shelf's worth at the sea's crossing. `CarRole::Ship`,
 `World::{set_sail, sail_home, ship_step, moor}`, `calls::dispatch`'s
@@ -432,7 +432,7 @@ materials, which is a warehouse.
 
 ## Haulers
 
-**What.** `economy.md` §3 and §5.3, filed from the start: a company whose
+**What.** `archive/economy.md` §3 and §5.3, filed from the start: a company whose
 vehicles carry for others at a posted price a load a tile, its stock idle
 capacity. Argued again 2026-09-23 for exports by ship and for the site's
 deliveries.

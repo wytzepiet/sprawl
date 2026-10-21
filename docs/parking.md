@@ -147,7 +147,7 @@ fused along a frontage until 2026-09-09, when a lot became its
 building's own (§3.2), and §3.7 and §3.8 went with the fusing and the
 spawner: what is left of them is history, marked as such. Reverse is not
 needed until the warehouse gets its bays. Follows
-`services.md` (streets, driveways, call-outs) and `residents.md` (how a
+`archive/services.md` (streets, driveways, call-outs) and `residents.md` (how a
 trip is chosen). `game.md` §People says parked cars sit in the building's
 spots; this is how.
 
@@ -638,7 +638,7 @@ Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
 ## 9. Open
 
 - **Gridlock between driveways (2026-09-10), curbed 2026-09-11.** With
-  the offices' cars on the street (`economy.md` §12.5) the season town's
+  the offices' cars on the street (`archive/economy.md` §12.5) the season town's
   one street locked up on its third day and stayed locked. Two driveway
   junctions two tiles apart each held a car whose tail was still in the
   box because the car ahead stood at the other junction's stop line, a

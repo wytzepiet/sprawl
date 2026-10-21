@@ -235,6 +235,14 @@ nearest seller with stock, by road.** Nothing inside a town has a price.
 The player never routes a load inside the town; the road decides who is
 nearest, and the game is the road.
 
+**A call is a good and a place** (`calls.rs`). A shelf at its reorder
+point calls, and so does a site for each material it waits on; the
+nearest depot with the good on its shelf and a van free answers, by road.
+The van drives to the caller, spends its service time at the door, and
+goes home. What the town lacks comes by sea. A service's emergencies
+will be calls the same way, the nearest vehicle free answering, and
+lateness costs: a shelf empty, a fire spread.
+
 **Depots keep everything.** What is made or bought is stored somewhere
 real. A general depot holds a little of every class; a warehouse, a tank
 farm and a bulk yard hold much of one. The town's stock is what its
@@ -353,7 +361,6 @@ ride-along camera behind a shipment.
 
 ## Order
 
-`roadmap.md` holds it, as playable milestones. The shape: the cut, then
-the opening, then the world as a trader, then chains in town, then roads
-that are roads, then other people and trade between them, power,
-services, the advisor.
+`roadmap.md` holds it, each step pointing at its plan: the market, the
+sea's network and the container port, chains in town, roads that are
+roads, power, services, other people, the advisor.

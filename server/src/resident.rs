@@ -163,8 +163,7 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
         .iter()
         .map(|b| match b.need {
             Need::Work if !fit(buckets) => Verdict::Nothing,
-            // A maker's yard with no room for the next load offers no work
-            // (docs/economy.md §13.19).
+            // A maker's yard with no room for the next load offers no work.
             Need::Work => r
                 .work
                 .filter(|&w| economy::hiring(world, w))
@@ -175,7 +174,7 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
         .collect()
 }
 
-/// A row with an empty input stops (docs/economy.md §4): a resident
+/// A row with an empty input stops: a resident
 /// whose food, sleep or tank stands at zero cannot work until it does
 /// not. A week of night shifts ends in a lie-in.
 fn fit(buckets: &[Bucket]) -> bool {
@@ -627,7 +626,7 @@ pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: E
         hired = r.work == Some(place);
     }
     // A hand arriving is a change at the workplace: a farm's tractor goes
-    // out with someone to drive it (docs/economy.md §12.8).
+    // out with someone to drive it (`world/fields.rs`).
     if hired {
         crate::calls::turn(world, events, place, now);
     }

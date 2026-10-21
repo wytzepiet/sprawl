@@ -1,5 +1,5 @@
 //! Call-outs: something in the town calls, and a vehicle answers.
-//! docs/services.md §5.
+//! docs/game.md §Goods.
 //!
 //! A call has a good and a place. A stock at its reorder point calls, and
 //! the building takes its turn: the nearest depot with the good on its
