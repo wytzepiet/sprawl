@@ -1,6 +1,7 @@
+import { createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { GOODS } from "../blueprints";
-import type { Good, Prices, Quote } from "../generated";
+import type { Good, Prices, Quote, Stock } from "../generated";
 
 /**
  * The market as the server last sent it (`market.rs`): each good's price,
@@ -9,6 +10,10 @@ import type { Good, Prices, Quote } from "../generated";
  * whenever it changes, an hour of the town's day at most.
  */
 const [market, setMarket] = createStore<Prices>({ goods: [], orders: [], hour: 0 });
+
+/** Every standing depot's shelves added up, as the server counts them,
+ *  wherever the camera is: none, no depot yet. */
+export const [stocks, hearStocks] = createSignal<Partial<Record<Good, Stock>>>({});
 export { market };
 
 export const hearMarket = (p: Prices) => setMarket(reconcile(p));

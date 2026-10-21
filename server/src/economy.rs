@@ -576,7 +576,23 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
         imports: town.purchases(),
         taken: world.build.taken(),
         road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
+        held: held(world),
     }
+}
+
+/// Every standing depot's shelves added up.
+fn held(world: &World) -> BTreeMap<Good, Stock> {
+    let mut sum: BTreeMap<Good, Stock> = BTreeMap::new();
+    for e in world.objects.iter() {
+        let GameObject::Building(b) = &e.object else { continue };
+        if b.kind != BuildingKind::Depot || b.site.is_some() { continue }
+        for (&g, s) in &b.stocks {
+            let t = sum.entry(g).or_insert(Stock { level: 0.0, cap: 0.0 });
+            t.level += s.level;
+            t.cap += s.cap;
+        }
+    }
+    sum
 }
 
 /// The town's page: the GDP it added today and what crossed the border,

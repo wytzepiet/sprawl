@@ -1,14 +1,14 @@
 /** @jsxImportSource ~ui */
 import { createMemo, createRoot, createSignal, For, Index, Show } from "solid-js";
-import { eachEntity, useGame } from "../state/gameObjects";
-import { now, sea } from "../state/sea";
-import { change, market, quoteOf, total } from "../state/market";
+import { useGame } from "../state/gameObjects";
+import { sea } from "../state/sea";
+import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { Shelf } from "./Depot";
 import { Line, Press } from "./kit";
 import { good, setGood, setOpen, sheetWidth } from "./sheet";
-import type { Building, Good, Quote, When } from "../generated";
+import type { Good, Quote, When } from "../generated";
 
 /**
  * The market tab (docs/plan-market.md §The first version): every good,
@@ -34,22 +34,12 @@ export const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].lab
 export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : DOWN);
 export const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
 
-/** Every standing depot's shelves added up, a good at a time, with what
- *  is on its way in. */
+/** Every good held, with what is on its way in. */
 export const held = createRoot(() =>
   createMemo(() => {
-    now();
     const sum = new Map<Good, { level: number; cap: number; incoming: number }>();
-    eachEntity((e) => {
-      if (e.object.kind !== "Building") return;
-      const b = e.object.data as Building;
-      if (b.kind !== "Depot" || b.site) return;
-      for (const [g, s] of Object.entries(b.stocks) as [Good, { level: number; cap: number }][]) {
-        const t = sum.get(g) ?? { level: 0, cap: 0, incoming: 0 };
-        sum.set(g, { ...t, level: t.level + s.level, cap: t.cap + s.cap });
-      }
-    });
-    for (const [g, t] of sum) t.incoming = sea.shipments.filter((s) => s.good === g && !s.outbound).reduce((a, s) => a + s.units, 0);
+    for (const [g, s] of Object.entries(stocks()) as [Good, { level: number; cap: number }][])
+      sum.set(g, { ...s, incoming: sea.shipments.filter((x) => x.good === g && !x.outbound).reduce((a, x) => a + x.units, 0) });
     return sum;
   }),
 );

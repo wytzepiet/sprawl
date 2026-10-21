@@ -9,7 +9,7 @@ import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
-import { hearMarket } from "./market";
+import { hearMarket, hearStocks } from "./market";
 import { hearMissions } from "./missions";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
@@ -287,6 +287,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
     imports: 0,
     taken: [],
     road_tiles_left: 0,
+    held: {},
   });
   const [island, setIsland] = createSignal<ChunkBounds>({
     min_cx: 0,
@@ -302,6 +303,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
+        hearStocks(msg.data.growth.held);
         hearSea(msg.data.sea);
         hearMissions(msg.data.missions, msg.data.neighbours);
         // Many at once when the view travels: spread over frames, in order.
@@ -348,7 +350,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
  *  see and has no one to tell. */
 export function OfflineGame(props: ParentProps) {
   const none = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
-  const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0 };
+  const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0, held: {} };
   return (
     <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
       {props.children}

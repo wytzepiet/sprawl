@@ -1088,6 +1088,9 @@ pub struct Growth {
     pub taken: Vec<crate::tree::Cell>,
     /// Tiles of road the mayor may still lay.
     pub road_tiles_left: u32,
+    /// Every standing depot's shelves added up, wherever the camera is:
+    /// none, no depot yet.
+    pub held: std::collections::BTreeMap<Good, crate::needs::Stock>,
 }
 
 /// Something landing on a building: coins as goods cross the border, a
