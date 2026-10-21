@@ -245,7 +245,8 @@ impl Level {
         (level, world)
     }
 
-    fn parse(name: &str, text: &str) -> (Level, World) {
+    /// A level from its text, built into a fresh world.
+    pub(crate) fn parse(name: &str, text: &str) -> (Level, World) {
         let mut world = World::new();
         world.treasury = f64::MAX / 4.0;
         world.missions.list.clear();

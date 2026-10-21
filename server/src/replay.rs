@@ -84,7 +84,7 @@ impl Session {
     pub fn new(name: &str, text: &str, commit: &str) -> Session {
         let (level, world) = Level::build(name, text);
         let (n, t) = (name.to_string(), text.to_string());
-        let again = move || Level::build(&n, &t).1;
+        let again = move || Level::parse(&n, &t).1;
         let mut game = Game::new(world, DAY_MS as u64 / 2, 1, Box::new(again));
         game.connect(ME, OwnerId::default());
         let record = Replay { commit: commit.to_string(), level: name.to_string(), text: text.to_string(), ..Replay::default() };
