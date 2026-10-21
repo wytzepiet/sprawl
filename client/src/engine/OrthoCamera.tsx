@@ -67,7 +67,7 @@ export interface Bounds {
  */
 export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
   const { scene, canvas, beforeRender, afterRender } = useEngine();
-  const { send, island } = useGame();
+  const { send, island, welcomed } = useGame();
 
   const camera = createFreeCamera({ x: 0, y: 0, z: 10 }, { x: 0, y: 0, z: 0 });
   camera.nearPlane = 1;
@@ -87,7 +87,7 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
   let targetCamX = camera.position.x;
   let targetCamY = camera.position.y;
   let debugMode = false;
-  let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
+  let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN, lastWelcome = 0;
 
   /**
    * Hold the camera at the height that puts `viewHalf` tiles between the middle
@@ -230,13 +230,15 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
     const minCy = chunk(camera.position.y - viewHalf) - PAD;
     const maxCy = chunk(camera.position.y + viewHalf) + PAD;
 
-    if (minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
+    // A server that welcomed us since knows nothing of what we asked for.
+    const welcome = welcomed();
+    if (welcome === lastWelcome && minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
 
     // Only remember bounds the server actually heard. The socket is still
     // opening on the first frames, and caching a dropped send would leave the
     // client subscribed to nothing until it happened to pan across a chunk.
     if (!send({ type: "SetChunks", data: { min_cx: minCx, min_cy: minCy, max_cx: maxCx, max_cy: maxCy } })) return;
-    lastMinCx = minCx; lastMinCy = minCy; lastMaxCx = maxCx; lastMaxCy = maxCy;
+    lastMinCx = minCx; lastMinCy = minCy; lastMaxCx = maxCx; lastMaxCy = maxCy; lastWelcome = welcome;
   }
 
   // Smooth zoom animation

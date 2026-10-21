@@ -250,6 +250,8 @@ function* applying(ops: Operation[], lumps: Lump[]) {
 // --- Context (thin — just what UI needs) ---
 
 interface GameContext {
+  /** How many times the server has welcomed this client: once a socket. */
+  welcomed(): number;
   /** The island's map, in chunks: the camera stays over it. */
   island(): ChunkBounds;
   /** The two dials: the city's level, and what the mayor has to spend. */
@@ -268,6 +270,7 @@ const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0,
 const NO_ISLAND: ChunkBounds = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
 
 export function GameProvider(props: ParentProps & { connect: Connect }) {
+  const [welcomed, setWelcomed] = createSignal(0);
   const [growth, setGrowth] = createSignal<Growth>(NO_GROWTH);
   const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
@@ -289,6 +292,18 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
       case "UnloadChunk":
         terrainListener?.unloadChunk(msg.data);
         break;
+      case "Welcome":
+        // A server new to this client, or come back after a restart, that
+        // knows nothing of what it held: let it all go, and the camera asks
+        // for its view again.
+        applyOps([...entities.values()].map((e) => ({ op: "Delete", data: e.id })));
+        for (const key of ground.keys()) {
+          const [cx, cy] = key.split(",").map(Number);
+          terrainListener?.unloadChunk({ cx, cy });
+        }
+        ground.clear();
+        setWelcomed((n) => n + 1);
+        break;
       case "News":
         for (const n of msg.data) tell(n.text, n.sub, n.at, true);
         break;
@@ -301,7 +316,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ island, growth, send }}>
+    <Ctx.Provider value={{ welcomed, island, growth, send }}>
       {props.children}
     </Ctx.Provider>
   );
@@ -311,7 +326,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
  *  see and has no one to tell. */
 export function OfflineGame(props: ParentProps) {
   return (
-    <Ctx.Provider value={{ island: () => NO_ISLAND, growth: () => NO_GROWTH, send: () => true }}>
+    <Ctx.Provider value={{ welcomed: () => 0, island: () => NO_ISLAND, growth: () => NO_GROWTH, send: () => true }}>
       {props.children}
     </Ctx.Provider>
   );
