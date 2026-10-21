@@ -57,8 +57,10 @@ const SEA_GLASS: [number, number, number] = [0.62, 0.86, 0.82];
 const COLOUR = 0.45;
 /** How much the sun's colour is cast through the glass. */
 const SUNLIT = 0.26;
-/** How near black a pane is at its foot: clear at its top, deepening down. */
+/** How near black a pane is past its clear edge, and how far in, in CSS
+ *  pixels, it takes to get there. */
 const DEEP = 0.85;
+const RAMP = 56;
 /** How far a press's light spreads through the glass, in CSS pixels. */
 const GLOW = 40;
 
@@ -134,8 +136,10 @@ fn field(p: vec2f, run: Run) -> Field {
     // only where it runs into another.
     f.dye = mix(f.dye, pane.dye, h);
     f.frost = mix(f.frost, pane.round.w, h);
-    // How far down the pane it is, 0 at its top to 1 at its foot.
-    f.down = mix(f.down, clamp(0.5 + 0.5 * (p.y - pane.box.y) / pane.box.w, 0, 1), h);
+    // How deep into the pane it is from its clear edge, the one facing the
+    // middle of the screen: the top of a pane low on it, the foot of one high.
+    let edge = select(p.y - (pane.box.y - pane.box.w), pane.box.y + pane.box.w - p.y, pane.box.y < 0.5 * glass.size.y);
+    f.down = mix(f.down, smoothstep(0, ${RAMP} * glass.size.z, edge), h);
   }
   return f;
 }
@@ -203,9 +207,12 @@ fn field(p: vec2f, run: Run) -> Field {
   let vivid = max(mix(vec3f(luma(lit)), lit, 1 + 0.7 * glow), vec3f(0));
 
   // Its body: what is seen, washed with the light on a pane.
-  // Clear at its top, it deepens down to nearly black at its foot.
+  // Clear along its edge, it deepens past it to nearly black: the town's
+  // own colour multiplied down, richer, so it is a deep green over grass
+  // and a deep blue over sea, never a grey.
   var body = mix(vivid, glass.tint.rgb, glass.tint.a * mix(0.3, 1, f.down) * (1 - 0.6 * glow));
-  body = mix(body, glass.tint.rgb * 0.12, ${DEEP} * pow(f.down, 1.6) * (1 - 0.6 * glow));
+  let rich = max(mix(vec3f(luma(vivid)), vivid, 1.5), vec3f(0)) * mix(vec3f(1), glass.tint.rgb / max(max(glass.tint.r, glass.tint.g), max(glass.tint.b, 1e-3)), 0.4);
+  body = mix(body, rich * 0.2, ${DEEP} * f.down * (1 - 0.6 * glow));
   // A frosted pane is a little more solid too: less town, more of the light on it.
   body = mix(body, glass.tint.rgb, 0.22 * f.frost * (1 - 0.6 * glow));
   // Lit by the sun: its colour cast through the whole pane, gold at dawn
