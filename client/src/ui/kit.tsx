@@ -6,8 +6,7 @@ import { useEngine } from "../engine/Canvas";
 import { projector } from "../engine/view";
 import { select, setFollowing } from "../state/selection";
 import { GOODS } from "../blueprints";
-import type { Good } from "../generated";
-import type { Neighbour } from "../generated/Neighbour";
+import type { Good, Neighbour } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
 
 /**

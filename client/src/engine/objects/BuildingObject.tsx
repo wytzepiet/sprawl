@@ -14,9 +14,7 @@ import { drawnPath } from "./drawnPath";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import { simNow } from "../../network/clock";
-import type { Building, GameObjectEntry } from "../../generated";
-import type { Job } from "../../generated/Job";
-import type { Tile } from "../../generated/Tile";
+import type { Building, GameObjectEntry, Job, Tile } from "../../generated";
 
 /** A farm's field is the ground the tractor last drove, a strip a tile
  *  wide along its path, painted flat like a map's farmland in one tone

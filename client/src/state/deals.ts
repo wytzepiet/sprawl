@@ -1,8 +1,7 @@
 import { createMemo, createRoot, createSignal } from "solid-js";
 import { now, sea } from "./sea";
 import { missions } from "./missions";
-import type { Good, Offer, Shipment } from "../generated";
-import type { Mayor } from "../generated/Mayor";
+import type { Good, Offer, Shipment, Mayor } from "../generated";
 
 export const GOOD_ORDER: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
 

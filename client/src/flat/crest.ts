@@ -1,4 +1,4 @@
-import type { Neighbour } from "../generated/Neighbour";
+import type { Neighbour } from "../generated";
 
 /**
  * A town beyond the edge, drawn: its crest, the town's initials on a disc

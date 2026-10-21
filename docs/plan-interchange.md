@@ -64,7 +64,7 @@ The work:
    `sim` with the rest of the build).
    - `sim`: protocol, engine, world, cars, junctions, terrain, town.
      No tokio, no SQLite. Its randomness is already seeded `SmallRng`.
-     The town tests and the ts-rs bindings live here.
+     The town tests and the ts-rs exports live here.
    - `server`: the binary. `main`, `network/`, the tokio shell of
      `game_loop`, `persistence`, `health`, `rand::random` for a new seed.
    - `web`: a `cdylib`, `wasm-bindgen` over `Game`, built for the worker.

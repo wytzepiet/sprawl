@@ -4,9 +4,8 @@ import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
-import type { Car, GridCoord, RoadNode, Trailer, Trip } from "../../generated";
+import type { Car, GridCoord, RoadNode, Trailer, Trip, Pose as Stand } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
-import type { Pose as Stand } from "../../generated/Pose";
 
 /**
  * Where a vehicle stands at a moment and what it carries, from the

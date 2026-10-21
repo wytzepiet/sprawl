@@ -27,10 +27,8 @@ import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
 import type { RGB } from "./town/mass";
-import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing, Pose } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
-import type { Placing } from "../generated";
-import type { Pose } from "../generated/Pose";
 import type { Pt } from "./town/footprint";
 import { TRAILER } from "./objects/roadGeometry";
 

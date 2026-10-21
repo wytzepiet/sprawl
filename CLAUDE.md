@@ -215,7 +215,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   there, how fast and what it slows or stops for (`World::why`). `cargo
   test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.
-- **Generated types:** `cd client && bun run generate`
+- **Generated types:** a full `cargo test` in `server/` writes them into
+  `client/src/generated` (`server/.cargo/config.toml`); `cd client && bun
+  run generate` also clears the ones whose type went and lists the rest
+  in its `index.ts`.
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is

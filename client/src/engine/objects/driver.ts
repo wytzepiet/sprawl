@@ -22,7 +22,7 @@
 
 import { drawnPath } from "./drawnPath";
 import { CAB, CAR, LANE_OFFSET, TRAILER } from "./roadGeometry";
-import type { Pose as Stand } from "../../generated/Pose";
+import type { Pose as Stand } from "../../generated";
 
 export type Pt = [number, number];
 

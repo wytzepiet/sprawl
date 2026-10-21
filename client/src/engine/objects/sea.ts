@@ -5,8 +5,7 @@ import { drawnPath } from "./drawnPath";
 import { drive, paced, type Pt, type Rig } from "./driver";
 import { hex, rgb, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
-import type { Good, Sail, Shunt, Trailer } from "../../generated";
-import type { Pose } from "../../generated/Pose";
+import type { Good, Sail, Shunt, Trailer, Pose } from "../../generated";
 
 /**
  * What the harbour moves, shaped: the boxes, the tug that shunts them and

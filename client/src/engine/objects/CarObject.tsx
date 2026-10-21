@@ -17,8 +17,7 @@ import { behind, boxShape, type BoxPart, DECK_Z, rigidShape, deckPose, FERRY_SHA
 import type { Drive, Pose } from "./driver";
 import { aboard, ahead, carried, colourOf, driveOf, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
 import { getEntity } from "../../state/gameObjects";
-import type { Building, Car, GameObjectEntry } from "../../generated";
-import type { Pose as Stand } from "../../generated/Pose";
+import type { Building, Car, GameObjectEntry, Pose as Stand } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 import { HALF_LEVEL, heightAlong } from "../decks";
 import { beam, unbeam } from "../lights";

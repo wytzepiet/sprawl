@@ -5,10 +5,7 @@ import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeomet
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
 import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX, vanParts } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
-import type { Pose as Stand } from "../generated/Pose";
-import type { Compass } from "../generated/Compass";
-import type { Neighbour } from "../generated/Neighbour";
+import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer, Pose as Stand, Compass, Neighbour } from "../generated";
 import { crest } from "./crest";
 
 /**
