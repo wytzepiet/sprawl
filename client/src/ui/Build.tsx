@@ -5,6 +5,7 @@ import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
 import { Info, Press } from "./kit";
+import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
@@ -84,10 +85,8 @@ const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materi
 const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
 /** The group shown: the roads, or a group of buildings. */
 const [group, setGroup] = createSignal<Tab | "roads">("roads");
-/** The page shown in place of the group: a building's or a road tool's. */
-const [page, setPage] = createSignal<{ kind: BuildingKind } | { road: RoadKind } | null>(null);
 // A road taken up, by a key or the head's row, shows the roads.
-createRoot(() => createEffect(() => inHand() && (setGroup("roads"), setPage(null))));
+createRoot(() => createEffect(() => inHand() && setGroup("roads")));
 
 /**
  * The build tab's head: the roads and the menu's groups, a tap on one
@@ -106,7 +105,7 @@ export function BuildHead() {
               {(t) => {
                 const on = () => group() === t && open();
                 return (
-                  <Press h={36} pad={{ x: 11 }} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(t), setPage(null), setOpen(true))}>
+                  <Press h={36} pad={{ x: 11 }} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(t), setOpen(true))}>
                     <text size={13} weight={600} ink={on() ? "glass" : "ink/0.72"}>{t[0].toUpperCase() + t.slice(1)}</text>
                   </Press>
                 );
@@ -136,25 +135,23 @@ export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
   const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
-  const info = (p: NonNullable<ReturnType<typeof page>>) => (setPage(p), setOpen(true));
+  const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
   return (
-    <Show when={!page()} fallback={<Page />}>
-      <Show when={group() !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
-        <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
-          <For each={kinds()}>
-            {(kind) => (
-              <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
-                <Picture kind={kind} />
-                <box dir="row" align="center" gap={4}>
-                  <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
-                  <Info onTap={() => info({ kind })} />
-                </box>
-                <Materials kind={kind} />
+    <Show when={group() !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
+      <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
+        <For each={kinds()}>
+          {(kind) => (
+            <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+              <Picture kind={kind} />
+              <box dir="row" align="center" gap={4}>
+                <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
+                <Info onTap={() => info({ kind })} />
               </box>
-            )}
-          </For>
-        </box>
-      </Show>
+              <Materials kind={kind} />
+            </box>
+          )}
+        </For>
+      </box>
     </Show>
   );
 }
@@ -177,16 +174,20 @@ function Materials(props: { kind: BuildingKind }) {
   );
 }
 
+type About = { kind: BuildingKind } | { road: RoadKind };
+
 /** A building's or a road tool's page: what it is and what it does,
- *  with a way back to the menu and one to take it up. */
-function Page() {
-  const p = page()!;
+ *  and a way to take it up. */
+function Page(p: About) {
   const name = "kind" in p ? BLUEPRINTS[p.kind].label : road(p.road).label;
   const about = "kind" in p ? BLUEPRINTS[p.kind].about : road(p.road).about;
-  const take = () => (setPage(null), "kind" in p ? hold(p.kind) : takeRoad(p.road));
+  const take = () => ("kind" in p ? hold(p.kind) : takeRoad(p.road));
   return (
-    <box pad={{ x: 12, bottom: 14 }} gap={12}>
-      <box dir="row" align="center" gap={12}>
+    <box pad={{ bottom: 14 }} gap={12}>
+      <PageHead>
+        <text size={17} weight={700} grow={1}>{name}</text>
+      </PageHead>
+      <box dir="row" align="center" gap={12} pad={{ x: 12 }}>
         {"kind" in p ? (
           <Picture kind={p.kind} />
         ) : (
@@ -194,18 +195,14 @@ function Page() {
             <icon d={road(p.road).glyph} size={40} ink="white" />
           </box>
         )}
-        <box grow={1} gap={6}>
-          <text serif size={22}>{name}</text>
+        <box grow={1} gap={8}>
+          <text size={14} soft lead={1.45}>{about}</text>
           {"kind" in p && <Materials kind={p.kind} />}
         </box>
       </box>
-      <text size={14} soft lead={1.45}>{about}</text>
-      <box dir="row" gap={8}>
-        <Press grow={1} h={40} round={14} align="center" justify="center" fill="ink/0.05" onTap={() => setPage(null)}>
-          <text size={13.5} weight={600} ink="ink/0.72">Back</text>
-        </Press>
-        <Press grow={1} h={40} round={14} align="center" justify="center" fill="ink/0.85" onTap={take}>
-          <text size={13.5} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</text>
+      <box pad={{ x: 12 }}>
+        <Press h={44} round={16} align="center" justify="center" fill="ink/0.85" onTap={take}>
+          <text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</text>
         </Press>
       </box>
     </box>

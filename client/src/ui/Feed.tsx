@@ -6,7 +6,7 @@ import { clockAt, news, sea, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { deals, letterOf, setSpread, spread, stepsOf, type Deal } from "../state/deals";
 import { quoteOf, total } from "../state/market";
-import { toMarket } from "./sheet";
+import { toMarket } from "./Market";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";

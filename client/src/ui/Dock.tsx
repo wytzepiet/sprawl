@@ -13,6 +13,7 @@ import { MarketBody, MarketHead } from "./Market";
 import { StockBody, StockHead } from "./Stock";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { Press, view, wide } from "./kit";
+import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "~ui/jsx-runtime";
 
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
@@ -51,8 +52,8 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
 export default function Dock() {
   const { canvas } = useEngine();
 
-  // A press on the town sinks the sheet to its head.
-  const away = () => setOpen(false);
+  // A press on the town takes the pages away, or sinks the sheet to its head.
+  const away = () => (pages().length ? clear() : setOpen(false));
   canvas.addEventListener("pointerdown", away);
   onCleanup(() => canvas.removeEventListener("pointerdown", away));
 
@@ -63,6 +64,7 @@ export default function Dock() {
     if ((e.target as HTMLElement)?.closest?.("input, textarea")) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
+    if (e.key === "Escape" && pages().length) return pop();
     if (e.key === "Escape") return tool() || held() ? setTool(null) : open() && tab() !== "select" ? setOpen(false) : select(null);
     if (key === "V") return show("select", selected() !== null);
     if (key === "X") return take("Demolish");
@@ -107,8 +109,12 @@ export default function Dock() {
   const shown = () => tab() !== "select" || selected() !== null;
   const room = () => Math.max(0, (wide() ? Math.min(560, view().h - 240) : view().h * 0.62) - headH());
   const openH = () => headH() + Math.min(bodyH(), room());
-  const [h] = follow(() => (shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2 });
-  const [w] = follow(() => (shown() ? sheetWidth() : WIDTH), { rest: 0.2 });
+  // Under a page it stands out over the page's top, smaller and blank.
+  const under = () => (pages().length ? behind(front(), pages().length) : null);
+  const [h] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2 });
+  const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
+  const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
+  const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
   createEffect(() => (eye.below = barBottom() + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
@@ -126,24 +132,24 @@ export default function Dock() {
   return (
     <>
       <box at={{ left: 0, right: 0, bottom: barBottom() }} align="center">
-        <box w={w()} h={h() + BAR}>
+        <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One glass: the shown tab's sheet, grown up out of the bar. */}
           <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} clip>
             <Show when={shown()}>
-              <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
-              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
+              <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
+              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
                 <Show when={tab()} keyed>{(t) => SHEETS[t].head()}</Show>
               </box>
-              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} clip onScroll={scrolled}>
+              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} opacity={ink()} clip onScroll={scrolled}>
                 <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
                   <Show when={tab()} keyed>{(t) => SHEETS[t].body()}</Show>
                 </box>
               </box>
-              <box at={{ left: 16, right: 16, bottom: BAR }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24)} />
+              <box at={{ left: 16, right: 16, bottom: BAR }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
             </Show>
           </glass>
           {/* The tabs, fixed along its foot. */}
-          <box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR}>
+          <box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR} opacity={ink()}>
             <Show when={bead()}>
               {(dye) => <glass layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
             </Show>
@@ -160,6 +166,7 @@ export default function Dock() {
           </box>
         </box>
       </box>
+      <Pages bottom={barBottom()} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
     </>
   );
 }

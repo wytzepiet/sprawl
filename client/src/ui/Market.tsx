@@ -7,7 +7,8 @@ import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { Shelf } from "./Depot";
 import { Line, Press } from "./kit";
-import { good, setGood, setOpen, sheetWidth } from "./sheet";
+import { sheetWidth, show } from "./sheet";
+import { PageHead, push } from "./pages";
 import type { Good, Quote, When } from "../generated";
 
 /**
@@ -24,7 +25,6 @@ const UP = "#2E9D6A";
 const DOWN = "#D9483B";
 /** The most boxes a ferry's deck takes: the most bought or sold at once. */
 const DECK = 15;
-const BACK = "M15 5l-7 7 7 7";
 
 /** A box's worth, to the coin from a hundred and to the tenth below. */
 export const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1));
@@ -102,53 +102,31 @@ export const Tile = (props: { good: Good; size?: number }) => (
   </box>
 );
 
-/** The market's head: on the list, each good and its price; on a good's
- *  page, the way back, the good, its price and the day's move. */
+/** The market's head: each good and its price; a tap opens its page. */
 export function MarketHead() {
   return (
-    <Show
-      when={good() && quoteOf(good()!)}
-      keyed
-      fallback={
-        <box dir="row" align="center" justify="between" pad={{ x: 16, top: 14, bottom: 12 }}>
-          <For each={market.goods} fallback={<text size={14} weight={600} soft>The market opens with a harbour</text>}>
-            {(q) => (
-              <Press dir="row" align="center" gap={6} onTap={() => (setGood(q.good), setOpen(true))}>
-                <Tile good={q.good} size={28} />
-                <box gap={0}>
-                  <text serif size={16}>{money(box(q.good, q.price))}</text>
-                  <text size={10.5} weight={600} ink={tint(change(q))}>{percent(change(q))}</text>
-                </box>
-              </Press>
-            )}
-          </For>
-        </box>
-      }
-    >
-      {(q) => (
-        <box dir="row" align="center" gap={10} pad={{ left: 8, right: 16, top: 12, bottom: 10 }}>
-          <Press w={36} h={36} round={18} align="center" justify="center" onTap={() => setGood(null)}>
-            <Line d={BACK} size={20} width={2.6} />
+    <box dir="row" align="center" justify="between" pad={{ x: 16, top: 14, bottom: 12 }}>
+      <For each={market.goods} fallback={<text size={14} weight={600} soft>The market opens with a harbour</text>}>
+        {(q) => (
+          <Press dir="row" align="center" gap={6} onTap={() => push(goodPage(q.good))}>
+            <Tile good={q.good} size={28} />
+            <box gap={0}>
+              <text serif size={16}>{money(box(q.good, q.price))}</text>
+              <text size={10.5} weight={600} ink={tint(change(q))}>{percent(change(q))}</text>
+            </box>
           </Press>
-          <Tile good={q.good} />
-          <text size={17} weight={700} grow={1}>{named(q.good)}</text>
-          <box align="end">
-            <text serif size={22}>{money(box(q.good, q.price))}</text>
-            <text size={11.5} weight={600} ink={tint(change(q))}>{percent(change(q))} today</text>
-          </box>
-        </box>
-      )}
-    </Show>
+        )}
+      </For>
+    </box>
   );
 }
 
-export function MarketBody() {
-  return (
-    <Show when={good() && quoteOf(good()!)} keyed fallback={<List />}>
-      {(q) => <Page good={q.good} />}
-    </Show>
-  );
-}
+export const MarketBody = () => <List />;
+
+/** A good's page, as the page stack shows it. */
+export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} /> });
+/** The market, and a good's page over it: a mission's step. */
+export const toMarket = (g: Good | null) => (show("market", true), g && push(goodPage(g)));
 
 /** Every good: what the town holds, the day's line, the price and its move. */
 function List() {
@@ -156,7 +134,7 @@ function List() {
     <box pad={{ x: 12, bottom: 12 }} gap={6}>
       <For each={market.goods}>
         {(q) => (
-          <Press dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => setGood(q.good)}>
+          <Press dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => push(goodPage(q.good))}>
             <Tile good={q.good} />
             <box grow={1} gap={1}>
               <text size={14.5} weight={600}>{named(q.good)}</text>
@@ -235,7 +213,16 @@ function Page(props: { good: Good }) {
   };
   const stock = () => held().get(props.good);
   return (
-    <box pad={{ x: 12, bottom: 14 }} gap={10}>
+    <box pad={{ bottom: 14 }} gap={10}>
+      <PageHead>
+        <Tile good={props.good} />
+        <text size={17} weight={700} grow={1}>{named(props.good)}</text>
+        <box align="end">
+          <text serif size={22}>{money(box(props.good, q().price))}</text>
+          <text size={11.5} weight={600} ink={tint(change(q()))}>{percent(change(q()))} today</text>
+        </box>
+      </PageHead>
+      <box pad={{ x: 12 }} gap={10}>
       <box pad={{ x: 10, top: 10, bottom: 8 }} round={18} fill="ink/0.05" gap={8} onSize={(x) => setW(x - 20)}>
         <Show when={w() > 0}>
           <Chart
@@ -294,6 +281,7 @@ function Page(props: { good: Good }) {
             <text size={13.5} weight={600} ink="white">Place</text>
           </Press>
         </box>
+      </box>
       </box>
     </box>
   );

@@ -1,8 +1,9 @@
 /** @jsxImportSource ~ui */
 import { For, Show } from "solid-js";
 import { dayAgo, market, quoteOf } from "../state/market";
-import { held, money, named, Order, percent, tint, Tile } from "./Market";
-import { setOpen, toMarket } from "./sheet";
+import { goodPage, held, money, named, Order, percent, tint, Tile } from "./Market";
+import { push } from "./pages";
+import { setOpen } from "./sheet";
 
 /**
  * The stock tab, as a trading app's portfolio: what the town holds of
@@ -49,7 +50,7 @@ export function StockBody() {
           const q = () => quoteOf(h.good)!;
           const c = () => q().price / dayAgo(q()) - 1;
           return (
-            <box dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => toMarket(h.good)}>
+            <box dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => push(goodPage(h.good))}>
               <Tile good={h.good} />
               <box grow={1} gap={1}>
                 <text size={14.5} weight={600}>{named(h.good)}</text>
