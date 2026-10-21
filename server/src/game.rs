@@ -1466,7 +1466,12 @@ mod tests {
     fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
         for (dest_x, from_x) in [(40, 2), (0, 30)] {
             for start in (0..14_000).step_by(400) {
-                let mut world = street();
+                // Fifty tiles of street are all the two trips need.
+                let mut world = World::new();
+                for (x, y) in (-4..50).flat_map(|x| (-4..12).map(move |y| (x, y))) {
+                    world.terrain.insert((x, y), TerrainType::Grass);
+                }
+                world.place_road_path(&(-4..50).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
                 let home = build(&mut world, 10, BuildingKind::House, 1);
                 let from = build(&mut world, from_x, BuildingKind::House, 1);
                 let shop = build(&mut world, dest_x, BuildingKind::Shop, 1);

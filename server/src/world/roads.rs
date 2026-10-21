@@ -508,7 +508,7 @@ impl World {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::protocol::TerrainType;
 
@@ -626,5 +626,84 @@ mod tests {
         world.demolish_node(gone);
         assert!(world.road_node_at(at(2, 0)).is_some(), "the eastward road back in the middle");
         assert!(world.node_in(at(2, 0), 0, SOUTH).is_none());
+    }
+    /// The reachability index is maintained edit by edit rather than rebuilt,
+    /// so the thing worth testing is that it never drifts from the graph it
+    /// claims to describe. Brute-forces the answer and demands agreement.
+    pub(in crate::world) fn agrees_with_the_edges(world: &World) {
+        let mut adj: crate::fixed::HashMap<EntityId, Vec<EntityId>> =
+            crate::fixed::HashMap::default();
+        for &(a, b) in world.edges.keys() {
+            adj.entry(a).or_default().push(b);
+            adj.entry(b).or_default().push(a);
+        }
+        let nodes: Vec<EntityId> = adj.keys().copied().collect();
+        for &from in &nodes {
+            let mut seen = crate::fixed::HashSet::from_iter([from]);
+            let mut stack = vec![from];
+            while let Some(n) = stack.pop() {
+                for &next in adj.get(&n).into_iter().flatten() {
+                    if seen.insert(next) {
+                        stack.push(next);
+                    }
+                }
+            }
+            for &to in &nodes {
+                assert_eq!(
+                    world.network.connected(from, to),
+                    seen.contains(&to),
+                    "index disagrees about {from} -> {to}",
+                );
+            }
+        }
+    }
+
+    /// Demolition as the game loop does it: edges first, then the node.
+    pub(in crate::world) fn lift_road(world: &mut World, at: GridCoord) {
+        let Some(id) = world.road_node_at(at) else { return };
+        for edge in world.edges_involving(id) {
+            world.remove_edge(edge.0, edge.1);
+        }
+        world.demolish_node(id);
+    }
+
+    /// The world tells its network index (`network.rs`) of every road laid
+    /// and lifted: a churn of streets on a small grid, by the world's own
+    /// calls, and after each, which roads it says are joined is what the
+    /// edges say, through cuts, rings and islands.
+    #[test]
+    fn the_network_follows_the_roads_laid_and_lifted() {
+        let mut world = World::new();
+        for y in -2..8 {
+            for x in -2..8 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        let mut rng: u64 = 0x5eed;
+        let mut roll = move |n: i32| {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((rng >> 33) % n as u64) as i32
+        };
+        // How many networks there are, by what the index says.
+        let parts = |world: &World| {
+            let nodes: Vec<EntityId> = world.objects.roads().map(|e| e.id).collect();
+            nodes.iter().enumerate().filter(|&(i, &n)| !nodes[..i].iter().any(|&m| world.network.connected(m, n))).count()
+        };
+        let (mut cut, mut joined) = (false, false);
+        for _ in 0..400 {
+            let a = at(roll(5), roll(5));
+            let b = if roll(2) == 0 { at(a.x + 1, a.y) } else { at(a.x, a.y + 1) };
+            let linked = world.road_node_at(a).zip(world.road_node_at(b)).is_some_and(|(m, n)| world.edges.contains_key(&(m, n)));
+            let before = parts(&world);
+            if linked {
+                lift_road(&mut world, if roll(2) == 0 { a } else { b });
+                cut |= parts(&world) > before;
+            } else if b.x < 5 && b.y < 5 {
+                world.place_road_path(&[a, b]);
+                joined |= parts(&world) < before;
+            }
+            agrees_with_the_edges(&world);
+        }
+        assert!(cut && joined, "the churn should both cut networks apart and join them");
     }
 }

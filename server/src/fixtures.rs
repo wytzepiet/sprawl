@@ -257,10 +257,11 @@ mod tests {
     /// stands up, and a fixture made from the game builds as it stood.
     #[test]
     fn every_fixture_builds_letter_for_letter() {
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures"));
         let mut world = World::new();
-        build(&mut world, Path::new("fixtures"));
+        build(&mut world, dir);
         let mut wrong = Vec::new();
-        for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir("fixtures").unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {
+        for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {
             let text = std::fs::read_to_string(&path).unwrap();
             let rows: Vec<Vec<char>> = text.lines().filter(|l| !l.starts_with('#')).map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
             for (row, line) in rows.iter().enumerate() {
