@@ -1,7 +1,8 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
+import { clockAt, plural, sea, until } from "../state/sea";
+import { boxOf } from "../state/deals";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { quoteOf, total } from "../state/market";
@@ -60,7 +61,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   const stocked = () => props.depots.find((d) => (d.stocks[g()] ?? 0) >= 1) ?? null;
   const maker = () => props.makers.find((m) => m.good === g() && m.level >= 1) ?? null;
   /** Its boxes in from the world, the furthest along first. */
-  const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound && s.units > 0).sort((a, b) => LEGS.indexOf(b.leg) - LEGS.indexOf(a.leg));
+  const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound && s.units > 0).sort((a, b) => boxOf(b).step - boxOf(a).step);
   /** A box in a trailer park, and the depot whose lorry would fetch it. */
   const parked = () => {
     const s = inbound().find((s) => s.leg === "Parked");
@@ -91,16 +92,16 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
         if (p) return <Line dot={p.d.joined ? "#2B6CA3" : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
         const s = coming();
         if (s) {
-          const w = legWords(s);
-          return <Line dot="#2B6CA3" text={`${Math.round(s.units)} ${label()} ${w.words}`} sub={w.eta ? `in ${until(w.eta)}` : undefined} />;
+          const b = boxOf(s);
+          return <Line dot="#2B6CA3" text={`${Math.round(s.units)} ${label()} ${b.words}`} sub={b.eta ? `in ${until(b.eta)}` : undefined} />;
         }
         if (!nearest()) return <Line dot="#D9483B" text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
         const x = sailing();
         return (
           <Line
             dot="#D9483B"
-            text={ordered() ? `Booked: lands ${x ? clockAt(landsAt(x)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
-            sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(landsAt(x))}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
+            text={ordered() ? `Booked: lands ${x ? clockAt(x.lands) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
+            sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(x.lands)}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={
               <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !quote() || growth().treasury < cost()}>
                 {ordered() ? "Booked ✓" : `Book ${label()}`}

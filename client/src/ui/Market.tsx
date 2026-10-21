@@ -5,8 +5,7 @@ import { sea } from "../state/sea";
 import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
-import { Shelf } from "./Depot";
-import { Fade, Line, Press, Tabs } from "./kit";
+import { Fade, GoodDot, Line, Press, Tabs } from "./kit";
 import { open, setOpen, show } from "./sheet";
 import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
@@ -280,6 +279,32 @@ function Page(props: { good: Good }) {
           </Press>
         </box>
       </box>
+      </box>
+    </box>
+  );
+}
+
+/** A good's shelf: how full, and what is on its way drawn faint beyond it. */
+function Shelf(props: { good: Good; level: number; cap: number; incoming: number }) {
+  const share = (v: number) => Math.max(0, Math.min(1, v / props.cap));
+  const [w, setW] = createSignal(0);
+  const color = () => GOODS[props.good].color;
+  return (
+    <box pad={{ y: 6 }} gap={8}>
+      <box dir="row" align="center" gap={8}>
+        <GoodDot good={props.good} size={20} />
+        <text size={13.5} weight={600}>{named(props.good)}</text>
+        <box dir="row" align="end" gap={2}>
+          <text serif size={13.5}>{Math.floor(props.level)}</text>
+          <text serif size={12} soft>/ {props.cap}</text>
+        </box>
+        <Show when={props.incoming > 0}>
+          <text size={11} soft>+{Math.round(props.incoming)} coming</text>
+        </Show>
+      </box>
+      <box h={14} round={7} fill="ink/0.09" onSize={(x) => setW(x)}>
+        <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
+        <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
       </box>
     </box>
   );
