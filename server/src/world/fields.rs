@@ -256,6 +256,10 @@ impl World {
         {
             b.land.retain(|t| !left.contains(&t.at));
         }
+        // All of it left: nowhere to drive, and no run.
+        if path.len() < 2 {
+            return;
+        }
         self.release_spot(tractor);
         self.update_position(tractor, yard);
         if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {

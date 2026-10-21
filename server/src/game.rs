@@ -1837,11 +1837,13 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
         assert!(!world.harbours.is_empty(), "no harbour, or nobody can arrive at all");
         // The deck pinned: a box of fuel in from the world every sailing,
-        // which nothing in town makes, and a box of the farm's crates out.
-        for h in world.harbours.keys().copied().collect::<Vec<_>>() {
+        // which nothing in town makes; and, once the farm has harvested, a
+        // box of its crates out. Before, a box out is the town's food.
+        let harbours: Vec<EntityId> = world.harbours.keys().copied().collect();
+        for &h in &harbours {
             crate::orders::pin(&mut world, h, Good::Fuel, None, false);
-            crate::orders::pin(&mut world, h, Good::Crates, None, true);
         }
+        let mut exporting = false;
         let mut wakes = 0;
         let mut now = 0;
         let end = days * DAY_MS as u64;
@@ -1861,6 +1863,12 @@ mod tests {
             // once the opening is done.
             crate::missions::check(&mut world, now);
             each_day(&world, day, wakes);
+            if !exporting && world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm && b.stocks[&Good::Crates].level > 0.0)) {
+                exporting = true;
+                for &h in &harbours {
+                    crate::orders::pin(&mut world, h, Good::Crates, None, true);
+                }
+            }
             let steps = hand(&world, day);
             if !steps.is_empty() {
                 for d in steps {
