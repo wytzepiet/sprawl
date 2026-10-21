@@ -1,17 +1,17 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createRoot, createSignal, For, Show } from "solid-js";
 import { priority, setPriority, setTool, tool } from "./buildMode";
-import { GOODS } from "../blueprints";
-import { Press } from "./kit";
+import { Info, Press } from "./kit";
 
 /** The road tools, first in the build menu: a road is a street with priority. */
 export const ROAD_KINDS = [
-  { id: "Street", label: "Street", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
-  { id: "OneWay", label: "One-way", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
-  { id: "Road", label: "Road", color: "#E0B443", glyph: "M2 2h2v20H2zM20 2h2v20h-2zM7.5 2h2.2v4.5H7.5zM7.5 9.75h2.2v4.5H7.5zM7.5 17.5h2.2V22H7.5zM14.3 2h2.2v4.5h-2.2zM14.3 9.75h2.2v4.5h-2.2zM14.3 17.5h2.2V22h-2.2z" },
+  { id: "Street", label: "Street", about: "Two ways, a lane each. Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price.", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
+  { id: "OneWay", label: "One-way", about: "One lane, the way you drag it. A stone a tile.", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
+  { id: "Road", label: "Road", about: "A street with priority: whoever joins or crosses it gives way. A stone a tile.", color: "#E0B443", glyph: "M2 2h2v20H2zM20 2h2v20h-2zM7.5 2h2.2v4.5H7.5zM7.5 9.75h2.2v4.5H7.5zM7.5 17.5h2.2V22H7.5zM14.3 2h2.2v4.5h-2.2zM14.3 9.75h2.2v4.5h-2.2zM14.3 17.5h2.2V22h-2.2z" },
   {
     id: "Demolish",
     label: "Demolish",
+    about: "Tap a road to take it up, drag along one to cut it. To take a building down, press and hold it.",
     color: "#D9483B",
     glyph: "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z",
   },
@@ -38,47 +38,25 @@ export const lastRoad = createRoot(() => {
 });
 
 /** The road tools in a row, the one in hand in its colour: the build
- *  tab's head while one is in hand. */
-export function RoadsHead() {
+ *  tab's head while one is in hand, and its roads; there, each with an
+ *  i for its page. */
+export function RoadsHead(props: { info?: (k: RoadKind) => void }) {
   return (
-    <box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
+    <box dir="row" gap={6} pad={{ x: 12, top: props.info ? 0 : 14, bottom: 12 }}>
       <For each={[...ROAD_KINDS]}>
         {(r) => {
           const on = () => inHand() === r.id;
           return (
             <Press grow={1} h={60} round={16} gap={4} align="center" justify="center" fill={on() ? r.color : "ink/0.05"} onTap={() => (on() ? setTool(null) : take(r.id))}>
               <icon d={r.glyph} size={20} ink={on() ? "white" : r.id === "Demolish" ? r.color : "ink/0.72"} />
-              <text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</text>
+              <box dir="row" align="center" gap={4}>
+                <text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</text>
+                <Show when={props.info}>{(info) => <Info onTap={() => info()(r.id)} />}</Show>
+              </box>
             </Press>
           );
         }}
       </For>
-    </box>
-  );
-}
-
-/** What the road tools do, under their blocks. */
-export function RoadsBody() {
-  const Item = (props: { k: RoadKind; text: string; stone?: boolean }) => (
-    <box dir="row" align="start" gap={10} pad={{ y: 6 }}>
-      <box w={28} h={28} round={14} fill={road(props.k).color} align="center" justify="center">
-        <icon d={road(props.k).glyph} size={14} ink="white" />
-      </box>
-      <text grow={1} size={13.5} soft lead={1.4}>{props.text}</text>
-      <Show when={props.stone}>
-        <box dir="row" align="center" gap={2} pad={{ top: 4 }}>
-          <icon d={GOODS.Stone.glyph} size={13} ink="ink/0.6" />
-          <text serif size={14} soft>1</text>
-        </box>
-      </Show>
-    </box>
-  );
-  return (
-    <box pad={{ x: 16, bottom: 14 }}>
-      <Item k="Street" stone text="Two ways, a lane each. Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price." />
-      <Item k="OneWay" stone text="One lane, the way you drag it." />
-      <Item k="Road" stone text="A street with priority: whoever joins or crosses it gives way." />
-      <Item k="Demolish" text="Tap a road to take it up, drag along one to cut it. To take a building down, press and hold it." />
     </box>
   );
 }

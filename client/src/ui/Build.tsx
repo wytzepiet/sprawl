@@ -4,8 +4,8 @@ import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
-import { Press } from "./kit";
-import { inHand, RoadsBody, RoadsHead } from "./Roads";
+import { Info, Press } from "./kit";
+import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
 
@@ -84,8 +84,10 @@ const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materi
 const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
 /** The group shown: the roads, or a group of buildings. */
 const [group, setGroup] = createSignal<Tab | "roads">("roads");
+/** The page shown in place of the group: a building's or a road tool's. */
+const [page, setPage] = createSignal<{ kind: BuildingKind } | { road: RoadKind } | null>(null);
 // A road taken up, by a key or the head's row, shows the roads.
-createRoot(() => createEffect(() => inHand() && setGroup("roads")));
+createRoot(() => createEffect(() => inHand() && (setGroup("roads"), setPage(null))));
 
 /**
  * The build tab's head: the roads and the menu's groups, a tap on one
@@ -104,7 +106,7 @@ export function BuildHead() {
               {(t) => {
                 const on = () => group() === t && open();
                 return (
-                  <Press h={36} pad={{ x: 11 }} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(t), setOpen(true))}>
+                  <Press h={36} pad={{ x: 11 }} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(t), setPage(null), setOpen(true))}>
                     <text size={13} weight={600} ink={on() ? "glass" : "ink/0.72"}>{t[0].toUpperCase() + t.slice(1)}</text>
                   </Press>
                 );
@@ -126,38 +128,87 @@ export function BuildHead() {
 /**
  * The build menu, drawn up: the road tools, or every kind of building
  * in the group, a picture of it as it stands, its name and what it is
- * built of. Press on one and drag it onto the map: the sheet sinks to its head, a place to
- * let it go and put it back. A tap takes it up to place with a click.
+ * built of. Press on one and drag it onto the map: the sheet sinks to
+ * its head, a place to let it go and put it back. A tap takes it up to
+ * place with a click; its i opens its page.
  */
 export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
   const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
+  const info = (p: NonNullable<ReturnType<typeof page>>) => (setPage(p), setOpen(true));
   return (
-    <Show when={group() !== "roads"} fallback={<><RoadsHead /><RoadsBody /></>}>
-    <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
-      <For each={kinds()}>
-        {(kind) => (
-          <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
-            <Picture kind={kind} />
-            <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
-            <box dir="row" align="center" gap={6}>
-              <Show when={materials(kind).length} fallback={<text serif size={12} soft>at once</text>}>
-                <For each={materials(kind)}>
-                  {([g, n]) => (
-                    <box dir="row" align="center" gap={2}>
-                      <icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
-                      <text serif size={12} soft>{n}</text>
-                    </box>
-                  )}
-                </For>
-              </Show>
+    <Show when={!page()} fallback={<Page />}>
+      <Show when={group() !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
+        <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
+          <For each={kinds()}>
+            {(kind) => (
+              <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+                <Picture kind={kind} />
+                <box dir="row" align="center" gap={4}>
+                  <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
+                  <Info onTap={() => info({ kind })} />
+                </box>
+                <Materials kind={kind} />
+              </box>
+            )}
+          </For>
+        </box>
+      </Show>
+    </Show>
+  );
+}
+
+/** What a kind is built of, a glyph and a number each; or "at once". */
+function Materials(props: { kind: BuildingKind }) {
+  return (
+    <box dir="row" align="center" gap={6}>
+      <Show when={materials(props.kind).length} fallback={<text serif size={12} soft>at once</text>}>
+        <For each={materials(props.kind)}>
+          {([g, n]) => (
+            <box dir="row" align="center" gap={2}>
+              <icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
+              <text serif size={12} soft>{n}</text>
             </box>
+          )}
+        </For>
+      </Show>
+    </box>
+  );
+}
+
+/** A building's or a road tool's page: what it is and what it does,
+ *  with a way back to the menu and one to take it up. */
+function Page() {
+  const p = page()!;
+  const name = "kind" in p ? BLUEPRINTS[p.kind].label : road(p.road).label;
+  const about = "kind" in p ? BLUEPRINTS[p.kind].about : road(p.road).about;
+  const take = () => (setPage(null), "kind" in p ? hold(p.kind) : takeRoad(p.road));
+  return (
+    <box pad={{ x: 12, bottom: 14 }} gap={12}>
+      <box dir="row" align="center" gap={12}>
+        {"kind" in p ? (
+          <Picture kind={p.kind} />
+        ) : (
+          <box w={PIC} h={PIC} round={12} fill={road(p.road).color} align="center" justify="center">
+            <icon d={road(p.road).glyph} size={40} ink="white" />
           </box>
         )}
-      </For>
+        <box grow={1} gap={6}>
+          <text serif size={22}>{name}</text>
+          {"kind" in p && <Materials kind={p.kind} />}
+        </box>
+      </box>
+      <text size={14} soft lead={1.45}>{about}</text>
+      <box dir="row" gap={8}>
+        <Press grow={1} h={40} round={14} align="center" justify="center" fill="ink/0.05" onTap={() => setPage(null)}>
+          <text size={13.5} weight={600} ink="ink/0.72">Back</text>
+        </Press>
+        <Press grow={1} h={40} round={14} align="center" justify="center" fill="ink/0.85" onTap={take}>
+          <text size={13.5} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</text>
+        </Press>
+      </box>
     </box>
-    </Show>
   );
 }
 

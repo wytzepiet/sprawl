@@ -26,6 +26,15 @@ export function Press(props: JSX.Box & { onTap: () => void }) {
   return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} />;
 }
 
+/** A little i on a tile: a tap opens what it is. */
+export function Info(props: { at?: JSX.Box["at"]; onTap: () => void }) {
+  return (
+    <Press at={props.at} w={18} h={18} round={9} align="center" justify="center" fill="ink/0.08" onTap={props.onTap}>
+      <text serif size={11.5} weight={600} ink="ink/0.6">i</text>
+    </Press>
+  );
+}
+
 /** False on the frame it is made, true from the next: what a spring in starts from. */
 function born() {
   const [is, set] = createSignal(false);
