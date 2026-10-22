@@ -1,5 +1,5 @@
 import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
-import type { RGB } from "./town/mass";
+import type { RGB } from "./rgb";
 
 /** Slots a row of the texture, and its rows: room for this many buildings
  *  ever coloured, a texture bound once and never replaced. */

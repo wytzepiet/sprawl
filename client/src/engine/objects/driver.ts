@@ -22,9 +22,9 @@
 
 import { drawnPath, measure } from "./drawnPath";
 import { CAB, CAR, LANE_OFFSET, TRAILER } from "./roadGeometry";
+import type { P } from "../geometry";
 import type { Pose } from "../../generated";
 
-export type Pt = [number, number];
 
 /** A body as the drive works it out, flat, for the steps are many: where
  *  its middle stands and which way it points, radians. */
@@ -52,7 +52,7 @@ export interface Drive {
 /** A stretch of a drive in one gear: the route its lead follows, and the
  *  distances along the whole, by the server's measure, it runs between. */
 export interface Part {
-  points: Pt[];
+  points: P[];
   backing: boolean;
   from: number;
   to: number;
@@ -92,12 +92,12 @@ function straight(body: Body, rig: Rig): Body | undefined {
  * on, as a driver swings wide to keep off a jackknife. Points a step
  * apart.
  */
-export function reverse(from: Body, to: Body, hitch: number, bend = 0): Pt[] {
+export function reverse(from: Body, to: Body, hitch: number, bend = 0): P[] {
   const chord = Math.hypot(to.x - from.x, to.y - from.y);
   if (chord < 1e-6) return [[from.x, from.y]];
   const curve = (m0: number, m1: number, n: number) => {
     const [v0, v1] = [[Math.cos(from.heading) * m0, Math.sin(from.heading) * m0], [Math.cos(to.heading) * m1, Math.sin(to.heading) * m1]];
-    return Array.from({ length: n + 1 }, (_, i): Pt => {
+    return Array.from({ length: n + 1 }, (_, i): P => {
       const t = i / n, t3 = t * t * t, t4 = t3 * t, t5 = t4 * t;
       const [h0, h1, h4, h5] = [1 - 10 * t3 + 15 * t4 - 6 * t5, t - 6 * t3 + 8 * t4 - 3 * t5, -4 * t3 + 7 * t4 - 3 * t5, 10 * t3 - 15 * t4 + 6 * t5];
       return [h0 * from.x + h1 * v0[0] + h4 * v1[0] + h5 * to.x, h0 * from.y + h1 * v0[1] + h4 * v1[1] + h5 * to.y];
@@ -105,14 +105,14 @@ export function reverse(from: Body, to: Body, hitch: number, bend = 0): Pt[] {
   };
   /** How the cab follows: the fastest it turns, a radian a tile, and how
    *  far out of line with its trailer it ends, each weighed. */
-  const roughness = (pts: Pt[]) => {
+  const roughness = (pts: P[]) => {
     let cab = from.heading + Math.PI + bend;
     let worst = 0;
-    let at: Pt = [pts[0][0] - Math.cos(from.heading) * hitch, pts[0][1] - Math.sin(from.heading) * hitch];
+    let at: P = [pts[0][0] - Math.cos(from.heading) * hitch, pts[0][1] - Math.sin(from.heading) * hitch];
     for (let i = 1; i < pts.length; i++) {
       const [a, b] = [pts[i - 1], pts[i]];
       const way = Math.atan2(b[1] - a[1], b[0] - a[0]);
-      const next: Pt = [b[0] - Math.cos(way) * hitch, b[1] - Math.sin(way) * hitch];
+      const next: P = [b[0] - Math.cos(way) * hitch, b[1] - Math.sin(way) * hitch];
       const moved = Math.hypot(next[0] - at[0], next[1] - at[1]);
       if (moved > 1e-9) {
         const h = Math.atan2(at[1] - next[1], at[0] - next[0]);
@@ -161,7 +161,7 @@ export function drive(parts: Part[], rig: Rig, leaves?: Pose | null, stands?: Po
    *  `ahead` past the route's end (short of it if negative), moving `sign`
    *  (1 forward, -1 backing) along its own heading; `follow` moves the
    *  other bodies after it. Says each pose and how far the lead has gone. */
-  const steer = (route: Pt[], getLead: () => Body, setLead: (p: Body) => void, sign: number, ahead: number, follow: () => void) => {
+  const steer = (route: P[], getLead: () => Body, setLead: (p: Body) => void, sign: number, ahead: number, follow: () => void) => {
     const path = measure(route);
     const target = path.length + ahead;
     const out = [{ u: 0, ...pose() }];
@@ -209,7 +209,7 @@ export function drive(parts: Part[], rig: Rig, leaves?: Pose | null, stands?: Po
     return out;
   };
 
-  const last = (all: Part[], points: Pt[]) => all[all.length - 1].points === points;
+  const last = (all: Part[], points: P[]) => all[all.length - 1].points === points;
   for (const { points, backing, from, to } of parts) {
     let driven;
     if (!backing) {
@@ -229,13 +229,13 @@ export function drive(parts: Part[], rig: Rig, leaves?: Pose | null, stands?: Po
       const aim = last(parts, points) && end
         ? { ...along(end, -(rig.axle + tr.axle)), heading: end.heading + Math.PI }
         : { ...along({ x: points[points.length - 1][0], y: points[points.length - 1][1], heading: route.heading(route.length) }, tr.axle + rig.axle) };
-      let hitch: Pt = [cab.x, cab.y];
+      let hitch: P = [cab.x, cab.y];
       const out = [{ u: 0, ...pose() }];
       const way = reverse({ ...trailer, heading: trailer.heading + Math.PI }, aim, tr.axle, wrap(cab.heading - trailer.heading));
       for (let i = 1; i < way.length; i++) {
         const [a, b] = [way[i - 1], way[i]];
         trailer = { x: b[0], y: b[1], heading: Math.atan2(a[1] - b[1], a[0] - b[0]) };
-        const next: Pt = [b[0] + Math.cos(trailer.heading) * tr.axle, b[1] + Math.sin(trailer.heading) * tr.axle];
+        const next: P = [b[0] + Math.cos(trailer.heading) * tr.axle, b[1] + Math.sin(trailer.heading) * tr.axle];
         const mx = hitch[0] - next[0], my = hitch[1] - next[1];
         cab = Math.hypot(mx, my) > 1e-9 ? { x: next[0], y: next[1], heading: Math.atan2(my, mx) } : { ...cab, x: next[0], y: next[1] };
         hitch = next;
@@ -332,7 +332,7 @@ export const LORRY_RIG: Rig = { axle: CAB.l / 3, trailer: { axle: TRAILER.axle, 
 
 /** What of a trip the drive is made from (`Trip`, or a recording of one). */
 export interface Driven {
-  route_positions: Pt[];
+  route_positions: P[];
   from_lot: number;
   to_lot: number;
   backing: [number, number][];
@@ -358,15 +358,15 @@ const WIDEST_LOCK = 0.35;
  * tighter than `WIDEST_LOCK` until it nowhere does, its ends and the way
  * it leaves and arrives kept.
  */
-export function drivable(points: Pt[]): Pt[] {
-  const bend = (p: Pt[], i: number) => {
+export function drivable(points: P[]): P[] {
+  const bend = (p: P[], i: number) => {
     const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
     const turn = Math.abs(wrap(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0])));
     return turn < 1e-9 ? Infinity : Math.hypot(c[0] - a[0], c[1] - a[1]) / 2 / turn;
   };
   if (points.every((_, i) => i === 0 || i === points.length - 1 || bend(points, i) >= WIDEST_LOCK)) return points;
   const gap = 0.04;
-  const out: Pt[] = [points[0]];
+  const out: P[] = [points[0]];
   for (let i = 1; i < points.length; i++) {
     const [a, b] = [points[i - 1], points[i]];
     const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -398,7 +398,7 @@ export function drivable(points: Pt[]): Pt[] {
 
 /** A part's ends made drivable, where its lot nodes are; a street's
  *  corners are rounded wide enough already. */
-function ends(points: Pt[]): Pt[] {
+function ends(points: P[]): P[] {
   const { distances: d, length: L } = measure(points);
   if (L <= 8) return drivable(points);
   const a = d.findIndex((x) => x >= 4), b = d.findIndex((x) => x >= L - 4);
@@ -422,7 +422,7 @@ export function driveTrip(t: Driven, rig: Rig, lanes?: number[], was?: Swerve): 
   const { route_positions: route, from_lot: fromLot, to_lot: toLot, backing } = t;
   const n = route.length;
   const cuts = [...new Set([0, ...backing.flat(), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
-  const drawn: { points: Pt[]; backing: boolean }[] = [];
+  const drawn: { points: P[]; backing: boolean }[] = [];
   for (let c = 1; c < cuts.length; c++) {
     const [i, j] = [cuts[c - 1], cuts[c]];
     const nodes = route.slice(i, j + 1);

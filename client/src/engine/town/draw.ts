@@ -1,11 +1,12 @@
 import earcut from "earcut";
-import type { MeshGeometry } from "../geometry";
+import type { MeshGeometry, P } from "../geometry";
+import { rgb, type Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
 import { dress, type Dressing } from "./dressing";
 import { pavement } from "./surface";
 import { facts } from "./facts";
-import { area, type Polygon, type Pt } from "./footprint";
+import { area, type Polygon } from "./footprint";
 import type { Town } from "./grid";
 import { townMesh, type Paint, type Prop } from "./roof";
 
@@ -14,24 +15,21 @@ export interface Piece {
   name: string;
   geo: MeshGeometry & { colors?: number[] };
   /** The material's colour; white where the vertices carry theirs. */
-  colour: Colour | null;
+  colour: Rgb | null;
 }
-
-/** A colour as plain numbers: a theme's, or one of the town's own. */
-export type Colour = { r: number; g: number; b: number };
 
 /** A depot's canopy: a sheet-metal roof, pale, on posts a shade under it;
  *  its underside over a box's roof (`TRAILER.h`) and under the hall's
  *  eaves, and a fascia's depth thick. */
-const CANOPY: Colour = { r: 0.78, g: 0.78, b: 0.77 };
-const POST: Colour = { r: 0.5, g: 0.5, b: 0.5 };
+const CANOPY = rgb(0.78, 0.78, 0.77);
+const POST = rgb(0.5, 0.5, 0.5);
 const CANOPY_Z = 0.3;
 const FASCIA = 0.035;
 const POST_W = 0.03;
 /** A quay's wall, stone a shade under the paving, and its capping, a
  *  shade over it. */
-const QUAY: Colour = { r: 0.6, g: 0.58, b: 0.54 };
-const CAP: Colour = { r: 0.88, g: 0.86, b: 0.81 };
+const QUAY = rgb(0.6, 0.58, 0.54);
+const CAP = rgb(0.88, 0.86, 0.81);
 /** How far down a quay's wall stands, past the water's surface; and how
  *  broad its capping is, along the edge. */
 const QUAY_FOOT = -0.78;
@@ -51,7 +49,7 @@ export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
 export const LAYER_ORDER = { mass: 80, pavement: 85, road: 90, field: 95, ground: 120 };
 /** The lines painted on a yard's asphalt, just over it: a worn white. */
 const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
-const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };
+const LINE = rgb(0.82, 0.81, 0.77);
 
 /**
  * The town grid's town, drawn: the pavement, the
@@ -63,9 +61,9 @@ const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };
  * (`treeInstances`), and what stands on its roofs and its street lamps the
  * props' (`props.ts`); what moves on it the game draws itself.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: Pt[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: P[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
-  const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
+  const add = (name: string, geo: Piece["geo"], c: Rgb | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
   const paved = pavement(town);
@@ -127,9 +125,9 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
 
 /** A block over a quad on the plan, from z0 up to z1: its top and its
  *  four sides; its bottom is the shade under it. */
-function cuboid(g: MeshGeometry, quad: Pt[], z0: number, z1: number) {
+function cuboid(g: MeshGeometry, quad: P[], z0: number, z1: number) {
   // The map's frame is the plan's turned half round.
-  const p = ([x, y]: Pt, z: number) => [-x, -y, z];
+  const p = ([x, y]: P, z: number) => [-x, -y, z];
   face(g, quad.map((q) => p(q, z1)), [0, 0, 1]);
   const [cx, cy] = [quad.reduce((s, q) => s + q[0], 0) / 4, quad.reduce((s, q) => s + q[1], 0) / 4];
   quad.forEach((a, i) => {

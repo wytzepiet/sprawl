@@ -78,7 +78,8 @@ export type DrawnPath = ReturnType<typeof measure> & {
   passing(k: number): number;
 };
 
-function quadBezier(a: P, control: P, b: P, t: number): P {
+/** A point `t` of the way along a quadratic Bézier curve. */
+export function quadBezier(a: P, control: P, b: P, t: number): P {
   const mt = 1 - t;
   return [mt * mt * a[0] + 2 * mt * t * control[0] + t * t * b[0], mt * mt * a[1] + 2 * mt * t * control[1] + t * t * b[1]];
 }

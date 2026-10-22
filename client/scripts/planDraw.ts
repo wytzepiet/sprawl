@@ -7,7 +7,8 @@
  */
 import type { BuildingKind } from "../src/generated";
 import { parseTown, type Tile } from "../src/engine/town/grid";
-import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
+import { intersect, soften, unite, type Polygon } from "../src/engine/town/footprint";
+import type { P } from "../src/engine/geometry";
 import { facts } from "../src/engine/town/facts";
 import { dress } from "../src/engine/town/dressing";
 import { asphalt, pavement } from "../src/engine/town/surface";
@@ -22,7 +23,7 @@ const hex = (c: { r: number; g: number; b: number }) =>
   "#" + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
 const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", "#338066", "#cca640"];
 
-type Traced = { points: Pt[]; tight: Pt[]; strobe: Pt[][] }[];
+type Traced = { points: P[]; tight: P[]; strobe: P[][] }[];
 type Options = { crop?: [number, number, number, number]; px: number; paths?: Traced };
 
 /** A shape the GPU's UI draws: its outline, its colour, and its line's
@@ -57,7 +58,7 @@ function plan(text: string, { crop, px, paths }: Options): { svg: string; shapes
     out.push(`<path fill="none" stroke="${colour}" stroke-opacity="${opacity}" stroke-width="${w}" d="${polys.map(d).join("")}"/>`);
     shaped.push({ d: polys.map(d).join(""), ink: `${colour}/${opacity}`, stroke: w });
   };
-  const line = (pts: Pt[], colour: string, w: number) =>
+  const line = (pts: P[], colour: string, w: number) =>
     out.push(`<polyline fill="none" stroke="${colour}" stroke-width="${w}" points="${pts.map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}"/>`);
   /** A box `l` long along `angle`, `w` wide, its middle at (x, y). */
   const box = (x: number, y: number, angle: number, l: number, w: number, colour: string) => {
@@ -137,7 +138,7 @@ function plan(text: string, { crop, px, paths }: Options): { svg: string; shapes
   // Vehicles' paths, in the game's tiles: a column on is a tile less of x.
   const origin = text.match(/^# origin (-?\d+),(-?\d+)/m)?.slice(1).map(Number);
   if (origin && paths) {
-    const map = ([x, y]: Pt): Pt => [origin[0] + 1 - x, origin[1] + 1 - y];
+    const map = ([x, y]: P): P => [origin[0] + 1 - x, origin[1] + 1 - y];
     for (const p of paths) line(p.points.map(map), "#3a5bd9", 0.015);
     for (const p of paths) for (const b of p.strobe) out.push(`<polygon points="${b.map(map).map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}" fill="#3a5bd9" fill-opacity="0.12" stroke="#3a5bd9" stroke-width="0.008"/>`);
     for (const p of paths) for (const t of p.tight.map(map)) out.push(`<circle cx="${f(t[0])}" cy="${f(t[1])}" r="0.035" fill="#e0301e"/>`);

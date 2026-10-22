@@ -2,8 +2,8 @@ import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
 import { CAB, TRAILER } from "./roadGeometry";
 import { drawnPath } from "./drawnPath";
-import { ahead, drive, paced, type Pt, type Rig } from "./driver";
-import { hex, rgb, type Rgb } from "../rgb";
+import { ahead, drive, paced, type Rig } from "./driver";
+import { hex, rgb, type RGB, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
 import type { Good, Sail, Shunt, Trailer, Pose } from "../../generated";
 
@@ -15,8 +15,7 @@ import type { Good, Sail, Shunt, Trailer, Pose } from "../../generated";
  */
 
 type Shape = MeshGeometry & { colors: number[] };
-type Shade = [number, number, number];
-type Part = [MeshGeometry, [number, number, number], Shade];
+type Part = [MeshGeometry, [number, number, number], RGB];
 
 /** Parts as one shape, each a geometry moved to `at` and painted a shade
  *  of what the bucket's colour is multiplied by. */
@@ -58,8 +57,8 @@ function barrel(r: number, l: number): MeshGeometry {
   return { positions: [...a.positions, ...b.positions], normals: [...a.normals, ...b.normals], indices: [...a.indices, ...b.indices.map((k) => k + a.positions.length / 3)] };
 }
 
-const WHITE: Shade = [1, 1, 1];
-const CHASSIS: Shade = [0.28, 0.29, 0.31];
+const WHITE: RGB = [1, 1, 1];
+const CHASSIS: RGB = [0.28, 0.29, 0.31];
 
 /** A shape of flat faces, each a convex outline anticlockwise from
  *  outside, fanned from its middle as `boxGeometry` fans a box's. */
@@ -90,7 +89,7 @@ function faces(outlines: [number, number, number][][]): MeshGeometry {
  */
 const { w: W, l: L, h: H } = TRAILER;
 const BED = 0.045;
-const shade = (c: Rgb, s = 1): Shade => [c.r * s, c.g * s, c.b * s];
+const shade = (c: Rgb, s = 1): RGB => [c.r * s, c.g * s, c.b * s];
 const chassis = (w = W): Part => [box(w, L, BED), [0, 0, BED / 2], CHASSIS];
 
 /** A dry van: a closed body, ribs across its roof, its doors a pale band
@@ -126,7 +125,7 @@ function tank(c: Rgb): Shape {
 const WALL = 0.02;
 const RIM = 0.12;
 const INSIDE = { w: W - 2 * WALL, l: L - 2 * WALL };
-function tipper(walls: Shade, floor: Shade): Shape {
+function tipper(walls: RGB, floor: RGB): Shape {
   const wall = (w: number, l: number, x: number, y: number, h = RIM): Part => [box(w, l, h), [x, y, BED + h / 2], walls];
   return shape([
     chassis(),
@@ -158,7 +157,7 @@ export function heap(c: Rgb): Shape {
 
 /** A dropside flatbed: a deck, sides and a tail a hand high, and a
  *  headboard behind the cab; what it carries is open to the sky. */
-function flatbed(sides: Shade, deck: Shade): Shape {
+function flatbed(sides: RGB, deck: RGB): Shape {
   const side = (w: number, l: number, x: number, y: number, h: number): Part => [box(w, l, h), [x, y, BED + h / 2], sides];
   return shape([
     chassis(),
@@ -208,7 +207,7 @@ const loaded = (load: Drawn, t: Pick<Trailer, "good" | "units">, k: number): Box
  *  hitch is (`LORRY_RIG`), under a box's nose. Its middle on the origin,
  *  ahead +y, its base on z = 0; the bucket's colour is the cab's. */
 export const CAB_BLOCK = 0.095;
-const TYRE: Shade = [0.12, 0.12, 0.13];
+const TYRE: RGB = [0.12, 0.12, 0.13];
 const [CAB_FRONT, HITCH] = [CAB.l / 2, -CAB.l / 3];
 export const LORRY_SHAPE = shape([
   [box(CAB.w - 0.05, CAB.l, 0.03), [0, 0, 0.03], CHASSIS],
@@ -252,8 +251,8 @@ export const hull = (inset: number): P[] => {
   const [x, y] = [FERRY.w / 2 - inset, FERRY.l / 2 - inset];
   return [[x, -y + 0.35], [x, y - 0.35], [x - 0.12, y - 0.1], [x - 0.27, y], [-x + 0.27, y], [-x + 0.12, y - 0.1], [-x, y - 0.35], [-x, -y + 0.35], [-x + 0.12, -y + 0.1], [-x + 0.27, -y], [x - 0.27, -y], [x - 0.12, -y + 0.1]];
 };
-const NAVY: Shade = [0.2, 0.24, 0.32];
-const BLUE: Shade = [0.24, 0.45, 0.66];
+const NAVY: RGB = [0.2, 0.24, 0.32];
+const BLUE: RGB = [0.24, 0.45, 0.66];
 export const FERRY_SHAPE = shape([
   [prism(hull(0), 0.14), [0, 0, -FREEBOARD - 0.1], NAVY],
   [prism(hull(0), FREEBOARD - 0.046), [0, 0, -FREEBOARD + 0.04], WHITE],
@@ -347,7 +346,7 @@ export function shunting(s: Shunt, from: Pose, hitched: boolean): (now: number) 
   if (known) return known;
   const n = s.path.length;
   const cuts = [...new Set([0, Math.min(Math.max(s.backs_from, 0), n - 1), n - 1])].sort((a, b) => a - b);
-  const runs: { points: Pt[]; length: number; backing: boolean }[] = [];
+  const runs: { points: P[]; length: number; backing: boolean }[] = [];
   for (let c = 1; c < cuts.length; c++) {
     const d = drawnPath(s.path.slice(cuts[c - 1], cuts[c] + 1), 0, 0, 0);
     if (d) runs.push({ points: d.points, length: d.length, backing: cuts[c - 1] >= s.backs_from });

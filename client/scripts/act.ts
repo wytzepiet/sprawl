@@ -52,6 +52,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { PORT, ROOT } from "./lib";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
+import type { P } from "../src/engine/geometry";
 
 /** The server's chunk, in tiles (`CHUNK_SIZE` in `protocol.rs`). */
 const CHUNK = 32;
@@ -62,14 +63,14 @@ const WAIT_MS = 5000;
 /** The server's top speed (`MAX_SPEED` in `game_loop`). */
 const FULL = 50;
 
-type Pt = [number, number];
+
 type Entry = { id: number; object: { kind: string; data: any }; position: { x: number; y: number } | null };
 type Op = { op: "Upsert"; data: Entry } | { op: "Delete"; data: number };
 
 const lines = process.argv[2] === "-"
   ? (await Bun.stdin.text()).split("\n").map((l) => l.replace(/#.*/, "").trim()).filter(Boolean).map((l) => l.split(/\s+/))
   : [process.argv.slice(2)];
-const tile = (s: string): Pt => {
+const tile = (s: string): P => {
   const m = s.match(/^(-?\d+),(-?\d+)$/);
   if (!m) throw new Error(`not a tile: ${s} (want x,y)`);
   return [Number(m[1]), Number(m[2])];
@@ -78,7 +79,7 @@ const tile = (s: string): Pt => {
 // The chunks every tile named lies in, a chunk round, so the server tells
 // us of what is built there.
 const named = lines.flat().filter((a) => /^-?\d+,-?\d+$/.test(a)).map(tile);
-const chunks = named.length ? named : [[0, 0] as Pt];
+const chunks = named.length ? named : [[0, 0] as P];
 const ch = (v: number) => Math.floor(v / CHUNK);
 const bounds = {
   min_cx: Math.min(...chunks.map((p) => ch(p[0]))) - 1, min_cy: Math.min(...chunks.map((p) => ch(p[1]))) - 1,
@@ -212,7 +213,7 @@ changes(await settled());
 /** A drag through these tiles with this in hand, straight or diagonal: a
  *  road sent whole, as the brush sends it; the demolisher a step at a
  *  time, its tap, one tile alone, taking the road there. */
-function stroke(tool: unknown, pts: Pt[]) {
+function stroke(tool: unknown, pts: P[]) {
   if (pts.length === 1) return send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
   const tiles = [{ at: at(pts[0]), want: 0 }];
   for (let i = 1; i < pts.length; i++) {
@@ -227,7 +228,7 @@ function stroke(tool: unknown, pts: Pt[]) {
   // A road, the drag whole, planned by the game (`draw.rs`).
   if (tool !== "Demolish") send("Draw", { id: Math.floor(Math.random() * 2 ** 30), tool, road: false, tiles });
 }
-const at = ([x, y]: Pt) => ({ x, y });
+const at = ([x, y]: P) => ({ x, y });
 
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];

@@ -5,6 +5,9 @@
  */
 export type Rgb = { readonly r: number; readonly g: number; readonly b: number };
 
+/** A colour as a vertex or a texel carries it. */
+export type RGB = [number, number, number];
+
 export const rgb = (r: number, g: number, b: number): Rgb => ({ r, g, b });
 
 export const WHITE = rgb(1, 1, 1);

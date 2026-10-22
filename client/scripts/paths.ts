@@ -8,14 +8,14 @@ import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
 import { CAR_RIG, driveTrip, LORRY_RIG, type Driven } from "../src/engine/objects/driver";
 import type { Pose } from "../src/generated";
 
-type Pt = [number, number];
+import type { P } from "../src/engine/geometry";
 
 /** A trip as the server sent it: its route's points, in the game's tiles,
  *  how many at either end are in a lot, and the stretches backed down. */
 export interface Recorded extends Omit<Driven, "route_positions"> {
   car: number;
   role: string;
-  route: Pt[];
+  route: P[];
 }
 
 /** A car turns no tighter than this, in tiles (5.5 m). */
@@ -23,7 +23,7 @@ export const TIGHTEST = 0.45;
 
 /** How tightly the path turns at each point between two others: the radius
  *  of the circle through the three, in tiles; straight is Infinity. */
-export function radii(points: Pt[]): number[] {
+export function radii(points: P[]): number[] {
   const out = points.map(() => Infinity);
   for (let i = 1; i + 1 < points.length; i++) {
     const [a, b, c] = [points[i - 1], points[i], points[i + 1]];
@@ -39,7 +39,7 @@ export function radii(points: Pt[]): number[] {
 
 /** Which part of a trip a point is on: pulling out of a lot, the street,
  *  or pulling in. By the node it was drawn from. */
-export function part(t: Recorded, points: Pt[], i: number): "out" | "street" | "in" {
+export function part(t: Recorded, points: P[], i: number): "out" | "street" | "in" {
   // Nodes and points run in order; the nearest node before the point says.
   const p = points[i];
   let best = 0;
@@ -50,9 +50,9 @@ export function part(t: Recorded, points: Pt[], i: number): "out" | "street" | "
 }
 
 /** A box on the plan: its corners. */
-const box = (p: Pose, l: number, w: number): Pt[] => {
+const box = (p: Pose, l: number, w: number): P[] => {
   const [c, n] = [Math.cos(p.heading), Math.sin(p.heading)];
-  return [[-l / 2, -w / 2], [l / 2, -w / 2], [l / 2, w / 2], [-l / 2, w / 2]].map(([a, b]): Pt => [p.at[0] + c * a - n * b, p.at[1] + n * a + c * b]);
+  return [[-l / 2, -w / 2], [l / 2, -w / 2], [l / 2, w / 2], [-l / 2, w / 2]].map(([a, b]): P => [p.at[0] + c * a - n * b, p.at[1] + n * a + c * b]);
 };
 
 /** Every trip as it is driven (`driver.ts`): the track of its middle,
@@ -63,7 +63,7 @@ export const trace = (trips: Recorded[]) =>
     const lorry = t.role === "Truck";
     const d = driveTrip({ ...t, route_positions: t.route }, lorry ? LORRY_RIG : CAR_RIG);
     if (!d) return { points: [], tight: [], strobe: [] };
-    const points: Pt[] = [], strobe: Pt[][] = [];
+    const points: P[] = [], strobe: P[][] = [];
     for (let s = 0; s <= d.length; s += 0.02) {
       const { body, trailer } = d.at(s);
       points.push(body.at);

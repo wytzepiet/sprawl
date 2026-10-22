@@ -7,7 +7,7 @@ import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
-import { hex, rgb, WHITE, type Rgb } from "./rgb";
+import { hex, rgb, WHITE, type RGB, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
 import { areaOf, CHUNK, grow, kerbed, MARGIN, turned, widen, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
@@ -15,7 +15,7 @@ import { theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z, LAYER_ORDER } from "./town/draw";
-import type { MeshGeometry } from "./geometry";
+import type { MeshGeometry, P } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { surfacesAt } from "./town/surface";
 import { Decks, liftOf, type DeckPiece } from "./decks";
@@ -26,10 +26,8 @@ import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
-import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing, Pose } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
-import type { Pt } from "./town/footprint";
 import { TRAILER } from "./objects/roadGeometry";
 
 /** How many roads one tile may hold: the ground's two side by side, and
@@ -513,7 +511,7 @@ export class TownLayer {
       const geo = bevelled(paved ? square(cut, KERB_Z) : p.geo);
       const mesh = meshOf(engine, `town_${p.name}_${key}`, geo);
       giveBevel(engine, mesh, geo);
-      const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
+      const colour = p.colour ?? WHITE;
       mesh.material = p.name === "mass" ? this.masses : paved ? this.pavement(colour, kerbs) : this.pieceMaterial(p.name, colour);
       if (p.name === "mass" || paved) mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
       mesh.position.x = ox;
@@ -580,7 +578,7 @@ function slotLine(marks: Map<string, Snapshot["marks"][number]>, { at: [x, y], h
   const [ux, uy] = [Math.cos(heading), Math.sin(heading)];
   const [cx, cy] = [x - uy * side * SLOT / 2, y + ux * side * SLOT / 2];
   const [a, b, w] = [-TRAILER.l / 2 - 0.04, TRAILER.l / 2 + 0.12, 0.008];
-  const at = (t: number, o: number): Pt => [cx + ux * t - uy * o, cy + uy * t + ux * o];
+  const at = (t: number, o: number): P => [cx + ux * t - uy * o, cy + uy * t + ux * o];
   marks.set(`${cx.toFixed(2)},${cy.toFixed(2)}`, [at(a, -w), at(b, -w), at(b, w), at(a, w)]);
 }
 /** A slot's width: the docks' spacing (`BAY_W` in the server's `lots.rs`). */

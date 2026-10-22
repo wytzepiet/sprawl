@@ -168,7 +168,7 @@ export function townOf(
   return town;
 }
 
-const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+export const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 const CORNERS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const EIGHT: [number, number][] = [...SIDES, ...CORNERS];
 

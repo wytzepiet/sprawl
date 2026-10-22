@@ -1,4 +1,4 @@
-//! A farm's land, and the tractor's runs over it. docs/economy.md §12.8.
+//! A farm's land, and the tractor's runs over it. docs/buildings.md, Making things.
 //!
 //! When a street reaches a farm it claims a rectangle of grass round its
 //! plot, grown a row at a time on whichever side keeps it squarest, the

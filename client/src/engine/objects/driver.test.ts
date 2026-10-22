@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Pt } from "./driver";
+import { CAR_RIG, driveTrip, LORRY_RIG, type Drive } from "./driver";
+import type { P } from "../geometry";
 import { drawnPath } from "./drawnPath";
 import { LANE_OFFSET } from "./roadGeometry";
 
@@ -22,8 +23,8 @@ function jolts(d: Drive, ds = 0.005) {
 
 // A yard: in from the street along the lane, past the dock's mouth to the
 // stop beyond it, and backed round into the dock, which faces the lane.
-const lane: Pt[] = [[0, 0.5], [1, 0.5], [2, 0.5], [2.95, 0.5], [2, 0.5], [2, 1.6]];
-const dock = { at: [2, 1.6] as Pt, heading: -Math.PI / 2 };
+const lane: P[] = [[0, 0.5], [1, 0.5], [2, 0.5], [2.95, 0.5], [2, 0.5], [2, 1.6]];
+const dock = { at: [2, 1.6] as P, heading: -Math.PI / 2 };
 
 test("backing a lorry into a dock: no jump, no snap, and it ends where it stands", () => {
   // The server's distance at the cusp a little off the drawn one: the
@@ -46,7 +47,7 @@ test("backing a lorry into a dock: no jump, no snap, and it ends where it stands
 });
 
 test("a car leaves from where it stood, though its route points elsewhere", () => {
-  const leaves = { at: [0, 0] as Pt, heading: 0.3 };
+  const leaves = { at: [0, 0] as P, heading: 0.3 };
   const d = driveTrip({ route_positions: [[0, 0], [0, -1], [1, -1]], from_lot: 1, to_lot: 0, backing: [[0, 1]], leaves }, CAR_RIG)!;
   const start = d.at(0).body;
   expect(Math.hypot(start.at[0], start.at[1])).toBeLessThan(1e-9);
@@ -74,7 +75,7 @@ test("a lorry leaving a yard by a hairpin at its door drives it, not a loop", ()
   // the route as drawn, its corner at the door too tight for any lock,
   // the lorry overshot and came round: four radians of turning for a
   // way that turns three at most.
-  const out = { route_positions: [[10.85, 2.56], [10.85, 1.5], [10.55, 1.5], [10.5, 1.5], [10.5, 0.5], [11.5, 0.5], [12.5, 0.5], [13.5, 0.5]] as Pt[], from_lot: 4, to_lot: 0, backing: [] as [number, number][], leaves: { at: [10.85, 2.56] as Pt, heading: -Math.PI / 2 } };
+  const out = { route_positions: [[10.85, 2.56], [10.85, 1.5], [10.55, 1.5], [10.5, 1.5], [10.5, 0.5], [11.5, 0.5], [12.5, 0.5], [13.5, 0.5]] as P[], from_lot: 4, to_lot: 0, backing: [] as [number, number][], leaves: { at: [10.85, 2.56] as P, heading: -Math.PI / 2 } };
   const d = driveTrip(out, LORRY_RIG)!;
   expect(turning(d)).toBeLessThan(3.2);
   expect(jolts(d).move).toBeLessThan(2.5);
@@ -92,7 +93,7 @@ test("whatever the way, a vehicle keeps to it: near it, as far as it, and never 
   const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
   for (let n = 0; n < 300; n++) {
     let [x, y, h] = [0, 0, Math.floor(rand() * 8) * (Math.PI / 4)];
-    const route: Pt[] = [[x, y]];
+    const route: P[] = [[x, y]];
     const [fromLot, toLot] = [Math.floor(rand() * 4), Math.floor(rand() * 4)];
     const streets = 2 + Math.floor(rand() * 6);
     const lorry = rand() < 0.5;
@@ -112,12 +113,12 @@ test("whatever the way, a vehicle keeps to it: near it, as far as it, and never 
     const d = driveTrip(t, lorry ? LORRY_RIG : CAR_RIG);
     if (!d) continue;
     // The way as it is drawn, each part on its own.
-    const drawn: Pt[] = [];
+    const drawn: P[] = [];
     for (const [i, j] of backsOut ? [[0, 1], [1, len - 1]] : [[0, len - 1]]) {
       const p = drawnPath(route.slice(i, j + 1), LANE_OFFSET, Math.max(t.from_lot - i, i > 0 ? 1 : 0), Math.max(j + 1 - (len - toLot), j < len - 1 ? 1 : 0));
       if (p) drawn.push(...p.points);
     }
-    const off = (q: Pt) => {
+    const off = (q: P) => {
       let best = Infinity;
       for (let i = 1; i < drawn.length; i++) {
         const [a, b] = [drawn[i - 1], drawn[i]];
