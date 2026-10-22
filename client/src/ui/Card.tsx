@@ -6,7 +6,7 @@ import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
 import { SitePanel } from "./Site";
-import { Bar, Press, Row, Section, To, type Link } from "./kit";
+import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingCard, CarCard, CarRole, ResidentCard } from "../generated";
 
@@ -150,7 +150,7 @@ function ResidentLines(c: ResidentCard) {
           {(b) => (
             <box dir="row" align="center" gap={8} minH={22}>
               <text w={64} size={13.5} weight={c.selected === b.need ? 600 : undefined} soft={c.selected !== b.need}>{b.need}</text>
-              <Bar value={b.full} color={c.selected === b.need ? "#7B77E0" : "#A8A29E"} />
+              <Bar value={b.full} color={c.selected === b.need ? GDP : "#A8A29E"} />
               <box grow={1} />
               <Show when={b.option} fallback={<text size={12} soft>nothing found</text>}>
                 {(id) => <To link={{ id: id(), label: "→ option", kind: "building" }} />}
@@ -171,7 +171,7 @@ function CarLines(c: CarCard) {
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
-        <For each={c.stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full < 0.2 ? "#D9483B" : "#57A773"} /></Row>}</For>
+        <For each={c.stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full < 0.2 ? BAD : GOOD} /></Row>}</For>
       </Section>
       <Show when={c.trip}>
         {(t) => (
@@ -222,7 +222,7 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
       </Show>
       <Show when={kind() !== "Depot" && c().stocks.length > 0}>
         <Section title="Stocks">
-          <For each={c().stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full <= 0 ? "#D9483B" : "#57A773"} /></Row>}</For>
+          <For each={c().stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full <= 0 ? BAD : GOOD} /></Row>}</For>
         </Section>
       </Show>
       <Show when={c().here.length > 0}>

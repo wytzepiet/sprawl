@@ -7,6 +7,7 @@ import { held, setTool, tool } from "./buildMode";
 import { BLUEPRINTS } from "../blueprints";
 import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
+import { setBoardOpen } from "./Board";
 import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, take } from "./Roads";
 import { BuildBody, BuildHead } from "./Build";
 import { FROSTED, MarketBody, MarketHead, setView } from "./Market";
@@ -60,6 +61,7 @@ export default function Dock() {
   const onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
+    if (e.key === "Escape") setBoardOpen(false);
     if (e.key === "Escape" && pages().length) return pop();
     if (e.key === "Escape") return tool() || held() ? setTool(null) : open() && tab() !== "select" ? setOpen(false) : select(null);
     if (key === "V") return show("select", selected() !== null);

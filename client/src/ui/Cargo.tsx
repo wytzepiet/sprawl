@@ -13,7 +13,7 @@ import type { Good, Shipment } from "../generated";
  * tap follows the first. Drawn under every pane of glass, so a card over
  * one hides it.
  */
-export default function Pins() {
+export default function Cargo() {
   const shown = (s: Shipment) => s.carrier !== null && !!s.good && s.units > 0 && s.leg !== "Booked";
   const carried = createMemo(() => [...new Set(sea.shipments.filter(shown).map((s) => s.carrier!))].sort((a, b) => a - b), undefined, { equals: (a, b) => a.join() === b.join() });
   const goodsOn = (carrier: number) => {

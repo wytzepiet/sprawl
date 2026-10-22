@@ -16,6 +16,15 @@ import type { JSX } from "~ui/jsx-runtime";
  * white on the night's.
  */
 
+/** The colours the cards name, each for one thing: well and done; wrong,
+ *  short or gone; GDP, and the missions that grow it; the sea and what
+ *  comes over it; coins. */
+export const GOOD = "#57A773";
+export const BAD = "#D9483B";
+export const GDP = "#7B77E0";
+export const SEA = "#2B6CA3";
+export const COIN = "#B7791F";
+
 /** Something to press: it rises under the pointer, gives under the finger and springs back,
  *  by a few pixels whatever its size: a button's twelfth, a row's hair. */
 export function Press(props: JSX.Box & { onTap: () => void }) {
@@ -113,7 +122,7 @@ export function Btn(props: { onTap: () => void; children: JSX.Element; color?: s
       h={props.big ? 44 : 30}
       pad={{ x: props.big ? 20 : 12 }}
       round={22}
-      fill={props.big ? props.color ?? "#2B6CA3" : undefined}
+      fill={props.big ? props.color ?? SEA : undefined}
       stroke={props.big ? undefined : [1.5, "ink/0.18"]}
       shadow={props.big}
       opacity={props.disabled ? 0.4 : 1}
@@ -172,8 +181,6 @@ export const { view, wide } = createRoot(() => {
   return { view, wide: () => view().w >= 768 };
 });
 
-/** How far a moment has run since it was made, 0 to 1 over `ms`: what a
- *  thing that comes, does its turn and goes is drawn by. */
 /** Asks `url` now and every `ms` after, handing on each answer, until
  *  the scope that asked ends. */
 export function poll<T>(url: string, ms: number, got: (answer: T) => void) {
@@ -190,6 +197,8 @@ export function poll<T>(url: string, ms: number, got: (answer: T) => void) {
   });
 }
 
+/** How far a moment has run since it was made, 0 to 1 over `ms`: what a
+ *  thing that comes, does its turn and goes is drawn by. */
 export function elapsed(ms: number) {
   const [t, set] = createSignal(0);
   const start = performance.now();
@@ -247,7 +256,7 @@ export function Bar(props: { value: number; color?: string; w?: number; h?: numb
   const [v] = follow(() => Math.max(0, Math.min(1, props.value)), { rest: 0.001 });
   return (
     <box w={w()} h={h()} round={h() / 2} fill="ink/0.1">
-      <box at={{ left: 0, top: 0 }} w={w() * Math.max(0, v())} h={h()} round={h() / 2} fill={props.color ?? "#7B77E0"} />
+      <box at={{ left: 0, top: 0 }} w={w() * Math.max(0, v())} h={h()} round={h() / 2} fill={props.color ?? GDP} />
     </box>
   );
 }

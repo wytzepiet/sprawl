@@ -6,7 +6,7 @@ import { boxOf } from "../state/deals";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { quoteOf, total } from "../state/market";
-import { Btn, coins, GoodDot, Section, StepBar } from "./kit";
+import { BAD, Btn, coins, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../generated";
 
@@ -83,23 +83,23 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
     <box pad={{ left: 36 }}>
       <>{() => {
         const v = van();
-        if (v) return <Line dot="#57A773" text="On the van, on its way" act={<Btn onTap={() => setFollowing(v.id)}>follow</Btn>} />;
+        if (v) return <Line dot={GOOD} text="On the van, on its way" act={<Btn onTap={() => setFollowing(v.id)}>follow</Btn>} />;
         const d = stocked();
-        if (d) return <Line dot="#57A773" text={`In stock at the depot: ${Math.floor(d.stocks[g()] ?? 0)}`} sub="its van brings it" />;
+        if (d) return <Line dot={GOOD} text={`In stock at the depot: ${Math.floor(d.stocks[g()] ?? 0)}`} sub="its van brings it" />;
         const m = maker();
-        if (m) return <Line dot="#57A773" text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
+        if (m) return <Line dot={GOOD} text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
         const p = parked();
-        if (p) return <Line dot={p.d.joined ? "#2B6CA3" : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
+        if (p) return <Line dot={p.d.joined ? SEA : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
         const s = coming();
         if (s) {
           const b = boxOf(s);
-          return <Line dot="#2B6CA3" text={`${Math.round(s.units)} ${label()} ${b.words}`} sub={b.eta ? `in ${until(b.eta)}` : undefined} />;
+          return <Line dot={SEA} text={`${Math.round(s.units)} ${label()} ${b.words}`} sub={b.eta ? `in ${until(b.eta)}` : undefined} />;
         }
-        if (!nearest()) return <Line dot="#D9483B" text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
+        if (!nearest()) return <Line dot={BAD} text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
         const x = sailing();
         return (
           <Line
-            dot="#D9483B"
+            dot={BAD}
             text={ordered() ? `Booked: lands ${x ? clockAt(x.lands) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
             sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(x.lands)}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={

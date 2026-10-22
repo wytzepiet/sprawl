@@ -12,30 +12,15 @@
  * the clock and the place. The game is the one `bun run dev` runs, or
  * SPRAWL_PORT's.
  */
-import { decode, encode } from "@msgpack/msgpack";
-import { PORT } from "./lib";
+import { connect } from "./game";
 import "./tsx";
-import type { GameObjectEntry, Operation, ServerMessage } from "../src/generated";
 
 const { moment } = await import("../src/engine/objects/motion");
 const [x, y, r = 12] = (process.argv[2] ?? "0,0").split(",").map(Number);
 const seconds = Number(process.argv[3] ?? 20);
-const entities = new Map<number, GameObjectEntry>();
-let clock = { now: 0, speed: 0, heard: 0 };
-const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
-ws.binaryType = "arraybuffer";
-ws.onmessage = (e) => {
-  const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as ServerMessage;
-  if (msg.type !== "Update") return;
-  clock = { ...msg.data.clock, heard: Date.now() };
-  for (const op of msg.data.ops as Operation[]) op.op === "Upsert" ? entities.set(op.data.id, op.data) : entities.delete(op.data);
-};
-await new Promise((ok, fail) => ((ws.onopen = ok), (ws.onerror = () => fail(new Error(`no game on port ${PORT}`)))));
-const ch = (v: number) => Math.floor(v / 32);
-ws.send(encode({ type: "SetChunks", data: { min_cx: ch(x - r) - 1, min_cy: ch(y - r) - 1, max_cx: ch(x + r) + 1, max_cy: ch(y + r) + 1 } }));
+const { entities, now, close } = await connect({ tiles: [[x - r, y - r], [x + r, y + r]] });
 await Bun.sleep(500);
 
-const now = () => clock.now + (Date.now() - clock.heard) * clock.speed;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const last = new Map<number, { t: number; x: number; y: number; h: number; v: number }>();
 const tally = new Map<number, { role: string; jump: number; snap: number; flip: number; lurch: number; said: string[] }>();
@@ -75,5 +60,5 @@ function sample(t: number) {
     last.set(id, { t, x: px, y: py, h: m.body.heading, v });
   }
 }
-ws.close();
+close();
 for (const [id, k] of tally) console.log(`${k.role} ${id}: ${k.jump} jumps, ${k.snap} snaps, ${k.flip} flips, ${k.lurch} lurches${k.said.length ? "\n    " + k.said.join("\n    ") : ""}`);

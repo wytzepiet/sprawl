@@ -5,7 +5,7 @@ import { sea } from "../state/sea";
 import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
-import { Fade, GoodDot, Line, Press, Tabs } from "./kit";
+import { BAD, Fade, GoodDot, Line, Press, Tabs } from "./kit";
 import { open, setOpen, show } from "./sheet";
 import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
@@ -24,7 +24,6 @@ import type { Good, Quote, When } from "../generated";
 /** How frosted the glass under a chart is: its red and green read over any town. */
 export const FROSTED = 1;
 const UP = "#2E9D6A";
-const DOWN = "#D9483B";
 /** The most boxes a ferry's deck takes: the most bought or sold at once. */
 const DECK = 15;
 
@@ -33,7 +32,7 @@ export const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() :
 export const box = (g: Good, unit: number) => unit * GOODS[g].box;
 export const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].label.slice(1);
 /** A move's colour: up, down, or too small to call. */
-export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : DOWN);
+export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : BAD);
 export const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
 
 /** Every good held, with what is on its way in. */

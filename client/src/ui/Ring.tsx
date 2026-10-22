@@ -6,7 +6,7 @@ import { buildingAt, useGame } from "../state/gameObjects";
 import { select } from "../state/selection";
 import { inHand } from "./buildMode";
 import { DEMOLISH } from "./Roads";
-import { Pop, Press } from "./kit";
+import { BAD, Pop, Press } from "./kit";
 
 /** How long a press on a building is held before its ring opens, and how
  *  far the finger may wander meanwhile. */
@@ -68,7 +68,7 @@ export default function Ring() {
             </glass>
           </Pop>
           <Pop at={{ left: r.x + 12, top: r.y - 80 }} w={52} h={52}>
-            <glass layer="ring" dye="#D9483B" w={52} h={52} round={26} align="center" justify="center">
+            <glass layer="ring" dye={BAD} w={52} h={52} round={26} align="center" justify="center">
               <Press w={52} h={52} round={26} align="center" justify="center" onTap={() => (setRing(null), send({ type: "Raze", data: { building: r.id } }))}>
                 <icon d={DEMOLISH} size={22} ink="white" />
               </Press>

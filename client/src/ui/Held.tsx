@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { stocks } from "../state/market";
 import { aim } from "./buildMode";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { onMap } from "./kit";
+import { BAD, GOOD, onMap } from "./kit";
 import type { Good } from "../generated";
 
 /** What the town has of a good on its standing depots' shelves; or,
@@ -36,8 +36,8 @@ export default function Held() {
           <For each={lines()}>
             {(l) => (
               <box dir="row" align="center" gap={4}>
-                <icon d={GOODS[l.good].glyph} size={13} ink={l.have >= l.n ? "ink" : "#C2361F"} />
-                <text size={13} ink={l.have >= l.n ? undefined : "#C2361F"}>{l.n}</text>
+                <icon d={GOODS[l.good].glyph} size={13} ink={l.have >= l.n ? "ink" : BAD} />
+                <text size={13} ink={l.have >= l.n ? undefined : BAD}>{l.n}</text>
                 <text size={13} soft>/ {Math.floor(l.have)}</text>
               </box>
             )}
@@ -46,7 +46,7 @@ export default function Held() {
             <text serif size={13} soft>stands at once</text>
           </Show>
         </box>
-        <text size={12} ink={aim()!.why ? "#C2361F" : "#2E7D4F"}>{aim()!.why ?? (aim()!.kind === "Harbour" && !aim()!.door ? "The ferry berths here; a street comes with it" : "Let go to build")}</text>
+        <text size={12} ink={aim()!.why ? BAD : GOOD}>{aim()!.why ?? (aim()!.kind === "Harbour" && !aim()!.door ? "The ferry berths here; a street comes with it" : "Let go to build")}</text>
       </glass>
     </Show>
   );

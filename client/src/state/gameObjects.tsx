@@ -41,17 +41,17 @@ const entities = new Map<string, GameObjectEntry>();
 const spatial = new Map<string, number[]>();
 
 /**
- * What carries a pin: every building. Kept as ops arrive, with a version the
- * pin layer re-reads on; the entities map itself is deliberately not
- * reactive, and pins are the one view that wants a list. The version also
+ * What carries a sign: every building. Kept as ops arrive, with a version the
+ * sign layer re-reads on; the entities map itself is deliberately not
+ * reactive, and signs are the one view that wants a list. The version also
  * moves when a road lands on or leaves a building's tile, since whether a
- * building is reached is part of how its pin is drawn.
+ * building is reached is part of how its sign is drawn.
  */
-const pinnedEntries = new Map<number, GameObjectEntry>();
-const [pinsVersion, setPinsVersion] = createSignal(0);
-export function pinned(): GameObjectEntry[] {
-  pinsVersion();
-  return [...pinnedEntries.values()];
+const signedEntries = new Map<number, GameObjectEntry>();
+const [signsVersion, setSignsVersion] = createSignal(0);
+export function signed(): GameObjectEntry[] {
+  signsVersion();
+  return [...signedEntries.values()];
 }
 /**
  * Coins, GDP and goods that landed on buildings in view, for a moment:
@@ -73,28 +73,28 @@ function land(lumps: Lump[]) {
 
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
-function trackPin(entry: GameObjectEntry | undefined, id: number) {
-  const was = pinnedEntries.has(id);
-  const before = pinnedEntries.get(id);
+function trackSign(entry: GameObjectEntry | undefined, id: number) {
+  const was = signedEntries.has(id);
+  const before = signedEntries.get(id);
   if (before?.position && before.object.kind === "Building") {
     for (const t of keys(before.object.data as Building)) occupiedBy.delete(t);
   }
   if (entry && entry.object.kind === "Building" && entry.position) {
-    pinnedEntries.set(id, entry);
+    signedEntries.set(id, entry);
     for (const t of keys(entry.object.data as Building)) occupiedBy.set(t, id);
   } else {
-    pinnedEntries.delete(id);
+    signedEntries.delete(id);
   }
-  if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
+  if (was || signedEntries.has(id)) setSignsVersion((v) => v + 1);
 }
 const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
 /**
  * Does this building's door open onto a street joined to the world? A door
- * onto an island is no way in. Reactive on the pins' version, which moves
+ * onto an island is no way in. Reactive on the signs' version, which moves
  * when a road lands, leaves or changes.
  */
 export function reached(entry: GameObjectEntry): boolean {
-  pinsVersion();
+  signsVersion();
   if (entry.object.kind !== "Building") return false;
   const b = entry.object.data as Building;
   const door = b.door;
@@ -217,8 +217,8 @@ function applyOps(ops: Operation[]) {
           else if (!ids.includes(op.data.id)) ids.push(op.data.id);
         }
         entities.set(key, op.data);
-        trackPin(op.data, op.data.id);
-        if (op.data.object.kind === "RoadNode") setPinsVersion((v) => v + 1);
+        trackSign(op.data, op.data.id);
+        if (op.data.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
         break;
       }
       case "Delete": {
@@ -235,9 +235,9 @@ function applyOps(ops: Operation[]) {
             }
           }
           entities.delete(key);
-          if (existing.object.kind === "RoadNode") setPinsVersion((v) => v + 1);
+          if (existing.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
         }
-        trackPin(undefined, Number(key));
+        trackSign(undefined, Number(key));
         break;
       }
     }

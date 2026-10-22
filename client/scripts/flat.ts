@@ -18,17 +18,16 @@
  * game's own, as `bun run act` takes them. The game is the one `bun run
  * dev` runs, or SPRAWL_PORT's.
  */
-import { decode, encode } from "@msgpack/msgpack";
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { mkdirSync } from "node:fs";
-import { args, flag, PORT, ROOT, word } from "./lib";
+import { args, flag, ROOT, word } from "./lib";
+import { connect } from "./game";
 import "./tsx";
-import type { GameObjectEntry, Lane, Mission, Neighbour, Operation, ServerMessage, TerrainChunk } from "../src/generated";
+import type { Lane, Mission, Neighbour } from "../src/generated";
 
 const t0 = performance.now();
 const { drawFlat } = await import("../src/flat/draw");
 const { moment } = await import("../src/engine/objects/motion");
-const { CHUNK_SIZE } = await import("../src/engine/objects/terrainGeometry");
 const { markedFor } = await import("../src/state/missions");
 
 const OUT = `${ROOT}/.dev/flat`;
@@ -39,43 +38,30 @@ const follow = flag("--follow", NaN);
 const name = word("--name") ?? "flat";
 const [x, y, r = 12] = (args[0] ?? "0,0").split(",").map(Number);
 
-// What the server has said, as the client keeps it.
-const entities = new Map<number, GameObjectEntry>();
+// What the server has said beyond the things, as the client keeps it.
 const chunks = new Map<string, Uint8Array>();
-let clock = { now: 0, speed: 0, day_ms: 1, heard: 0 };
 let lanes: Lane[] = [];
 let missions: Mission[] = [];
 let neighbours: Neighbour[] = [];
 let updates = 0;
-const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
-ws.binaryType = "arraybuffer";
-ws.onmessage = (e) => {
-  const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as ServerMessage;
-  if (msg.type === "TerrainChunk") {
-    const c = msg.data as TerrainChunk;
-    chunks.set(`${c.coord.cx},${c.coord.cy}`, c.tiles);
-  }
-  if (msg.type !== "Update") return;
-  clock = { ...msg.data.clock, heard: Date.now() };
-  lanes = msg.data.sea?.lanes ?? lanes;
-  missions = msg.data.missions ?? missions;
-  neighbours = msg.data.neighbours ?? neighbours;
-  for (const op of msg.data.ops as Operation[]) op.op === "Upsert" ? entities.set(op.data.id, op.data) : entities.delete(op.data);
-  if (msg.data.ops.length) updates++;
-};
-await new Promise((ok, fail) => ((ws.onopen = ok), (ws.onerror = () => fail(new Error(`no game on port ${PORT}: bun run dev`)))));
-
 // Everything a view of the place sees, and a chunk round it: what a vehicle
 // followed may drive into.
-const pad = frames > 1 && follow ? 2 : 1;
-const ch = (v: number) => Math.floor(v / CHUNK_SIZE);
-const bounds = { min_cx: ch(x - r) - pad, min_cy: ch(y - r) - pad, max_cx: ch(x + r) + pad, max_cy: ch(y + r) + pad };
-ws.send(encode({ type: "SetChunks", data: bounds }));
+const { entities, clock, now, close } = await connect({
+  tiles: [[x - r, y - r], [x + r, y + r]],
+  pad: frames > 1 && follow ? 2 : 1,
+  hear: (msg) => {
+    if (msg.type === "TerrainChunk") chunks.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
+    if (msg.type !== "Update") return;
+    lanes = msg.data.sea?.lanes ?? lanes;
+    missions = msg.data.missions ?? missions;
+    neighbours = msg.data.neighbours ?? neighbours;
+    if (msg.data.ops.length) updates++;
+  },
+});
 // The server answers on its next tick: the chunks, then what stands on them.
 for (const until = Date.now() + 5000; !updates && Date.now() < until; ) await Bun.sleep(10);
 await Bun.sleep(30);
 
-const now = () => clock.now + (Date.now() - clock.heard) * clock.speed;
 const sheet = (w: number, h: number) => createCanvas(w, h) as unknown as ReturnType<Parameters<typeof drawFlat>[3]>;
 const side = Math.round((2 * r + 1) * px);
 mkdirSync(OUT, { recursive: true });
@@ -95,7 +81,7 @@ for (let n = 0; n < frames; n++) {
   shots.push(canvas);
   if (n + 1 < frames) await Bun.sleep(every);
 }
-ws.close();
+close();
 
 if (frames > 1) {
   // Side by side, four to a row, each at half size.

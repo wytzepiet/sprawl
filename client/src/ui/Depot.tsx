@@ -2,7 +2,7 @@
 import { createMemo, createSignal, Index, Show } from "solid-js";
 import { buildingAt, getEntity, useGame } from "../state/gameObjects";
 import { load, now, until } from "../state/sea";
-import { coins, Follow, Pop, Press, Section } from "./kit";
+import { Btn, coins, Follow, Section } from "./kit";
 import type { Building, Car } from "../generated";
 
 /** What another lorry costs from the world, and how many a depot may buy (`haul.rs`). */
@@ -64,12 +64,7 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
           }}
         </Index>
         <box dir="row" justify="end" pad={{ top: 6 }}>
-          <Press dir="row" align="center" gap={6} h={30} pad={{ x: 12 }} round={15} stroke={[1.5, "ink/0.18"]} opacity={can() ? 1 : 0.4} onTap={() => can() && buy()}>
-            <Show when={bought()} fallback={<text size={12.5} weight={600}>+ lorry</text>}>
-              <Pop><text size={12.5} weight={600}>Bought ✓</text></Pop>
-            </Show>
-            <text serif size={12.5} soft>{coins(-LORRY_PRICE)}</text>
-          </Press>
+          <Btn onTap={buy} disabled={!can()}>{bought() ? "Bought ✓" : `+ lorry ${coins(-LORRY_PRICE)}`}</Btn>
         </box>
       </Section>
     </Show>

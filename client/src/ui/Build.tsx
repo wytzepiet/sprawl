@@ -4,7 +4,7 @@ import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { shapes, type Shape } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
-import { Fade, Info, Press, Tabs } from "./kit";
+import { BAD, Fade, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
@@ -67,8 +67,8 @@ export function BuildHead() {
       }
     >
       <box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
-        <box h={44} round={16} align="center" justify="center" stroke={[2, over() ? "#D9483B" : "ink/0.2"]}>
-          <text size={13} weight={600} ink={over() ? "#D9483B" : "ink/0.6"}>Drop here to put it back</text>
+        <box h={44} round={16} align="center" justify="center" stroke={[2, over() ? BAD : "ink/0.2"]}>
+          <text size={13} weight={600} ink={over() ? BAD : "ink/0.6"}>Drop here to put it back</text>
         </box>
       </box>
     </Show>

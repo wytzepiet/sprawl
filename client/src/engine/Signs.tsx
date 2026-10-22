@@ -8,7 +8,7 @@ import { seat } from "./town/mass";
 import { INSET } from "./town/footprint";
 import { WHITE } from "./rgb";
 import { slab, type P } from "./geometry";
-import { pinned, reached } from "../state/gameObjects";
+import { reached, signed } from "../state/gameObjects";
 import { subject } from "../state/selection";
 import { BLUEPRINTS, standing } from "../blueprints";
 import type { Building, BuildingKind } from "../generated";
@@ -137,7 +137,7 @@ const paintFace = (kind: BuildingKind) => {
 </svg>`, s, s);
 };
 
-export default function Pins() {
+export default function Signs() {
   const { engine, scene, canvas, beforeRender } = useEngine();
   const pool = useInstancePool();
   const shapes = { marker: marker(), plate: sign(SLAB), paint: sign(PAINT) };
@@ -159,7 +159,7 @@ export default function Pins() {
 
   const sync = () => {
     const keep = new Set<number>();
-    for (const e of pinned()) {
+    for (const e of signed()) {
       const b = e.object.data as Building;
       const kind = b.kind;
       const where = seat({ kind, storeys: storeysOf(kind) });
