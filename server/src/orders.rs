@@ -215,7 +215,7 @@ pub fn neighbours(world: &World) -> Vec<Neighbour> {
 pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
     let mut now = Vec::new();
     let mut built = Vec::new();
-    let kept = |good: Good| crate::missions::depots(world).map(|(_, b)| b.stocks.get(&good).map_or(0.0, |s| s.level)).sum::<f64>();
+    let kept = |good: Good| world.depots().into_iter().map(|(_, b)| b.stocks.get(&good).map_or(0.0, |s| s.level)).sum::<f64>();
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         built.push(b.kind);
@@ -361,13 +361,6 @@ pub fn send(world: &mut World, letter: u64, boxes: u32) -> u32 {
     (0..boxes.min(l.boxes)).take_while(|_| book(world, harbour, l.good, true, Some(l.partner), l.price, Some(letter))).count() as u32
 }
 
-fn harbour_mut(world: &mut World, harbour: EntityId) -> Option<&mut crate::protocol::Building> {
-    match world.objects.get_mut(harbour).map(|e| &mut e.object) {
-        Some(GameObject::Building(b)) if world.harbours.contains_key(&harbour) => Some(b),
-        _ => None,
-    }
-}
-
 /// Book a slot of a harbour's deck at a price a unit: a box of a good on
 /// the next ferry in, as far as the treasury goes once what is already
 /// coming is paid for; or a box going out, for a partner or the market,
@@ -377,7 +370,7 @@ pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner
     let id = world.objects.reserve_id();
     let t = Trailer { id, good, units: good.per_box(), to: None, outbound: out, order: letter.unwrap_or(id), partner, price };
     if out {
-        let Some(b) = harbour_mut(world, harbour).filter(|b| b.outgoing.len() < deck) else { return false };
+        let Some(b) = world.harbours.contains_key(&harbour).then(|| world.building_mut(harbour)).flatten().filter(|b| b.outgoing.len() < deck) else { return false };
         b.outgoing.push(t);
         world.missions.stir();
         return true;
@@ -387,7 +380,7 @@ pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner
         return false;
     }
     let Some(ferry) = world.next_ferry(harbour) else { return false };
-    let Some(GameObject::Car(c)) = world.objects.get_mut(ferry).map(|e| &mut e.object) else { return false };
+    let Some(c) = world.car_mut(ferry) else { return false };
     if c.booked.len() >= deck {
         return false;
     }

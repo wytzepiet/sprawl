@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::engine::GameTime;
-use crate::protocol::{Building, BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
 use crate::world::World;
 
 /// Which mission this is: each opens once.
@@ -241,20 +241,12 @@ fn open(row: &Row, now: GameTime) -> Mission {
     }
 }
 
-/// The standing depots, by id.
-pub fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
-    world.objects.iter().filter_map(|e| match e.object {
-        GameObject::Building(ref b) if b.site.is_none() && crate::economy::depot(b.kind) => Some((e.id, b)),
-        _ => None,
-    })
-}
-
 /// Is the fact true of the town now.
 fn met(world: &World, goal: Goal) -> bool {
     match goal {
         Goal::Stands(kind) => world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.street_of(e.id).is_some()),
-        Goal::Joined => depots(world).any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
-        Goal::Fetched => depots(world).any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
+        Goal::Joined => world.depots().into_iter().any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
+        Goal::Fetched => world.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
         Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
         Goal::Booked => crate::haul::boxes(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
@@ -268,7 +260,7 @@ fn at(world: &World, goal: Goal) -> Option<EntityId> {
         Goal::Stands(_) | Goal::Settled => None,
         // The deck is the harbour's.
         Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
-        _ => depots(world).next().map(|(id, _)| id),
+        _ => world.depots().into_iter().next().map(|(id, _)| id),
     }
 }
 
@@ -323,7 +315,7 @@ pub fn sense(world: &mut World, when: When, now: GameTime) {
     }
     // Short is short in the whole town: a van busy elsewhere is not.
     let real = match when {
-        When::Short(good) => !depots(world).any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
+        When::Short(good) => !world.depots().into_iter().any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
         _ => true,
     };
     if !real || row.steps.iter().all(|&(goal, ..)| met(world, goal)) {
@@ -345,7 +337,7 @@ mod tests {
 
     /// A shelf emptied, or filled.
     fn shelve(world: &mut World, at: EntityId, good: Good, level: f64) {
-        if let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object) {
+        if let Some(b) = world.building_mut(at) {
             b.stocks.get_mut(&good).unwrap().level = level;
         }
     }
@@ -417,11 +409,11 @@ mod tests {
             Some(GameObject::Resident(r)) => r.car,
             _ => unreachable!(),
         };
-        if let Some(GameObject::Resident(r)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+        if let Some(r) = world.resident_mut(id) {
             r.at = Some(house);
         }
         let tank = |world: &mut World, full: f64| {
-            if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+            if let Some(c) = world.car_mut(car) {
                 let s = c.stocks.get_mut(&Need::Fuel).unwrap();
                 s.level = s.cap * full;
             }

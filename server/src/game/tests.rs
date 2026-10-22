@@ -433,7 +433,7 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
     // A second lorry for each depot.
     let depots: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).collect();
     for d in depots {
-        if let Some(GameObject::Building(b)) = world.objects.get_mut(d).map(|e| &mut e.object) {
+        if let Some(b) = world.building_mut(d) {
             b.lorries = 1;
         }
     }
@@ -647,16 +647,18 @@ pub(crate) fn build_cost(copies: i32) -> Vec<(&'static str, f64)> {
 }
 
 /// A build costs the loop what it changes, not what the town holds:
-/// the same tap in a town twice the size costs at most half as much
-/// again. Every player building at once shares the one loop, so a build
-/// that grew with the world would stall all of them. Settling the whole town
-/// after every build cost 2 ms a house here, and 6 ms in two towns.
+/// the same tap in a town twice the size costs at most a third as much
+/// again, and a few microseconds of a busy machine. Every player building
+/// at once shares the one loop, so a build that grew with the world would
+/// stall all of them. Settling the whole town after every build cost 2 ms
+/// a house here, and 6 ms in two towns; finding the harbours and depots by
+/// walking the town, 24 µs a house here and 62 µs in two.
 /// Timed, so `#[ignore]`d with the other town benchmarks.
 #[test]
 #[ignore]
 fn a_build_costs_the_same_in_a_town_twice_the_size() {
     for ((what, one), (_, two)) in build_cost(1).into_iter().zip(build_cost(2)) {
-        assert!(two < 1.5 * one + 100.0, "{what} cost {one:.0} µs in one town and {two:.0} µs in two");
+        assert!(two < 1.3 * one + 20.0, "{what} cost {one:.0} µs in one town and {two:.0} µs in two");
     }
 }
 
@@ -709,7 +711,7 @@ pub(crate) fn assert_settled(world: &World, after: &str) {
         assert!(world.staff(e.id).len() == want(bp.jobs) || jobless == 0, "after {after}: {:?} {} has a desk free and {jobless} out of work", b.kind, e.id);
     }
     for id in world.resident_ids() {
-        let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
+        let Some(r) = world.resident(id) else { continue };
         for b in std::iter::once(r.home).chain(r.work) {
             assert!(world.street_of(b).is_some(), "after {after}: resident {id} is tied to {b}, which no road reaches");
             assert!(world.people.get(&b).is_some_and(|p| p.contains(&id)), "after {after}: the index lost resident {id} at {b}");
@@ -960,23 +962,19 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     // The order board: what the towns beyond the edge asked, what was
     // sent, and what they paid.
     let orders: Vec<_> = world.missions.list.iter().filter(|m| matches!(m.key, crate::missions::Key::Order(_))).collect();
-    // Paid, and over what the world would have paid for the same boxes.
-    let (paid, over): (f64, f64) = orders
+    let paid: f64 = orders
         .iter()
         .map(|m| match (m.steps[0].goal, m.reward) {
-            (crate::missions::Goal::Delivered { good, units, sailed }, crate::missions::Reward::Order { coins, .. }) => {
-                let paid = coins * sailed.min(units) / units;
-                (paid, paid - crate::economy::export(good, sailed.min(units)))
-            }
-            _ => (0.0, 0.0),
+            (crate::missions::Goal::Delivered { units, sailed, .. }, crate::missions::Reward::Order { coins, .. }) => coins * sailed.min(units) / units,
+            _ => 0.0,
         })
-        .fold((0.0, 0.0), |(a, b), (c, d)| (a + c, b + d));
+        .sum();
     let filled = orders.iter().filter(|m| m.steps[0].done).count();
     let lapsed = orders.iter().filter(|m| m.finished.is_some() && !m.steps[0].done).count();
     println!(
-        "orders: {} letters, {filled} filled, {lapsed} lapsed; {paid:.0} coins paid, {over:.0} over the world's price: {:.0}% of the treasury",
+        "orders: {} letters, {filled} filled, {lapsed} lapsed; {paid:.0} coins paid: {:.0}% of the treasury",
         orders.len(),
-        100.0 * over / world.treasury
+        100.0 * paid / world.treasury
     );
     for n in crate::orders::neighbours(&world) {
         let theirs: Vec<_> = orders.iter().filter(|m| m.from == Some(n.mayor)).map(|m| { let sent = match m.steps[0].goal { crate::missions::Goal::Delivered { sailed, .. } => sailed, _ => 0.0 }; format!("{}{}", m.steps[0].title, if m.steps[0].done { String::new() } else if m.finished.is_some() { format!(" (lapsed, {sent:.0} sent)") } else { " (open)".into() }) }).collect();
@@ -1049,7 +1047,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     assert_eq!(yard(&world), 0.0, "the yard is founded with a make");
     let hands = world.resident_ids().into_iter().filter(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.work == Some(farm))).count();
     assert!(hands > 0, "the farm hired nobody");
-    let tractor = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm)).map(|e| e.id).expect("the farm keeps a tractor");
+    let tractor = world.objects.fleet(farm).next().expect("the farm keeps a tractor");
     assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == crate::protocol::CarRole::Tractor));
     // The first day: the hands come at six and the tractor ploughs
     // the land, a shift's worth; by evening it is a field, the tractor
@@ -1083,13 +1081,13 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     // and no coin moves. The clock goes on from where the world is: an
     // event queue is not pumped backwards.
     let now = 4 * day + 20 * day / 24;
-    if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
+    if let Some(b) = world.building_mut(farm) {
         b.stocks.get_mut(&Good::Crates).unwrap().level = 300.0;
     }
     let before = yard(&world);
     let bought = |world: &World| world.town.on(now).bought.get(&Good::Crates).copied().unwrap_or(0.0);
     let bought_before = bought(&world);
-    if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+    if let Some(b) = world.building_mut(depot) {
         b.stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
     }
     calls::turn(&mut world, &mut events, depot, now);
@@ -1102,18 +1100,17 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     assert_eq!(bought(&world), bought_before, "crates fetched in town were paid for");
 }
 
+/// A depot's lorries, by id.
+fn lorries_of(world: &World, depot: EntityId) -> Vec<EntityId> {
+    world.objects.fleet(depot).filter(|&c| world.car(c).is_some_and(|c| c.role == CarRole::Truck)).collect()
+}
+
 pub(crate) fn car_of(world: &World, id: EntityId) -> crate::protocol::Car {
-    match world.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Car(c)) => c.clone(),
-        _ => panic!("no car {id}"),
-    }
+    world.car(id).cloned().unwrap_or_else(|| panic!("no car {id}"))
 }
 
 pub(crate) fn building_of(world: &World, id: EntityId) -> crate::protocol::Building {
-    match world.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => b.clone(),
-        _ => panic!("no building {id}"),
-    }
+    world.building(id).cloned().unwrap_or_else(|| panic!("no building {id}"))
 }
 
 /// A harbour on a real coast, seed 7's, where the map's edge is two
@@ -1188,7 +1185,7 @@ fn the_opening_from_the_harbour() {
     assert_eq!(opening(&mut world, 0), [true, true, true, false, false], "a depot on the harbour's street");
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let tug = world.tug_of(harbour).expect("the harbour's tug");
-    let lorry = crate::haul::lorries_of(&world, depot)[0];
+    let lorry = lorries_of(&world, depot)[0];
     assert_eq!(car_of(&world, ferry).booked.len(), 6, "the starter pack is booked");
     // A settle with nothing new touches nothing: what it touches goes
     // to every client, and is written down, each tick.
@@ -1237,7 +1234,7 @@ fn the_opening_from_the_harbour() {
     // A second lorry, bought from the world: the two fetch the rest.
     let before = world.treasury;
     crate::haul::buy_lorry(&mut world, &mut events, depot, now);
-    assert_eq!(crate::haul::lorries_of(&world, depot).len(), 2, "no second lorry");
+    assert_eq!(lorries_of(&world, depot).len(), 2, "no second lorry");
     assert!((before - world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
     let until = now + day / 4;
     while (parked(&world) > 0 || car_of(&world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && step(&mut world, &mut events, &mut now, until) {}
@@ -1266,7 +1263,7 @@ fn the_opening_from_the_harbour() {
     let mut rolled = 0;
     while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut now, until) {
         for &id in &settlers {
-            let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
+            let Some(r) = world.resident(id) else { continue };
             if let Some(t) = car_of(&world, r.car).trip.filter(|t| t.progress == 0.0 && t.route_positions.len() > 3) {
                 let start = t.leaves.expect("a settler leaves from its seat");
                 assert_eq!(start.at, t.route_positions[0]);
@@ -1321,7 +1318,7 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
     let mut events = EventQueue::new();
     settle_and_wake(&mut world, &mut events);
     let ferry = world.ferry_of(harbour).unwrap();
-    let lorry = crate::haul::lorries_of(&world, depot)[0];
+    let lorry = lorries_of(&world, depot)[0];
     let (day, mut now) = (DAY_MS as u64, 0);
     while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut now, day) {}
     while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut now, day) {}

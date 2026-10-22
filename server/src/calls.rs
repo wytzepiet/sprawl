@@ -66,7 +66,7 @@ pub fn staffed(world: &World, building: EntityId) -> bool {
 /// yet in; a standing building, every shelf its row buys under its
 /// reorder point.
 fn wants(world: &World, building: EntityId) -> Vec<Good> {
-    let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return Vec::new() };
+    let Some(b) = world.building(building) else { return Vec::new() };
     if let Some(site) = &b.site {
         return site.iter().filter(|(_, s)| s.short() > 0.0).map(|(&g, _)| g).collect();
     }
@@ -79,7 +79,7 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
 /// its lorries; and a farm with a hand on shift, room in the yard and a
 /// ripe field sends the tractor.
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
+    let Some(b) = world.building(building) else { return };
     let kind = b.kind;
     if b.site.is_none() && economy::farm(kind) {
         world.farm_run(events, building, now);
@@ -181,15 +181,11 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
 fn nearest_source(world: &World, at: EntityId, good: Good, load: f64) -> Option<EntityId> {
     let door = world.street_of(at)?;
     let mut routes = Routes::from(world, door);
-    let sources: Vec<EntityId> = world
-        .objects
-        .iter()
-        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::source(b.kind, good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0 && s.level >= load)))
-        .map(|e| e.id)
-        .collect();
-    sources
+    world
+        .of_kinds(|k| economy::makes(k, good))
         .into_iter()
-        .filter_map(|seller| Some((routes.cost_to(world.street_of(seller)?)?, seller)))
+        .filter(|&(id, b)| id != at && b.stocks.get(&good).is_some_and(|s| s.level > 0.0 && s.level >= load))
+        .filter_map(|(seller, _)| Some((routes.cost_to(world.street_of(seller)?)?, seller)))
         .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
         .map(|(_, s)| s)
 }
@@ -201,10 +197,10 @@ fn nearest_seller(world: &mut World, at: EntityId, good: Good) -> Option<(Entity
     // Every depot with the good on its shelf, in id order, so two runs of
     // the same town make the same choice.
     let depots: Vec<EntityId> = world
-        .objects
-        .iter()
-        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::depot(b.kind) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
-        .map(|e| e.id)
+        .of_kinds(economy::depot)
+        .into_iter()
+        .filter(|&(id, b)| id != at && b.stocks.get(&good).is_some_and(|s| s.level > 0.0))
+        .map(|(id, _)| id)
         .collect();
     let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, CarRole::Van).map(|(van, door)| (d, van, door))).collect();
     let door = world.street_of(at)?;
@@ -364,7 +360,7 @@ mod tests {
 
     /// Sell `units` off a shop's shelf, as visits would, and let it call.
     fn sell(world: &mut World, events: &mut EventQueue, shop: EntityId, units: f64, now: GameTime) {
-        if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+        if let Some(b) = world.building_mut(shop) {
             b.stocks.get_mut(&Good::Crates).unwrap().take(units);
         }
         crate::calls::turn(world, events, shop, now);
@@ -419,7 +415,7 @@ mod tests {
         let far = build(&mut world, 60, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let empty = |world: &mut World, depot: EntityId| {
-            if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            if let Some(b) = world.building_mut(depot) {
                 b.stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
             }
         };

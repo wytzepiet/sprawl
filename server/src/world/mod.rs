@@ -20,7 +20,7 @@ use crate::engine::GameTime;
 
 use crate::protocol::{
     CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId,
-    GameObject, TILE_ABSENT, TerrainChunk, TerrainType,
+    Building, BuildingKind, Car, GameObject, Resident, TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
 use crate::world::network::RoadNetwork;
@@ -159,6 +159,74 @@ pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
 }
 
 impl World {
+    pub fn building(&self, id: EntityId) -> Option<&Building> {
+        match self.objects.get(id)?.object {
+            GameObject::Building(ref b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn building_mut(&mut self, id: EntityId) -> Option<&mut Building> {
+        match self.objects.get_mut(id)?.object {
+            GameObject::Building(ref mut b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn car(&self, id: EntityId) -> Option<&Car> {
+        match self.objects.get(id)?.object {
+            GameObject::Car(ref c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn car_mut(&mut self, id: EntityId) -> Option<&mut Car> {
+        match self.objects.get_mut(id)?.object {
+            GameObject::Car(ref mut c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn resident(&self, id: EntityId) -> Option<&Resident> {
+        match self.objects.get(id)?.object {
+            GameObject::Resident(ref r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn resident_mut(&mut self, id: EntityId) -> Option<&mut Resident> {
+        match self.objects.get_mut(id)?.object {
+            GameObject::Resident(ref mut r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// The buildings of these kinds, by id.
+    pub fn of_kinds(&self, keep: impl Fn(BuildingKind) -> bool) -> Vec<(EntityId, &Building)> {
+        let mut ids: Vec<EntityId> = BuildingKind::ALL.into_iter().filter(|&k| keep(k)).flat_map(|k| self.objects.of_kind(k)).collect();
+        ids.sort_unstable();
+        ids.into_iter().filter_map(|id| Some((id, self.building(id)?))).collect()
+    }
+
+    /// The standing depots, by id.
+    pub fn depots(&self) -> Vec<(EntityId, &Building)> {
+        self.of_kinds(crate::economy::depot).into_iter().filter(|(_, b)| b.site.is_none()).collect()
+    }
+
+    /// These, nearest a tile first, as the crow walks the grid: with how
+    /// many tiles off each is.
+    pub fn nearest(&self, at: GridCoord, among: impl IntoIterator<Item = EntityId>) -> Vec<(i32, EntityId)> {
+        let mut v: Vec<(i32, EntityId)> = among
+            .into_iter()
+            .filter_map(|id| {
+                let p = self.objects.get(id)?.position?;
+                Some(((p.x - at.x).abs() + (p.y - at.y).abs(), id))
+            })
+            .collect();
+        v.sort_unstable();
+        v
+    }
+
     pub fn unindex(&mut self, id: EntityId, coord: GridCoord) {
         if let Some(ids) = self.spatial.get_mut(&chunk_of(coord)) {
             ids.remove(&id);
@@ -349,12 +417,7 @@ impl World {
     /// Derived from the buildings rather than remembered: running this
     /// twice changes nothing.
     pub fn mark_harbours(&mut self, now: GameTime) {
-        let standing: Vec<EntityId> = self
-            .objects
-            .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == crate::protocol::BuildingKind::Harbour && b.site.is_none()))
-            .map(|e| e.id)
-            .collect();
+        let standing: Vec<EntityId> = self.of_kinds(|k| k == BuildingKind::Harbour).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id).collect();
         let was = std::mem::take(&mut self.harbours);
         for (h, node) in &was {
             if let Some(node) = node

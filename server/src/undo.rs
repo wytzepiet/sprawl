@@ -77,7 +77,7 @@ pub struct Purse {
 
 impl Purse {
     pub fn of(world: &World) -> Purse {
-        Purse { coins: world.treasury, stone: depots(world).map(|(id, b)| (id, stone(b))).collect() }
+        Purse { coins: world.treasury, stone: world.depots().into_iter().map(|(id, b)| (id, stone(b))).collect() }
     }
 
     pub fn paid(&self, world: &World) -> Paid {
@@ -98,13 +98,6 @@ impl Purse {
 
 fn stone(b: &Building) -> f64 {
     b.stocks.get(&Good::Stone).map_or(0.0, |s| s.level)
-}
-
-fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
-    world.objects.iter().filter_map(|e| match e.object {
-        GameObject::Building(ref b) if crate::economy::depot(b.kind) && b.site.is_none() => Some((e.id, b)),
-        _ => None,
-    })
 }
 
 #[derive(Debug, Clone)]
@@ -246,7 +239,7 @@ pub struct Placed {
 
 /// A building placed, kept a while for razing to give back.
 pub fn placed(world: &mut World, id: EntityId, laid: Vec<Link>, paid: Paid, after: EntityId, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return };
+    let Some(b) = world.building(id) else { return };
     let placed = Placed { id, kind: b.kind, free: b.site.is_none(), laid, paid, at: now, after };
     world.placed.retain(|p| now.saturating_sub(p.at) <= WINDOW);
     world.placed.push(placed);
@@ -435,8 +428,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
         *all.entry(good).or_default() += units;
     }
     for (good, units) in all.into_iter().filter(|(_, u)| *u > 0.0) {
-        let mut near: Vec<(i32, EntityId)> = depots(world).filter_map(|(id, _)| Some(((world.objects.get(id)?.position?.x - at.x).abs() + (world.objects.get(id)?.position?.y - at.y).abs(), id))).collect();
-        near.sort();
+        let near = world.nearest(at, world.depots().into_iter().map(|(id, _)| id));
         let mut left = units;
         for (_, depot) in near {
             left -= shelve(world, depot, good, left);
@@ -456,7 +448,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
 
 /// Units of a good put on a depot's shelf, as far as it has room: how many.
 fn shelve(world: &mut World, depot: EntityId, good: Good, units: f64) -> f64 {
-    let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) else { return 0.0 };
+    let Some(b) = world.building_mut(depot) else { return 0.0 };
     let Some(stock) = b.stocks.get_mut(&good) else { return 0.0 };
     let put = units.min(stock.cap - stock.level).max(0.0);
     stock.level += put;

@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use crate::fixed::{HashMap, HashSet};
 
-use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
+use crate::protocol::{BuildingKind, EntityId, GameObjectEntry, GameObject, GridCoord};
 
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,
@@ -14,6 +14,10 @@ pub struct Tracked {
     /// A car's owner is its own from `Car::new` to its scrapping, so the
     /// two places a car is filed and taken out keep this.
     fleets: HashMap<EntityId, BTreeSet<EntityId>>,
+    /// The buildings of each kind, by id: what looks for a depot or a
+    /// harbour walks those, not the town. A building's kind is its own for
+    /// good, as a car's owner is.
+    kinds: BTreeMap<BuildingKind, BTreeSet<EntityId>>,
     dirty: HashSet<EntityId>,
     removed: Vec<EntityId>,
     persist_dirty: HashSet<EntityId>,
@@ -28,6 +32,7 @@ impl Tracked {
             roads: BTreeSet::new(),
             things: BTreeSet::new(),
             fleets: HashMap::default(),
+            kinds: BTreeMap::new(),
             dirty: HashSet::default(),
             removed: Vec::new(),
             persist_dirty: HashSet::default(),
@@ -47,8 +52,14 @@ impl Tracked {
     fn file(&mut self, entry: GameObjectEntry) {
         let pile = if matches!(entry.object, GameObject::RoadNode(_)) { &mut self.roads } else { &mut self.things };
         pile.insert(entry.id);
-        if let GameObject::Car(ref c) = entry.object {
-            self.fleets.entry(c.owner).or_default().insert(entry.id);
+        match entry.object {
+            GameObject::Car(ref c) => {
+                self.fleets.entry(c.owner).or_default().insert(entry.id);
+            }
+            GameObject::Building(ref b) => {
+                self.kinds.entry(b.kind).or_default().insert(entry.id);
+            }
+            _ => {}
         }
         self.data.insert(entry.id, entry);
     }
@@ -96,13 +107,21 @@ impl Tracked {
 
     pub fn remove(&mut self, id: EntityId) {
         if let Some(entry) = self.data.remove(&id) {
-            if let GameObject::Car(ref c) = entry.object {
-                if let Some(fleet) = self.fleets.get_mut(&c.owner) {
-                    fleet.remove(&id);
-                    if fleet.is_empty() {
-                        self.fleets.remove(&c.owner);
+            match entry.object {
+                GameObject::Car(ref c) => {
+                    if let Some(fleet) = self.fleets.get_mut(&c.owner) {
+                        fleet.remove(&id);
+                        if fleet.is_empty() {
+                            self.fleets.remove(&c.owner);
+                        }
                     }
                 }
+                GameObject::Building(ref b) => {
+                    if let Some(kind) = self.kinds.get_mut(&b.kind) {
+                        kind.remove(&id);
+                    }
+                }
+                _ => {}
             }
             self.roads.remove(&id);
             self.things.remove(&id);
@@ -141,6 +160,11 @@ impl Tracked {
     /// The cars an owner has, by id.
     pub fn fleet(&self, owner: EntityId) -> impl Iterator<Item = EntityId> + '_ {
         self.fleets.get(&owner).into_iter().flatten().copied()
+    }
+
+    /// The buildings of a kind, by id.
+    pub fn of_kind(&self, kind: BuildingKind) -> impl Iterator<Item = EntityId> + '_ {
+        self.kinds.get(&kind).into_iter().flatten().copied()
     }
 
     /// The road nodes, by id.

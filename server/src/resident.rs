@@ -6,7 +6,7 @@ use crate::blueprint::blueprint;
 use crate::economy;
 use crate::needs::{Bucket, Need, Tap};
 use crate::world::pathfinding::Routes;
-use crate::protocol::{BuildingKind, EntityId, GameObject, Resident, HOUR};
+use crate::protocol::{EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -38,7 +38,7 @@ pub fn handle_resident_wake(
     id: EntityId,
     now: GameTime,
 ) {
-    let Some(r) = resident(world, id).cloned() else { return };
+    let Some(r) = world.resident(id).cloned() else { return };
 
     // Beyond the sea: someone who has not come yet. They come the way
     // everyone comes, on the ferry, car and all (`world/sea.rs`), and the
@@ -62,7 +62,7 @@ pub fn handle_resident_wake(
 
     let crowd = headcount(world);
     settle(world, id, at, now, &crowd);
-    let Some(r) = resident(world, id).cloned() else { return };
+    let Some(r) = world.resident(id).cloned() else { return };
     let buckets = buckets(world, &r);
     let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     store(world, id, r.car, &buckets);
@@ -138,7 +138,7 @@ pub fn handle_resident_wake(
 /// in one order, so an index into the verdicts is an index into this.
 fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
     let mut all = r.buckets.clone();
-    if let Some(GameObject::Car(c)) = world.objects.get(r.car).map(|e| &e.object) {
+    if let Some(c) = world.car(r.car) {
         all.extend(c.stocks.iter().map(|(&need, &stock)| Bucket { need, stock }));
     }
     all
@@ -147,10 +147,10 @@ fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
 /// Put the buckets back where each lives: the person's on the person, the
 /// car's on the car.
 fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
-    if let Some(GameObject::Resident(me)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+    if let Some(me) = world.resident_mut(id) {
         me.buckets = buckets.iter().filter(|b| !Need::DRIVEN.contains(&b.need)).cloned().collect();
     }
-    if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+    if let Some(c) = world.car_mut(car) {
         for b in buckets.iter().filter(|b| Need::DRIVEN.contains(&b.need)) {
             c.stocks.insert(b.need, b.stock);
         }
@@ -238,7 +238,7 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         .iter()
         .flat_map(|&c| world.buildings_in(c))
         // A home's kitchen is its residents' alone.
-        .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
+        .filter(|&id| id == r.home || world.building(id).map(|b| b.kind).is_some_and(|k| blueprint(k).homes == 0))
         // Empty shelves sell nothing.
         .filter(|&id| crate::calls::stocked(world, id))
         // No road, no visit. Without this a building the road never reached
@@ -438,7 +438,7 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
 /// What was served goes on the tab, drawn off the shelf and banked as
 /// GDP when the visit ends, and on the building's books as hours served.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
-    let Some(r) = resident(world, id) else { return };
+    let Some(r) = world.resident(id) else { return };
     let (last, selected) = (r.last_update, r.selected);
     let elapsed = (now - last) as f64;
     let serving: Option<(f64, f64)> = selected.and_then(|need| {
@@ -455,11 +455,11 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     {
         let out = rate * served;
         economy::served(world, at, need, out / HOUR as f64, now);
-        if let Some(r) = resident_mut(world, id) {
+        if let Some(r) = world.resident_mut(id) {
             r.tab += out / need.unit();
         }
     }
-    let Some(r) = resident(world, id).cloned() else { return };
+    let Some(r) = world.resident(id).cloned() else { return };
     let mut buckets = buckets(world, &r);
     for b in &mut buckets {
         if b.need.constant() {
@@ -474,7 +474,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         b.stock.take(b.need.drain() * idle);
     }
     store(world, id, r.car, &buckets);
-    if let Some(r) = resident_mut(world, id) {
+    if let Some(r) = world.resident_mut(id) {
         r.last_update = now;
     }
 }
@@ -536,7 +536,7 @@ fn drive(
 /// the only way to watch it think. Read-only — the buckets are shown as they
 /// stood at the last wake, not settled.
 pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
-    let Some(r) = resident(world, id) else { return json!({ "error": "no such resident" }) };
+    let Some(r) = world.resident(id) else { return json!({ "error": "no such resident" }) };
     let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
     let crowd = headcount(world);
     let buckets = buckets(world, r);
@@ -584,24 +584,9 @@ fn whereabouts(world: &World, at: EntityId) -> String {
     }
 }
 
-/// Clock time, with the day in front when it is not today's.
-fn resident(world: &World, id: EntityId) -> Option<&Resident> {
-    match world.objects.get(id)?.object {
-        GameObject::Resident(ref r) => Some(r),
-        _ => None,
-    }
-}
-
-fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
-    match world.objects.get_mut(id)?.object {
-        GameObject::Resident(ref mut r) => Some(r),
-        _ => None,
-    }
-}
-
 /// A trip's end: what it burned comes off the tank.
 pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
-    if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+    if let Some(c) = world.car_mut(car) {
         for (need, stock) in c.stocks.iter_mut() {
             stock.take(tiles * need.per_tile());
         }
@@ -613,13 +598,13 @@ pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
 /// changes, or the drive would count as a visit. Leaving ends the visit,
 /// and the visit draws its shelf as it ends.
 pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: EntityId, now: GameTime) {
-    if let Some(from) = resident(world, id).and_then(|r| r.at) {
+    if let Some(from) = world.resident(id).and_then(|r| r.at) {
         let crowd = headcount(world);
         settle(world, id, from, now, &crowd);
         end_visit(world, events, id, from, now);
     }
     let mut hired = false;
-    if let Some(r) = resident_mut(world, id) {
+    if let Some(r) = world.resident_mut(id) {
         r.at = Some(place);
         hired = r.work == Some(place);
     }
@@ -632,13 +617,13 @@ pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: E
 
 /// Turn to something else where they stand: the visit so far is over.
 fn set_selected(world: &mut World, events: &mut EventQueue, id: EntityId, need: Option<Need>, now: GameTime) {
-    if let Some(r) = resident(world, id)
+    if let Some(r) = world.resident(id)
         && r.selected != need
         && let Some(at) = r.at
     {
         end_visit(world, events, id, at, now);
     }
-    if let Some(r) = resident_mut(world, id) {
+    if let Some(r) = world.resident_mut(id) {
         r.selected = need;
     }
 }
@@ -647,7 +632,7 @@ fn set_selected(world: &mut World, events: &mut EventQueue, id: EntityId, need: 
 /// from, the value it added lands as GDP, and the building takes its
 /// turn.
 fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: EntityId, now: GameTime) {
-    let Some(r) = resident_mut(world, id) else { return };
+    let Some(r) = world.resident_mut(id) else { return };
     let (Some(need), tab) = (r.selected, std::mem::take(&mut r.tab)) else { return };
     if tab > 0.0 && matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Building(_))) {
         economy::visited(world, at, need, tab, now);
@@ -655,15 +640,8 @@ fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: Entit
     }
 }
 
-fn kind(world: &World, building: EntityId) -> Option<BuildingKind> {
-    match world.objects.get(building)?.object {
-        GameObject::Building(ref b) => Some(b.kind),
-        _ => None,
-    }
-}
-
 fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
-    kind(world, building).map_or(&[], |k| &blueprint(k).taps)
+    world.building(building).map(|b| b.kind).map_or(&[], |k| &blueprint(k).taps)
 }
 
 /// Travel time between two buildings in game milliseconds: the quickest
@@ -706,7 +684,7 @@ fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
 #[cfg(test)]
 mod bench {
     use super::*;
-    use crate::protocol::GridCoord;
+    use crate::protocol::{BuildingKind, GridCoord};
 
     /// Not an assertion: what one cheap evaluation costs, for whoever is
     /// sizing a survey over many tiles. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
@@ -718,7 +696,7 @@ mod bench {
         let shop = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
         world.settle();
         let id = world.resident_ids()[0];
-        let r = resident(&world, id).unwrap().clone();
+        let r = world.resident(id).unwrap().clone();
         let b = r.buckets.iter().find(|b| b.need == Need::Eat).unwrap().clone();
         let tap = taps_of(&world, shop).iter().find(|t| t.need == Need::Eat).unwrap();
         let n = 200_000u32;

@@ -197,7 +197,7 @@ impl World {
             events.wake(0, w);
         }
         self.voyages.insert(ferry, voyage);
-        if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
+        if let Some(c) = self.car_mut(ferry) {
             c.sail = Some(sail);
         }
         self.sailing(events, ferry, now);
@@ -205,7 +205,7 @@ impl World {
 
     /// When the ferry at the ramp a ferry sails to casts off.
     fn berth_free(&self, ferry: EntityId) -> GameTime {
-        self.car_of(ferry).and_then(|c| self.berthed(c.owner)).filter(|&(f, _)| f != ferry).map_or(GameTime::MAX, |(_, due)| due)
+        self.car(ferry).and_then(|c| self.berthed(c.owner)).filter(|&(f, _)| f != ferry).map_or(GameTime::MAX, |(_, due)| due)
     }
 
     /// From casting off to berthing again, by the harbour's line.
@@ -219,7 +219,8 @@ impl World {
     /// first streets, crates for the first shop, fuel, every box the
     /// town's (docs/game.md §The opening).
     pub fn commission(&mut self, harbour: EntityId, now: GameTime) {
-        let first = !self.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry));
+        // No ferry yet on any line, its harbour standing or not.
+        let first = !self.lines.keys().any(|&h| !self.ferries_of(h).is_empty());
         if !self.lines.contains_key(&harbour)
             && self.berth(harbour).is_some()
             && let Some(line) = self.line_to_world(harbour)
@@ -231,7 +232,7 @@ impl World {
         // tick would send it to the clients again.
         if let Some(tug) = self.tug_of(harbour).filter(|&t| self.spot_of(t).is_none())
             && let Some(rest) = self.berth(harbour).map(|b| b.rest())
-            && let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object)
+            && let Some(c) = self.car_mut(tug)
         {
             c.spot = Some(rest);
         }
@@ -254,13 +255,13 @@ impl World {
 
     /// A harbour's ferries, by id.
     pub fn ferries_of(&self, harbour: EntityId) -> Vec<EntityId> {
-        self.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry && c.owner == harbour)).map(|e| e.id).collect()
+        self.objects.fleet(harbour).filter(|&f| self.car(f).is_some_and(|c| c.role == CarRole::Ferry)).collect()
     }
 
     /// The harbour's ferry next at the ramp: the one there, or the one
     /// that berths soonest.
     pub fn ferry_of(&self, harbour: EntityId) -> Option<EntityId> {
-        self.berthed(harbour).map(|(f, _)| f).or_else(|| self.ferries_of(harbour).into_iter().min_by_key(|&f| (self.car_of(f).map_or(GameTime::MAX, |c| c.due), f)))
+        self.berthed(harbour).map(|(f, _)| f).or_else(|| self.ferries_of(harbour).into_iter().min_by_key(|&f| (self.car(f).map_or(GameTime::MAX, |c| c.due), f)))
     }
 
     /// The ferry a box booked now rides: the next to leave the world.
@@ -268,22 +269,15 @@ impl World {
         self.ferries_of(harbour).into_iter().min_by_key(|&f| (self.next_call(f).unwrap_or(GameTime::MAX), f))
     }
 
-    fn car_of(&self, id: EntityId) -> Option<&Car> {
-        match self.objects.get(id).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => Some(c),
-            _ => None,
-        }
-    }
-
     /// A harbour's tug.
     pub fn tug_of(&self, harbour: EntityId) -> Option<EntityId> {
-        self.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Tug && c.owner == harbour)).map(|e| e.id)
+        self.objects.fleet(harbour).find(|&t| self.car(t).is_some_and(|c| c.role == CarRole::Tug))
     }
 
     /// When a box booked now for a harbour would berth: on the ferry's
     /// next sailing from the world, the one it has not yet left on.
     pub fn next_call(&self, ferry: EntityId) -> Option<GameTime> {
-        let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return None };
+        let Some(c) = self.car(ferry) else { return None };
         let turn = self.turn(c.owner)?;
         // Coming in, it has left the world already: the sailing after it.
         // Going out, or away, `due` is its next berthing, which is the one.
@@ -295,7 +289,7 @@ impl World {
     /// the next settler off; or it is crossing into another chunk, or at
     /// the end of its leg.
     pub fn ferry_wake(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
-        let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
+        let Some(c) = self.car(ferry) else { return };
         let (harbour, due, sail, moored) = (c.owner, c.due, c.sail.clone(), c.spot.is_some());
         if self.objects.get(harbour).is_none() {
             self.junctions.remove_car_from_all(ferry, now);
@@ -347,7 +341,7 @@ impl World {
     /// slot.
     fn board(&mut self, ferry: EntityId, harbour: EntityId) {
         let waiting: Vec<EntityId> = self.waiting_settlers(harbour);
-        let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
+        let Some(c) = self.car_mut(ferry) else { return };
         c.deck.resize(DECK, None);
         let mut boxes = std::mem::take(&mut c.booked).into_iter();
         for slot in c.deck.iter_mut().filter(|s| s.is_none()) {
@@ -409,7 +403,7 @@ impl World {
     fn roll_off(&mut self, events: &mut EventQueue, ferry: EntityId, harbour: EntityId, now: GameTime) {
         let Some(street) = self.street_of(harbour) else { return };
         let Some(berth) = self.berth(harbour) else { return };
-        let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
+        let Some(c) = self.car(ferry) else { return };
         let Some(&car) = c.passengers.first() else { return };
         let j = c.passengers.len() - 1;
         let free: Vec<usize> = (0..DECK).rev().filter(|&k| c.deck.get(k).is_none_or(|s| s.is_none())).collect();
@@ -433,7 +427,7 @@ impl World {
             None => crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX),
         });
         if drove || home.is_none() {
-            if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
+            if let Some(c) = self.car_mut(ferry) {
                 c.passengers.remove(0);
             }
         }
@@ -447,7 +441,7 @@ impl World {
     /// over the edge it is away, back at the berth a turn after it cast
     /// off.
     fn sailing(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
-        let Some(mut sail) = self.car_of(ferry).and_then(|c| c.sail.clone()) else { return };
+        let Some(mut sail) = self.car(ferry).and_then(|c| c.sail.clone()) else { return };
         let Some(mut voyage) = self.voyages.remove(&ferry) else { return };
         let (woken, done) = voyage.step(ferry, &mut sail, self.berth_free(ferry), now, &mut self.junctions);
         for w in woken {
@@ -458,7 +452,7 @@ impl World {
             GridCoord { x: p[0].floor() as i32, y: p[1].floor() as i32 }
         };
         if !done {
-            if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object)
+            if let Some(c) = self.car_mut(ferry)
                 && c.sail.as_ref() != Some(&sail)
             {
                 c.sail = Some(sail.clone());
@@ -471,7 +465,7 @@ impl World {
             self.voyages.insert(ferry, voyage);
             return;
         }
-        let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
+        let Some(c) = self.car_mut(ferry) else { return };
         c.sail = None;
         let harbour = c.owner;
         if !sail.astern {
@@ -496,11 +490,11 @@ impl World {
     /// for, as it casts off. Settlers
     /// still aboard ride back to wait for the next.
     fn cast_off(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
-        let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
+        let Some(c) = self.car(ferry) else { return };
         let harbour = c.owner;
         let (Some(line), Some(turn)) = (self.lines.get(&harbour), self.turn(harbour)) else { return };
         let way = line.legs[0].clone();
-        let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
+        let Some(c) = self.car_mut(ferry) else { return };
         let mut sold = Vec::new();
         for slot in c.deck.iter_mut() {
             if slot.is_some_and(|t| t.outbound) {
@@ -529,12 +523,12 @@ impl World {
 
     /// The ferry at the ramp, and when it sails.
     fn berthed(&self, harbour: EntityId) -> Option<(EntityId, GameTime)> {
-        self.ferries_of(harbour).into_iter().find_map(|f| self.car_of(f).filter(|c| c.spot.is_some() && c.sail.is_none()).map(|c| (f, c.due)))
+        self.ferries_of(harbour).into_iter().find_map(|f| self.car(f).filter(|c| c.spot.is_some() && c.sail.is_none()).map(|c| (f, c.due)))
     }
 
     /// The docks of the park with no box in them and nobody holding them.
     fn free_docks(&self, harbour: EntityId) -> Vec<usize> {
-        let Some(GameObject::Building(b)) = self.objects.get(harbour).map(|e| &e.object) else { return Vec::new() };
+        let Some(b) = self.building(harbour) else { return Vec::new() };
         (0..b.park.len()).filter(|&i| b.park[i].trailer.is_none() && !self.dock_held(harbour, i)).collect()
     }
 
@@ -550,7 +544,7 @@ impl World {
     /// room, each only if it is done before the ferry sails; else it goes
     /// back to its place by the ramp.
     pub fn tug_wake(&mut self, events: &mut EventQueue, tug: EntityId, now: GameTime) {
-        let Some(GameObject::Car(c)) = self.objects.get(tug).map(|e| &e.object) else { return };
+        let Some(c) = self.car(tug) else { return };
         let (harbour, shunt) = (c.owner, c.shunt.clone());
         // The park is the yard's docks, laid with the lot.
         self.lot_mut(harbour);
@@ -559,7 +553,7 @@ impl World {
                 events.wake(s.ends - now, tug);
                 return;
             }
-            if let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object) {
+            if let Some(c) = self.car_mut(tug) {
                 c.spot = Some(s.stands);
                 c.shunt = None;
             }
@@ -575,7 +569,7 @@ impl World {
             self.hold_dock(harbour, tug, i, now, s.ends);
         }
         let ends = s.ends;
-        if let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object) {
+        if let Some(c) = self.car_mut(tug) {
             c.shunt = Some(s);
         }
         events.wake(ends - now, tug);
@@ -670,7 +664,7 @@ impl World {
 
     /// The deck's free slot nearest the sea end.
     fn deck_room(&self, ferry: EntityId) -> Option<usize> {
-        let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return None };
+        let Some(c) = self.car(ferry) else { return None };
         (0..DECK).rev().find(|&k| c.deck.get(k).is_none_or(|s| s.is_none()))
     }
 
@@ -710,7 +704,7 @@ impl World {
                 self.set_hitch(tug, t);
             }
             (Place::Park(i), Some(t)) => {
-                if let Some(GameObject::Building(b)) = self.objects.get_mut(harbour).map(|e| &mut e.object) {
+                if let Some(b) = self.building_mut(harbour) {
                     b.park[i].trailer = Some(t);
                 }
                 self.unhold_dock(harbour, tug);
@@ -737,7 +731,7 @@ impl World {
     }
 
     pub fn set_hitch(&mut self, car: EntityId, t: Option<Trailer>) {
-        if let Some(GameObject::Car(c)) = self.objects.get_mut(car).map(|e| &mut e.object) {
+        if let Some(c) = self.car_mut(car) {
             c.hitched = t;
         }
     }
