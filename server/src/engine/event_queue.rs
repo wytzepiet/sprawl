@@ -90,7 +90,6 @@ impl EventQueue {
     }
 
     /// When the next wake is scheduled, stale or not.
-    #[cfg(test)]
     pub fn next_due(&self) -> Option<GameTime> {
         self.heap.peek().map(|s| s.time)
     }

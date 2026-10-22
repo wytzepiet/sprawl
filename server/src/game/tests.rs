@@ -7,7 +7,6 @@ pub(crate) const WAKE_BUDGET: u64 = 120;
 use super::*;
 use std::time::Instant;
 use crate::calls;
-use crate::hand::{handle_player_action, take_step};
 use crate::protocol::{Build, BuildingKind, Good, GridCoord, Leg, TerrainType, Tool};
 
 /// What a test's hand does: a step of road or the demolisher, or a
@@ -21,83 +20,38 @@ pub(crate) enum Do {
     /// A box a letter wants, sent.
     Send(u64),
 }
-
-/// The hand's act done, as the loop does it; a building refused is a
-/// test gone wrong.
-pub(crate) fn does(world: &mut World, events: &mut EventQueue, d: Do, now: GameTime) {
+/// The hand's act done, as a player's command is; a building refused is
+/// a test gone wrong.
+pub(crate) fn does(game: &mut Game, d: Do) {
     let message = match d {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
-        Do::Raze(at) => ClientMessage::Raze { building: world.occupied[&(at.x, at.y)] },
+        Do::Raze(at) => ClientMessage::Raze { building: game.world.occupied[&(at.x, at.y)] },
         Do::Send(letter) => ClientMessage::Send { letter, boxes: 1 },
     };
-    let news = handle_player_action(world, events, 0, message, now);
+    game.command(PLAYER, message);
     if let Do::Place(kind, at) = d {
-        assert!(world.occupied.contains_key(&(at.x, at.y)), "{kind:?} at {at:?} refused: {news:?}");
+        assert!(game.world.occupied.contains_key(&(at.x, at.y)), "{kind:?} at {at:?} refused: {:?}", game.take_outbox());
     }
+}
+
+/// The one at the tests' game: client and owner both.
+pub(crate) const PLAYER: ClientId = 0;
+
+/// A world brought to life as the game brings one, its clock at nought,
+/// and a player at it.
+pub(crate) fn game(world: World) -> Game {
+    let mut game = Game::new(world, 0, 1, Box::new(World::new));
+    game.connect(PLAYER, PLAYER);
+    game
 }
 
 pub(crate) fn at_of(world: &World, id: EntityId) -> Option<EntityId> {
-    match &world.objects.get(id)?.object {
-        GameObject::Resident(r) => r.at,
-        _ => None,
-    }
+    world.resident(id)?.at
 }
 
 pub(crate) fn doing(world: &World, id: EntityId) -> Option<crate::needs::Need> {
-    match &world.objects.get(id)?.object {
-        GameObject::Resident(r) => r.selected,
-        _ => None,
-    }
-}
-
-/// A tick of run(): `now` moves to the next tick with something due —
-/// or the one that reaches `to` — and everything due thinks at it. The
-/// ticks in between, where nothing is due, are skipped rather than
-/// stepped: nothing but handle_wake changes the world, so a test that
-/// looks at the world after every tick sees the same thing either way,
-/// in a hundredth of the time. False once `to` is reached.
-pub(crate) fn step(
-    world: &mut World,
-    events: &mut EventQueue,
-    now: &mut GameTime,
-    to: GameTime,
-) -> bool {
-    step_counting(world, events, now, to, &mut 0)
-}
-
-/// `step`, counting how many times a resident thought: the budget.
-pub(crate) fn step_counting(
-    world: &mut World,
-    events: &mut EventQueue,
-    now: &mut GameTime,
-    to: GameTime,
-    wakes: &mut u64,
-) -> bool {
-    if *now >= to {
-        return false;
-    }
-    let due = events.next_due().map_or(to, |t| t.min(to));
-    *now += due.saturating_sub(*now).div_ceil(STEP_MS).max(1) * STEP_MS;
-    events.set_now(*now);
-    while let Some(id) = events.pop_due() {
-        if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(_))) {
-            *wakes += 1;
-        }
-        handle_wake(world, events, id, *now);
-    }
-    true
-}
-
-/// Run the simulation from `from` to `to`.
-pub(crate) fn pump(
-    world: &mut World,
-    events: &mut EventQueue,
-    from: GameTime,
-    to: GameTime,
-) {
-    let mut now = from;
-    while step(world, events, &mut now, to) {}
+    world.resident(id)?.selected
 }
 
 /// Where the test street's harbour stands, at its east end.
@@ -157,7 +111,6 @@ pub(crate) fn whereabouts(world: &World, car: EntityId, now: GameTime) -> Option
     }
     None
 }
-
 /// A car backing out of its drive waits for a gap in the street, backs
 /// out at a walking pace, all but stops where it changes gear, and the
 /// street waits for it once it has gone: whenever it sets out, with a
@@ -171,25 +124,24 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
             let home = build(&mut world, 10, BuildingKind::House);
             let from = build(&mut world, from_x, BuildingKind::House);
             let shop = build(&mut world, dest_x, BuildingKind::Shop);
-            let mut events = EventQueue::new();
+            let mut game = game(world);
             let car = |world: &mut World, at: EntityId| {
                 let c = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), world.objects.get(at).unwrap().position);
                 world.park_in_lot(at, c, 0);
                 c
             };
-            let (backer, through) = (car(&mut world, home), car(&mut world, from));
-            let s = world.approach(from).unwrap();
-            assert!(crate::car::spawn::start_trip(&mut world, &mut events, through, s, shop, 0, GameTime::MAX));
-            let mut now = 0;
+            let (backer, through) = (car(&mut game.world, home), car(&mut game.world, from));
+            let s = game.world.approach(from).unwrap();
+            assert!(crate::car::spawn::start_trip(&mut game.world, &mut game.events, through, s, shop, 0, GameTime::MAX));
             let mut out = false;
-            while now < 60_000 {
-                if !out && now >= start {
-                    let s = world.approach(home).unwrap();
-                    out = crate::car::spawn::start_trip(&mut world, &mut events, backer, s, shop, now, GameTime::MAX);
+            while game.now < 60_000 {
+                if !out && game.now >= start {
+                    let s = game.world.approach(home).unwrap();
+                    out = crate::car::spawn::start_trip(&mut game.world, &mut game.events, backer, s, shop, game.now, GameTime::MAX);
                 }
-                let to = now + 50;
-                step(&mut world, &mut events, &mut now, to);
-                let (a, b) = (whereabouts(&world, backer, now), whereabouts(&world, through, now));
+                game.step_to(game.now + 50);
+                let (world, now) = (&game.world, game.now);
+                let (a, b) = (whereabouts(world, backer, now), whereabouts(world, through, now));
                 if let Some((_, v, k)) = a {
                     if k == 1 {
                         assert!(v <= crate::car::REVERSE_SPEED + 0.06, "backing at {v:.2} (start {start})");
@@ -200,11 +152,10 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
                     assert!(a.2 > 2 || d > 0.45, "the backing car and the passing one met, {d:.2} apart at {now} (start {start}, from {from_x}): {a:?} {b:?}");
                 }
             }
-            assert!(whereabouts(&world, backer, now).is_none() && whereabouts(&world, through, now).is_none(), "both arrived (start {start}, from {from_x})");
+            assert!(whereabouts(&game.world, backer, game.now).is_none() && whereabouts(&game.world, through, game.now).is_none(), "both arrived (start {start}, from {from_x})");
         }
     }
 }
-
 /// The whole loop watched from above: people come over on the ferry,
 /// drive to work in the morning, and are home again at night — and
 /// nobody told them to; the shift did.
@@ -214,9 +165,8 @@ fn residents_commute_and_come_home() {
     let home = build(&mut world, 0, BuildingKind::House);
     let shop = build(&mut world, 20, BuildingKind::Shop);
 
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    let people = world.resident_ids();
+    let mut game = game(world);
+    let people = game.world.resident_ids();
     assert_eq!(people.len(), 2);
 
     let shift = crate::blueprint::blueprint(BuildingKind::Shop).taps
@@ -226,14 +176,14 @@ fn residents_commute_and_come_home() {
     let open = shift.curve.next_nonzero(0).unwrap();
     let close = shift.curve.next_zero(open);
 
-    pump(&mut world, &mut events, 0, open + 60_000);
+    game.run_to(open + 60_000);
     for &id in &people {
-        assert_eq!(at_of(&world, id), Some(shop), "at work once the shift is on");
+        assert_eq!(at_of(&game.world, id), Some(shop), "at work once the shift is on");
     }
 
-    pump(&mut world, &mut events, open + 60_000, close + 120_000);
+    game.run_to(close + 120_000);
     for &id in &people {
-        assert_eq!(at_of(&world, id), Some(home), "home once the shift is over");
+        assert_eq!(at_of(&game.world, id), Some(home), "home once the shift is over");
     }
 }
 
@@ -253,29 +203,28 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     // Fuel, or every few days the town goes without.
     build(&mut world, 18, BuildingKind::GasStation);
 
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
+    let mut game = game(world);
     // Fourteen households in the two blocks, and three desks over that
     // stay empty: nobody comes from beyond the town for a job.
-    let people = world.resident_ids();
+    let people = game.world.resident_ids();
     assert_eq!(people.len(), 14);
 
     let mut log = Vec::new();
     let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
     let mut last_doing: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
-    let mut now = 0;
-    while step(&mut world, &mut events, &mut now, days * DAY_MS as u64) {
+    while game.step_to(days * DAY_MS as u64) {
+        let (world, now) = (&game.world, game.now);
         for (i, &id) in people.iter().enumerate() {
-            let at = at_of(&world, id);
+            let at = at_of(world, id);
             // `TRACE=1 cargo test the_same_town -- --nocapture` prints
             // the last day's log, one line a move or a change of mind,
             // to read by hand.
-            if std::env::var("TRACE").is_ok() && now >= (days - 1) * DAY_MS as u64 && (at, doing(&world, id)) != last_doing[i] {
-                eprintln!("{i} {} {:?} {:?}", crate::card::card(&world, id, now)["since"], at.map(|a| crate::card::card(&world, a, now)["label"].to_string()), doing(&world, id));
-                last_doing[i] = (at, doing(&world, id));
+            if std::env::var("TRACE").is_ok() && now >= (days - 1) * DAY_MS as u64 && (at, doing(world, id)) != last_doing[i] {
+                eprintln!("{i} {} {:?} {:?}", crate::card::card(world, id, now)["since"], at.map(|a| crate::card::card(world, a, now)["label"].to_string()), doing(world, id));
+                last_doing[i] = (at, doing(world, id));
             }
             if at != last[i] {
-                log.push((now, id, at, doing(&world, id)));
+                log.push((now, id, at, doing(world, id)));
                 last[i] = at;
             }
         }
@@ -284,8 +233,9 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     // the office's books show what it received on the last whole day:
     // eleven people, nine hours, less the lunches — and the lunch shop
     // served them. The last day, not the second: a settled one.
+    let (world, now) = (&game.world, game.now);
     if days >= 3 {
-        wants_nothing(&world, now);
+        wants_nothing(world, now);
         let sold = |b: EntityId, need| world.books[&b].before(now).served.get(&need).copied().unwrap_or(0.0);
         let office = sold(office, crate::needs::Need::Work);
         // Eleven at the office: fourteen people, two apartments of
@@ -321,17 +271,16 @@ fn cars_stop_for_fuel_now_and_then() {
     build(&mut world, 40, BuildingKind::Shop);
     let station = build(&mut world, 30, BuildingKind::GasStation);
 
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    let people = world.resident_ids();
+    let mut game = game(world);
+    let people = game.world.resident_ids();
 
     let day = DAY_MS as u64;
     let mut stops = 0;
     let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
-    let mut now = 0;
-    while step(&mut world, &mut events, &mut now, 6 * day) {
+    while game.step_to(6 * day) {
+        let world = &game.world;
         for (i, &id) in people.iter().enumerate() {
-            let state = (at_of(&world, id), doing(&world, id));
+            let state = (at_of(world, id), doing(world, id));
             if state != last[i] {
                 if state == (Some(station), Some(crate::needs::Need::Fuel)) {
                     stops += 1;
@@ -345,7 +294,7 @@ fn cars_stop_for_fuel_now_and_then() {
     // a stop is what keeps it from being one: a fill costs nothing.
     println!("{stops} fuel stops in six days");
     assert!((12..=48).contains(&stops), "{stops} fuel stops in six days");
-    wants_nothing(&world, now);
+    wants_nothing(&game.world, game.now);
 }
 
 /// Every kind the mayor could put down along the street: the harbour
@@ -370,7 +319,6 @@ pub(crate) fn town_mix() -> Vec<BuildingKind> {
         Farm, House, Apartment, Depot, House, Apartment, House, Apartment, House, Apartment,
     ]
 }
-
 /// A street drawn to a house that was standing dormant moves people in.
 ///
 /// Drawing road once settled nothing, so the house stayed empty until
@@ -384,9 +332,8 @@ fn a_street_drawn_to_a_dormant_house_fills_it() {
         .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
         .expect("land is land");
     world.finish(home);
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    assert!(world.resident_ids().is_empty(), "nobody lives where no road goes");
+    let mut game = game(world);
+    assert!(game.world.resident_ids().is_empty(), "nobody lives where no road goes");
 
     // The mayor draws a street to it, tile by tile, as the brush does.
     for (from, to) in [
@@ -395,14 +342,14 @@ fn a_street_drawn_to_a_dormant_house_fills_it() {
         // Onto the plot: a road that ends on one is a driveway.
         (GridCoord { x: 10, y: 2 }, GridCoord { x: 10, y: 3 }),
     ] {
-        take_step(&mut world, &mut events, Build { tool: Tool::Street, from, to, up: None , sides: None, road: false }, 0);
+        does(&mut game, Do::Step(Tool::Street, from, to));
     }
-    assert!(world.street_of(home).is_some(), "the driveway formed itself");
+    assert!(game.world.street_of(home).is_some(), "the driveway formed itself");
 
-    // Which is what the tick settles for, once, after the batch.
-    settle_and_wake(&mut world, &mut events);
+    // Which is what the step after it settles for, once, after the batch.
+    game.step();
     assert_eq!(
-        world.resident_ids().len(),
+        game.world.resident_ids().len(),
         crate::blueprint::blueprint(BuildingKind::House).homes as usize,
         "the street reached it and nobody moved in",
     );
@@ -437,17 +384,15 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
             b.lorries = 1;
         }
     }
-    let mut events = EventQueue::new();
-    // Started as the game starts one.
-    world.resettle();
-    settle_and_wake(&mut world, &mut events);
-    assert!(!world.harbours.is_empty(), "no harbour, or nobody can arrive at all");
+    let mut game = game(world);
+    assert!(!game.world.harbours.is_empty(), "no harbour, or nobody can arrive at all");
     // The mayor at the market as each ferry casts off, looked for every
     // hour: a box of fuel bought, which nothing in town makes, once the
     // last is off the border; and a box of the farm's crates sold, once
     // the last is loaded.
     let mut berthed = false;
-    let mut market = |world: &mut World, events: &mut EventQueue, exporting: bool| {
+    let mut market = |game: &mut Game, exporting: bool| {
+        let world = &mut game.world;
         let ferry = world.ferry_of(harbour_of(world)).expect("the harbour's ferry");
         let was = std::mem::replace(&mut berthed, car_of(world, ferry).spot.is_some());
         if !was || berthed {
@@ -461,44 +406,34 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
         if exporting && !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Crates) {
             crate::market::trade(world, Good::Crates, true, 1);
         }
-        crate::haul::call_lorries(world, events);
+        crate::haul::call_lorries(world, &mut game.events);
     };
     let mut exporting = false;
-    let mut wakes = 0;
-    let mut now = 0;
     let end = days * DAY_MS as u64;
     // A day at a time, so the look at the end of each is on the tick
     // that turns it, with the midnight wake taken.
     for day in 1..=days {
         let midnight = day * DAY_MS as u64;
         for hour in 1..=24 {
-            crate::market::hour(&mut world, &mut events, now);
-            market(&mut world, &mut events, exporting);
-            let to = (midnight - DAY_MS as u64 + hour * crate::market::HOUR).min(end);
-            while step_counting(&mut world, &mut events, &mut now, to, &mut wakes) {}
+            market(&mut game, exporting);
+            game.run_to((midnight - DAY_MS as u64 + hour * crate::market::HOUR).min(end));
         }
+        let (world, now) = (&game.world, game.now);
         // A town that gridlocks is not a town being measured: nobody is
         // a day late for anything. Two driveways two tiles apart held
         // each other for good on the third day, once the offices' cars
         // were on the street, until claims lapsed (docs/parking.md §9).
         let stuck = world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| now > t.eta + DAY_MS as u64))).count();
         assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
-        // The missions read, as the tick reads them: letters come only
-        // once the opening is done.
-        crate::missions::check(&mut world, now);
-        each_day(&world, day, wakes);
+        each_day(world, day, game.thoughts);
         if !exporting && world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm && b.stocks[&Good::Crates].level > 0.0)) {
             exporting = true;
         }
-        let steps = hand(&world, day);
-        if !steps.is_empty() {
-            for d in steps {
-                does(&mut world, &mut events, d, now);
-            }
-            settle_and_wake(&mut world, &mut events);
+        for d in hand(world, day) {
+            does(&mut game, d);
         }
     }
-    (world, wakes)
+    (game.world, game.thoughts)
 }
 
 /// The budget: how much thinking a day of town life is allowed to take.
@@ -602,18 +537,16 @@ pub(crate) fn towns(copies: i32) -> World {
 /// drawn four tiles — each a batch of the brush's steps, with the
 /// settle the tick runs after it.
 pub(crate) fn build_cost(copies: i32) -> Vec<(&'static str, f64)> {
-    let mut world = towns(copies);
-    let mut events = EventQueue::new();
-    world.resettle();
-    settle_and_wake(&mut world, &mut events);
-    world.treasury = 1e9;
-    // A command batch as the tick takes it: every step, then one settle.
-    let mut timed = |world: &mut World, steps: Vec<Do>| {
+    let mut game = game(towns(copies));
+    game.world.treasury = 1e9;
+    // A command batch as the tick takes it: every step, then one settle,
+    // the settle alone: what the residents it woke then think is theirs.
+    let timed = |game: &mut Game, steps: Vec<Do>| {
         let started = Instant::now();
         for d in steps {
-            does(world, &mut events, d, 0);
+            does(game, d);
         }
-        settle_and_wake(world, &mut events);
+        settle_and_wake(&mut game.world, &mut game.events);
         started.elapsed().as_secs_f64() * 1e6
     };
     let at = |x, y| GridCoord { x, y };
@@ -622,27 +555,27 @@ pub(crate) fn build_cost(copies: i32) -> Vec<(&'static str, f64)> {
         let x = 4 + 8 * i;
         for (k, kind) in [BuildingKind::House, BuildingKind::Shop].into_iter().enumerate() {
             // Placed across the street.
-            let placed = timed(&mut world, vec![Do::Place(kind, at(x, -1))]);
-            let id = *world.occupied.get(&(x, -1)).unwrap_or_else(|| panic!("the {kind:?} went down"));
+            let placed = timed(&mut game, vec![Do::Place(kind, at(x, -1))]);
+            let id = *game.world.occupied.get(&(x, -1)).unwrap_or_else(|| panic!("the {kind:?} went down"));
             // Its timber in, it stands, and the settle that follows is
             // part of what it cost.
-            world.finish(id);
-            let stood = timed(&mut world, Vec::new());
+            game.world.finish(id);
+            let stood = timed(&mut game, Vec::new());
             costs[2 * k].1.push(placed + stood);
             let bp = crate::blueprint::blueprint(kind);
-            assert_eq!((world.household(id).len(), world.staff(id).len()), (bp.homes as usize, bp.jobs as usize), "the {kind:?} filled");
+            assert_eq!((game.world.household(id).len(), game.world.staff(id).len()), (bp.homes as usize, bp.jobs as usize), "the {kind:?} filled");
             // Taken down.
-            costs[2 * k + 1].1.push(timed(&mut world, vec![Do::Raze(at(x, -1))]));
-            assert!(world.objects.get(id).is_none(), "the {kind:?} came down");
+            costs[2 * k + 1].1.push(timed(&mut game, vec![Do::Raze(at(x, -1))]));
+            assert!(game.world.objects.get(id).is_none(), "the {kind:?} came down");
         }
         let steps = (0..4).map(|y| Do::Step(Tool::Street, at(x + 6, -y), at(x + 6, -y - 1))).collect();
-        costs[4].1.push(timed(&mut world, steps));
+        costs[4].1.push(timed(&mut game, steps));
     }
     let costs: Vec<(&'static str, f64)> = costs
         .into_iter()
         .map(|(what, v)| (what, v.into_iter().fold(f64::INFINITY, f64::min)))
         .collect();
-    println!("{copies} town(s), {} residents: {}", world.resident_ids().len(), costs.iter().map(|(what, c)| format!("{what} {c:.0} µs")).collect::<Vec<_>>().join(", "));
+    println!("{copies} town(s), {} residents: {}", game.world.resident_ids().len(), costs.iter().map(|(what, c)| format!("{what} {c:.0} µs")).collect::<Vec<_>>().join(", "));
     costs
 }
 
@@ -737,43 +670,41 @@ fn every_build_leaves_the_town_settled() {
     for (x, kind) in [(0, BuildingKind::House), (3, BuildingKind::House), (6, BuildingKind::Apartment), (12, BuildingKind::Shop), (30, BuildingKind::Office)] {
         build(&mut world, x, kind);
     }
-    let mut events = EventQueue::new();
-    world.resettle();
-    settle_and_wake(&mut world, &mut events);
-    assert_settled(&world, "the start");
-    world.treasury = 1e9;
+    let mut game = game(world);
+    assert_settled(&game.world, "the start");
+    game.world.treasury = 1e9;
     let at = |x, y| GridCoord { x, y };
-    let mut act = |world: &mut World, d: Do| {
-        does(world, &mut events, d, 0);
-        settle_and_wake(world, &mut events);
-        assert_settled(world, &format!("{d:?}"));
+    let act = |game: &mut Game, d: Do| {
+        does(game, d);
+        game.step();
+        assert_settled(&game.world, &format!("{d:?}"));
     };
     // Placed across the street: two houses and an office.
-    act(&mut world, Do::Place(BuildingKind::House, at(20, -1)));
-    act(&mut world, Do::Place(BuildingKind::House, at(24, -1)));
-    act(&mut world, Do::Place(BuildingKind::Office, at(41, -1)));
+    act(&mut game, Do::Place(BuildingKind::House, at(20, -1)));
+    act(&mut game, Do::Place(BuildingKind::House, at(24, -1)));
+    act(&mut game, Do::Place(BuildingKind::Office, at(41, -1)));
     // The office and a house taken down, and the street before a third
     // taken up and laid again.
-    act(&mut world, Do::Raze(at(40, -1)));
-    assert!(!world.occupied.contains_key(&(41, -1)), "the office stands");
-    act(&mut world, Do::Raze(at(0, 1)));
+    act(&mut game, Do::Raze(at(40, -1)));
+    assert!(!game.world.occupied.contains_key(&(41, -1)), "the office stands");
+    act(&mut game, Do::Raze(at(0, 1)));
     let street_of = |world: &World, x, y| {
         let (_, street) = world.door_of(*world.occupied.get(&(x, y)).unwrap()).expect("placed with a door");
         world.objects.get(street).unwrap().position.unwrap()
     };
     // Its street taken up, its door moves to the next street tile
     // along, on the diagonal; that one taken up too, it has none.
-    let street = street_of(&world, 24, -1);
-    act(&mut world, Do::Step(Tool::Demolish, street, street));
-    let next = street_of(&world, 24, -1);
+    let street = street_of(&game.world, 24, -1);
+    act(&mut game, Do::Step(Tool::Demolish, street, street));
+    let next = street_of(&game.world, 24, -1);
     assert_ne!(next, street, "the door stayed on the street that went");
-    act(&mut world, Do::Step(Tool::Demolish, next, next));
-    let other = street_of(&world, 24, -1);
-    act(&mut world, Do::Step(Tool::Demolish, other, other));
-    assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_none(), "the street went");
-    act(&mut world, Do::Step(Tool::Street, at(street.x - 1, street.y), street));
-    act(&mut world, Do::Step(Tool::Street, street, at(street.x + 1, street.y)));
-    assert_eq!(street_of(&world, 24, -1), street, "the street came back");
+    act(&mut game, Do::Step(Tool::Demolish, next, next));
+    let other = street_of(&game.world, 24, -1);
+    act(&mut game, Do::Step(Tool::Demolish, other, other));
+    assert!(game.world.street_of(game.world.occupied[&(24, -1)]).is_none(), "the street went");
+    act(&mut game, Do::Step(Tool::Street, at(street.x - 1, street.y), street));
+    act(&mut game, Do::Step(Tool::Street, street, at(street.x + 1, street.y)));
+    assert_eq!(street_of(&game.world, 24, -1), street, "the street came back");
 }
 
 /// Where the season's quarry and sawmill stand, past the town's forty
@@ -1014,7 +945,6 @@ fn the_same_town_lives_the_same_days() {
     let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();
     assert!(last.values().all(|at| at.is_some()), "someone ended the day in a car");
 }
-
 /// Land and the tractor, docs/buildings.md (making things): a farm on a street
 /// claims its land; with a hand on shift its tractor ploughs it in a
 /// run, seeds it in the next, and a day on harvests it, each tile's
@@ -1029,75 +959,64 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     build(&mut world, 3, BuildingKind::House);
     let farm = build(&mut world, 10, BuildingKind::Farm);
     let depot = build(&mut world, 30, BuildingKind::Depot);
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    world.treasury = 1000.0;
-    let yard = |world: &World| match world.objects.get(farm).unwrap().object {
-        GameObject::Building(ref b) => b.stocks[&Good::Crates].level,
-        _ => unreachable!(),
-    };
-    let stages = |world: &World| -> Vec<Stage> {
-        match world.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.land.iter().map(|t| t.stage).collect(),
-            _ => unreachable!(),
-        }
-    };
+    let mut game = game(world);
+    game.world.treasury = 1000.0;
+    let yard = |world: &World| world.building(farm).unwrap().stocks[&Good::Crates].level;
+    let stages = |world: &World| -> Vec<Stage> { world.building(farm).unwrap().land.iter().map(|t| t.stage).collect() };
+    let world = &game.world;
     let wanted = crate::world::fields::capacity(BuildingKind::Farm) as usize;
-    assert!(stages(&world).len() <= wanted && stages(&world).len() > wanted * 9 / 10, "the farm claimed {} tiles of {wanted}", stages(&world).len());
-    assert_eq!(yard(&world), 0.0, "the yard is founded with a make");
-    let hands = world.resident_ids().into_iter().filter(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.work == Some(farm))).count();
+    assert!(stages(world).len() <= wanted && stages(world).len() > wanted * 9 / 10, "the farm claimed {} tiles of {wanted}", stages(world).len());
+    assert_eq!(yard(world), 0.0, "the yard is founded with a make");
+    let hands = world.resident_ids().into_iter().filter(|&id| world.resident(id).is_some_and(|r| r.work == Some(farm))).count();
     assert!(hands > 0, "the farm hired nobody");
     let tractor = world.objects.fleet(farm).next().expect("the farm keeps a tractor");
-    assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == crate::protocol::CarRole::Tractor));
+    assert!(world.car(tractor).is_some_and(|c| c.role == crate::protocol::CarRole::Tractor));
     // The first day: the hands come at six and the tractor ploughs
     // the land, a shift's worth; by evening it is a field, the tractor
     // is home, and the yard is empty.
     let day = DAY_MS as u64;
-    let land = stages(&world).len();
+    let land = stages(world).len();
     let crop = crate::economy::crop(BuildingKind::Farm, land);
-    pump(&mut world, &mut events, 0, 20 * day / 24);
-    assert!(stages(&world).iter().all(|&s| s == Stage::Ploughed), "by evening the land is {:?}", stages(&world));
-    assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());
-    assert_eq!(yard(&world), 0.0, "something landed in the yard before a harvest");
-    assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.run.is_none() && c.trip.is_none()), "the tractor is not home");
+    game.run_to(20 * day / 24);
+    let world = &game.world;
+    assert!(stages(world).iter().all(|&s| s == Stage::Ploughed), "by evening the land is {:?}", stages(world));
+    assert!(stages(world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(world).len());
+    assert_eq!(yard(world), 0.0, "something landed in the yard before a harvest");
+    assert!(world.car(tractor).is_some_and(|c| c.run.is_none() && c.trip.is_none()), "the tractor is not home");
     // The second day: seeded. The third, growing; the fourth: ripe by
     // morning, harvested by evening, a harvest in the yard, and a lorry
     // from beyond the edge called for it.
-    pump(&mut world, &mut events, 20 * day / 24, day + 20 * day / 24);
-    assert!(stages(&world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&world));
-    assert_eq!(yard(&world), 0.0);
-    pump(&mut world, &mut events, day + 20 * day / 24, 3 * day + 5 * day / 24);
-    assert_eq!(yard(&world), 0.0, "a harvest before the crop was ripe");
+    game.run_to(day + 20 * day / 24);
+    assert!(stages(&game.world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&game.world));
+    assert_eq!(yard(&game.world), 0.0);
+    game.run_to(3 * day + 5 * day / 24);
+    assert_eq!(yard(&game.world), 0.0, "a harvest before the crop was ripe");
     // Ripe by the fourth morning, and cut that day: the whole harvest
     // in the yard by evening, or already on its way to the world.
     let mut harvest = 0.0f64;
-    let mut t = 3 * day + 5 * day / 24;
-    while step(&mut world, &mut events, &mut t, 4 * day + 20 * day / 24) {
-        harvest = harvest.max(yard(&world));
+    while game.step_to(4 * day + 20 * day / 24) {
+        harvest = harvest.max(yard(&game.world));
     }
-    assert!((harvest - stages(&world).len() as f64 * crop).abs() < 1e-6, "the harvest came to {harvest}, not a yard's worth");
+    assert!((harvest - stages(&game.world).len() as f64 * crop).abs() < 1e-6, "the harvest came to {harvest}, not a yard's worth");
 
     // Then the depot's shelf runs low: its lorry fetches from the farm,
-    // and no coin moves. The clock goes on from where the world is: an
-    // event queue is not pumped backwards.
-    let now = 4 * day + 20 * day / 24;
-    if let Some(b) = world.building_mut(farm) {
-        b.stocks.get_mut(&Good::Crates).unwrap().level = 300.0;
-    }
-    let before = yard(&world);
+    // and no coin moves.
+    let now = game.now;
+    game.world.building_mut(farm).unwrap().stocks.get_mut(&Good::Crates).unwrap().level = 300.0;
+    let before = yard(&game.world);
     let bought = |world: &World| world.town.on(now).bought.get(&Good::Crates).copied().unwrap_or(0.0);
-    let bought_before = bought(&world);
-    if let Some(b) = world.building_mut(depot) {
-        b.stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
-    }
-    calls::turn(&mut world, &mut events, depot, now);
+    let bought_before = bought(&game.world);
+    game.world.building_mut(depot).unwrap().stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
+    calls::turn(&mut game.world, &mut game.events, depot, now);
+    let world = &game.world;
     let fetch = world.calls.iter().find(|c| c.at == depot && c.kind == calls::CallKind::Fetch).expect("the depot fetches");
     assert_eq!(fetch.from, Some(farm), "the lorry went past the farm to the edge");
-    pump(&mut world, &mut events, now, now + 3 * day / 24);
+    game.run_to(now + 3 * day / 24);
+    let world = &game.world;
     assert!(world.calls.iter().all(|c| c.at != depot), "the fetch did not land: {:?}; lorries {:?}", world.calls, world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck)).map(|e| (e.id, e.position, matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))).collect::<Vec<_>>());
-    let fetched = before - yard(&world);
+    let fetched = before - yard(world);
     assert!(fetched > 0.0, "the lorry took nothing from the yard");
-    assert_eq!(bought(&world), bought_before, "crates fetched in town were paid for");
+    assert_eq!(bought(world), bought_before, "crates fetched in town were paid for");
 }
 
 /// A depot's lorries, by id.
@@ -1124,15 +1043,14 @@ fn a_real_coast_is_called_at_as_often_as_ever() {
     world.terrain = crate::terrain::generate(7);
     world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 32 }).collect::<Vec<_>>());
     let harbour = world.place_on_street(GridCoord { x: 1, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    let ferries = world.ferries_of(harbour);
-    assert_eq!(ferries.len(), 2, "the world's line, {} ms round, runs {} ferries", world.lines[&harbour].cycle(), ferries.len());
-    let (mut now, mut calls, mut moored) = (0, 0, vec![false; 2]);
+    let mut game = game(world);
+    let ferries = game.world.ferries_of(harbour);
+    assert_eq!(ferries.len(), 2, "the world's line, {} ms round, runs {} ferries", game.world.lines[&harbour].cycle(), ferries.len());
+    let (mut calls, mut moored) = (0, vec![false; 2]);
     let days = 2;
-    while step(&mut world, &mut events, &mut now, days * DAY_MS as u64) {
-        let here: Vec<bool> = ferries.iter().map(|&f| car_of(&world, f).spot.is_some()).collect();
-        assert!(here.iter().filter(|&&m| m).count() <= 1, "two ferries at the ramp at {now}");
+    while game.step_to(days * DAY_MS as u64) {
+        let here: Vec<bool> = ferries.iter().map(|&f| car_of(&game.world, f).spot.is_some()).collect();
+        assert!(here.iter().filter(|&&m| m).count() <= 1, "two ferries at the ramp at {}", game.now);
         calls += here.iter().zip(&moored).filter(|&(&h, &m)| h && !m).count();
         moored = here;
     }
@@ -1144,18 +1062,16 @@ fn a_real_coast_is_called_at_as_often_as_ever() {
 pub(crate) fn opening_done(world: &mut World) {
     world.missions.list.iter_mut().for_each(|m| m.finished = Some(0));
 }
-
-/// The open missions' steps, by mission, as the tick reads them.
-pub(crate) fn missions(world: &mut World, now: GameTime) -> Vec<(crate::missions::Key, Vec<bool>, bool)> {
-    crate::missions::check(world, now);
-    world.missions.list.iter().map(|m| (m.key, m.steps.iter().map(|s| s.done).collect(), m.finished.is_some())).collect()
+/// The open missions' steps, by mission, as the step after now reads them.
+pub(crate) fn missions(game: &mut Game) -> Vec<(crate::missions::Key, Vec<bool>, bool)> {
+    game.step();
+    game.world.missions.list.iter().map(|m| (m.key, m.steps.iter().map(|s| s.done).collect(), m.finished.is_some())).collect()
 }
 
 /// The opening's steps done.
-pub(crate) fn opening(world: &mut World, now: GameTime) -> Vec<bool> {
-    missions(world, now).into_iter().find(|m| m.0 == crate::missions::Key::Opening).expect("no opening").1
+pub(crate) fn opening(game: &mut Game) -> Vec<bool> {
+    missions(game).into_iter().find(|m| m.0 == crate::missions::Key::Opening).expect("no opening").1
 }
-
 /// The opening, docs/game.md: a harbour, a depot, a street between
 /// them. The first ferry comes in on time with the starter pack and
 /// the tug lands it in the trailer park, for nothing; the depot's
@@ -1171,100 +1087,96 @@ fn the_opening_from_the_harbour() {
     use crate::missions::Key;
     use crate::shipping::DWELL;
     use crate::world::sea::FIRST_CALL;
-    let mut world = street();
-    let harbour = harbour_of(&world);
-    assert_eq!(opening(&mut world, 0), [true, false, false, false, false], "the harbour stands, and nothing else");
+    let mut game = game(street());
+    let harbour = harbour_of(&game.world);
+    assert_eq!(opening(&mut game), [true, false, false, false, false], "the harbour stands, and nothing else");
     let x = HARBOUR_X - 12;
+    let world = &mut game.world;
     let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
     let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
     world.orient(depot);
-    assert!(building_of(&world, depot).site.is_none(), "the first depot is a site");
-    assert!(building_of(&world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    assert_eq!(opening(&mut world, 0), [true, true, true, false, false], "a depot on the harbour's street");
+    assert!(building_of(world, depot).site.is_none(), "the first depot is a site");
+    assert!(building_of(world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
+    assert_eq!(opening(&mut game), [true, true, true, false, false], "a depot on the harbour's street");
+    let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let tug = world.tug_of(harbour).expect("the harbour's tug");
-    let lorry = lorries_of(&world, depot)[0];
-    assert_eq!(car_of(&world, ferry).booked.len(), 6, "the starter pack is booked");
+    let lorry = lorries_of(world, depot)[0];
+    assert_eq!(car_of(world, ferry).booked.len(), 6, "the starter pack is booked");
     // A settle with nothing new touches nothing: what it touches goes
     // to every client, and is written down, each tick.
-    world.objects.drain_dirty();
-    settle_and_wake(&mut world, &mut events);
-    assert_eq!(world.objects.drain_dirty(), (vec![], vec![]), "a quiet settle changed something");
+    game.world.objects.drain_dirty();
+    settle_and_wake(&mut game.world, &mut game.events);
+    assert_eq!(game.world.objects.drain_dirty(), (vec![], vec![]), "a quiet settle changed something");
     let day = DAY_MS as u64;
-    let mut now = 0;
 
     // In from the map's edge, never over land, and moored with the
     // starter pack on deck, on time.
-    let turn = world.turn(harbour).expect("the harbour's line");
+    let turn = game.world.turn(harbour).expect("the harbour's line");
     let mut sailed = false;
-    while car_of(&world, ferry).spot.is_none() {
-        assert!(step(&mut world, &mut events, &mut now, day), "the ferry never berthed");
-        if let Some(sail) = car_of(&world, ferry).sail {
-            assert!(world.water.get().unwrap().afloat(&sail.path), "the ferry's way crosses land");
+    while car_of(&game.world, ferry).spot.is_none() {
+        assert!(game.step_to(day), "the ferry never berthed");
+        if let Some(sail) = car_of(&game.world, ferry).sail {
+            assert!(game.world.water.get().unwrap().afloat(&sail.path), "the ferry's way crosses land");
             sailed = true;
         }
     }
-    let berthed = now;
+    let berthed = game.now;
     assert!(sailed, "it never sailed in");
     assert!(berthed <= FIRST_CALL + 100, "the first ferry berthed at {berthed}, due at {FIRST_CALL}");
-    assert_eq!(car_of(&world, ferry).deck.iter().flatten().count(), 6, "the starter pack is not aboard");
+    assert_eq!(car_of(&game.world, ferry).deck.iter().flatten().count(), 6, "the starter pack is not aboard");
     // The tug unloads while it is in, and it sails on time.
     let mut shunted = false;
-    while car_of(&world, ferry).spot.is_some() {
-        assert!(step(&mut world, &mut events, &mut now, day), "the ferry never sailed");
-        shunted |= car_of(&world, tug).shunt.is_some();
+    while car_of(&game.world, ferry).spot.is_some() {
+        assert!(game.step_to(day), "the ferry never sailed");
+        shunted |= car_of(&game.world, tug).shunt.is_some();
     }
     assert!(shunted, "the tug never moved");
-    assert!(now - berthed <= DWELL + 100, "it sailed late: {} after berthing", now - berthed);
+    assert!(game.now - berthed <= DWELL + 100, "it sailed late: {} after berthing", game.now - berthed);
     let parked = |w: &World| building_of(w, harbour).park.iter().filter(|s| s.trailer.is_some()).count();
-    assert!(parked(&world) >= 3, "only {} boxes landed in the park", parked(&world));
-    assert_eq!(world.treasury, crate::economy::STAKE, "the starter pack was paid for");
+    assert!(parked(&game.world) >= 3, "only {} boxes landed in the park", parked(&game.world));
+    assert_eq!(game.world.treasury, crate::economy::STAKE, "the starter pack was paid for");
 
     // The lorry fetches a box as it lands, and unloads it.
     let stock = |w: &World| building_of(w, depot).stocks.values().map(|s| s.level).sum::<f64>();
-    let until = now + day / 12;
-    while stock(&world) == 0.0 && step(&mut world, &mut events, &mut now, until) {}
-    assert!(stock(&world) > 0.0, "the lorry brought nothing home in two hours");
-    assert!(car_of(&world, lorry).hitched.is_none(), "the box was not gone into stock");
-    assert!(world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
-    assert_eq!(opening(&mut world, now), [true, true, true, true, false], "the box fetched");
+    let until = game.now + day / 12;
+    while stock(&game.world) == 0.0 && game.step_to(until) {}
+    assert!(stock(&game.world) > 0.0, "the lorry brought nothing home in two hours");
+    assert!(car_of(&game.world, lorry).hitched.is_none(), "the box was not gone into stock");
+    assert!(game.world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
+    assert_eq!(opening(&mut game), [true, true, true, true, false], "the box fetched");
 
     // A second lorry, bought from the world: the two fetch the rest.
-    let before = world.treasury;
-    crate::haul::buy_lorry(&mut world, &mut events, depot, now);
-    assert_eq!(lorries_of(&world, depot).len(), 2, "no second lorry");
-    assert!((before - world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
-    let until = now + day / 4;
-    while (parked(&world) > 0 || car_of(&world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && step(&mut world, &mut events, &mut now, until) {}
+    let before = game.world.treasury;
+    game.command(PLAYER, ClientMessage::BuyLorry { depot });
+    assert_eq!(lorries_of(&game.world, depot).len(), 2, "no second lorry");
+    assert!((before - game.world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
+    let until = game.now + day / 4;
+    while (parked(&game.world) > 0 || car_of(&game.world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && game.step_to(until) {}
     let shelf = |w: &World, g: Good| building_of(w, depot).stocks[&g].level;
-    assert!(shelf(&world, Good::Timber) >= 40.0, "the timber did not come in: {}", shelf(&world, Good::Timber));
+    assert!(shelf(&game.world, Good::Timber) >= 40.0, "the timber did not come in: {}", shelf(&game.world, Good::Timber));
 
     // A house, placed: a site until a van brings its timber.
-    let player = 7;
-    let house_at = GridCoord { x: 20, y: 1 };
-    let refused = handle_player_action(&mut world, &mut events, player, ClientMessage::Place { kind: BuildingKind::House, at: house_at, facing: None }, now);
-    assert!(refused.is_none(), "the house was refused: {refused:?}");
-    settle_and_wake(&mut world, &mut events);
-    let house = world.occupied[&(20, 1)];
-    assert!(building_of(&world, house).site.is_some(), "the house stood without its timber");
-    assert!(world.household(house).is_empty(), "people moved into a site");
-    let until = now + day / 4;
-    while building_of(&world, house).site.is_some() && step(&mut world, &mut events, &mut now, until) {}
-    assert!(building_of(&world, house).site.is_none(), "the van never brought the timber");
-    settle_and_wake(&mut world, &mut events);
-    let settlers = world.household(house);
+    does(&mut game, Do::Place(BuildingKind::House, GridCoord { x: 20, y: 1 }));
+    game.step();
+    let house = game.world.occupied[&(20, 1)];
+    assert!(building_of(&game.world, house).site.is_some(), "the house stood without its timber");
+    assert!(game.world.household(house).is_empty(), "people moved into a site");
+    let until = game.now + day / 4;
+    while building_of(&game.world, house).site.is_some() && game.step_to(until) {}
+    assert!(building_of(&game.world, house).site.is_none(), "the van never brought the timber");
+    game.step();
+    let settlers = game.world.household(house);
     assert_eq!(settlers.len(), 2, "nobody moved in");
     // They come on the next ferry, and drive home: off the deck from
     // where each stood aboard, over the ramp and up the lane.
-    let until = now + turn + DWELL + day / 6;
-    let berth = world.berth(harbour).unwrap();
+    let until = game.now + turn + DWELL + day / 6;
+    let berth = game.world.berth(harbour).unwrap();
     let mut rolled = 0;
-    while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut now, until) {
+    while settlers.iter().any(|&id| at_of(&game.world, id) != Some(house)) && game.step_to(until) {
         for &id in &settlers {
-            let Some(r) = world.resident(id) else { continue };
-            if let Some(t) = car_of(&world, r.car).trip.filter(|t| t.progress == 0.0 && t.route_positions.len() > 3) {
+            let Some(r) = game.world.resident(id) else { continue };
+            if let Some(t) = car_of(&game.world, r.car).trip.filter(|t| t.progress == 0.0 && t.route_positions.len() > 3) {
                 let start = t.leaves.expect("a settler leaves from its seat");
                 assert_eq!(start.at, t.route_positions[0]);
                 let up = |p: [f64; 2]| (p[0] - berth.ramp()[0]) * berth.landward().cos() + (p[1] - berth.ramp()[1]) * berth.landward().sin();
@@ -1274,30 +1186,30 @@ fn the_opening_from_the_harbour() {
         }
     }
     assert!(rolled > 0, "no settler was seen rolling off the deck");
-    assert!(settlers.iter().all(|&id| at_of(&world, id) == Some(house)), "the settlers never got home");
+    assert!(settlers.iter().all(|&id| at_of(&game.world, id) == Some(house)), "the settlers never got home");
     // The opening done, and paid; the trunk opens on the market: a box
     // bought.
-    let before = world.treasury;
-    assert_eq!(opening(&mut world, now), [true; 5], "the settlers came");
-    assert!((world.treasury - before - 100.0).abs() < 1e-9, "the opening paid {}", world.treasury - before);
-    let trunk = |world: &mut World, now| missions(world, now).into_iter().map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
-    assert_eq!(trunk(&mut world, now), [(Key::Opening, true), (Key::Book, false)]);
-    let price = world.market.price(Good::Timber);
-    handle_player_action(&mut world, &mut events, player, ClientMessage::Trade { good: Good::Timber, boxes: 1, out: false }, now);
-    assert_eq!(trunk(&mut world, now)[1..], [(Key::Book, true), (Key::Sell, false)]);
-    assert!(world.market.price(Good::Timber) > price, "buying timber did not push its price");
+    // Paid in the step they came home in, as coins landing at the harbour.
+    assert_eq!(opening(&mut game), [true; 5], "the settlers came");
+    let paid = game.world.lumps.iter().filter(|l| l.building == harbour && l.good.is_none()).map(|l| l.coins).sum::<f64>();
+    assert!((paid - 100.0).abs() < 1e-9, "the opening paid {paid}");
+    // The trunk alone: the market's orders come and go beside it.
+    let trunk = |game: &mut Game| missions(game).into_iter().filter(|(k, ..)| !matches!(k, Key::Order(_))).map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
+    assert_eq!(trunk(&mut game), [(Key::Opening, true), (Key::Book, false)]);
+    let price = game.world.market.price(Good::Timber);
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, boxes: 1, out: false });
+    assert_eq!(trunk(&mut game)[1..], [(Key::Book, true), (Key::Sell, false)]);
+    assert!(game.world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
     // A box of crates sold: out on the ferry, paid as it casts off.
-    let before = world.treasury;
-    handle_player_action(&mut world, &mut events, player, ClientMessage::Trade { good: Good::Crates, boxes: 1, out: true }, now);
-    let until = now + 2 * turn;
-    while world.town.on(now).sold.get(&Good::Crates).is_none() && step(&mut world, &mut events, &mut now, until) {}
-    let sold = world.town.on(now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Crates, boxes: 1, out: true });
+    let until = game.now + 2 * turn;
+    while game.world.town.on(game.now).sold.get(&Good::Crates).is_none() && game.step_to(until) {}
+    let sold = game.world.town.on(game.now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
     // What the depot spares over its own shelf, at the market's price less freight.
     assert!(sold > 0.0 && sold <= 100.0 * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the box went out for {sold}");
-    assert!(world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
-    assert_eq!(trunk(&mut world, now)[2], (Key::Sell, true), "the box sold");
-    let _ = before;
+    assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
+    assert_eq!(trunk(&mut game)[2], (Key::Sell, true), "the box sold");
 }
 
 /// One lorry, its depot a short street from the harbour, fetches the
@@ -1315,19 +1227,18 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
     let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
     let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
     world.orient(depot);
-    let mut events = EventQueue::new();
-    settle_and_wake(&mut world, &mut events);
-    let ferry = world.ferry_of(harbour).unwrap();
-    let lorry = lorries_of(&world, depot)[0];
-    let (day, mut now) = (DAY_MS as u64, 0);
-    while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut now, day) {}
-    while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut now, day) {}
-    let (sailed, hour) = (now, day / 24);
+    let mut game = game(world);
+    let ferry = game.world.ferry_of(harbour).unwrap();
+    let lorry = lorries_of(&game.world, depot)[0];
+    let day = DAY_MS as u64;
+    while car_of(&game.world, ferry).spot.is_none() && game.step_to(day) {}
+    while car_of(&game.world, ferry).spot.is_some() && game.step_to(day) {}
+    let (sailed, hour) = (game.now, day / 24);
     let home = |w: &World| w.lumps.iter().filter(|l| l.building == depot && l.units > 0.0).count();
     let mut parked_home = None;
-    while home(&world) < 6 && step(&mut world, &mut events, &mut now, sailed + 8 * hour) {
-        let c = car_of(&world, lorry);
-        match (c.trip.is_none() && world.claims.get(&lorry) == Some(&depot), parked_home) {
+    while home(&game.world) < 6 && game.step_to(sailed + 8 * hour) {
+        let (c, now) = (car_of(&game.world, lorry), game.now);
+        match (c.trip.is_none() && game.world.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
             (false, Some(at)) => {
                 assert!(now - at <= 2 * crate::haul::COUPLE_MS, "the lorry stood {} ms at home", now - at);
@@ -1336,6 +1247,6 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
             _ => {}
         }
     }
-    assert_eq!(home(&world), 6, "{} boxes home in eight hours", home(&world));
-    eprintln!("six boxes home in {:.2} hours", (now - sailed) as f64 / hour as f64);
+    assert_eq!(home(&game.world), 6, "{} boxes home in eight hours", home(&game.world));
+    eprintln!("six boxes home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }

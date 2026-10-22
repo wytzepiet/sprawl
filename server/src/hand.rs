@@ -413,14 +413,14 @@ mod tests {
     /// not a road on its tile.
     #[test]
     fn a_house_razed_takes_its_drive_with_it() {
-        let mut world = street();
-        world.treasury = 1e9;
-        let mut events = EventQueue::new();
+        let mut game = game(street());
+        game.world.treasury = 1e9;
         let at = GridCoord { x: 5, y: 1 };
-        does(&mut world, &mut events, Do::Place(BuildingKind::House, at), 0);
-        let house = world.occupied[&(5, 1)];
-        assert!(world.door_of(house).is_some() && world.road_node_at(at).is_none(), "a house with its door, and no road on its tile");
-        does(&mut world, &mut events, Do::Raze(at), 0);
+        does(&mut game, Do::Place(BuildingKind::House, at));
+        let house = game.world.occupied[&(5, 1)];
+        assert!(game.world.door_of(house).is_some() && game.world.road_node_at(at).is_none(), "a house with its door, and no road on its tile");
+        does(&mut game, Do::Raze(at));
+        let world = &game.world;
         assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
         assert!(world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "and the street stands");
     }
@@ -430,26 +430,25 @@ mod tests {
     /// demolisher's to take.
     #[test]
     fn a_drag_cuts_a_link_and_a_tap_takes_the_point() {
-        let mut world = street();
-        world.treasury = 1e9;
-        let mut events = EventQueue::new();
+        let mut game = game(street());
+        game.world.treasury = 1e9;
         let at = |x, y| GridCoord { x, y };
-        let mut hand = |world: &mut World, d| does(world, &mut events, d, 0);
         // A side street, two tiles long, off the main one.
-        hand(&mut world, Do::Step(Tool::Street, at(5, 0), at(5, 1)));
-        hand(&mut world, Do::Step(Tool::Street, at(5, 1), at(5, 2)));
-        hand(&mut world, Do::Step(Tool::Demolish, at(5, 1), at(5, 2)));
+        does(&mut game, Do::Step(Tool::Street, at(5, 0), at(5, 1)));
+        does(&mut game, Do::Step(Tool::Street, at(5, 1), at(5, 2)));
+        does(&mut game, Do::Step(Tool::Demolish, at(5, 1), at(5, 2)));
+        let world = &game.world;
         assert!(!world.are_connected(at(5, 1), at(5, 2)), "the link is cut");
         assert!(world.road_node_at(at(5, 2)).is_none(), "and the end left with no road goes");
         assert!(world.are_connected(at(5, 0), at(5, 1)), "the rest stands");
-        hand(&mut world, Do::Place(BuildingKind::Depot, at(9, 3)));
-        let depot = world.occupied[&(9, 3)];
-        hand(&mut world, Do::Step(Tool::Demolish, at(10, 4), at(10, 4)));
-        assert!(world.objects.get(depot).is_some(), "the demolisher took the depot");
+        does(&mut game, Do::Place(BuildingKind::Depot, at(9, 3)));
+        let depot = game.world.occupied[&(9, 3)];
+        does(&mut game, Do::Step(Tool::Demolish, at(10, 4), at(10, 4)));
+        assert!(game.world.objects.get(depot).is_some(), "the demolisher took the depot");
         // A tap takes the point and every link at it.
-        hand(&mut world, Do::Step(Tool::Demolish, at(5, 0), at(5, 0)));
-        assert!(world.road_node_at(at(5, 0)).is_none());
-        assert!(world.road_node_at(at(5, 1)).is_none(), "the side street left with no road goes too");
+        does(&mut game, Do::Step(Tool::Demolish, at(5, 0), at(5, 0)));
+        assert!(game.world.road_node_at(at(5, 0)).is_none());
+        assert!(game.world.road_node_at(at(5, 1)).is_none(), "the side street left with no road goes too");
     }
 
     /// A road is laid at once, on stone: a tile's comes off the nearest

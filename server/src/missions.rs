@@ -362,7 +362,11 @@ mod tests {
         }
         let mut events = EventQueue::new();
         settle_and_wake(&mut world, &mut events);
-        let quarry = |world: &mut World| missions(world, 0).into_iter().filter(|m| m.0 == Key::Quarry).map(|m| m.2).collect::<Vec<_>>();
+        // Its missions read, as the step after this reads them.
+        let quarry = |world: &mut World| {
+            check(world, 0);
+            world.missions.list.iter().filter(|m| m.key == Key::Quarry).map(|m| m.finished.is_some()).collect::<Vec<_>>()
+        };
         // Flats, a site of timber and stone, call for both, and the depot
         // has no stone.
         let at = GridCoord { x: 100, y: 1 };
@@ -405,10 +409,7 @@ mod tests {
         let mut events = EventQueue::new();
         settle_and_wake(&mut world, &mut events);
         let id = world.household(house)[0];
-        let car = match world.objects.get(id).map(|e| &e.object) {
-            Some(GameObject::Resident(r)) => r.car,
-            _ => unreachable!(),
-        };
+        let car = world.resident(id).unwrap().car;
         if let Some(r) = world.resident_mut(id) {
             r.at = Some(house);
         }

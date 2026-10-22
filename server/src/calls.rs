@@ -368,13 +368,9 @@ mod tests {
 
     /// The first shelf, as a fraction of full.
     fn stock(world: &World, building: EntityId) -> f64 {
-        match world.objects.get(building).unwrap().object {
-            GameObject::Building(ref b) => {
-                let s = &b.stocks[&crate::economy::shelves(b.kind)[0]];
-                s.level / s.cap
-            }
-            _ => unreachable!(),
-        }
+        let b = world.building(building).unwrap();
+        let s = &b.stocks[&crate::economy::shelves(b.kind)[0]];
+        s.level / s.cap
     }
 
     /// With a warehouse in town with crates on its shelf, its own van
@@ -384,23 +380,25 @@ mod tests {
         let mut world = street();
         let shop = build(&mut world, 20, BuildingKind::Shop);
         let warehouse = build(&mut world, 60, BuildingKind::Depot);
-        let mut events = EventQueue::new();
-        sell(&mut world, &mut events, shop, 35.0, 0);
+        let mut game = game(world);
+        sell(&mut game.world, &mut game.events, shop, 35.0, 0);
+        let world = &game.world;
         let truck = world.calls[0].answered_by.expect("the warehouse answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
         // The shop learned how long a delivery from next door takes, and
         // reorders later for it.
-        let before = crate::economy::reorder(&world, shop, Good::Crates);
+        let before = crate::economy::reorder(world, shop, Good::Crates);
 
         // Out through one ring and home through another, at lot speed, on
         // top of the drive: under three hours.
-        pump(&mut world, &mut events, 0, 3 * DAY_MS as u64 / 24);
+        game.run_to(3 * DAY_MS as u64 / 24);
+        let world = &game.world;
         assert!(world.calls.is_empty());
         let e = world.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
         assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
-        assert_eq!(stock(&world, shop), 1.0, "the shelves are full again");
-        assert!(crate::economy::reorder(&world, shop, Good::Crates) < before, "the shop did not learn the lead time");
+        assert_eq!(stock(world, shop), 1.0, "the shelves are full again");
+        assert!(crate::economy::reorder(world, shop, Good::Crates) < before, "the shop did not learn the lead time");
     }
 
     /// The building's turn: a buyer takes the nearest seller with stock,
@@ -421,10 +419,7 @@ mod tests {
         };
         let answered_by = |world: &World| {
             let truck = world.calls.last().unwrap().answered_by?;
-            match world.objects.get(truck).unwrap().object {
-                GameObject::Car(ref c) => Some(c.owner),
-                _ => unreachable!(),
-            }
+            Some(world.car(truck).unwrap().owner)
         };
         sell(&mut world, &mut events, shop, 35.0, 0);
         assert_eq!(answered_by(&world), Some(near), "the nearer depot did not answer");

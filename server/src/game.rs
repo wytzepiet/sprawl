@@ -28,6 +28,9 @@ pub struct Game {
     pub events: EventQueue,
     pub now: GameTime,
     pub speed: u32,
+    /// How many times a resident has thought, all told: what a day of
+    /// town costs (`a_town_thinks_within_budget`).
+    pub thoughts: u64,
     clients: HashMap<ClientId, ClientState>,
     outbox: Vec<(ClientId, ServerMessage)>,
     /// A command changed the world since the last step: it settles.
@@ -46,6 +49,7 @@ impl Game {
             events: EventQueue::new(),
             now,
             speed,
+            thoughts: 0,
             clients: HashMap::default(),
             outbox: Vec::new(),
             stirred: false,
@@ -218,6 +222,9 @@ impl Game {
         self.events.set_now(self.now);
         let mut wakes = 0;
         while let Some(id) = self.events.pop_due() {
+            if self.world.resident(id).is_some() {
+                self.thoughts += 1;
+            }
             handle_wake(&mut self.world, &mut self.events, id, self.now);
             wakes += 1;
         }
@@ -225,6 +232,36 @@ impl Game {
         // Before the flush, which takes the lumps a mission reads.
         crate::missions::check(&mut self.world, self.now);
         wakes
+    }
+
+    /// On to the next step anything happens at, before `to`, and that step
+    /// taken; or, nothing before it, on to `to`. False once there. The
+    /// steps between, where nothing settles, nothing is due and the
+    /// market's hour has not come, are skipped rather than stepped: they
+    /// would change nothing, so what the world does is what `step` does,
+    /// in a fraction of the time, and a test that looks at it after each
+    /// sees all there is to see.
+    pub fn step_to(&mut self, to: GameTime) -> bool {
+        if self.now >= to {
+            return false;
+        }
+        if !self.stirred && self.world.unsettled.is_empty() {
+            let due = self.events.next_due().into_iter().chain([(self.world.market.hour + 1) * crate::market::HOUR]).min().unwrap_or(GameTime::MAX);
+            let next = due.saturating_sub(STEP_MS).min(self.now.next_multiple_of(SETTLE_MS)).max(self.now).next_multiple_of(STEP_MS);
+            if next >= to {
+                self.now = to.next_multiple_of(STEP_MS);
+                self.events.set_now(self.now);
+                return true;
+            }
+            self.now = next;
+        }
+        self.step();
+        true
+    }
+
+    /// `step_to` until `to`.
+    pub fn run_to(&mut self, to: GameTime) {
+        while self.step_to(to) {}
     }
 }
 
@@ -263,7 +300,8 @@ pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 /// Population follows what changed, and whoever's situation changed gets to
 /// think about it. And the day is always due to turn.
 pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
-    if !world.unsettled.is_empty() {
+    let changed = !world.unsettled.is_empty();
+    if changed {
         world.missions.stir();
     }
     for id in world.settle() {
@@ -277,9 +315,10 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for id in waiting {
         crate::calls::turn(world, events, id, events.now());
     }
-    // Their ferries and tugs read the time from where they stand, so a
-    // wake too many is no harm, and one too few after a load would be.
-    let harbours: Vec<EntityId> = world.harbours.keys().copied().collect();
+    // A harbour built, or its line changed: its ferries and tugs look
+    // again. Not at every settle: a moored ferry woken rolls its next
+    // settler off at once, not ROLL_MS after the last.
+    let harbours: Vec<EntityId> = if changed { world.harbours.keys().copied().collect() } else { Vec::new() };
     for h in harbours {
         for id in world.ferries_of(h).into_iter().chain(world.tug_of(h)) {
             events.wake(0, id);

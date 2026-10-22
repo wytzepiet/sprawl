@@ -393,9 +393,7 @@ pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner
 mod tests {
     use super::*;
     use crate::game::tests::*;
-    use crate::game::settle_and_wake;
     use crate::protocol::{BuildingKind, Good, DAY_MS};
-    use crate::engine::event_queue::EventQueue;
 
     /// A letter written and opened, as a ferry brings it.
     fn letter(world: &mut World, now: GameTime) -> crate::missions::Mission {
@@ -528,39 +526,36 @@ mod tests {
         let mut world = street();
         let harbour = harbour_of(&world);
         build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
-        let mut events = EventQueue::new();
-        settle_and_wake(&mut world, &mut events);
-        opening_done(&mut world);
-        post(&mut world, harbour, 0);
+        let mut game = game(world);
+        let world = &mut game.world;
+        opening_done(world);
+        post(world, harbour, 0);
         let order = world.missions.list.last().unwrap().clone();
         assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Crates), "Tam's letter, for crates");
         let (crate::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
-        let before = (world.treasury, standing(&world, Mayor::Tam));
-        assert_eq!(crate::orders::send(&mut world, id, 1), 1, "no slot for Tam");
-        crate::haul::call_lorries(&mut world, &mut events);
-        let mut now = 0;
+        let before = (world.treasury, standing(world, Mayor::Tam));
+        assert_eq!(crate::orders::send(world, id, 1), 1, "no slot for Tam");
+        crate::haul::call_lorries(world, &mut game.events);
         let mut marked = false;
         let finished = |w: &World| w.missions.list.iter().any(|m| m.key == order.key && m.finished.is_some());
-        while !finished(&world) && step(&mut world, &mut events, &mut now, DAY_MS as u64) {
-            crate::missions::check(&mut world, now);
-            marked |= crate::haul::boxes(&world).iter().any(|(t, ..)| t.order == id && t.outbound);
+        while !finished(&game.world) && game.step_to(DAY_MS as u64) {
+            marked |= crate::haul::boxes(&game.world).iter().any(|(t, ..)| t.order == id && t.outbound);
         }
+        let world = &game.world;
         assert!(marked, "no box was marked for Saltmere");
-        assert!(finished(&world), "the order was never filled");
+        assert!(finished(world), "the order was never filled");
         let paid = world.lumps.iter().filter(|l| l.building == harbour && l.coins > 0.0).map(|l| l.coins).sum::<f64>();
         assert!((paid - coins).abs() < 1e-6, "Tam paid {paid}, the letter said {coins}");
         assert!((world.treasury - before.0 - coins).abs() < 1e-6, "the purse moved by {}", world.treasury - before.0);
-        assert_eq!(standing(&world, Mayor::Tam), before.1 + 1.0, "standing rose by other than a point");
+        assert_eq!(standing(world, Mayor::Tam), before.1 + 1.0, "standing rose by other than a point");
         // A day on, nothing more for it.
         let treasury = world.treasury;
-        let until = now + DAY_MS as u64;
-        while step(&mut world, &mut events, &mut now, until) {
-            crate::missions::check(&mut world, now);
-        }
+        game.run_to(game.now + DAY_MS as u64);
+        let world = &game.world;
         let crates_sold: f64 = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum();
         assert!((crates_sold - coins).abs() < 1e-6, "crates sold for {crates_sold} in all");
         assert!(world.treasury <= treasury + 1e-6, "paid again: {} more", world.treasury - treasury);
-        assert_eq!(standing(&world, Mayor::Tam), before.1 + 1.0, "standing rose again");
+        assert_eq!(standing(world, Mayor::Tam), before.1 + 1.0, "standing rose again");
     }
 
     /// The board outlives a restart: the orders open and done, who wrote
