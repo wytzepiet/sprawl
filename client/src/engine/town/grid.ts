@@ -57,13 +57,8 @@ export interface Town {
    *  of it, at a junction a kerb, else none, the road bare on the grass.
    *  Unset, a town's sidewalk (`SIDEWALK`). */
   sidewalk?(c: number, r: number): number;
-  /** Which way traffic runs on the link from one road tile to the next
-   *  (`Flow`). Unset, both. */
-  flow?(c0: number, r0: number, c1: number, r1: number): Flow;
-  /** A junction with traffic lights. */
-  light?(c: number, r: number): boolean;
   /** The roads on a road tile, each its own (`RoadView`); unset, the
-   *  tile's one road, read off `linked`, `through`, `flow` and `light`. */
+   *  tile's one road, two-way and unlit, read off `linked` and `through`. */
   roadsOn?(c: number, r: number): RoadView[];
   /** Two built tiles, beside or diagonal, joined into one building, as the
    *  brush stroke that painted them ran; unset, the look joins tiles of a
@@ -86,7 +81,7 @@ export const LETTERS: Record<string, BuildingKind> = {
 
 /** How tall each kind is built. One height for a kind: a height picked per
  *  tile is a chequerboard of steps across every block. Heights that vary
- *  come with success, and by hand in the sandbox. */
+ *  come with success. */
 const STOREYS: Partial<Record<BuildingKind, number>> = {
   House: 2, Apartment: 5, Shop: 2, Office: 6, Factory: 1, Depot: 1, Supermarket: 1, GasStation: 1, Sawmill: 1, Quarry: 1,
 };
@@ -97,7 +92,7 @@ export const isBuilt = (t: Tile) => !GROUND.has(t.kind);
 /** How many storeys a kind is built. */
 export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
 
-export function tileOf(ch: string): Tile {
+function tileOf(ch: string): Tile {
   // A building's letter, its yard's small, as `/map` writes the game's.
   const kind = LETTERS[ch.toUpperCase()];
   if (kind) return ch === ch.toUpperCase() ? { kind, storeys: storeysOf(kind) } : { kind, storeys: storeysOf(kind), yard: true };
@@ -173,7 +168,7 @@ export function townOf(
   return town;
 }
 
-const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+export const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 const CORNERS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const EIGHT: [number, number][] = [...SIDES, ...CORNERS];
 
@@ -250,7 +245,6 @@ export function windowOf(town: Town, x0: number, y0: number, w: number, h: numbe
     linked: (a, b, c, d) => inside(a, b) && inside(c, d) && town.linked(a + x0, b + y0, c + x0, d + y0),
     through: (c, r) => inside(c, r) && town.through(c + x0, r + y0),
     sidewalk: town.sidewalk && ((c, r) => (inside(c, r) ? town.sidewalk!(c + x0, r + y0) : 0)),
-    flow: town.flow && ((a, b, c, d) => town.flow!(a + x0, b + y0, c + x0, d + y0)),
     roadsOn: town.roadsOn && ((c, r) => town.roadsOn!(c + x0, r + y0)),
     joins: town.joins && ((a, b, c, d) => inside(a, b) && inside(c, d) && town.joins!(a + x0, b + y0, c + x0, d + y0)),
     door: town.door && ((c, r) => (inside(c, r) ? town.door!(c + x0, r + y0) : undefined)),

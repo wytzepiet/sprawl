@@ -42,11 +42,14 @@ export class Culler {
     this.apply(mesh, k);
   }
 
-  /** The view as it stands: before each frame. */
+  /** The view as it stands: before each frame. A mesh is shown or hidden
+   *  as it is kept or wanted, so only a view that moved walks them all. */
   update() {
     if (!this.scene.camera) return;
     const { cx, cy, radius } = groundCover(this.scene, this.canvas);
-    this.view = [cx - radius, cy - radius, cx + radius, cy + radius];
+    const view: Area = [cx - radius, cy - radius, cx + radius, cy + radius];
+    if (view.every((v, i) => v === this.view[i])) return;
+    this.view = view;
     for (const [mesh, k] of this.kept) this.apply(mesh, k);
   }
 

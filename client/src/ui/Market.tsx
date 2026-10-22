@@ -5,9 +5,8 @@ import { sea } from "../state/sea";
 import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
-import { Shelf } from "./Depot";
-import { Fade, Line, Press, Tabs } from "./kit";
-import { open, setOpen, sheetWidth, show } from "./sheet";
+import { BAD, Fade, GoodDot, Line, Press, Tabs } from "./kit";
+import { open, setOpen, show } from "./sheet";
 import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
 import type { Good, Quote, When } from "../generated";
@@ -25,7 +24,6 @@ import type { Good, Quote, When } from "../generated";
 /** How frosted the glass under a chart is: its red and green read over any town. */
 export const FROSTED = 1;
 const UP = "#2E9D6A";
-const DOWN = "#D9483B";
 /** The most boxes a ferry's deck takes: the most bought or sold at once. */
 const DECK = 15;
 
@@ -34,7 +32,7 @@ export const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() :
 export const box = (g: Good, unit: number) => unit * GOODS[g].box;
 export const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].label.slice(1);
 /** A move's colour: up, down, or too small to call. */
-export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : DOWN);
+export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : BAD);
 export const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
 
 /** Every good held, with what is on its way in. */
@@ -280,6 +278,32 @@ function Page(props: { good: Good }) {
           </Press>
         </box>
       </box>
+      </box>
+    </box>
+  );
+}
+
+/** A good's shelf: how full, and what is on its way drawn faint beyond it. */
+function Shelf(props: { good: Good; level: number; cap: number; incoming: number }) {
+  const share = (v: number) => Math.max(0, Math.min(1, v / props.cap));
+  const [w, setW] = createSignal(0);
+  const color = () => GOODS[props.good].color;
+  return (
+    <box pad={{ y: 6 }} gap={8}>
+      <box dir="row" align="center" gap={8}>
+        <GoodDot good={props.good} size={20} />
+        <text size={13.5} weight={600}>{named(props.good)}</text>
+        <box dir="row" align="end" gap={2}>
+          <text serif size={13.5}>{Math.floor(props.level)}</text>
+          <text serif size={12} soft>/ {props.cap}</text>
+        </box>
+        <Show when={props.incoming > 0}>
+          <text size={11} soft>+{Math.round(props.incoming)} coming</text>
+        </Show>
+      </box>
+      <box h={14} round={7} fill="ink/0.09" onSize={(x) => setW(x)}>
+        <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
+        <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
       </box>
     </box>
   );

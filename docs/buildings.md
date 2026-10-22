@@ -136,8 +136,8 @@ stops the line, in sight.
 
 ## Later
 
-- Power: the plant, pylons, substations (`roadmap.md` milestone 6).
-- Fire station, hospital, police (milestone 7).
+- Power: the plant, pylons, substations (`roadmap.md`).
+- Fire station, hospital, police.
 - Airport: the fast, dear door.
 - Grades of home and of shop: the ladder of wants.
 

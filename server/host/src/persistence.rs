@@ -1,272 +1,168 @@
 use std::path::Path;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 
-use sprawl::protocol::{GameObjectEntry, GameObject};
+use sprawl::protocol::{GameObject, GameObjectEntry};
 
-use sprawl::tree::Cell;
-
+/// Every object a row of its JSON, and the rest of the world one row more.
+/// A save is this build's: a change to either shape means starting over
+/// (`rm sprawl.db`), and a row this build cannot read says so.
 const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS objects (
-    id INTEGER PRIMARY KEY,
-    data TEXT NOT NULL,
-    pos_x INTEGER,
-    pos_y INTEGER
-);
-CREATE TABLE IF NOT EXISTS metadata (
-    key TEXT PRIMARY KEY,
-    value INTEGER NOT NULL
-);
-DROP TABLE IF EXISTS drafts;
-CREATE TABLE IF NOT EXISTS missions (
-    id INTEGER PRIMARY KEY,
-    data TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS market (
-    id INTEGER PRIMARY KEY,
-    data TEXT NOT NULL
-);
+CREATE TABLE IF NOT EXISTS objects (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS meta (id INTEGER PRIMARY KEY CHECK (id = 0), data TEXT NOT NULL);
 ";
 
 /// Everything about a world that is not one of its objects.
-///
-/// Bundled rather than passed one by one: the list only ever grows, and a
-/// function of eight scalars is one whose call sites nobody can read.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
     pub next_id: u64,
     pub terrain_seed: u32,
+    /// So a restart continues the day rather than snapping the world back
+    /// to midnight.
     pub sim_time: u64,
-    /// GDP to date: the level. Kept to the hundredth, which is far finer
-    /// than a bar can show — the metadata column holds whole numbers.
+    /// GDP to date: the level.
     pub gdp: f64,
     /// The mayor's coins.
     pub treasury: f64,
-    /// The nodes of the tree taken, one metadata row each.
-    pub taken: Vec<Cell>,
-    /// The town's missions, open and finished, a row each in order.
+    /// The town's missions, open and finished, in order.
     pub missions: Vec<sprawl::missions::Mission>,
     /// The market's prices, their week and the orders waiting.
     pub market: sprawl::market::Market,
 }
 
-/// A whole number of hundredths, which is what the metadata table can hold.
-fn centi(v: f64) -> i64 {
-    (v * 100.0).round() as i64
+impl Default for Meta {
+    fn default() -> Self {
+        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, missions: Vec::new(), market: Default::default() }
+    }
 }
 
-pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
-    if !path.exists() {
-        return (vec![], Meta { next_id: 1, ..Meta::default() });
+/// The save, open for as long as the game runs.
+pub struct Db {
+    conn: Connection,
+    path: String,
+}
+
+impl Db {
+    pub fn open(path: &Path) -> Db {
+        let conn = Connection::open(path).expect("failed to open db");
+        conn.execute_batch(SCHEMA).expect("failed to create schema");
+        Db { conn, path: path.display().to_string() }
     }
 
-    let conn = Connection::open(path).expect("failed to open db");
-    let mut stmt = conn
-        .prepare("SELECT id, data FROM objects")
-        .expect("failed to prepare select");
+    /// What was saved: none of it for a new file.
+    pub fn load(&self) -> (Vec<GameObjectEntry>, Meta) {
+        // Dropping a row this build cannot read would leave a world with
+        // roads and no buildings, which reveals nothing and shows as fog to
+        // the horizon.
+        let unreadable = |e: &dyn std::fmt::Display| -> ! { panic!("{} was written by another build ({e}); delete it to start over", self.path) };
+        let mut stmt = self.conn.prepare("SELECT data FROM objects").expect("failed to prepare select");
+        let entries: Vec<GameObjectEntry> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("failed to query objects")
+            .map(|json| serde_json::from_str(&json.expect("failed to read a row")).unwrap_or_else(|e| unreadable(&e)))
+            .collect();
+        let meta = self.conn.query_row("SELECT data FROM meta", [], |row| row.get::<_, String>(0)).optional().expect("failed to read meta");
+        let meta = match meta {
+            Some(json) => serde_json::from_str(&json).unwrap_or_else(|e| unreadable(&e)),
+            None if entries.is_empty() => Meta::default(),
+            None => unreadable(&"objects and no meta"),
+        };
+        (entries, meta)
+    }
 
-    let entries: Vec<GameObjectEntry> = stmt
-        .query_map([], |row| {
-            let _id: u64 = row.get(0)?;
-            let json: String = row.get(1)?;
-            Ok(json)
-        })
-        .expect("failed to query objects")
-        .filter_map(|r| r.ok())
-        .map(|json| {
-            // A row this build cannot read is a save from another build. Dropping
-            // it quietly leaves a world with roads and no buildings, which reveals
-            // nothing and shows as fog to the horizon.
-            serde_json::from_str::<GameObjectEntry>(&json).unwrap_or_else(|e| {
-                panic!("{} was written by another build ({e}); delete it to start over", path.display())
-            })
-        })
-        .collect();
-
-    let next_id: u64 = conn
-        .query_row(
-            "SELECT value FROM metadata WHERE key = 'next_id'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(1);
-
-    let terrain_seed: u32 = conn
-        .query_row(
-            "SELECT value FROM metadata WHERE key = 'terrain_seed'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
-    // Sim time is persisted so a restart continues the day rather than
-    // snapping the world back to midnight.
-    let sim_time: u64 = conn
-        .query_row(
-            "SELECT value FROM metadata WHERE key = 'sim_time'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
-    let read = |key: &str| -> i64 {
-        conn.query_row("SELECT value FROM metadata WHERE key = ?1", [key], |row| row.get(0))
-            .unwrap_or(0)
-    };
-
-    let taken = conn
-        .prepare("SELECT key FROM metadata WHERE key LIKE 'taken:%'")
-        .and_then(|mut stmt| {
-            stmt.query_map([], |row| row.get::<_, String>(0))
-                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|k| {
-                    let (x, y) = k.strip_prefix("taken:")?.split_once(',')?;
-                    Some(Cell { x: x.parse().ok()?, y: y.parse().ok()? })
-                }).collect::<Vec<_>>())
-        })
-        .unwrap_or_default();
-
-    // A mission this build cannot read is dropped, and opens again if
-    // its row still exists.
-    let missions = conn
-        .prepare("SELECT data FROM missions ORDER BY id")
-        .and_then(|mut stmt| {
-            stmt.query_map([], |row| row.get::<_, String>(0))
-                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|json| serde_json::from_str(&json).ok()).collect())
-        })
-        .unwrap_or_default();
-
-    // A market this build cannot read starts again at the world's prices.
-    let market = conn
-        .query_row("SELECT data FROM market WHERE id = 0", [], |row| row.get::<_, String>(0))
-        .ok()
-        .and_then(|json| serde_json::from_str(&json).ok())
-        .unwrap_or_default();
-
-    (
-        entries,
-        Meta {
-            missions,
-            market,
-            next_id,
-            terrain_seed,
-            sim_time,
-            gdp: read("gdp") as f64 / 100.0,
-            treasury: read("treasury") as f64 / 100.0,
-            taken,
-        },
-    )
-}
-
-pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Meta) {
-    let mut conn = Connection::open(path).expect("failed to open db");
-    conn.execute_batch(SCHEMA).expect("failed to create schema");
-    let tx = conn.transaction().expect("failed to begin transaction");
-
-    for entry in changed {
-        // A journey is not worth saving — a trip's route references live
-        // world state, and a run or a voyage or a spell beyond the edge is
-        // timed by wakes that die with the process, so a restart ends all of
-        // them anyway. The parked car is; a save mid-journey keeps the
-        // version last seen parked, and the driver self-heals home, or the
-        // shelves the ship was fetching for call again.
-        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some() || c.away > 0) {
-            continue;
+    /// The objects changed and removed since the last save, and the rest
+    /// as it stands now.
+    pub fn save(&mut self, changed: &[&GameObjectEntry], removed: &[u64], meta: &Meta) {
+        let tx = self.conn.transaction().expect("failed to begin transaction");
+        for entry in changed {
+            let json = serde_json::to_string(entry).expect("failed to serialize");
+            tx.execute("INSERT OR REPLACE INTO objects (id, data) VALUES (?1, ?2)", rusqlite::params![entry.id, json]).expect("failed to upsert object");
         }
-        let json = serde_json::to_string(entry).expect("failed to serialize");
-        let (px, py) = entry
-            .position
-            .map(|p| (Some(p.x), Some(p.y)))
-            .unwrap_or((None, None));
-        tx.execute(
-            "INSERT OR REPLACE INTO objects (id, data, pos_x, pos_y) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![entry.id, json, px, py],
-        )
-        .expect("failed to upsert object");
+        for &id in removed {
+            tx.execute("DELETE FROM objects WHERE id = ?1", [id]).expect("failed to delete object");
+        }
+        let json = serde_json::to_string(meta).expect("failed to serialize");
+        tx.execute("INSERT OR REPLACE INTO meta (id, data) VALUES (0, ?1)", [json]).expect("failed to save meta");
+        tx.commit().expect("failed to commit");
     }
 
-    for &id in removed {
-        tx.execute("DELETE FROM objects WHERE id = ?1", [id])
-            .expect("failed to delete object");
+    /// Nothing saved: a world reset starts its save over.
+    pub fn clear(&mut self) {
+        self.conn.execute_batch("DELETE FROM objects; DELETE FROM meta;").expect("failed to clear the save");
     }
+}
 
-    tx.execute("DELETE FROM missions", []).expect("failed to clear missions");
-    for (i, m) in meta.missions.iter().enumerate() {
-        tx.execute(
-            "INSERT INTO missions (id, data) VALUES (?1, ?2)",
-            rusqlite::params![i as i64, serde_json::to_string(m).expect("failed to serialize")],
-        )
-        .expect("failed to save a mission");
-    }
-
-    tx.execute(
-        "INSERT OR REPLACE INTO market (id, data) VALUES (0, ?1)",
-        [serde_json::to_string(&meta.market).expect("failed to serialize")],
-    )
-    .expect("failed to save the market");
-
-    let taken: Vec<(String, i64)> = meta.taken.iter().map(|c| (format!("taken:{},{}", c.x, c.y), 1)).collect();
-    for (key, value) in [
-        ("next_id".to_string(), meta.next_id as i64),
-        ("terrain_seed".to_string(), meta.terrain_seed as i64),
-        ("sim_time".to_string(), meta.sim_time as i64),
-        ("gdp".to_string(), centi(meta.gdp)),
-        ("treasury".to_string(), centi(meta.treasury)),
-    ]
-    .into_iter()
-    .chain(taken)
-    {
-        tx.execute(
-            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?1, ?2)",
-            rusqlite::params![key, value],
-        )
-        .unwrap_or_else(|e| panic!("failed to save {key}: {e}"));
-    }
-
-    tx.commit().expect("failed to commit");
+/// Whether an object is worth saving. A journey is not — a trip's route
+/// references live world state, and a run or a voyage is timed by wakes
+/// that die with the process, so a restart ends all of them anyway. The parked car is; a save mid-journey keeps the
+/// version last seen parked, and the driver self-heals home, or the
+/// shelves the ship was fetching for call again.
+pub fn kept(entry: &GameObjectEntry) -> bool {
+    !matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sprawl::protocol::{Car, CarRole, GameObject, GridCoord, Sail};
+    use sprawl::protocol::{Car, CarRole, GridCoord, Sail};
+
+    /// A save of its own, gone when the test is.
+    struct Scratch(std::path::PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Scratch {
+            let path = std::env::temp_dir().join(format!("sprawl-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            Scratch(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
 
     /// A ship saved mid-voyage comes back as it was last seen at the quay:
     /// the wakes that time a voyage die with the process, so a saved one
     /// would stand at sea with no clock to bring it home.
     #[test]
     fn a_journey_is_not_saved() {
-        let dir = std::env::temp_dir().join(format!("sprawl-journey-{}", std::process::id()));
-        let _ = std::fs::remove_file(&dir);
+        let scratch = Scratch::new("journey");
+        let mut db = Db::open(&scratch.0);
+        let mut save = |e: GameObjectEntry| {
+            let saved: Vec<_> = Some(&e).into_iter().filter(|e| kept(e)).collect();
+            db.save(&saved, &[], &Meta::default());
+        };
         let quay = GridCoord { x: 5, y: 5 };
         let mut ship = Car::new(1, CarRole::Ferry);
-        let moored = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) };
-        save(&dir, &[moored], &[], Meta::default());
+        save(GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) });
         ship.sail = Some(Sail { path: vec![[5.5, 5.5], [5.5, 9.5]], started: 0, ends: 1, ease: [true, false], astern: true });
-        let sailing = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(GridCoord { x: 5, y: 6 }) };
-        save(&dir, &[sailing], &[], Meta::default());
-        ship.sail = None;
-        ship.away = 7;
-        let beyond = GameObjectEntry { id: 2, object: GameObject::Car(ship), position: None };
-        save(&dir, &[beyond], &[], Meta::default());
-        let (loaded, _) = load(&dir);
-        let _ = std::fs::remove_file(&dir);
+        save(GameObjectEntry { id: 2, object: GameObject::Car(ship), position: Some(GridCoord { x: 5, y: 6 }) });
+        let (loaded, _) = Db::open(&scratch.0).load();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].position, Some(quay), "the ship is not where it was last moored");
-        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none() && c.away == 0));
+        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
-    /// The town's missions outlive a restart, finished and open, with
-    /// their steps as they stood.
+    /// The rest of the world outlives a restart as it stood, the town's
+    /// missions with their steps and the market's week among it, whether or not an object
+    /// changed with it; and a reset leaves nothing to load.
     #[test]
-    fn missions_are_saved() {
-        let path = std::env::temp_dir().join(format!("sprawl-missions-{}", std::process::id()));
-        let _ = std::fs::remove_file(&path);
+    fn the_world_beside_its_objects_is_saved() {
+        let scratch = Scratch::new("meta");
         let mut missions = sprawl::missions::Missions::default().list;
         missions[0].steps[1].done = true;
         missions[0].finished = Some(7);
-        save(&path, &[], &[], Meta { missions: missions.clone(), ..Meta::default() });
-        let (_, meta) = load(&path);
-        let _ = std::fs::remove_file(&path);
-        assert_eq!(serde_json::to_string(&meta.missions).unwrap(), serde_json::to_string(&missions).unwrap());
+        let market = serde_json::from_str(r#"{"hour":3,"at":{"Timber":0.5},"push":{"Timber":0.1},"history":{"Timber":[1.0,1.5,2.0]},"orders":[]}"#).unwrap();
+        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, missions, market };
+        let mut db = Db::open(&scratch.0);
+        db.save(&[], &[], &meta);
+        let (_, loaded) = Db::open(&scratch.0).load();
+        assert_eq!(serde_json::to_string(&loaded).unwrap(), serde_json::to_string(&meta).unwrap());
+        db.clear();
+        let (entries, loaded) = Db::open(&scratch.0).load();
+        assert!(entries.is_empty() && loaded.next_id == 1);
     }
 }

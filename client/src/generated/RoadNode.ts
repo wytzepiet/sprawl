@@ -14,8 +14,8 @@ joined: boolean,
  */
 road: Array<number>, 
 /**
- * Laid by the mayor, so it counts against the build's road tiles. The
- * survey's own roads, and driveways, are free.
+ * Laid by the mayor, so it was paid for. A fixture's or a level's
+ * roads, and driveways, are free.
  */
 laid: boolean, 
 /**

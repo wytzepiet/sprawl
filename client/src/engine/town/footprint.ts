@@ -1,6 +1,7 @@
 import ClipperLib from "clipper-lib";
 import { isBuilt, type Tile, type Town } from "./grid";
 import { alone, kin } from "./mass";
+import type { P } from "../geometry";
 
 /**
  * The ground plans of a town's buildings, drawn as roads are: a building
@@ -20,9 +21,8 @@ import { alone, kin } from "./mass";
  * the diagonal unless the block is solid there or a street runs between.
  */
 
-export type Pt = [number, number];
 /** A polygon: its outline, anticlockwise, then its holes, clockwise. */
-export type Polygon = Pt[][];
+export type Polygon = P[][];
 
 /** A building's ground plan at one height, and the part of it each colour
  *  has. */
@@ -47,8 +47,8 @@ const HAIR = 1e-3;
 export type Half = [number, number, number];
 
 /** A convex polygon cut down to one side of a line. */
-function cut(poly: Pt[], [a, b, c]: Half): Pt[] {
-  const out: Pt[] = [];
+function cut(poly: P[], [a, b, c]: Half): P[] {
+  const out: P[] = [];
   for (let i = 0; i < poly.length; i++) {
     const [p, q] = [poly[i], poly[(i + 1) % poly.length]];
     const [fp, fq] = [a * p[0] + b * p[1] - c, a * q[0] + b * q[1] - c];
@@ -62,7 +62,7 @@ function cut(poly: Pt[], [a, b, c]: Half): Pt[] {
 }
 
 type Paths = ClipperLib.IntPoint[][];
-const paths = (rings: Pt[][]): Paths => rings.map((ring) => ring.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
+const paths = (rings: P[][]): Paths => rings.map((ring) => ring.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
 const NZ = ClipperLib.PolyFillType.pftNonZero;
 function op(type: ClipperLib.ClipType, a: Paths, b: Paths = []): Paths {
   const c = new ClipperLib.Clipper();
@@ -89,12 +89,12 @@ function grow(ps: Paths, by: number, lines = false): Paths {
 }
 
 /** Twice the signed area: positive anticlockwise, with y up. */
-export const area = (ring: Pt[]) => ring.reduce((s, [x, y], i) => {
+export const area = (ring: P[]) => ring.reduce((s, [x, y], i) => {
   const [nx, ny] = ring[(i + 1) % ring.length];
   return s + x * ny - nx * y;
 }, 0);
 
-function inside([x, y]: Pt, ring: Pt[]) {
+function inside([x, y]: P, ring: P[]) {
   let hit = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i], [xj, yj] = ring[j];
@@ -107,11 +107,11 @@ function inside([x, y]: Pt, ring: Pt[]) {
  *  outlines anticlockwise and holes clockwise, no point twice and no
  *  point on a straight run. */
 function polygons(ps: Paths): Polygon[] {
-  const rings: Pt[][] = [];
+  const rings: P[][] = [];
   // Points closer than a centimetre are one: slivers from rounding make
   // the skeleton's work explode.
   for (const p of ClipperLib.Clipper.CleanPolygons(ps, 0.001 * S)) {
-    const ring: Pt[] = [];
+    const ring: P[] = [];
     for (const q of p) ring.push([q.X / S, q.Y / S]);
     const clean = tidy(ring);
     // A scrap too small to be a building (a hundredth of a tile) is none.
@@ -129,7 +129,7 @@ function polygons(ps: Paths): Polygon[] {
   return out;
 }
 
-function tidy(ring: Pt[]): Pt[] {
+function tidy(ring: P[]): P[] {
   let out = ring.filter((p, i) => {
     const q = ring[(i + 1) % ring.length];
     return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6;
@@ -163,7 +163,8 @@ export function defaultJoins(town: Town) {
   };
 }
 
-const EIGHT: Pt[] = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];
+/** The eight tiles round a tile, the way the joins walk them. */
+export const EIGHT: P[] = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];
 
 /** The pieces a town's buildings are made of, each with the tile whose
  *  building, height and colour it is, and which building each tile is. */
@@ -180,7 +181,7 @@ function plan(town: Town, width: number) {
     for (let c = 0; c < town.w; c++) {
       if (!isBuilt(town.tile(c, r)) || building.has(`${c},${r}`)) continue;
       const id = count++;
-      const queue: Pt[] = [[c, r]];
+      const queue: P[] = [[c, r]];
       building.set(`${c},${r}`, id);
       while (queue.length) {
         const [x, y] = queue.pop()!;
@@ -198,7 +199,7 @@ function plan(town: Town, width: number) {
     const links = linksOf(c, r);
     return !links.length || links.some(([dx, dy]) => !dx || !dy);
   };
-  const pieces: { at: Pt; ring: Pt[] }[] = [];
+  const pieces: { at: P; ring: P[] }[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       if (!isBuilt(town.tile(c, r))) continue;
@@ -210,7 +211,7 @@ function plan(town: Town, width: number) {
         // diagonal join across that corner's way, and the tile not joined
         // on both sides towards it. The cut lies on the band's edge, so a
         // row two or more wide runs straight along its diagonal.
-        let ring: Pt[] = [[mx - h, my - h], [mx + h, my - h], [mx + h, my + h], [mx - h, my + h]];
+        let ring: P[] = [[mx - h, my - h], [mx + h, my - h], [mx + h, my + h], [mx - h, my + h]];
         const has = (dx: number, dy: number) => links.some(([x, y]) => x === dx && y === dy);
         for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
           const step = has(sx, -sy) || has(-sx, sy);
@@ -249,17 +250,17 @@ export function footprints(town: Town, inset = INSET): Mass[] {
     const id = building.get(`${p.at[0]},${p.at[1]}`)!;
     (byBuilding.get(id) ?? byBuilding.set(id, []).get(id)!).push(p);
   }
-  const tileOf = (p: { at: Pt }) => town.tile(...p.at);
+  const tileOf = (p: { at: P }) => town.tile(...p.at);
   // Pieces meet edge to edge: joined a hair wide and drawn back, so no
   // hairline is left between them.
-  const whole = (rings: Pt[][]) => grow(grow(union(paths(rings)), HAIR), -HAIR);
+  const whole = (rings: P[][]) => grow(grow(union(paths(rings)), HAIR), -HAIR);
   const masses: Mass[] = [];
   for (const ps of byBuilding.values()) {
     const plan = whole(ps.map((p) => p.ring));
     for (const storeys of new Set(ps.map((p) => tileOf(p).storeys))) {
       const mine = ps.filter((p) => tileOf(p).storeys === storeys);
       const shape = and(whole(mine.map((p) => p.ring)), plan);
-      const byColour = new Map<string, { tile: Tile; rings: Pt[][] }>();
+      const byColour = new Map<string, { tile: Tile; rings: P[][] }>();
       for (const p of mine) {
         // A part a kind, and in the game a building, so each house of a
         // row wears its own tint, and one held in hand blue.
@@ -278,8 +279,8 @@ export function footprints(town: Town, inset = INSET): Mass[] {
 }
 
 /** The convex polygon the half-planes bound, within a box. */
-export function convex(halves: Half[], [x0, y0, x1, y1]: [number, number, number, number]): Pt[] {
-  let ring: Pt[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+export function convex(halves: Half[], [x0, y0, x1, y1]: [number, number, number, number]): P[] {
+  let ring: P[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
   for (const h of halves) ring = cut(ring, h);
   return ring;
 }

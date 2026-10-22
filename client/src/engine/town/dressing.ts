@@ -4,6 +4,7 @@ import { formOf } from "./mass";
 import { HALF_W } from "../objects/roadGeometry";
 import { INSET } from "./footprint";
 import { baysAt, drive, SIDEWALK } from "./surface";
+import type { P } from "../geometry";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -46,8 +47,8 @@ export interface Dock {
  *  wall out along the yard's side, over the boxes, and the posts under its
  *  front edge, each a point on the ground. */
 export interface Canopy {
-  roof: Pt[];
-  posts: Pt[];
+  roof: P[];
+  posts: P[];
 }
 
 /** A parked car: where its middle is, which way it points (radians from
@@ -58,8 +59,6 @@ export interface Car {
   angle: number;
   colour: number;
 }
-
-type Pt = [number, number];
 
 /** A street lamp: its foot on the pavement, and its head, out over the
  *  kerb on its arm. */
@@ -77,7 +76,7 @@ export interface Dressing {
   docks: Dock[];
   canopies: Canopy[];
   /** The lines between the bays of yards, painted on their asphalt. */
-  yardLines: Pt[][];
+  yardLines: P[][];
 }
 
 /** A yard's park as the server lays it (`lots::park`): rows of docks in
@@ -241,8 +240,8 @@ const DRIVE_OUT = 0.47;
  * house and the way to its street, and the drive's ground, which no tree
  * stands on.
  */
-function driveways(town: Town): { strips: Pt[][]; cars: Car[] } {
-  const strips: Pt[][] = [], cars: Car[] = [];
+function driveways(town: Town): { strips: P[][]; cars: Car[] } {
+  const strips: P[][] = [], cars: Car[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const toward = town.tile(c, r).kind === "House" ? drive(town, c, r) : undefined;
@@ -270,8 +269,8 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[] } {
  *  between them painted, some with a lorry; and a depot's under a canopy
  *  each side, where a box is unloaded into stock and gone, or loaded for
  *  the world (docs/shipping.md §Boxes and lorries). */
-function docks(town: Town, facts: Facts): { docks: Dock[]; canopies: Canopy[]; lines: Pt[][] } {
-  const out: Dock[] = [], canopies: Canopy[] = [], lines: Pt[][] = [];
+function docks(town: Town, facts: Facts): { docks: Dock[]; canopies: Canopy[]; lines: P[][] } {
+  const out: Dock[] = [], canopies: Canopy[] = [], lines: P[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const way = facts.yard(c, r) === "docks" ? town.door?.(c, r) : undefined;
@@ -286,7 +285,7 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; canopies: Canopy[]; l
       // The back of the yard, behind the lane's middle: `at(s, side)` is
       // `s` in from it and `side` across.
       const [ox, oy] = [c + 0.5 - fx * (deep - 0.5), r + 0.5 - fy * (deep - 0.5)];
-      const at = (s: number, side: number): Pt => [ox + fx * s + px * side, oy + fy * s + py * side];
+      const at = (s: number, side: number): P => [ox + fx * s + px * side, oy + fy * s + py * side];
       for (const side of [1, -1].filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
         const [nx, ny] = [px * side, py * side];
         for (const s of [...DOCK_ROWS.map((s) => s - 0.15), DOCK_ROWS[DOCK_ROWS.length - 1] + 0.15]) lines.push(strip(ox, oy, fx, fy, s - 0.008, s + 0.008, nx, ny, 0.45, TAIL));
@@ -305,8 +304,8 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; canopies: Canopy[]; l
 
 /** A strip along the line from (x0, y0) along (ux, uy) for `len`, on the
  *  side (nx, ny), from `a` to `b` out from the line. */
-function strip(x0: number, y0: number, ux: number, uy: number, t0: number, t1: number, nx: number, ny: number, a: number, b: number): Pt[] {
-  const at = (t: number, o: number): Pt => [x0 + ux * t + nx * o, y0 + uy * t + ny * o];
+function strip(x0: number, y0: number, ux: number, uy: number, t0: number, t1: number, nx: number, ny: number, a: number, b: number): P[] {
+  const at = (t: number, o: number): P => [x0 + ux * t + nx * o, y0 + uy * t + ny * o];
   return [at(t0, a), at(t1, a), at(t1, b), at(t0, b)];
 }
 

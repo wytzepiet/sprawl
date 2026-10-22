@@ -1,6 +1,6 @@
 import type { MeshGeometry } from "./geometry";
 import { fillTriangles } from "./raster";
-import { RIM, runsOn } from "./town/draw";
+import { covers, RIM } from "./town/draw";
 
 /**
  * A sheet's kerbs, and how far each point of a
@@ -68,14 +68,6 @@ export const FAR = 1;
 
 /** A box in a sheet's frame: x0, y0, x1, y1. */
 export type Extent = [number, number, number, number];
-
-/** The box a sheet covers. */
-export function extentOf(g: MeshGeometry): Extent {
-  const p = g.positions;
-  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < p.length; i += 3) [x0, y0, x1, y1] = [Math.min(x0, p[i]), Math.min(y0, p[i + 1]), Math.max(x1, p[i]), Math.max(y1, p[i + 1])];
-  return Number.isFinite(x0) ? [x0, y0, x1, y1] : [0, 0, 1, 1];
-}
 
 /**
  * A sheet's kerb distances over a box of it: at
@@ -190,7 +182,7 @@ export interface Roads {
 }
 
 export function roadsOf(sheet: MeshGeometry): Roads {
-  const on = runsOn(sheet);
+  const on = covers(sheet);
   return { sheet, edges: kerbsOf(sheet, (a, b, out) => !on(a, b, out)) };
 }
 

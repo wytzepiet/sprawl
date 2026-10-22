@@ -12,10 +12,9 @@ import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
-import { Appear, Btn, coins, Crest, EYE, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
+import { Appear, Btn, COIN, coins, Crest, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
-import type { BuildingKind, Good, Mission, Step, TerrainType } from "../generated";
-import type { Mayor } from "../generated/Mayor";
+import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
 
 /** Where the feed starts, and the room it leaves below it: on a wide
@@ -90,7 +89,7 @@ const Tile = (props: { color: string; d: string; children?: JSX.Element }) => (
 function NewsCard(props: { news: News }) {
   return (
     <box dir="row" align="center" gap={10} pad={{ y: 10, x: 12 }} onTap={() => setFollowing(props.news.at)}>
-      <Tile color={props.news.coins ? "#B7791F" : "#2B6CA3"} d={props.news.coins ? COINS : FERRY} />
+      <Tile color={props.news.coins ? COIN : SEA} d={props.news.coins ? COINS : FERRY} />
       <box grow={1} gap={2}>
         <text size={14.5} weight={600} lines={1}>{props.news.text}</text>
         <text size={12.5} soft lines={1}>{props.news.sub}</text>
@@ -113,7 +112,7 @@ export function Who(props: { partner: Mayor | null; size: number; letter?: boole
         {(n) => <Crest n={n()} size={props.size} />}
       </Show>
       <Show when={props.letter}>
-        <box at={{ right: -6, bottom: -4 }} w={17} h={17} round={8.5} fill="#B7791F" align="center" justify="center">
+        <box at={{ right: -6, bottom: -4 }} w={17} h={17} round={8.5} fill={COIN} align="center" justify="center">
           <Line d={LETTER} size={11} width={2.2} ink="white" />
         </box>
       </Show>
@@ -127,7 +126,7 @@ export const nameOf = (partner: Mayor | null) => (partner && neighbours().find((
 function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   const { send } = useGame();
   const d = () => props.deal;
-  const color = () => (d().done ? "#57A773" : GOODS[d().good].color);
+  const color = () => (d().done ? GOOD : GOODS[d().good].color);
   const lead = () => d().boxes[0];
   const count = () => d().boxes.length + d().wanted;
   const letter = () => letterOf(d().good, d().partner);
@@ -149,7 +148,7 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
     const l = letter();
     if (l) send({ type: "Send", data: { letter: l.letter, boxes: l.boxes } });
   };
-  const money = () => (d().coins >= 0 ? "#3F8F5C" : "ink");
+  const money = () => (d().coins >= 0 ? GOOD : "ink");
   return (
     <box>
       <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
@@ -193,7 +192,7 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
             <box grow={1} />
             <Show when={letter()}>
               {(l) => (
-                <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill="#B7791F" onTap={sendAll}>
+                <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill={COIN} onTap={sendAll}>
                   <text size={14} weight={600} ink="white">Send {l().boxes}</text>
                   <text serif size={14} ink="white">{coins(l().price * GOODS[d().good].box * l().boxes)}</text>
                 </Press>
@@ -221,7 +220,7 @@ function Reward(props: { m: Mission }) {
   return (
     <Show when={props.m.finished !== null} fallback={<text size={12} weight={600} soft>+{coins()}</text>}>
       <Show when={!lapsed()} fallback={<text size={11} weight={600} soft>lapsed</text>}>
-        <Appear pad={{ y: 2, x: 8 }} round={10} fill="#57A773">
+        <Appear pad={{ y: 2, x: 8 }} round={10} fill={GOOD}>
           <text size={11} weight={700} ink="white">+{coins()} coins{props.m.reward.kind === "Order" ? `, +${props.m.reward.data.standing} standing` : ""}</text>
         </Appear>
       </Show>
@@ -236,7 +235,7 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
   const at = () => props.m.steps.findIndex((s) => !s.done);
   const step = () => props.m.steps[at()];
   const done = () => props.m.steps.filter((s) => s.done).length;
-  const color = () => (props.m.finished !== null ? "#57A773" : "#7B77E0");
+  const color = () => (props.m.finished !== null ? GOOD : GDP);
   return (
     <box>
       <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>

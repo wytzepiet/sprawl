@@ -93,9 +93,9 @@ the low-end mode.
 ## Seeing what the server does
 
 Pictures show where things are; the server should also say why. What
-exists: `/inspect/<id>` (a card: a building, a resident, a vehicle), `/town`,
-`/map`, the mayor's hand (`bun run act`), `watch` and the paths it records.
-What a run will want, and may add:
+exists: the card (a building, a resident, a vehicle: `card.rs`, asked for
+over the socket), `/town`, `/map`, the mayor's hand (`bun run act`),
+`watch` and the paths it records. What a run will want, and may add:
 
 - **A shipment's story:** every step of a load from order to shelf, with
   the times planned and taken.

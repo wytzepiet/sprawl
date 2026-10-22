@@ -3,7 +3,7 @@ import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { follow } from "../engine/spring";
 import { setBoardOpen } from "./Board";
-import { elapsed, keys, wide } from "./kit";
+import { BAD, elapsed, GDP, GOOD, keys, wide } from "./kit";
 
 /** The level's ring, in its own 56-unit box, and how finely its arc is
  *  cut: each cut is a glyph of its own. */
@@ -67,12 +67,12 @@ export default function Meter() {
       <box at={{ right: purse() + 2, top: -2 }} w={56} h={56} align="center" justify="center">
         <icon at={{ left: 0, top: 0 }} d={RING} view={56} size={56} stroke={3} ink="ink/0.12" />
         <Show when={cut() > 0}>
-          <icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={56} stroke={3} ink="#7B77E0" />
+          <icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={56} stroke={3} ink={GDP} />
         </Show>
         <text serif size={21}>{growth().level}</text>
       </box>
       <box at={{ right: 0, top: 0 }} minW={166} h={52} dir="row" align="center" justify="end" gap={6} pad={{ left: 12, right: 20 }} onSize={(w) => setPurse(w)} onTap={() => setBoardOpen((o) => !o)}>
-        <text serif size={28} ink={low() ? "#EF4444" : undefined}>{Math.floor(treasury()).toLocaleString()}</text>
+        <text serif size={28} ink={low() ? BAD : undefined}>{Math.floor(treasury()).toLocaleString()}</text>
         <text size={12} weight={600} soft>coins</text>
       </box>
       <For each={drips()}>{(d) => <Drip n={d.n} />}</For>
@@ -94,7 +94,7 @@ function Drip(props: { n?: number }) {
     get opacity() { return keys(t(), [[0, 0], [0.12, 1], [0.7, 1], [1, 0]]); },
   };
   return props.n === undefined ? (
-    <glass layer="meter" dye="#57A773" at={{ right: 70, top: 12 }} w={38} h={28} round={14} {...motion} />
+    <glass layer="meter" dye={GOOD} at={{ right: 70, top: 12 }} w={38} h={28} round={14} {...motion} />
   ) : (
     <box at={{ right: 70, top: 12 }} w={38} h={28} align="center" justify="center" {...motion}>
       <text size={12} weight={700} ink="white">+{props.n}</text>

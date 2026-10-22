@@ -135,7 +135,7 @@ export class Dots {
 
   constructor(private scene: SceneContext, private view: HTMLCanvasElement) {
     this.el = document.createElement("div");
-    this.el.className = "fixed inset-0 pointer-events-none";
+    this.el.style.cssText = "position:fixed;inset:0;pointer-events:none";
     // A blur, then alpha pushed hard to opaque or nothing: shapes near
     // enough that their blurs overlap come out as one.
     this.el.innerHTML = `<svg width="0" height="0" style="position:absolute"><filter id="hand-goo" color-interpolation-filters="sRGB">

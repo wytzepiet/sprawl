@@ -6,30 +6,31 @@ import { Picker } from "./Picker";
 import { Highlight } from "./Highlight";
 import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
-import { ThemeProvider } from "./theme";
 import PerfReport from "./PerfReport";
-import Pins from "./Pins";
+import Signs from "./Signs";
 import Glass from "../ui/Glass";
 import Shipments from "../ui/Shipments";
 import Hud from "./Hud";
+import Gpu from "../ui/Hud";
 
 function SceneInner() {
   return (
     <DayNightProvider>
       <Canvas>
         <OrthoCamera />
-        {import.meta.env.DEV && <PerfReport />}
+        {/* Only while `bun run pan` measures: it names its tab. */}
+        {import.meta.env.DEV && new URLSearchParams(location.search).has("tab") && <PerfReport />}
         <DayNightLights>
           <Registered>
             <InstancePoolProvider>
               <Picker />
               <Highlight />
               <World />
-              <Pins />
+              <Signs />
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>
-        <Hud />
+        <Hud ui={Gpu} />
       </Canvas>
       <Glass />
       <Shipments />
@@ -39,10 +40,8 @@ function SceneInner() {
 
 export default function Scene(props: { connect: Connect }) {
   return (
-    <ThemeProvider>
-      <GameProvider connect={props.connect}>
-        <SceneInner />
-      </GameProvider>
-    </ThemeProvider>
+    <GameProvider connect={props.connect}>
+      <SceneInner />
+    </GameProvider>
   );
 }

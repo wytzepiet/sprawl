@@ -1,5 +1,6 @@
 import {
   addMeshToTask,
+  addToScene,
   addTaskAtStart,
   createRenderTask,
   createShaderMaterial,
@@ -15,7 +16,7 @@ import {
   type SceneContext,
 } from "@babylonjs/lite";
 import { townMaterial } from "./material";
-import { meshOf, show } from "./geometry";
+import { meshOf } from "./geometry";
 
 /** The line, in pixels, at any zoom. */
 const WIDTH = 2;
@@ -111,7 +112,7 @@ export function createOutline(engine: EngineContext, scene: SceneContext): Outli
   // Last of all, over the fog too.
   quad.renderOrder = Number.MAX_VALUE;
   setMeshVisible(quad, false);
-  show(scene, quad);
+  addToScene(scene, quad);
 
   let drawn = new Map<Mesh, "picked" | "under">();
   return {

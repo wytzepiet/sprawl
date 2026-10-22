@@ -1,7 +1,7 @@
 /**
  * The trees' crowns, baked (`trees.ts` draws them): a few, each a tree's
  * crown seen from above, in texels. On its own, for a worker to bake
- * (`crownWorker.ts`): two million texels take a second and more.
+ * (`bakeWorker.ts`): two million texels take a second and more.
  */
 
 /** A crown is clumps of leaves, as a tree is from the air: cells this

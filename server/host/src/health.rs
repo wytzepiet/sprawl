@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, State};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
-use crate::network::{AppState, Command, Ask};
+use crate::network::{AppState, Command, Debug};
 use sprawl::protocol::EntityId;
 
 /// Simulated time, as of the last tick. Published here rather than asked for
@@ -44,60 +44,30 @@ pub async fn health() -> String {
     )
 }
 
-/// One resident's arithmetic: what they owe, and what every option scores.
-pub async fn inspect_resident(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
-    ask(&state, Ask::Resident(id)).await
-}
-
-/// Everyone, one line each.
-pub async fn inspect_residents(State(state): State<AppState>) -> String {
-    ask(&state, Ask::Residents).await
-}
-
-/// Who cannot be served, where; and what each building delivered.
-pub async fn inspect_demand(State(state): State<AppState>) -> String {
-    ask(&state, Ask::Demand).await
-}
-
-/// Every kind of building: what it holds, serves, and where it belongs.
-pub async fn inspect_blueprints() -> String {
-    format!("{:#}\n", sprawl::blueprint::inspect())
-}
-
 /// A building's lot: spots, windows, and what it has seen.
 pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
-    ask(&state, Ask::Lot(id)).await
+    ask(&state, Debug::Lot(id)).await
 }
 
-/// The card for one thing on the map: what it is, who is in it, where
-/// every line points.
-pub async fn card(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
-    ask(&state, Ask::Card(id)).await
+/// Every shipment, every timetable and every harbour's park: `/sea`.
+pub async fn sea(State(state): State<AppState>) -> String {
+    ask(&state, Debug::Sea).await
 }
 
 /// The town's page: `/town`.
-pub async fn sea(State(state): State<AppState>) -> String {
-    ask(&state, Ask::Sea).await
-}
-
 pub async fn town(State(state): State<AppState>) -> String {
-    ask(&state, Ask::Town).await
+    ask(&state, Debug::Town).await
 }
 
 /// The tiles round a point as a fixture's text, drawn as the map is seen:
 /// what `bun run plan` draws of the running game. `/map?x=0&y=0&r=20`.
 pub async fn map(Query(q): Query<HashMap<String, String>>, State(state): State<AppState>) -> String {
     let at = |k: &str, or: i32| q.get(k).and_then(|v| v.parse::<i32>().ok()).unwrap_or(or);
-    let text = ask(&state, Ask::Map { x: at("x", 0), y: at("y", 0), r: at("r", 20) }).await;
+    let text = ask(&state, Debug::Map { x: at("x", 0), y: at("y", 0), r: at("r", 20) }).await;
     serde_json::from_str::<String>(&text).unwrap_or(text)
 }
 
-/// Raise a stock call at a building now: a delivery to watch.
-pub async fn call(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
-    ask(&state, Ask::Call(id)).await
-}
-
-async fn ask(state: &AppState, query: Ask) -> String {
+async fn ask(state: &AppState, query: Debug) -> String {
     let (reply, answer) = oneshot::channel();
     if state.command_tx.send(Command::Inspect { query, reply }).is_err() {
         return "{\"error\":\"game loop gone\"}\n".into();

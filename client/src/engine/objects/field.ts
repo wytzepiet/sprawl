@@ -1,21 +1,21 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
 import type { Casters } from "../DayNightCycle";
-import { drop, meshOf, show } from "../geometry";
+import { drop, meshOf } from "../geometry";
 import { grain } from "../ground";
 import { townMaterial, type TownMaterial } from "../material";
 import { LAYER_ORDER } from "../town/draw";
 import type { Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { simNow } from "../../network/clock";
-import type { GridCoord } from "../../generated/GridCoord";
-import type { Job } from "../../generated/Job";
-import type { Run } from "../../generated/Run";
-import type { Tile } from "../../generated/Tile";
-import { drawnPath, type DrawnPath, type P } from "./drawnPath";
-import { baked } from "../bakeCache";
+import type { GridCoord, Job, Run, Tile } from "../../generated";
+import { drawnPath, type DrawnPath } from "./drawnPath";
+import { bakedTexture } from "../bakeCache";
 import { WHEAT_MARGIN, WHEAT_STAGES, WHEAT_STRIDE, WHEAT_TEXELS } from "../wheat";
 import recipe from "../wheat.ts?raw";
+
+/** A point on the field. */
+type P = { x: number; y: number };
 
 /**
  * A farm's field, as it is seen from the air: the strips its tractor laid,
@@ -148,12 +148,11 @@ class Strips {
     // The drawn path between two distances along it, ends included.
     const along = (d0: number, d1: number, back: number, on: number): { p: P; d: number }[] => {
       const at = (d: number) => {
-        const i = Math.min(Math.max(0, past(d) - 1), distances.length - 2);
-        const t = (d - distances[i]) / (distances[i + 1] - distances[i] || 1);
-        return { p: { x: points[i].x + (points[i + 1].x - points[i].x) * t, y: points[i].y + (points[i + 1].y - points[i].y) * t }, d };
+        const [x, y] = drawn.at(d);
+        return { p: { x, y }, d };
       };
       const run = [at(d0)];
-      for (let i = past(d0); i < distances.length && distances[i] < d1; i++) if (distances[i] > d0) run.push({ p: points[i], d: distances[i] });
+      for (let i = past(d0); i < distances.length && distances[i] < d1; i++) if (distances[i] > d0) run.push({ p: { x: points[i][0], y: points[i][1] }, d: distances[i] });
       run.push(at(d1));
       // On past each end, straight, this far.
       const beyond = (a: { p: P; d: number }, b: { p: P; d: number }, far: number) => {
@@ -190,11 +189,11 @@ class Strips {
     // its middle, here: on a turn the outer edge more, the inner less.
     const stretch = [-0.5, 0.5].map((out) => (d: number) => {
       const i = Math.min(Math.max(1, past(d)), distances.length - 1);
-      const [a, b] = [points[i - 1], points[i]];
-      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-      const [ta, tb] = [drawn.path.wayAt(distances[i - 1] / drawn.length), drawn.path.wayAt(distances[i] / drawn.length)];
-      const [x, y] = [b.x - a.x - (tb.y - ta.y) * out, b.y - a.y + (tb.x - ta.x) * out];
-      return l < 1e-3 ? 1 : Math.min(3, Math.max(0, (x * (b.x - a.x) + y * (b.y - a.y)) / (l * l)));
+      const [ex, ey] = [points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]];
+      const l = Math.hypot(ex, ey) || 1;
+      const [ha, hb] = [drawn.heading(distances[i - 1]), drawn.heading(distances[i])];
+      const [x, y] = [ex - (Math.sin(hb) - Math.sin(ha)) * out, ey + (Math.cos(hb) - Math.cos(ha)) * out];
+      return l < 1e-3 ? 1 : Math.min(3, Math.max(0, (x * ex + y * ey) / (l * l)));
     });
     const count = pieces.reduce((n, piece) => n + piece.samples.length, 0) + quarters.length * 2;
     this.positions = new Float32Array(count * 6);
@@ -254,7 +253,7 @@ class Strips {
       mesh.renderOrder = LAYER_ORDER.field;
       setMeshAttribute(ctx.engine, mesh, "strip", data);
       setMeshAttribute(ctx.engine, mesh, "stripTex", tex);
-      show(ctx.scene, mesh);
+      addToScene(ctx.scene, mesh);
       return mesh;
     });
     for (const crop of this.crops) casters.add(crop);
@@ -355,7 +354,7 @@ class Field {
    *  bare earth on the land; none for a path too short to draw, or grass. */
   private lay(path: GridCoord[], job: Job | null, looks: Look[]): Strips | null {
     const nodes = path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 }));
-    const drawn = path.length > 1 && job ? drawnPath(nodes, 0, 0, 0) : null;
+    const drawn = path.length > 1 && job ? drawnPath(nodes.map(({ x, y }) => [x, y]), 0, 0, 0) : null;
     if (!drawn || !job) return null;
     const worked = workedAt(path, this.land, this.head, job);
     const under = this.tiles.map((t) => t.at);
@@ -424,10 +423,7 @@ class Field {
     const { strips, out } = this;
     if (!strips) return;
     if (out?.run) {
-      const { atNode } = strips.drawn;
-      const progress = (simNow() - out.run.started) / out.run.pace;
-      const k = Math.min(Math.max(0, Math.floor(progress)), atNode.length - 2);
-      strips.paint.reach = atNode[k] + (atNode[k + 1] - atNode[k]) * Math.min(1, Math.max(0, progress - k));
+      strips.paint.reach = strips.drawn.passing((simNow() - out.run.started) / out.run.pace);
       strips.stir();
     }
     strips.lift(FIELD_Z, out ? [this.look, out.after].map(heightOf) : [heightOf(this.look)]);
@@ -496,22 +492,18 @@ export function keepField(ctx: EngineContext, casters: Casters, farm: number, ti
 
 /** The wheat's stages, an engine's: bare earth until the worker has
  *  baked them, or read back from the last bake (`bakeCache.ts`). */
-const WHEATS = new WeakMap<Engine, Texture2D>();
+let bare: Uint8Array | undefined;
 function wheat(engine: Engine): Texture2D {
-  let texture = WHEATS.get(engine);
-  if (!texture) {
-    const bare = new Uint8Array(WHEAT_TEXELS * WHEAT_STRIDE * WHEAT_STAGES * 4);
+  if (!bare) {
+    bare = new Uint8Array(WHEAT_TEXELS * WHEAT_STRIDE * WHEAT_STAGES * 4);
     for (let k = 0; k < bare.length; k += 4) bare.set([128, 128, 200, 0], k);
-    const made = createTexture2DFromPixels(engine, bare, WHEAT_TEXELS, WHEAT_STRIDE * WHEAT_STAGES, {
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "repeat",
-    });
-    WHEATS.set(engine, (texture = made));
-    void baked("wheat", recipe, () => new Worker(new URL("../wheatWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
   }
-  return texture;
+  return bakedTexture(engine, "wheat", recipe, [WHEAT_TEXELS, WHEAT_STRIDE * WHEAT_STAGES, bare], {
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+    addressModeU: "repeat",
+  });
 }
 
 /** The field's paint (see the top), where across and along its strip a

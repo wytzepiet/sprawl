@@ -97,4 +97,3 @@ export const kin = (a: Tile, b: Tile) =>
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
 const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm"]);
 
-export type RGB = [number, number, number];

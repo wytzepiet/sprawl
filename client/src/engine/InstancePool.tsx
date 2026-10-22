@@ -6,18 +6,13 @@ import {
   on,
   type ParentProps,
 } from "solid-js";
-import { composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { addToScene, composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
 import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight, type Casters } from "./DayNightCycle";
 import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
-import { drop, meshOf, show, type MeshGeometry } from "./geometry";
+import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
-
-export interface InstanceHandle {
-  setMatrix(pos: [number, number, number], rot: [number, number, number]): void;
-}
-
 
 /**
  * One draw call per bucket, however many instances it holds. Thin instances
@@ -133,7 +128,7 @@ export class InstancePool {
     const matrices = new Float32Array(64 * 16);
     setThinInstances(mesh, matrices, 64);
     setThinInstanceCount(mesh, 0);
-    show(this.scene, mesh);
+    addToScene(this.scene, mesh);
     if (castShadow) this.casters.add(mesh);
 
     bucket = {
@@ -347,74 +342,3 @@ export function InstancePoolProvider(props: ParentProps) {
   return <InstancePoolCtx.Provider value={pool}>{props.children}</InstancePoolCtx.Provider>;
 }
 
-// --- InstancedMesh component ---
-
-interface InstancedMeshProps {
-  poolKey: string;
-  geometry: MeshGeometry;
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: number | [number, number, number];
-  color: Rgb;
-  castShadow?: boolean;
-  receiveShadow?: boolean;
-  texture?: Texture2D;
-  enabled?: boolean;
-
-  ref?: (handle: InstanceHandle) => void;
-}
-
-export default function InstancedMesh(props: InstancedMeshProps) {
-  const pool = useInstancePool();
-
-  let currentKey: string | undefined;
-  let id: number;
-
-  createEffect(on(
-    () => ({
-      key: props.poolKey,
-      geo: props.geometry,
-      color: props.color,
-      cast: props.castShadow ?? false,
-      recv: props.receiveShadow ?? false,
-      tex: props.texture,
-      pos: props.position,
-      rot: props.rotation,
-      scale: props.scale,
-      enabled: props.enabled ?? true,
-      ref: props.ref,
-    }),
-    ({ key, geo, color, cast, recv, tex, pos, rot, scale, enabled, ref }) => {
-      if (currentKey !== undefined) {
-        pool.removeInstance(currentKey, id);
-        currentKey = undefined;
-      }
-      if (!enabled) return;
-      pool.ensureBucket(key, geo, color, cast, recv, tex);
-      id = pool.addInstance(key, pos, rot, scale);
-      currentKey = key;
-
-      ref?.({
-        setMatrix(p, r) {
-          pool.updateInstance(currentKey!, id, p, r);
-        },
-      });
-    },
-  ));
-
-  createEffect(on(
-    () => ({ pos: props.position, rot: props.rotation, scale: props.scale }),
-    ({ pos, rot, scale }) => {
-      if (currentKey === undefined) return;
-      pool.removeInstance(currentKey, id);
-      id = pool.addInstance(currentKey, pos, rot, scale);
-    },
-    { defer: true },
-  ));
-
-  onCleanup(() => {
-    if (currentKey !== undefined) pool.removeInstance(currentKey, id);
-  });
-
-  return <></>;
-}

@@ -5,11 +5,11 @@ use tokio::time::{Instant, interval, Duration};
 
 use sprawl::engine::GameTime;
 use sprawl::engine::tracked::Tracked;
-use sprawl::game::{Game, STEP_MS, restore};
-use sprawl::protocol::{DAY_MS, GameObject, ServerMessage};
+use sprawl::game::{Game, STEP_MS};
+use sprawl::protocol::{DAY_MS, ServerMessage};
 use sprawl::world::World;
 
-use crate::network::{ClientId, Command};
+use crate::network::{ClientId, Command, Debug};
 use crate::persistence;
 
 fn db_path() -> PathBuf {
@@ -45,10 +45,11 @@ const BEHIND: Duration = Duration::from_millis(250);
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
+    let mut db = persistence::Db::open(&db_path);
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&db_path) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&db) };
     if let Some(dir) = &fixtures {
         sprawl::fixtures::build(&mut world, Path::new(dir));
     } else {
@@ -57,14 +58,14 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         }
         island(&mut world);
         if !world.objects.is_empty() {
-            restore(&mut world);
+            world.restore();
             println!("loaded {} objects from db", world.objects.len());
         }
     }
     let speed = if fixtures.is_some() { 0 } else { 1 };
     let fresh_db = db_path.clone();
     let fresh = Box::new(move || {
-        let _ = std::fs::remove_file(&fresh_db);
+        persistence::Db::open(&fresh_db).clear();
         let mut world = World::new();
         world.terrain_seed = new_seed();
         island(&mut world);
@@ -117,43 +118,25 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         }
 
         if last_persist.elapsed() >= PERSIST_INTERVAL {
-            persist(&mut game.world, &db_path, game.now);
+            persist(&mut game.world, &mut db, game.now);
             last_persist = Instant::now();
         }
     }
 }
 
-fn inspect(game: &mut Game, query: crate::network::Ask) -> String {
-    use crate::network::Ask;
+fn inspect(game: &mut Game, query: Debug) -> String {
     let (world, now) = (&mut game.world, game.now);
     let v = match query {
-        Ask::Resident(id) => sprawl::resident::inspect(world, id, now),
-        Ask::Residents => sprawl::resident::inspect_all(world, now),
-        Ask::Demand => sprawl::resident::demand(world, now),
-        Ask::Lot(id) => world.inspect_lot(id, now),
-        Ask::Card(id) => sprawl::card::card(world, id, now),
-        Ask::Town => sprawl::economy::town(world, now),
-        Ask::Sea => sprawl::haul::inspect(world, now),
-        Ask::Map { x, y, r } => sprawl::fixtures::draw(world, x, y, r).into(),
-        Ask::Call(id) => {
-            // Its shelf, emptied: a depot fetches, a maker is full again by
-            // tomorrow, anything else calls for stock.
-            if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-                for need in sprawl::economy::shelves(b.kind) {
-                    if let Some(stock) = b.stocks.get_mut(&need) {
-                        stock.level = 0.0;
-                    }
-                }
-            }
-            sprawl::calls::turn(world, &mut game.events, id, now);
-            serde_json::json!({ "calls": world.calls.iter().map(|c| serde_json::json!({ "kind": format!("{:?}", c.kind), "good": c.good, "at": c.at, "answered_by": c.answered_by })).collect::<Vec<_>>() })
-        }
+        Debug::Lot(id) => world.inspect_lot(id, now),
+        Debug::Town => sprawl::economy::town(world, now),
+        Debug::Sea => sprawl::haul::inspect(world, now),
+        Debug::Map { x, y, r } => sprawl::fixtures::draw(world, x, y, r).into(),
     };
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
 
-fn load_world(db_path: &Path) -> (World, GameTime) {
-    let (entries, meta) = persistence::load(db_path);
+fn load_world(db: &persistence::Db) -> (World, GameTime) {
+    let (entries, meta) = db.load();
     // A new town opens at nine in the morning, so the opening, and its
     // first ferry, are played by daylight rather than in the dark.
     let sim_time = if entries.is_empty() { meta.sim_time.max(DAY_MS as GameTime * 9 / 24) } else { meta.sim_time };
@@ -165,47 +148,36 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
         world.gdp = meta.gdp;
         world.treasury = meta.treasury;
-        world.build = sprawl::tree::Build::load(meta.taken);
         if !meta.missions.is_empty() {
             world.missions.list = meta.missions;
         }
         world.market = meta.market;
         world
     };
-    // SPRAWL_ALL: the whole tree and a bottomless treasury, to test any building.
+    // SPRAWL_ALL: a bottomless treasury, to test any building.
     if std::env::var("SPRAWL_ALL").is_ok() {
-        world.build = sprawl::tree::Build::all();
         world.treasury = 1_000_000.0;
     }
     (world, sim_time)
 }
 
-fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
-    let (changed_ids, removed_ids) = world.objects.drain_persist_dirty();
-    if changed_ids.is_empty() && removed_ids.is_empty() {
-        return;
+/// The objects changed since the last save, and the rest of the world as
+/// it stands, saved even when no object changed: a paused town's coins
+/// and clock are worth keeping too.
+fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
+    let (changed, removed) = world.objects.drain_persist_dirty();
+    let changed: Vec<_> = changed.iter().filter_map(|&id| world.objects.get(id)).filter(|e| persistence::kept(e)).collect();
+    let meta = persistence::Meta {
+        next_id: world.objects.next_id(),
+        terrain_seed: world.terrain_seed,
+        sim_time,
+        gdp: world.gdp,
+        treasury: world.treasury,
+        missions: world.missions.list.clone(),
+        market: world.market.clone(),
+    };
+    db.save(&changed, &removed, &meta);
+    if !changed.is_empty() || !removed.is_empty() {
+        println!("persisted {} changed, {} removed", changed.len(), removed.len());
     }
-
-    let changed: Vec<_> = changed_ids
-        .iter()
-        .filter_map(|id| world.objects.get(*id))
-        .cloned()
-        .collect();
-
-    persistence::save(
-        db_path,
-        &changed,
-        &removed_ids,
-        persistence::Meta {
-            next_id: world.objects.next_id(),
-            terrain_seed: world.terrain_seed,
-            sim_time,
-            gdp: world.gdp,
-            treasury: world.treasury,
-            taken: world.build.taken(),
-            missions: world.missions.list.clone(),
-            market: world.market.clone(),
-        },
-    );
-    println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
 }

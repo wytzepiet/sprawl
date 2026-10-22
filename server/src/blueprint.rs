@@ -10,30 +10,16 @@
 
 use std::sync::LazyLock;
 
-use serde_json::{json, Value};
 
 use crate::needs::curve::Curve;
 use crate::needs::{Need, Tap};
-use crate::protocol::{BuildingKind, CarRole, Good, DAY_MS};
-
-const H: u32 = DAY_MS / 24;
-
-/// Which of the tree's three avenues a kind belongs to. Taking one makes
-/// its class cheaper to place; nothing else reads this.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
-#[ts(export)]
-pub enum Class {
-    Living,
-    Commerce,
-    Industry,
-}
+use crate::protocol::{BuildingKind, CarRole, Good, DAY_MS, HOUR as H};
 
 pub struct Blueprint {
-    pub class: Class,
-    /// How many the settlement moves in of its own accord. Zero for
-    /// anything nobody moves into.
+    /// How many the settlement moves in of its own accord: whom it gives a
+    /// bed (its Rest tap). Zero for anything nobody moves into.
     pub homes: u32,
-    /// How many work here.
+    /// How many work here: its shift's places.
     pub jobs: u32,
     /// The building's own footprint in tiles, wide along its frontage.
     pub size: (u8, u8),
@@ -61,7 +47,7 @@ pub struct Blueprint {
     /// quay behind it (`world/sea.rs`).
     pub quay: bool,
     /// A farm: its land is what its tractor ploughs in a shift, and its
-    /// yard holds a harvest, the cycle's make (docs/economy.md §12.8).
+    /// yard holds a harvest, the cycle's make (`world/fields.rs`).
     pub farm: bool,
 }
 
@@ -137,7 +123,6 @@ pub fn all_taps() -> impl Iterator<Item = &'static Tap> {
 
 static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     use BuildingKind::*;
-    use Class::*;
     use Need::*;
     // Rate is what a need can matter at its most urgent (needs §5.1), so the
     // rates rank the needs: sleep and food can pull someone out of a shift.
@@ -165,22 +150,23 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         ]
     };
 
-    let row = |class, homes, jobs, size, lot, materials, taps| Blueprint {
-        class, homes, jobs, size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, farm: false,
+    let row = |size, lot, materials, taps: Vec<Tap>| {
+        let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, farm: false }
     };
     use Good::{Stone, Timber};
     vec![
-        (House, row(Living, 2, 0, (1, 1), (0, 0), &[(Timber, 4)], household(2))),
-        (Apartment, row(Living, 7, 0, (2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
+        (House, row((1, 1), (0, 0), &[(Timber, 4)], household(2))),
+        (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
             shelves: &[(Good::Crates, 40)],
-            ..row(Commerce, 0, 2, (1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
+            ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
-        (Office, row(Commerce, 0, 12, (2, 1), (0, 0), &[(Timber, 10), (Stone, 6)], vec![shift(8, 17, 12)])),
-        (Factory, row(Industry, 0, 12, (2, 1), (0, 0), &[(Timber, 14), (Stone, 8)], vec![shift(6, 15, 12)])),
+        (Office, row((2, 1), (0, 0), &[(Timber, 10), (Stone, 6)], vec![shift(8, 17, 12)])),
+        (Factory, row((2, 1), (0, 0), &[(Timber, 14), (Stone, 8)], vec![shift(6, 15, 12)])),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
         // Its shelf is tanks: a delivery is a van's worth, and more than
@@ -188,13 +174,13 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // full, or it would never stop ordering.
         (GasStation, Blueprint {
             shelves: &[(Good::Fuel, 40)],
-            ..row(Commerce, 0, 1, (1, 1), (0, 0), &[(Timber, 6), (Stone, 4)], vec![shift(6, 22, 1), pump(always(), 4)])
+            ..row((1, 1), (0, 0), &[(Timber, 6), (Stone, 4)], vec![shift(6, 22, 1), pump(always(), 4)])
         }),
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
         (Supermarket, Blueprint {
             shelves: &[(Good::Crates, 150)],
-            ..row(Commerce, 0, 6, (2, 2), (0, 0), &[(Timber, 16), (Stone, 10)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
+            ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 10)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
         // Where the town's goods are kept, a little of every class: two
         // boxes of crates, two tank boxes, three of timber, three of stone. Its lorry hauls
@@ -202,7 +188,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Depot, Blueprint {
             shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
-            ..row(Industry, 0, 6, (2, 2), (3, 2), &[(Timber, 10)], vec![shift(6, 18, 6)])
+            ..row((2, 2), (3, 2), &[(Timber, 10)], vec![shift(6, 18, 6)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
         // sitting's worth every few minutes: at eighteen crates an hour a
@@ -218,7 +204,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             makes: Some(Good::Crates),
             vehicles: &[CarRole::Tractor],
             farm: true,
-            ..row(Industry, 0, 4, (3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
+            ..row((3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
         }),
         // The door: all yard, three tiles along the quay and two in, no
         // building. Down its middle a lane from the gate on the street to
@@ -231,7 +217,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Harbour, Blueprint {
             vehicles: &[CarRole::Tug],
             quay: true,
-            ..row(Industry, 0, 2, (3, 0), (3, 2), &[], vec![shift(6, 22, 2)])
+            ..row((3, 0), (3, 2), &[], vec![shift(6, 22, 2)])
         }),
         // Four hands, seven to four, felling and sawing the forest round it:
         // with woods all round, a box of timber a shift and a half, a house
@@ -239,7 +225,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
-            ..row(Industry, 0, 4, (2, 2), (2, 2), &[(Timber, 6)], vec![shift(7, 16, 4)])
+            ..row((2, 2), (2, 2), &[(Timber, 6)], vec![shift(7, 16, 4)])
         }),
         // The sawmill's twin at the mountain's foot: four hands, seven to
         // four, breaking the rock within reach, as much stone a shift as the
@@ -248,7 +234,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Quarry, Blueprint {
             shelves: &[(Good::Stone, 120)],
             makes: Some(Good::Stone),
-            ..row(Industry, 0, 4, (2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
+            ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
     ]
 });
@@ -285,23 +271,6 @@ pub fn check() {
     assert_eq!(BLUEPRINTS.len(), BuildingKind::ALL.len(), "a kind has no blueprint");
 }
 
-/// The whole table, readable: what each kind is and does.
-pub fn inspect() -> Value {
-    let hours = |c: &Curve| c.per_day() / H as f64;
-    json!(BLUEPRINTS.iter().map(|(kind, b)| json!({
-        "kind": kind,
-        "class": b.class,
-        "homes": b.homes,
-        "jobs": b.jobs,
-        "size": b.size,
-        "materials": b.materials,
-        "shelves": b.shelves,
-        "taps": b.taps.iter().map(|t| json!({
-            "need": t.need, "open_h": hours(&t.curve), "rate": t.rate, "slots": t.slots,
-        })).collect::<Vec<_>>(),
-    })).collect::<Vec<_>>())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,12 +281,35 @@ mod tests {
         check();
     }
 
-    /// The whole table serialises: the readout is the only way to see
-    /// what a kind actually says.
+    /// The game's half of each row, written where the client reads it,
+    /// beside ts-rs's types (`.cargo/config.toml`): what a kind is built
+    /// from, its footprint and yard, its quay; a good's box; a depot's
+    /// lorries. `blueprints.ts` keeps only the look.
     #[test]
-    fn the_table_can_be_read() {
-        let v = inspect();
-        assert_eq!(v.as_array().unwrap().len(), BLUEPRINTS.len());
+    fn the_client_reads_the_rows() {
+        let Ok(dir) = std::env::var("TS_RS_EXPORT_DIR") else { return };
+        let pair = |(a, b): (u8, u8)| format!("[{a}, {b}]");
+        let mut ts = String::from(
+            "// Written by `cargo test` (`blueprint.rs`'s `the_client_reads_the_rows`). Do not edit this file manually.\n\
+             import type { BuildingKind } from \"./BuildingKind\";\n\
+             import type { Good } from \"./Good\";\n\n\
+             /** The game's half of each kind's row (`blueprint.rs`). */\n\
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean }> = {\n",
+        );
+        for kind in BuildingKind::ALL {
+            let b = blueprint(kind);
+            let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
+            let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {} }},\n", pair(b.size), pair(b.lot), b.quay);
+        }
+        let boxes: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_box())).collect();
+        ts += &format!("}};\n\n/** Units a box of each good holds (`Good::per_box`). */\nexport const PER_BOX: Record<Good, number> = {{ {} }};\n", boxes.join(", "));
+        ts += &format!(
+            "\n/** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */\nexport const LORRY_PRICE = {};\nexport const MORE_LORRIES = {};\n",
+            crate::haul::LORRY_PRICE,
+            crate::haul::MORE_LORRIES
+        );
+        std::fs::write(std::path::Path::new(&dir).join("rows.ts"), ts).unwrap();
     }
 
     #[test]

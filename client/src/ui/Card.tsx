@@ -1,95 +1,24 @@
 /** @jsxImportSource ~ui */
-import { For, Show, createEffect, createMemo, createRoot, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
 import { BLUEPRINTS } from "../blueprints";
-import { selected, select, setFollowing, setSubject } from "../state/selection";
-import { getEntity } from "../state/gameObjects";
+import { select, setFollowing, setSubject } from "../state/selection";
+import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
-import { SitePanel, type DepotLine, type MakerLine } from "./Site";
-import { Bar, Press, Row, Section, To, type Link } from "./kit";
+import { SitePanel } from "./Site";
+import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
-import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
+import type { Building, BuildingCard, CarCard, CarRole, ResidentCard } from "../generated";
 
-interface Bucket {
-  need: Need;
-  full: number;
-  owed_h: number;
-  option: "nothing" | { building: number; score: number; departure: string; leave: string; wait_h: number };
-}
-
-type Card =
-  | {
-      kind: "resident";
-      id: number;
-      name: string;
-      home: Link;
-      work: Link | null;
-      at: Link | null;
-      car: Link;
-      selected: Need | null;
-      since: string;
-      buckets: Bucket[];
-    }
-  | {
-      kind: "car";
-      id: number;
-      role: CarRole;
-      owner: Link;
-      rider: Link | null;
-      stocks: { need: Need; full: number }[];
-      trip: { to: Link; due: string; late_s: number } | null;
-      parked_at: Link | null;
-      answering: { what: string; for: Link; since: string }[];
-    }
-  | {
-      kind: "building";
-      id: number;
-      label: string;
-      building_kind: BuildingKind;
-      reached: boolean;
-      stocks: { need: Need; full: number }[];
-      here: { who: Link; doing: Need | null }[];
-      household: Link[];
-      staff: { who: Link; present: boolean }[];
-      fleet: Link[];
-      calls: { what: string; good: Good; since: string; answered_by: Link | null }[];
-      served: { need: Need; hours_today: number }[];
-      depots: DepotLine[];
-      makers: MakerLine[];
-    }
-  | { kind: "gone"; id: number };
-type BuildingCard = Extract<Card, { kind: "building" }>;
-
-/** How often an open card asks again. The world moves; the card should too. */
-const REFRESH_MS = 1000;
 const CLOSE = "M6 6l12 12M18 6L6 18";
 
-/** The card of whatever is selected, asked again every second. */
-const card = createRoot(() => {
-  const [card, setCard] = createSignal<Card | null>(null);
-  // The card before stays until the next comes, so the sheet does not
-  // sink and rise again between them.
-  createEffect(on(selected, (id) => {
-    if (id === null) return setCard(null);
-    let live = true;
-    const fetchCard = async () => {
-      const r = await fetch(`/inspect/${id}`);
-      if (!live) return;
-      const c = (await r.json()) as Card;
-      setCard(c);
-      // A resident is not on the map; where they are is.
-      if (c.kind === "resident") {
-        const at = c.at?.id ?? null;
-        setSubject(at);
-        setFollowing((f) => (f === id || (at !== null && f !== null) ? at : f));
-      }
-    };
-    fetchCard();
-    const timer = setInterval(fetchCard, REFRESH_MS);
-    onCleanup(() => {
-      live = false;
-      clearInterval(timer);
-    });
+createRoot(() => {
+  // A resident is not on the map; where they are is.
+  createEffect(on(card, (c) => {
+    if (c?.kind !== "resident") return;
+    const at = c.at?.id ?? null;
+    setSubject(at);
+    setFollowing((f) => (f === c.id || (at !== null && f !== null) ? at : f));
   }));
 
   // `#1234` in the address is a card to open on arrival: a thing you can
@@ -100,9 +29,7 @@ const card = createRoot(() => {
   };
   fromHash();
   window.addEventListener("hashchange", fromHash);
-  return card;
 });
-export { card };
 
 /** The client's own record of a building, read again with the sea. */
 const buildingOf = (id: number) => {
@@ -165,10 +92,10 @@ export function InspectBody() {
     <Show when={card()}>
       {(c) => (
         <>
-          <Show when={c().kind === "resident"}>{ResidentCard(c() as Extract<Card, { kind: "resident" }>)}</Show>
-          <Show when={c().kind === "car"}>{CarCard(c() as Extract<Card, { kind: "car" }>)}</Show>
+          <Show when={c().kind === "resident"}>{ResidentLines(c() as ResidentCard)}</Show>
+          <Show when={c().kind === "car"}>{CarLines(c() as CarCard)}</Show>
           <Show when={building()} keyed>
-            {(id) => <BuildingCard id={id} card={() => card() as BuildingCard} />}
+            {(id) => <BuildingLines id={id} card={() => card() as BuildingCard} />}
           </Show>
         </>
       )}
@@ -209,7 +136,7 @@ export function Header(props: { title: string; sub?: string; icon?: JSX.Element;
   );
 }
 
-function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
+function ResidentLines(c: ResidentCard) {
   return (
     <>
       <Section title="Where">
@@ -219,14 +146,14 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
         <Row label="Car"><To link={c.car} /></Row>
       </Section>
       <Section title={`Needs, since ${c.since}`}>
-        <For each={c.buckets}>
+        <For each={c.needs}>
           {(b) => (
             <box dir="row" align="center" gap={8} minH={22}>
               <text w={64} size={13.5} weight={c.selected === b.need ? 600 : undefined} soft={c.selected !== b.need}>{b.need}</text>
-              <Bar value={b.full} color={c.selected === b.need ? "#7B77E0" : "#A8A29E"} />
+              <Bar value={b.full} color={c.selected === b.need ? GDP : "#A8A29E"} />
               <box grow={1} />
-              <Show when={b.option !== "nothing"} fallback={<text size={12} soft>nothing found</text>}>
-                <To link={{ id: (b.option as { building: number }).building, label: "→ option", kind: "building" }} />
+              <Show when={b.option} fallback={<text size={12} soft>nothing found</text>}>
+                {(id) => <To link={{ id: id(), label: "→ option", kind: "building" }} />}
               </Show>
             </box>
           )}
@@ -238,13 +165,13 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 
 const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry", Tug: "Tug" };
 
-function CarCard(c: Extract<Card, { kind: "car" }>) {
+function CarLines(c: CarCard) {
   return (
     <>
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
-        <For each={c.stocks}>{(s) => <Row label={s.need}><Bar value={s.full} color={s.full < 0.2 ? "#D9483B" : "#57A773"} /></Row>}</For>
+        <For each={c.stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full < 0.2 ? BAD : GOOD} /></Row>}</For>
       </Section>
       <Show when={c.trip}>
         {(t) => (
@@ -262,7 +189,7 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
           <For each={c.answering}>
             {(a) => (
               <Row label={a.what}>
-                <To link={a.for} />
+                <To link={a.at} />
                 <text size={12} soft>since {a.since}</text>
               </Row>
             )}
@@ -281,7 +208,7 @@ const Links = (props: { each: Link[] }) => <For each={props.each}>{(l) => <box m
  * card as it refreshes. What the mayor does here comes first: a site's
  * materials, a depot's lorries and stock.
  */
-function BuildingCard(props: { id: number; card: () => BuildingCard }) {
+function BuildingLines(props: { id: number; card: () => BuildingCard }) {
   const c = props.card;
   const kind = () => c().building_kind;
   /** Still going up: the client's own record of the site. */
@@ -295,7 +222,7 @@ function BuildingCard(props: { id: number; card: () => BuildingCard }) {
       </Show>
       <Show when={kind() !== "Depot" && c().stocks.length > 0}>
         <Section title="Stocks">
-          <For each={c().stocks}>{(s) => <Row label={s.need}><Bar value={s.full} color={s.full <= 0 ? "#D9483B" : "#57A773"} /></Row>}</For>
+          <For each={c().stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full <= 0 ? BAD : GOOD} /></Row>}</For>
         </Section>
       </Show>
       <Show when={c().here.length > 0}>

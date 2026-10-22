@@ -38,11 +38,9 @@ together.
    as the last finishes, three short missions for the core loop, each
    on the ferry's deck (`trade.md` §The deck): book a box of timber,
    pin a box of stone, sell a box of crates over the sea.
-2. **Unlocks.** Each building kind may carry a mission that teaches it,
-   opened when the kind is unlocked. Everything is unlocked today (the
-   tree is off, `game.md` §The build), so these come from source 3 for
-   now: the mission that asks for a quarry is the quarry's teaching
-   mission.
+2. **Kinds.** Each building kind may carry a mission that teaches it.
+   Nothing is locked (`game.md` §The build), so it opens from source 3:
+   the mission that asks for a quarry is the quarry's teaching mission.
 3. **The town's situation**, the best teacher. A mission opens when
    something first matters, not merely when it is possible, and only
    after the opening: a site or a shop calls for a good no depot in town

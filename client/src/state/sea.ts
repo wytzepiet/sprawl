@@ -3,7 +3,7 @@ import { createStore, reconcile } from "solid-js/store";
 import { dayLengthMs, simNow } from "../network/clock";
 import { getEntity } from "./gameObjects";
 import { GOODS } from "../blueprints";
-import type { Building, Car, Good, Leg, Sailing, Sea, Shipment } from "../generated";
+import type { Car, Sailing, Sea, Shipment } from "../generated";
 
 /**
  * The sea as the last update had it: every box with an order, where it is,
@@ -83,9 +83,6 @@ export function until(t: number): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** A harbour's timetable. */
-export const sailingOf = (harbour: number): Sailing | undefined => sea.sailings.find((s) => s.harbour === harbour);
-
 /** How far through its leg of the timetable a ferry is, 0 to 1: the
  *  round from casting off to berthing while it is away, the stay while
  *  it is at the ramp. */
@@ -94,59 +91,11 @@ export function voyage(s: Sailing): number {
   return Math.max(0, Math.min(1, (now() - from) / Math.max(1, to - from)));
 }
 
-/** When a box booked now would berth: the server's timetable says. */
-export const landsAt = (s: Sailing): number => s.lands;
-
 /** A car's trip, if it is on one and the client has it. */
 export const tripOf = (id: number | null) => {
   const o = id === null ? undefined : getEntity(id)?.object;
   return o?.kind === "Car" ? (o.data as Car).trip : null;
 };
-
-const roleOf = (id: number | null) => {
-  const o = id === null ? undefined : getEntity(id)?.object;
-  return o?.kind === "Car" ? (o.data as Car).role : null;
-};
-
-/** Room on a depot's shelf for a good, as far as the client sees it. */
-export function room(depot: number | null, good: Good): number {
-  const o = depot === null ? undefined : getEntity(depot)?.object;
-  const s = o?.kind === "Building" ? (o.data as Building).stocks[good] : undefined;
-  return s ? s.cap - s.level : Infinity;
-}
-
-/** The legs a box goes through, in order, in from the world. */
-export const LEGS: Leg[] = ["Booked", "Aboard", "Parked", "Hauled", "Yard"];
-
-/**
- * Where a box is, in words, and when it moves on: "booked for the 14:20
- * ferry", "at sea, lands 14:20", "in the trailer park", "on the lorry,
- * 0:12", "unloading".
- */
-export function legWords(s: Shipment): { words: string; eta: number | null } {
-  const sailing = sea.sailings.find((x) => x.ferry === s.carrier);
-  switch (s.leg) {
-    case "Booked": {
-      // When the ferry next leaves the world, read off where it is now.
-      const eta = sailing ? landsAt(sailing) : s.eta;
-      return { words: eta ? `booked on the ${clockAt(eta)} ferry` : "booked on the next ferry", eta };
-    }
-    case "Aboard":
-      if (s.outbound) return { words: sailing ? `on the deck, sails ${clockAt(sailing.departs)}` : "on the deck", eta: sailing?.departs ?? null };
-      return s.eta ? { words: `at sea, lands ${clockAt(s.eta)}`, eta: s.eta } : { words: "at the ramp, coming off", eta: null };
-    case "Parked":
-      if (s.outbound) return { words: "on the quay for the ferry", eta: null };
-      return { words: s.good && room(s.to, s.good) < s.units ? "in the trailer park, till the depot has room" : "in the trailer park", eta: null };
-    case "Hauled":
-      if (roleOf(s.carrier) === "Tug" || (s.eta === null && roleOf(s.carrier) !== "Truck")) return { words: s.outbound ? "the tug is taking it aboard" : "the tug is bringing it off", eta: null };
-      return { words: s.outbound ? "on the lorry to the harbour" : "on the lorry", eta: s.eta };
-    case "Yard": {
-      // Its lorry's, bound for home or there.
-      const trip = tripOf(s.carrier);
-      return trip ? { words: "on the lorry, coming home", eta: trip.eta } : { words: "unloading at the depot", eta: null };
-    }
-  }
-}
 
 /** A box's load in words: "20 timber". */
 export const load = (s: { good: Shipment["good"]; units: number }) => `${Math.round(s.units)} ${GOODS[s.good].label}`;

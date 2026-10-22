@@ -20,13 +20,12 @@ use std::hash::Hasher;
 
 use serde::{Deserialize, Serialize};
 
-use crate::car::physics::catch_up;
 use crate::car::{nose, tail};
 use crate::engine::GameTime;
 use crate::fixed::{HashMap, HashSet};
 use crate::game::Game;
 use crate::level::Level;
-use crate::protocol::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId, Trip};
+use crate::protocol::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId};
 
 /// The one player a session has.
 const ME: u64 = 1;
@@ -83,9 +82,9 @@ pub struct Session {
 impl Session {
     /// A level from its name and text, at noon, its traffic running.
     pub fn new(name: &str, text: &str, commit: &str) -> Session {
-        let (level, world) = Level::build(name, text);
+        let (level, world) = Level::parse(name, text);
         let (n, t) = (name.to_string(), text.to_string());
-        let again = move || Level::build(&n, &t).1;
+        let again = move || Level::parse(&n, &t).1;
         let mut game = Game::new(world, DAY_MS as u64 / 2, 1, Box::new(again));
         game.connect(ME, OwnerId::default());
         let record = Replay { commit: commit.to_string(), level: name.to_string(), text: text.to_string(), ..Replay::default() };
@@ -106,7 +105,7 @@ impl Session {
     /// that only asks or looks is not.
     pub fn command(&mut self, msg: ClientMessage) {
         match msg {
-            ClientMessage::Ping | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::SetSpeed(_) => self.game.command(ME, msg),
+            ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::SetSpeed(_) => self.game.command(ME, msg),
             msg => self.input(Input::Do(msg)),
         }
     }
@@ -178,6 +177,7 @@ impl<'a> Playback<'a> {
     }
 
     /// Played up to a moment, or to where it went another way.
+    #[cfg(test)]
     pub fn to(&mut self, until: GameTime) -> Result<(), Diverged> {
         while self.session.game.now < until {
             self.step()?;
@@ -211,7 +211,6 @@ impl Watch {
     pub fn look(&mut self, game: &Game) -> Vec<String> {
         let world = &game.world;
         let mut out = Vec::new();
-        let at = |t: &Trip| catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0);
         for (edge, seg) in &world.edges {
             for lane in 0..seg.lanes as usize {
                 // On it, not yet coming to it by another road.
@@ -221,7 +220,7 @@ impl Watch {
                         Some(GameObject::Car(car)) => {
                             let t = car.trip.as_ref()?;
                             let i = t.route_index;
-                            ((t.route[i - 1], t.route[i]) == *edge).then(|| (at(t).0 - t.segment_lengths[1..i].iter().sum::<f64>(), c, car.role))
+                            ((t.route[i - 1], t.route[i]) == *edge).then(|| (t.at(game.now).0 - t.along[i - 1], c, car.role))
                         }
                         _ => None,
                     })
@@ -244,29 +243,29 @@ impl Watch {
             // Held at a junction, or for one let in there before it that is
             // standing at its line, not coming in ahead of it.
             let speed = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
-                Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| at(t).1),
+                Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| t.at(game.now).1),
                 _ => 0.0,
             };
             // Standing, and not behind one on its way.
             let standing = |o: EntityId| {
                 speed(o) < 0.01
-                    && !matches!(world.why.get(&o), Some(&(crate::car::Cause::Ahead(a) | crate::car::Cause::Merging(a), _)) if speed(a) >= 0.01)
+                    && !matches!(world.why(o), Some((crate::car::Cause::Ahead(a) | crate::car::Cause::Merging(a), _)) if speed(a) >= 0.01)
             };
-            let held = match world.why.get(&e.id) {
-                Some(&(crate::car::Cause::Junction(j), a)) => Some((j, a, game.intersections.who(j).0)),
-                Some(&(crate::car::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.intersections.has_passage(j, e.id) && game.intersections.has_passage(j, l)).map(|&j| (j, a, vec![l])),
+            let held = match world.why(e.id) {
+                Some((crate::car::Cause::Junction(j), a)) => Some((j, a, game.world.streets.who(j).0)),
+                Some((crate::car::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.streets.has_passage(j, e.id) && game.world.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
                 _ => None,
             };
             if let Some((j, a, them)) = held
                 && a < -0.3
-                && at(t).1 < crate::car::CRUISE_SPEED / 4.0
+                && t.at(game.now).1 < crate::car::CRUISE_SPEED / 4.0
                 && on_priority(world, e.id, j) == Some(true)
             {
                 // Not one in the junction already, past its line, held up on
                 // its way out: the jam holds them both, not the junction.
                 let inside = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
                     Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
-                        (1..t.route.len()).find(|&k| t.route[k] == j).is_none_or(|k| t.segment_lengths[1..=k].iter().sum::<f64>() - at(t).0 < t.segment_lengths[k] / 2.0)
+                        (1..t.route.len()).find(|&k| t.route[k] == j).is_none_or(|k| t.along[k] - t.at(game.now).0 < t.segment_lengths[k] / 2.0)
                     }),
                     _ => false,
                 };
@@ -276,7 +275,7 @@ impl Watch {
                     }
                 }
             }
-            if at(t).1 > 0.01 || t.acceleration > 0.0 {
+            if t.at(game.now).1 > 0.01 || t.acceleration > 0.0 {
                 self.standing.remove(&e.id);
                 continue;
             }
@@ -286,7 +285,7 @@ impl Watch {
             let mut waits = Some(e.id);
             let mut at_junction = None;
             let going = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
-                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| at(t).1 > 0.01 || t.acceleration > 0.0),
+                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| t.at(game.now).1 > 0.01 || t.acceleration > 0.0),
                 _ => false,
             };
             for _ in 0..64 {
@@ -294,12 +293,12 @@ impl Watch {
                     self.standing.insert(e.id, game.now);
                     break;
                 }
-                match waits.and_then(|w| world.why.get(&w)) {
-                    Some(&(crate::car::Cause::Junction(j), _)) => {
+                match waits.and_then(|w| world.why(w)) {
+                    Some((crate::car::Cause::Junction(j), _)) => {
                         at_junction = Some(j);
                         break;
                     }
-                    Some(&(crate::car::Cause::Ahead(o) | crate::car::Cause::Merging(o), _)) => waits = Some(o),
+                    Some((crate::car::Cause::Ahead(o) | crate::car::Cause::Merging(o), _)) => waits = Some(o),
                     _ => break,
                 }
             }
@@ -307,7 +306,7 @@ impl Watch {
             let moving = at_junction.map_or(since, |j| {
                 // Who, not in what order: cars let through, giving it back
                 // and let through again, go nowhere.
-                let mut now_through = game.intersections.who(j).0;
+                let mut now_through = game.world.streets.who(j).0;
                 now_through.sort_unstable();
                 let seen = self.through.entry(j).or_insert((now_through.clone(), game.now));
                 if seen.0 != now_through {
@@ -414,17 +413,22 @@ mod tests {
     #[test]
     fn nothing_goes_wrong_in_a_kept_replay() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/replays");
-        for path in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "json")) {
-            let replay: Replay = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            let mut play = Playback::new(&replay);
-            let mut watch = Watch::default();
-            while play.session.game.now < Session::end(&replay) {
-                let _ = play.step();
-                let wrong = watch.look(&play.session.game);
-                assert!(wrong.is_empty(), "{}: {}", path.display(), wrong.join("; "));
+        // Each on a thread of its own: the slowest is the test's time.
+        std::thread::scope(|t| {
+            for path in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "json")) {
+                t.spawn(move || {
+                    let replay: Replay = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                    let mut play = Playback::new(&replay);
+                    let mut watch = Watch::default();
+                    while play.session.game.now < Session::end(&replay) {
+                        let _ = play.step();
+                        let wrong = watch.look(&play.session.game);
+                        assert!(wrong.is_empty(), "{}: {}", path.display(), wrong.join("; "));
+                    }
+                    let s = &play.session;
+                    assert_ne!(s.level.phase(), crate::level::Phase::Jammed, "{}: {}", path.display(), s.level.state(&s.game).message);
+                });
             }
-            let s = &play.session;
-            assert_ne!(s.level.phase(), crate::level::Phase::Jammed, "{}: {}", path.display(), s.level.state(&s.game).message);
-        }
+        });
     }
 }

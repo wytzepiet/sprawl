@@ -448,6 +448,7 @@ export default function DayNightLights(props: ParentProps) {
 
   // --- Per-frame update ---
   let lastColorStep = -1;
+  let lastMinute = -1;
   let shadowing = true;
   const stop = beforeRender(() => {
     if (castersChanged) {
@@ -460,7 +461,12 @@ export default function DayNightLights(props: ParentProps) {
     // In development `?t=` holds the light at a time of day (0 midnight,
     // 0.5 noon), to judge a look at an hour without moving the world's clock.
     const t = shownTimeOfDay();
-    setTimeOfDay(t);
+    // The UI's hour, a game minute at a time: the clock shows no finer.
+    const minute = Math.floor(t * 1440);
+    if (minute !== lastMinute) {
+      lastMinute = minute;
+      setTimeOfDay(t);
+    }
 
     const night = isNight(t);
     const elev = night ? moonElevation(t) : sunElevation(t);
