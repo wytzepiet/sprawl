@@ -11,6 +11,7 @@ import Signs from "./Signs";
 import Glass from "../ui/Glass";
 import Shipments from "../ui/Shipments";
 import Hud from "./Hud";
+import Gpu from "../ui/Hud";
 
 function SceneInner() {
   return (
@@ -29,7 +30,7 @@ function SceneInner() {
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>
-        <Hud />
+        <Hud ui={Gpu} />
       </Canvas>
       <Glass />
       <Shipments />

@@ -35,7 +35,8 @@ export function Press(props: JSX.Box & { onTap: () => void }) {
   const [s] = follow(() => (down() ? 1 - by() : over() ? 1 + by() : 1), { rest: 0.001 });
   const [y] = follow(() => (over() && !down() ? -2 : 0));
   const sized = (w: number, h: number) => (setSize(Math.max(w, h, 1)), props.onSize?.(w, h));
-  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} onSize={sized} />;
+  const hover = (o: boolean) => (setOver(o), props.onHover?.(o));
+  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={hover} onSize={sized} />;
 }
 
 /** A tab bar: one pill, and in it a darker one that slides to the tab

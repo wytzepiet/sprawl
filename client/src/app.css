@@ -1,4 +1,7 @@
-@import "tailwindcss";
+/* The page's faces, the GPU's UI's own (`public/fonts`). */
+@font-face { font-family: Quicksand; font-weight: 500; src: url(/fonts/Quicksand-500.ttf); }
+@font-face { font-family: Quicksand; font-weight: 600; src: url(/fonts/Quicksand-600.ttf); }
+@font-face { font-family: Fraunces; src: url(/fonts/Fraunces-400.ttf); }
 
 html, body {
   font-family: Quicksand, system-ui, sans-serif;
@@ -8,18 +11,4 @@ html, body {
   width: 100%;
   height: 100%;
 }
-
-/* The interchange's panes are glass the GPU draws under every element
-   marked `data-glass` (`engine/glass.ts`); what is here is what sits on
-   it. Its ink takes the light (`ui/Glass.ts` sets these as the day turns). */
-:root {
-  --glass: 255 255 255;
-  --ink: 47 61 56;
-}
-.ink { color: rgb(var(--ink)); }
-.soft { color: rgb(var(--ink) / 0.72); }
-.serif { font-family: Fraunces, Georgia, serif; }
-
-.press { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease; }
-.press:hover { transform: translateY(-2px) scale(1.08); }
-.press:active { transform: scale(0.9); }
+canvas { display: block; }

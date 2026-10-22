@@ -96,8 +96,8 @@ its buildings, the ferry's new deals, the stock's every depot's shelves
 as one; with nothing to show, it is the bar alone. A building's own ring, its card and taking it down, opens on a
 long press or a right click. The clock and the level are along the top.
 There is no undo button: what was built lately, taken down, gives back
-what it cost (`undo::raze`, `undo::recoup`). The interchange's panels are still the page's, glass
-under `data-glass` elements.
+what it cost (`undo::raze`, `undo::recoup`). The interchange's panels are the GPU's too
+(`ui/interchange/`); only its map of levels is the page's.
 
 ## Deployment
 

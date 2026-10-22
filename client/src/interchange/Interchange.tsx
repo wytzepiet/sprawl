@@ -1,6 +1,7 @@
-import "../app.css";
-import { createSignal, For, Index, Show, onCleanup } from "solid-js";
+import { createSignal, Show, onCleanup } from "solid-js";
 import Canvas, { Registered, useEngine } from "../engine/Canvas";
+import Gpu from "../engine/Hud";
+import { underGlass } from "../engine/glass";
 import { OrthoCamera, type Bounds } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNightCycle";
 import { InstancePoolProvider } from "../engine/InstancePool";
@@ -9,16 +10,16 @@ import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
 import Glass from "../ui/Glass";
 import { projector, screenToWorld } from "../engine/view";
 import { priority, setPriority, setTool, tool } from "../ui/buildMode";
-import type { LevelState, Tool } from "../generated";
+import type { LevelState } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
-import { climb, pen, RoadBrush, setPen } from "./RoadBrush";
-import { road } from "../ui/Roads";
-import { SELECT } from "../ui/kit";
+import { climb, RoadBrush, setPen } from "./RoadBrush";
+import Hud, { tell, TOOLS } from "../ui/interchange/Hud";
+import { held } from "../ui/interchange/Signs";
 import { best, keep, keepLayout, layoutOf } from "./progress";
 import { LEVELS, neighbours, type LevelText } from "./levels";
 import Map, { isOpen } from "./Map";
 import { drawFlow } from "./flow";
-import { drawDemand, gateColour, gateRgb } from "./demand";
+import { drawDemand, gateRgb } from "./demand";
 import { setCarColour } from "../engine/objects/CarObject";
 
 /**
@@ -41,40 +42,6 @@ export default function Interchange() {
     </Show>
   );
 }
-
-/** The palette: each tool its name, its key, what it does, and its
- *  picture (a path in a 24 square, its holes cut even-odd). */
-const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: string }[] = [
-  { tool: "Street", key: "1", name: "Two-way", label: "A road both ways", glyph: road("Street").glyph },
-  { tool: "OneWay", key: "2", name: "One-way", label: "Runs the way you drag; laid back against another, a divided road", glyph: road("OneWay").glyph },
-  { tool: "Wide", key: "3", name: "Two lanes", label: "One-way, two lanes: cars keep right to turn right, left to turn left", glyph: "M1.5 2h2v20h-2zM20.5 2h2v20h-2zM8 4l3.5 5H9v12H7V9H4.5zM16 4l3.5 5H17v12h-2V9h-2.5z" },
-  { tool: "Light", key: "4", name: "Lights", label: "Tap a junction for traffic lights, again to take them away", glyph: "M8 1.5h8A1.5 1.5 0 0 1 17.5 3v18a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 21V3A1.5 1.5 0 0 1 8 1.5zM12 3.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 9.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 15.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z" },
-  { tool: "Demolish", key: "X", name: "Bulldozer", label: "Takes up road; hold Shift for it with any tool", glyph: road("Demolish").glyph },
-];
-/** A bin: everything taken up. */
-const CLEAR = "M9 3h6l1 2h4v2H4V5h4zM6 8h12l-1 13H7zM9.5 10.5v8h1.5v-8zM13 10.5v8h1.5v-8z";
-/** The priority road's sign, a diamond in a diamond. */
-const DIAMOND = "M12 1 23 12 12 23 1 12zM12 4.2 19.8 12 12 19.8 4.2 12z";
-const DIAMOND_IN = "M12 6.8 17.2 12 12 17.2 6.8 12z";
-
-/** A button's key, small in its corner. */
-function KeyCap(props: { children: string }) {
-  return <span class="absolute -right-0.5 -top-0.5 rounded-md px-1 text-[9px] font-bold leading-[14px]" style={{ background: "rgb(var(--ink) / 0.12)" }}>{props.children}</span>;
-}
-
-function Glyph(props: { d: string; fill?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor" fill-rule="evenodd" aria-hidden="true">
-      <path d={props.d} fill={props.fill} />
-    </svg>
-  );
-}
-
-/** The gate whose sign is held down: where its cars go is drawn
- *  (`demand.ts`); and where each gate's sign stands on the screen. */
-const [held, setHeld] = createSignal<string | null>(null);
-type SignAt = { label: string; sx: number; sy: number; ins: boolean; outs: boolean; waiting: number; colour: string };
-const [signs, setSigns] = createSignal<SignAt[]>([]);
 
 function Play(props: { level: LevelText; back: () => void; next: () => void }) {
   const [state, setState] = createSignal<LevelState | null>(null);
@@ -132,68 +99,13 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
             </Registered>
           </DayNightLights>
           <Frame state={state} />
+          <Gpu ui={() => <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />} />
         </Canvas>
         <Glass />
-        <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />
-        <Signs />
       </DayNightProvider>
     </GameProvider>
   );
 }
-
-/**
- * Each gate's sign, a road sign in its colour, its number, and whether
- * cars come in or go out by it, and how many wait there. Held down, where
- * its cars go is drawn over the map (`demand.ts`). Its own element over the
- * map, so a press on it lays no road.
- */
-function Signs() {
-  const up = () => setHeld(null);
-  window.addEventListener("pointerup", up);
-  window.addEventListener("pointercancel", up);
-  onCleanup(() => (window.removeEventListener("pointerup", up), window.removeEventListener("pointercancel", up), setHeld(null)));
-  return (
-    <Index each={signs()}>
-      {(g) => (
-        <div
-          class="fixed z-[60] flex flex-col items-center select-none"
-          style={{ left: `${g().sx}px`, top: `${g().sy}px`, transform: `translate(-50%, -50%) scale(${held() === g().label ? 1.12 : 1})`, transition: "transform 120ms", cursor: "pointer", "touch-action": "none" }}
-          title={g().outs ? "Hold to see where its cars go" : "Cars leave the map here"}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (g().ins) setHeld(g().label);
-          }}
-        >
-          <div
-            class="flex h-8 w-8 items-center justify-center rounded-[7px] text-[16px] font-bold text-white"
-            style={{ background: g().colour, border: "2.5px solid white", "box-shadow": `0 0 0 1.5px ${g().colour}, 0 2px 5px rgba(0,0,0,0.3)` }}
-          >
-            {g().label}
-          </div>
-          <div class="h-2 w-[3px]" style={{ background: "#4a4f55" }} />
-          <div class="rounded-full px-1.5 text-[10px] font-semibold leading-4 text-white" style={{ background: "rgba(47,61,56,0.85)" }}>
-            {g().ins && g().outs ? "in · out" : g().ins ? "in" : "out"}
-          </div>
-          <Show when={g().waiting > 1}>
-            <div class="mt-0.5 text-[11px] font-semibold" style={{ color: g().waiting > 5 ? "#C2361F" : "#B7791F" }}>
-              {g().waiting} waiting
-            </div>
-          </Show>
-        </div>
-      )}
-    </Index>
-  );
-}
-
-/** Something said for a moment at the foot of the screen. */
-const [told, setTold] = createSignal<string | null>(null);
-let toldTimer: ReturnType<typeof setTimeout> | undefined;
-const tell = (text: string) => {
-  setTold(text);
-  clearTimeout(toldTimer);
-  toldTimer = setTimeout(() => setTold(null), 4000);
-};
 
 /** F: this moment, and the tile under the pointer, marked as something
  *  wrong in the replay the level keeps (`server/src/replay.rs`), and then
@@ -217,27 +129,10 @@ function Flagger(props: { line: () => LevelConnection | null }) {
   return null;
 }
 
-/** Everything played since the level opened, onto the clipboard to paste
- *  to Claude; or, where the clipboard will not have it, as a file. */
-async function copyReplay(line: LevelConnection | null, name: string) {
-  if (!line) return;
-  const json = await line.replay();
-  try {
-    await navigator.clipboard.writeText(json);
-    tell(`Replay copied (${Math.ceil(json.length / 1024)} KB): paste it to Claude`);
-  } catch {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-    a.download = `${name}-replay.json`;
-    a.click();
-    tell("Replay saved as a file");
-  }
-}
-
 /**
- * Drawn over the scene: everything past the map's edge under a fog, each
- * gate's label at its stub with how many wait there, and where a test
- * jammed.
+ * Drawn over the map: the way the one-ways run, where the held sign's
+ * cars go, each junction's lights, and where a test jammed. The fog past
+ * its edge and the gates' signs are the GPU's (`ui/interchange/Signs.tsx`).
  */
 function Frame(props: { state: () => LevelState | null }) {
   const { scene, canvas, afterRender } = useEngine();
@@ -254,37 +149,11 @@ function Frame(props: { state: () => LevelState | null }) {
     g.clearRect(0, 0, innerWidth, innerHeight);
     if (!s) return;
     const p = projector(scene, canvas);
-    const corners = [[s.min_x, s.min_y], [s.max_x + 1, s.min_y], [s.max_x + 1, s.max_y + 1], [s.min_x, s.max_y + 1]].map(([x, y]) => p.at(x, y, 0));
-    // The fog: the whole screen, less the map.
-    g.fillStyle = "rgba(236,240,232,0.62)";
-    g.beginPath();
-    g.rect(0, 0, innerWidth, innerHeight);
-    g.moveTo(corners[0].sx, corners[0].sy);
-    for (const c of corners.slice(1).reverse()) g.lineTo(c.sx, c.sy);
-    g.closePath();
-    g.fill("evenodd");
-    g.strokeStyle = "rgba(47,61,56,0.35)";
-    g.lineWidth = 1.5;
-    g.setLineDash([6, 6]);
-    g.beginPath();
-    g.moveTo(corners[0].sx, corners[0].sy);
-    for (const c of corners.slice(1)) g.lineTo(c.sx, c.sy);
-    g.closePath();
-    g.stroke();
-    g.setLineDash([]);
     // While building, the way the one-ways run.
     if (s.phase === "Build" && tool() !== null) drawFlow(g, (x, y, z) => p.at(x, y, z), performance.now() / 1000);
     // Where the held sign's cars go.
     const from = held();
     if (from) drawDemand(g, (x, y, z) => p.at(x, y, z), s, from, performance.now() / 1000);
-    // Where each gate's sign stands: just past the map's edge, beside the
-    // road, so it hides no car (`Signs`).
-    const at = s.gates.map((gate): SignAt => {
-      const [dx, dy] = [Math.sign(gate.end_x - gate.x), Math.sign(gate.end_y - gate.y)];
-      const q = p.at(gate.x + 0.5 + dx * 1.1 + dy * 1.1, gate.y + 0.5 + dy * 1.1 + dx * 1.1, 0);
-      return { label: gate.label, sx: Math.round(q.sx), sy: Math.round(q.sy), ins: gate.ins, outs: gate.outs, waiting: gate.waiting, colour: gateColour(s, gate.label) };
-    });
-    if (JSON.stringify(at) !== JSON.stringify(signs())) setSigns(at);
     // Each junction's lights: a lamp before each way in, on its side of
     // the road, green where its phase is (`intersection::phases_of`).
     eachEntity((e) => {
@@ -319,6 +188,7 @@ function Frame(props: { state: () => LevelState | null }) {
       g.arc(at.sx, at.sy, 22 + 6 * Math.sin(t * 5), 0, Math.PI * 2);
       g.stroke();
     }
+    underGlass(g);
   });
   onCleanup(() => (stop(), el.remove()));
   return null;
@@ -338,178 +208,4 @@ function phasesOf(arms: [number, number][]): [number, number][][] {
     phases.push(i >= 0 ? [a, left.splice(i, 1)[0]] : [a]);
   }
   return phases;
-}
-
-const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
-
-function Hud(props: { level: LevelText; state: () => LevelState | null; line: () => LevelConnection | null; back: () => void; next: () => void }) {
-  const s = () => props.state();
-  const button = "press rounded-full px-5 h-10 text-sm font-semibold cursor-pointer";
-  const dark = { background: "rgb(var(--ink))", color: "rgb(var(--glass))" };
-  return (
-    <>
-      <Show when={told()}>
-        {(t) => <div data-glass="panel" class="ink fixed bottom-28 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-[13px] select-none">{t()}</div>}
-      </Show>
-      {/* The level and its traffic. */}
-      <div data-glass="panel" class="ink fixed top-6 left-6 z-50 w-72 rounded-3xl px-5 py-4 select-none">
-        <div class="flex items-center gap-3">
-          <button class="press soft cursor-pointer text-lg" title="All levels (Esc)" onClick={props.back}>←</button>
-          <span class="serif text-2xl">{props.level.title}</span>
-        </div>
-        <For each={props.level.notes}>{(n) => <p class="soft mt-1.5 text-[13px] leading-snug">{n}</p>}</For>
-        <div class="mt-3 space-y-1">
-          <For each={s()?.wants ?? []}>
-            {(w) => (
-              <div class="flex items-center justify-between text-[13px]">
-                <span class="flex items-center gap-1.5 font-semibold">
-                  <Badge colour={gateColour(s()!, w.from)}>{w.from}</Badge>→<Badge colour={gateColour(s()!, w.to)}>{w.to}</Badge>
-                  <span class="soft font-normal">{w.per_min} cars/min</span>
-                </span>
-                <Show when={s()?.phase !== "Build"} fallback={<span style={{ color: w.joined ? "#2E7D4F" : "#C2361F" }}>{w.joined ? "joined" : "no road"}</span>}>
-                  <span class="tabular-nums">{w.delivered}/{w.due}</span>
-                </Show>
-              </div>
-            )}
-          </For>
-        </div>
-        <div class="mt-3 flex items-baseline justify-between" style={{ "border-top": "1px solid rgb(var(--ink) / 0.1)", "padding-top": "10px" }}>
-          <span class="soft text-[12px] font-bold uppercase tracking-widest">Asphalt</span>
-          <span class="tabular-nums">
-            <span class="text-xl font-semibold">{s()?.cost ?? 0}</span>
-            <Show when={s()?.par != null}>
-              <span class="soft text-sm"> / {s()?.par} par</span>
-            </Show>
-          </span>
-        </div>
-        <div class="soft mt-2 text-[11px] leading-snug">
-          V look · drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · ↑↓ height · Z undo · Space test · right-drag to pan · F flag something wrong
-        </div>
-        <button class="press soft mt-2 mr-3 text-[12px] underline cursor-pointer" title="Everything played here, to paste to Claude: flag the moment first (F)" onClick={() => copyReplay(props.line(), props.level.name)}>
-          Copy replay
-        </button>
-        <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
-          <button class="press soft mt-2 text-[12px] underline cursor-pointer" onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}>
-            Start over
-          </button>
-        </Show>
-      </div>
-
-      {/* What the hand holds, said over the palette. */}
-      <Show when={TOOLS.find((t) => t.tool === tool())}>
-        {(t) => (
-          <div class="ink pointer-events-none fixed bottom-[84px] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap text-[13px] select-none" style={{ "text-shadow": "0 1px 3px rgb(255 255 255 / 0.8)" }}>
-            <span class="font-semibold">{t().name}{t().tool !== "Light" && t().tool !== "Demolish" && priority() ? ", priority" : ""}</span>
-            <span class="soft"> · {t().label}</span>
-          </div>
-        )}
-      </Show>
-      {/* The road palette. */}
-      <div data-glass="bar" class="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-full p-1.5 select-none">
-        {/* The empty hand: the roads as they are, no building. */}
-        <button
-          class="press relative flex h-11 w-11 flex-col items-center justify-center rounded-full cursor-pointer"
-          classList={{ soft: tool() !== null }}
-          style={tool() === null ? dark : {}}
-          title="Look: the roads as they are, every level solid, nothing in hand (V)"
-          onClick={() => setTool(null)}
-        >
-          <Glyph d={SELECT} />
-          <KeyCap>V</KeyCap>
-        </button>
-        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
-        <For each={TOOLS}>
-          {(t) => (
-            <button
-              class="press relative flex h-11 w-11 flex-col items-center justify-center rounded-full cursor-pointer"
-              classList={{ soft: tool() !== t.tool }}
-              style={tool() === t.tool ? dark : {}}
-              title={`${t.name}: ${t.label} (${t.key})`}
-              onClick={() => setTool(t.tool)}
-            >
-              <Glyph d={t.glyph} />
-              <KeyCap>{t.key}</KeyCap>
-            </button>
-          )}
-        </For>
-        {/* Every road built here taken up, the level as it began. */}
-        <button
-          class="press soft relative flex h-11 w-11 items-center justify-center rounded-full cursor-pointer"
-          title="Clear: take up every road you built here"
-          onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}
-        >
-          <Glyph d={CLEAR} />
-        </button>
-        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
-        {/* Priority: whatever road is drawn with it on has it. */}
-        <button
-          class="press relative flex h-11 items-center gap-1.5 rounded-full px-3 cursor-pointer text-[13px] font-semibold"
-          classList={{ soft: !priority() }}
-          style={priority() ? dark : {}}
-          title="Priority: whoever joins or crosses a road drawn with it gives way. Draw along a road to give it priority, or take it (P)"
-          onClick={() => setPriority(!priority())}
-        >
-          <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden="true">
-            <path d={DIAMOND} fill="currentColor" fill-rule="evenodd" />
-            <path d={DIAMOND_IN} fill={priority() ? "#E0B443" : "currentColor"} />
-          </svg>
-          Priority
-          <KeyCap>P</KeyCap>
-        </button>
-        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
-        {/* The pen's height: the road drawn after a change climbs to it. */}
-        <div class="flex items-center gap-0.5" title="How high you draw: the end of the road you last drew becomes the slope up or down (↑ ↓); greyed where it can't be one">
-          <button class="press soft h-9 w-7 rounded-full cursor-pointer disabled:opacity-25 disabled:cursor-default" disabled={!climb().down} onClick={() => climb().down?.()}>▼</button>
-          <span class="w-14 text-center text-[13px] font-semibold tabular-nums">{pen() === 0 ? "Ground" : `Level ${pen()}`}</span>
-          <button class="press soft h-9 w-7 rounded-full cursor-pointer disabled:opacity-25 disabled:cursor-default" disabled={!climb().up} onClick={() => climb().up?.()}>▲</button>
-        </div>
-        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
-        <Show when={s()?.phase === "Build"} fallback={<Show when={s()?.phase === "Test"}><button class={button} style={dark} onClick={() => props.line()?.finish()}>Skip to the end</button></Show>}>
-          <button class={button} style={dark} onClick={() => props.line()?.test()} title="Space">Test</button>
-        </Show>
-      </div>
-
-      {/* The test as it runs, and its verdict. */}
-      <Show when={s() && s()!.phase !== "Build" ? s() : null}>
-        {(t) => (
-          <div data-glass="panel" class="ink fixed top-6 right-6 z-50 w-72 rounded-3xl px-5 py-4 select-none">
-            <Show when={t().phase === "Test"}>
-              <div class="soft text-[12px] font-bold uppercase tracking-widest">Testing</div>
-              <div class="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: "rgb(var(--ink) / 0.1)" }}>
-                <div class="h-full rounded-full" style={{ width: pct(t().test_ms / t().test_total_ms), background: "#7B77E0" }} />
-              </div>
-              <div class="soft mt-2 text-[13px]">Flow so far {flowOf(t())}</div>
-            </Show>
-            <Show when={t().phase === "Jammed"}>
-              <div class="text-[12px] font-bold uppercase tracking-widest" style={{ color: "#C2361F" }}>Jammed</div>
-              <div class="serif mt-1 text-2xl">{t().message}</div>
-              <button class={`${button} mt-3`} style={dark} onClick={() => props.line()?.build()}>Back to building</button>
-            </Show>
-            <Show when={t().phase === "Done"}>
-              <div class="soft text-[12px] font-bold uppercase tracking-widest">{t().par === null ? "Flow" : "Efficiency"}</div>
-              <div class="serif text-6xl font-light tabular-nums">{t().efficiency.toFixed(1)}<span class="text-3xl">%</span></div>
-              <div class="soft mt-2 space-y-0.5 text-[13px]">
-                <div class="flex justify-between"><span>Flow</span><span class="tabular-nums">{flowOf(t())}</span></div>
-                <div class="flex justify-between"><span>Asphalt</span><span class="tabular-nums">{t().par === null ? t().cost : `${t().cost} for a par of ${t().par}`}</span></div>
-                <Show when={best(props.level.name)}>{(b) => <div class="flex justify-between"><span>Your best</span><span class="tabular-nums">{b().toFixed(1)}%</span></div>}</Show>
-              </div>
-              <div class="mt-3 flex gap-2">
-                <button class={button} style={{ background: "rgb(var(--ink) / 0.08)" }} onClick={() => props.line()?.build()}>Improve</button>
-                <button class={button} style={dark} onClick={props.next}>Next level</button>
-              </div>
-            </Show>
-          </div>
-        )}
-      </Show>
-    </>
-  );
-}
-
-/** The flow, against our own solve's where the level has one; an open
- *  level's, as it is: how near its trips came to empty roads. */
-const flowOf = (s: LevelState) => (s.par_flow === null ? pct(s.flow) : `${pct(s.flow / Math.max(1e-9, s.par_flow))} of par`);
-
-/** A gate's label, in its colour. */
-function Badge(props: { children: string; colour?: string }) {
-  return <span class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold" style={props.colour ? { background: props.colour, color: "white" } : { background: "rgb(var(--ink))", color: "rgb(var(--glass))" }}>{props.children}</span>;
 }

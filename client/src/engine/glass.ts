@@ -7,16 +7,14 @@ import type { Layer, Pane } from "~ui/paint";
  * canvas draws, and the goo's took most of the laptop's GPU.
  *
  * The UI says where the glass is: each `glass` of the UI the GPU draws
- * (`ui/paint.ts`) is a pane, and so, for the interchange's panels, is
- * every element of the page marked `data-glass`. Panes of one layer
- * (`layer="dock"`, `data-glass="dock"`) run together like liquid, a
- * smooth union of their shapes, and panes of different layers do not.
- * A dye lays a colour into a pane.
+ * (`ui/paint.ts`) is a pane. Panes of one layer (`layer="dock"`) run
+ * together like liquid, a smooth union of their shapes, and panes of
+ * different layers do not. A dye lays a colour into a pane.
  *
- * The page's runs lie first, then the UI's layers in the order its tree
- * gives them: a later layer is drawn over an earlier one, with its shadow
- * on it, and what the UI writes on a layer over its panes (a stack of
- * cards, `ui/stack.tsx`). Melting is within a layer, never between them.
+ * The layers lie in the order the UI's tree gives them: a later layer is
+ * drawn over an earlier one, with its shadow on it, and what the UI writes
+ * on a layer over its panes (a stack of cards, `ui/stack.tsx`). Melting is
+ * within a layer, never between them.
  *
  * Each frame the frame loop reads the panes (`read`), after the springs
  * have moved them, and again once the camera has moved, for what is
@@ -291,9 +289,10 @@ let glazedKey = "";
 export const glazedAt = () => glazedKey;
 
 /**
- * Take the glass out of a flat overlay over the page, the hand's dots and
- * the plot in hand: the glass is drawn in the frame, under the page, so
- * what an overlay draws would lie on it. `ctx` is in CSS pixels.
+ * Take the glass out of a flat overlay over the page, the hand's dots,
+ * the plot in hand, the interchange's lights: the glass is drawn in the
+ * frame, under the page, so what an overlay draws would lie on it. `ctx`
+ * is in CSS pixels.
  */
 export function underGlass(ctx: CanvasRenderingContext2D) {
   if (!glazed.length) return;
@@ -306,11 +305,10 @@ export function underGlass(ctx: CanvasRenderingContext2D) {
   ctx.restore();
 }
 
-/** The glass task, after the scene, and how to read the page's panes.
- *  `ui` is the UI the GPU draws (`ui/paint.ts`): its layers go over the
- *  page's glass, each drawn on its own panes, so a later one frosts what
- *  lies on an earlier one. */
-export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { read(): Layer[]; ink(pass: GPURenderPassEncoder, l: Layer): void }) {
+/** The glass task, after the scene, and how to read the panes. `ui` is
+ *  the UI the GPU draws (`ui/paint.ts`): each of its layers drawn on its
+ *  own panes, so a later one frosts what lies on an earlier one. */
+export function createGlass(engine: EngineContext, scene: SceneContext, ui: { read(): Layer[]; ink(pass: GPURenderPassEncoder, l: Layer): void }) {
   const device = engine._device;
   const surface = engine.surfaces[0];
   const format = surface._configureFormat;
@@ -382,47 +380,21 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
     });
   };
 
-  // A press on the UI, which lights the glass from inside.
+  // A press on the UI, which lights the glass from inside (`touchAt`).
   const touch = { x: 0, y: 0, down: false, glow: 0, at: performance.now() };
-  const press = (e: PointerEvent) => {
-    if (e.target === surface.canvas) return;
-    [touch.x, touch.y, touch.down] = [e.clientX, e.clientY, true];
-  };
-  const follow = (e: PointerEvent) => {
-    if (touch.down) [touch.x, touch.y] = [e.clientX, e.clientY];
-  };
-  const lift = () => (touch.down = false);
-  window.addEventListener("pointerdown", press, true);
-  window.addEventListener("pointermove", follow, true);
-  window.addEventListener("pointerup", lift, true);
-  window.addEventListener("pointercancel", lift, true);
 
   // The runs of glass this frame, in device pixels, each with room round it;
-  // and the groups they are drawn in: the page's all at once, then each of
-  // the UI's layers, its run and what lies on it.
+  // and the UI's layers, each drawn on its run, if it has one, with what
+  // lies on it.
   let runs: Box[] = [];
-  let groups: { runs: Box[]; layer: Layer | null }[] = [];
+  let groups: { run: number; layer: Layer }[] = [];
   let seen = "";
-  const radii = new WeakMap<Element, { key: string; r: number }>();
 
-  /** Read the panes, the page's and the UI's: their boxes, rounding, fade
-   *  and dye. Returns a key that changes when any of them moved. */
+  /** Read the UI's panes: their boxes, rounding, fade and dye. Returns a
+   *  key that changes when any of them moved. */
   const read = (): string => {
     const canvas = surface.canvas as HTMLCanvasElement;
     const dpr = canvas.width / Math.max(1, canvas.clientWidth);
-    const byRun = new Map<string, Pane[]>();
-    for (const el of document.querySelectorAll<HTMLElement>("[data-glass]")) {
-      const r = el.getBoundingClientRect();
-      if (r.width < 1 || r.height < 1) continue;
-      const style = getComputedStyle(el);
-      const fade = Number(style.opacity);
-      if (fade <= 0.002) continue;
-      let cached = radii.get(el);
-      if (!cached || cached.key !== el.className) radii.set(el, (cached = { key: el.className, r: parseFloat(style.borderTopLeftRadius) || 0 }));
-      const name = el.dataset.glass || `pane${byRun.size}`;
-      if (!byRun.has(name)) byRun.set(name, []);
-      byRun.get(name)!.push({ x: r.left, y: r.top, w: r.width, h: r.height, r: Math.min(cached.r, r.width / 2, r.height / 2), fade, dye: el.dataset.dye });
-    }
     data.fill(0);
     runs = [];
     groups = [];
@@ -469,9 +441,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
       });
       return true;
     };
-    for (const panes of byRun.values()) run(panes);
-    groups.push({ runs: runs.slice(), layer: null });
-    for (const layer of ui?.read() ?? []) groups.push({ runs: layer.panes.length && run(layer.panes) ? [runs[runs.length - 1]] : [], layer });
+    for (const layer of ui.read()) groups.push({ run: layer.panes.length && run(layer.panes) ? runs.length - 1 : -1, layer });
     const o = PANES * 16 + RUNS * 4;
     data.set([...light.tint.map((v, k) => v * (1 - COLOUR + COLOUR * SEA_GLASS[k])), WASH], o);
     data.set([...light.sun, light.sunStrength], o + 4);
@@ -500,7 +470,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
       const frame = surface.scRT._colorTexture;
       // A swapchain that is no copy source (a Lite without `copySource`)
       // has no glass rather than no frame.
-      if (!groups.some((g) => g.runs.length || g.layer) || !frame || !(frame.usage & GPUTextureUsage.COPY_SRC)) return 0;
+      if (!groups.length || !frame || !(frame.usage & GPUTextureUsage.COPY_SRC)) return 0;
       const [w, h] = [frame.width, frame.height];
       fit(w, h);
       const encoder = engine._currentEncoder;
@@ -536,33 +506,27 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
       for (const g of groups) {
         pass.setPipeline(panePipeline);
         pass.setBindGroup(0, paneGroup!);
-        for (const b of clipped) {
-          if (!g.runs.includes(runs[b.run])) continue;
+        const b = clipped.find((b) => b.run === g.run);
+        if (b) {
           pass.setScissorRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
           pass.draw(3, 1, 0, b.run);
           draws++;
         }
-        if (g.layer) {
-          pass.setScissorRect(0, 0, w, h);
-          ui!.ink(pass, g.layer);
-          draws += 2;
-        }
+        pass.setScissorRect(0, 0, w, h);
+        ui.ink(pass, g.layer);
+        draws += 2;
       }
       pass.end();
       return draws;
     },
     dispose() {
-      window.removeEventListener("pointerdown", press, true);
-      window.removeEventListener("pointermove", follow, true);
-      window.removeEventListener("pointerup", lift, true);
-      window.removeEventListener("pointercancel", lift, true);
       under?.destroy();
       uniforms.destroy();
     },
   };
   addTask(scene, task);
   buildFrameGraphTask(getFrameGraph(scene), task);
-  /** A press on the UI the GPU draws, which lights the glass as one on the page does. */
+  /** A press on the UI, which lights the glass. */
   const touchAt = (x: number, y: number, down: boolean) => {
     [touch.x, touch.y, touch.down] = [x, y, down];
   };
