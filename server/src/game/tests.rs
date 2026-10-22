@@ -220,7 +220,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
             // the last day's log, one line a move or a change of mind,
             // to read by hand.
             if std::env::var("TRACE").is_ok() && now >= (days - 1) * DAY_MS as u64 && (at, doing(world, id)) != last_doing[i] {
-                eprintln!("{i} {} {:?} {:?}", crate::card::card(world, id, now)["since"], at.map(|a| crate::card::card(world, a, now)["label"].to_string()), doing(world, id));
+                eprintln!("{i} {} {:?} {:?}", crate::card::hhmm(world.resident(id).unwrap().last_update), at.and_then(|a| world.building(a)).map(|b| b.kind), doing(world, id));
                 last_doing[i] = (at, doing(world, id));
             }
             if at != last[i] {
@@ -255,10 +255,10 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
 pub(crate) fn wants_nothing(world: &World, now: GameTime) {
     for e in world.objects.iter() {
         let GameObject::Resident(ref r) = e.object else { continue };
-        let card = crate::resident::inspect(world, e.id, now);
-        assert!(r.work.is_some(), "{card}");
-        let owed = |v: &&serde_json::Value| r.buckets.iter().any(|b| b.need.drain() > 0.0 && v["need"] == serde_json::json!(b.need)) && v["full"].as_f64() < Some(1.0);
-        assert!(card["buckets"].as_array().into_iter().flatten().filter(owed).all(|v| v["option"] != "nothing"), "{card}");
+        let needs = crate::resident::needs(world, e.id, now);
+        assert!(r.work.is_some(), "{needs:?}");
+        let owed = |n: &&crate::card::NeedLine| r.buckets.iter().any(|b| b.need.drain() > 0.0 && b.need == n.need) && n.full < 1.0;
+        assert!(needs.iter().filter(owed).all(|n| n.option.is_some()), "{needs:?}");
     }
 }
 

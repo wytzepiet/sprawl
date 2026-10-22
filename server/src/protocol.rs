@@ -1014,6 +1014,8 @@ pub enum ClientMessage {
     Cancel { #[ts(type = "number")] order: u64 },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
+    /// The card of one thing on the map, asked for again while it is open.
+    Card(#[ts(type = "number")] EntityId),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
@@ -1142,6 +1144,8 @@ pub enum ServerMessage {
     /// The market's prices, its week and the orders waiting: on joining,
     /// and whenever they change.
     Market(crate::market::Prices),
+    /// The answer to a `Card`.
+    Card(crate::card::Card),
 }
 
 /// A line of news, and the building a tap on it goes to.

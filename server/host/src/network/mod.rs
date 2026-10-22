@@ -32,8 +32,6 @@ pub enum Command {
 pub enum Debug {
     /// A building's lot: its spots, their windows, and what it has seen.
     Lot(EntityId),
-    /// The card for one thing on the map, whatever it is.
-    Card(EntityId),
     /// The town's page: what it served and what crossed the door.
     Town,
     /// Every shipment, every timetable, every harbour's park and every

@@ -149,7 +149,7 @@ The order for the sessions after this one:
 
 0. **Tools to see and touch the game**, first, because everything after
    leans on them. What exists reads snapshots: `/health`, `/town`,
-   `/inspect/{id}`, the `/debug/…` routes, `bun run shots` of the
+   the `/debug/…` routes, `bun run shots` of the
    fixtures, the town and season tests. Missing:
    - **Acting**: built 2026-10-02, `bun run act` (`CLAUDE.md`): roads,
      buildings, demolition, the speed and the clock, on the running game,

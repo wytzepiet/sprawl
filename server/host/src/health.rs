@@ -49,12 +49,6 @@ pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>
     ask(&state, Debug::Lot(id)).await
 }
 
-/// The card for one thing on the map: what it is, who is in it, where
-/// every line points.
-pub async fn card(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
-    ask(&state, Debug::Card(id)).await
-}
-
 /// Every shipment, every timetable and every harbour's park: `/sea`.
 pub async fn sea(State(state): State<AppState>) -> String {
     ask(&state, Debug::Sea).await

@@ -9,7 +9,6 @@ use crate::world::pathfinding::Routes;
 use crate::protocol::{EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
-use serde_json::{json, Value};
 use std::collections::BinaryHeap;
 use crate::fixed::HashMap;
 
@@ -531,57 +530,27 @@ fn drive(
     }
 }
 
-/// The arithmetic, made visible: what one resident owes, and what every
-/// option scores right now. The model's failure mode is quiet, and this is
-/// the only way to watch it think. Read-only — the buckets are shown as they
-/// stood at the last wake, not settled.
-pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
-    let Some(r) = world.resident(id) else { return json!({ "error": "no such resident" }) };
-    let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
+/// The arithmetic, made visible: what one resident owes, need by need, and
+/// where each would be met right now. The model's failure mode is quiet,
+/// and this is the only way to watch it think. Read-only — the buckets as
+/// they stood at the last wake, not settled. Nothing while off the map.
+pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<crate::card::NeedLine> {
+    let Some((r, at)) = world.resident(id).and_then(|r| Some((r, r.at?))) else { return Vec::new() };
     let crowd = headcount(world);
     let buckets = buckets(world, r);
     let verdicts = verdicts(world, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
-    json!({
-        "id": id,
-        "now": crate::card::hhmm(now),
-        "at": at,
-        "at_kind": whereabouts(world, at),
-        "home": r.home,
-        "work": r.work,
-        "selected": r.selected,
-        "last_update": crate::card::hhmm(r.last_update),
-        "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
-            "need": b.need,
-            "short_h": b.stock.short() / HOUR as f64,
-            "full": 1.0 - b.stock.weight(),
-            "option": v.describe(now),
-        })).collect::<Vec<_>>(),
-    })
-}
-
-impl Verdict {
-    fn describe(&self, now: GameTime) -> Value {
-        match *self {
-            Verdict::Go { score, departure, leave, building, rate, .. } => json!({
-                "building": building,
-                "rate": rate,
-                "score": score,
-                "departure": crate::card::hhmm(departure),
-                "wait_h": (departure - now) as f64 / HOUR as f64,
-                "leave": crate::card::hhmm(leave),
-            }),
-            Verdict::Nothing => json!("nothing"),
-        }
-    }
-}
-
-/// What kind of place `at` is — a building by kind, or the car.
-fn whereabouts(world: &World, at: EntityId) -> String {
-    match world.objects.get(at).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => format!("{:?}", b.kind),
-        Some(GameObject::Car(_)) => "Car".into(),
-        _ => "gone".into(),
-    }
+    buckets
+        .iter()
+        .zip(&verdicts)
+        .map(|(b, v)| crate::card::NeedLine {
+            need: b.need,
+            full: 1.0 - b.stock.weight(),
+            option: match *v {
+                Verdict::Go { building, .. } => Some(building),
+                Verdict::Nothing => None,
+            },
+        })
+        .collect()
 }
 
 /// A trip's end: what it burned comes off the tank.

@@ -128,7 +128,6 @@ fn inspect(game: &mut Game, query: Debug) -> String {
     let (world, now) = (&mut game.world, game.now);
     let v = match query {
         Debug::Lot(id) => world.inspect_lot(id, now),
-        Debug::Card(id) => sprawl::card::card(world, id, now),
         Debug::Town => sprawl::economy::town(world, now),
         Debug::Sea => sprawl::haul::inspect(world, now),
         Debug::Map { x, y, r } => sprawl::fixtures::draw(world, x, y, r).into(),

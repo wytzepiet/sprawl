@@ -130,6 +130,10 @@ impl Game {
                 let world = (self.fresh)();
                 self.replace(world);
             }
+            ClientMessage::Card(id) => {
+                let card = crate::card::card(&self.world, id, self.now);
+                self.send(client_id, ServerMessage::Card(card));
+            }
             ClientMessage::Ask(ask) => {
                 let Some(owner) = self.clients.get(&client_id).map(|cs| cs.owner) else { return };
                 let hint = crate::hint::answer(&self.world, owner, ask);

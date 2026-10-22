@@ -5,28 +5,9 @@ import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/s
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { quoteOf, total } from "../state/market";
-import { Btn, coins, GoodDot, Section, StepBar, type Link } from "./kit";
+import { Btn, coins, GoodDot, Section, StepBar } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
-import type { Building, BuildingKind, Good, Stock } from "../generated";
-
-/** A depot as a site's card lists it (`card.rs`). */
-export interface DepotLine {
-  depot: Link;
-  tiles: number;
-  joined: boolean;
-  stocks: Partial<Record<Good, number>>;
-}
-
-/** A maker of one of a site's materials, as its card lists it (`card.rs`). */
-export interface MakerLine {
-  maker: Link;
-  kind: BuildingKind;
-  good: Good;
-  level: number;
-  tiles: number;
-}
-
-type Call = { good: Good; answered_by: Link | null };
+import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../generated";
 
 /**
  * A site's card: each material it waits on, and where that is — on the
@@ -35,7 +16,7 @@ type Call = { good: Good; answered_by: Link | null };
  * bought at the market, on the next ferry.
  * docs/game.md §Buildings.
  */
-export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
+export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
   const materials = () => (Object.entries(props.site) as [Good, Stock][]).filter(([, s]) => s);
   const short = (s: Stock) => Math.max(0, Math.ceil(s.cap - s.level));
   const waiting = () => materials().filter(([, s]) => short(s) > 0);
@@ -69,7 +50,7 @@ export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: 
 }
 
 /** Where a material a site waits on is, and the fix where it is stuck. */
-function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
+function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
   const { send, growth } = useGame();
   const g = () => props.good;
   const label = () => GOODS[g()].label;

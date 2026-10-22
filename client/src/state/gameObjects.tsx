@@ -1,7 +1,9 @@
 import {
   createContext,
   useContext,
+  createEffect,
   createSignal,
+  on,
   onCleanup,
   type ParentProps,
 } from "solid-js";
@@ -11,9 +13,11 @@ import { syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
 import { hearMarket, hearStocks } from "./market";
 import { hearMissions } from "./missions";
+import { selected } from "./selection";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
 import type { Building,
+  Card,
   GameObjectEntry,
   GridCoord,
   Hint,
@@ -137,6 +141,11 @@ export function listenHints(fn: HintListener): () => void {
   hintListeners.add(fn);
   return () => void hintListeners.delete(fn);
 }
+
+// --- The card of whatever is selected (`card.rs`) ---
+
+const [card, setCard] = createSignal<Card | null>(null);
+export { card };
 
 // --- Ops listener for ECS ---
 
@@ -314,8 +323,24 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
       case "Market":
         hearMarket(msg.data);
         break;
+      case "Card":
+        // An answer still on its way for what was selected before is not
+        // this one's.
+        if (msg.data.id === selected()) setCard(msg.data);
+        break;
     }
   });
+
+  // The selected thing's card, asked for now and every second after. The
+  // card before stays until the next comes, so the sheet does not sink and
+  // rise again between them.
+  createEffect(on(selected, (id) => {
+    if (id === null) return setCard(null);
+    const ask = () => send({ type: "Card", data: id });
+    ask();
+    const timer = setInterval(ask, 1000);
+    onCleanup(() => clearInterval(timer));
+  }));
 
   onCleanup(close);
 

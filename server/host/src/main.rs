@@ -25,7 +25,6 @@ async fn main() {
         .route("/ws", axum::routing::get(network::ws_handler))
         .route("/health", axum::routing::get(health::health))
         .route("/debug/lot/{id}", axum::routing::get(health::inspect_lot))
-        .route("/inspect/{id}", axum::routing::get(health::card))
         .route("/town", axum::routing::get(health::town))
         .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
