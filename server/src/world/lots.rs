@@ -27,6 +27,7 @@ use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, GridCoord, Pose};
 use serde_json::{json, Value};
 use crate::world::World;
+use crate::world::bezier::LANE_OFFSET;
 use crate::world::segments::EdgeSegment;
 
 /// A driveway spot: how far out from the plot's centre a car's centre
@@ -37,12 +38,10 @@ const SPOT_OUT: f64 = 0.47;
 const LANE: f64 = 0.11;
 /// A kerb bay along the kerb: how far a parked car's middle is from its
 /// street's middle line, wholly off the road, and how far apart the bays
-/// are along it, a car and room to get in and out (a bay's length); and the middle of the lane beside it
-/// (`LANE_OFFSET` in the client's `roadGeometry.ts`). The client paves
-/// them from the same numbers (`town/surface.ts`).
+/// are along it, a car and room to get in and out (a bay's length). The
+/// client paves them from the same numbers (`town/surface.ts`).
 const KERB: f64 = 0.305;
 const ALONG_PITCH: f64 = 0.42;
-const KERB_LANE: f64 = 0.1;
 /// A bay square to the kerb: its middle this far from the street's middle
 /// line, the car's tail at the road's edge, so a strip of pavement is left
 /// between it and the building; how far apart, a car and a door's swing (a bay's width); and the
@@ -561,18 +560,18 @@ impl World {
                         // nose first. Out: backed round into the lane.
                         let arc = |lane: f64, t: f64| p(d - TURN + TURN * t.sin(), lane + TURN - TURN * t.cos());
                         let third = |k: usize| (k as f64 / 3.0) * std::f64::consts::FRAC_PI_2;
-                        let mut lead = vec![p(d - TURN - 0.25, -KERB_LANE)];
-                        lead.extend((1..3).map(|k| arc(-KERB_LANE, third(k))));
-                        lead.push(p(d, TURN - KERB_LANE));
-                        let mut back: Vec<[f64; 2]> = (1..3).rev().map(|k| arc(KERB_LANE, third(k))).collect();
-                        back.push(p(d - TURN, KERB_LANE));
+                        let mut lead = vec![p(d - TURN - 0.25, -LANE_OFFSET)];
+                        lead.extend((1..3).map(|k| arc(-LANE_OFFSET, third(k))));
+                        lead.push(p(d, TURN - LANE_OFFSET));
+                        let mut back: Vec<[f64; 2]> = (1..3).rev().map(|k| arc(LANE_OFFSET, third(k))).collect();
+                        back.push(p(d - TURN, LANE_OFFSET));
                         let out_backs = back.len();
                         return KerbSide { entry, ahead: here, exit, lead, backs: 0, heading: (-dy as f64).atan2(-dx as f64), out: back, out_backs, path: Vec::new(), out_path: Vec::new() };
                     }
                     let (lead, backs) = match (d > 0.5, across) {
                         (true, _) => (vec![p(d - 0.4, KERB)], 0),
-                        (false, false) => (vec![p(d + 0.4, KERB_LANE), p(d + 0.25, KERB)], 2),
-                        (false, true) => (vec![p(d + 0.7, KERB_LANE), p(d + 0.15, KERB)], 2),
+                        (false, false) => (vec![p(d + 0.4, LANE_OFFSET), p(d + 0.25, KERB)], 2),
+                        (false, true) => (vec![p(d + 0.7, LANE_OFFSET), p(d + 0.15, KERB)], 2),
                     };
                     KerbSide { entry, ahead: exit, exit, lead, backs, heading: wy.atan2(wx), out: Vec::new(), out_backs: 0, path: Vec::new(), out_path: Vec::new() }
                 })
@@ -1305,7 +1304,7 @@ mod tests {
             let out = world.way_out(a).unwrap();
             assert_eq!(world.backs_out(a), out.len() - 2, "backed out round into the lane");
             let (lane, exit) = (world.node_pos(out[out.len() - 2]).unwrap(), world.node_pos(out[out.len() - 1]).unwrap());
-            assert!((lane[1] - (0.5 + KERB_LANE)).abs() < 1e-9 && sign * (exit[0] - lane[0]) > 0.0, "in the lane, and on: {lane:?} to {exit:?}");
+            assert!((lane[1] - (0.5 + LANE_OFFSET)).abs() < 1e-9 && sign * (exit[0] - lane[0]) > 0.0, "in the lane, and on: {lane:?} to {exit:?}");
         }
     }
 

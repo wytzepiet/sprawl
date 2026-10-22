@@ -8,6 +8,7 @@ use crate::engine::event_queue::EventQueue;
 use crate::intersection::{IntersectionRegistry, TRACK_POINTS};
 use crate::protocol::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
 use crate::world::{World, chunk_of};
+use crate::world::bezier::LANE_OFFSET;
 
 /// End a car's trip and leave it parked at a building: road bookkeeping
 /// cleaned up, trip gone, position at the building it now sits by.
@@ -528,15 +529,11 @@ impl Gates {
 /// one way, the right lane or the left; a one-way, its middle.
 fn lane_offset(world: &World, a: EntityId, b: EntityId, lane: u8) -> f64 {
     match world.edges.get(&(a, b)) {
-        Some(s) if s.lanes > 1 => if lane == 0 { LANE } else { -LANE },
-        _ if world.edges.contains_key(&(b, a)) => LANE,
+        Some(s) if s.lanes > 1 => if lane == 0 { LANE_OFFSET } else { -LANE_OFFSET },
+        _ if world.edges.contains_key(&(b, a)) => LANE_OFFSET,
         _ => 0.0,
     }
 }
-
-/// How far a lane keeps from its road's middle, in tiles: as the client
-/// draws them.
-const LANE: f64 = 0.11;
 
 /// A junction's arms, if it has lights: the way to each neighbour.
 fn light_arms(world: &World, junction: EntityId) -> Option<Vec<(i32, i32)>> {
