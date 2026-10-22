@@ -225,7 +225,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.
 - **Generated types:** a full `cargo test` in `server/` writes them into
-  `client/src/generated` (`server/.cargo/config.toml`); `cd client && bun
+  `client/src/generated` (`server/.cargo/config.toml`), and beside them
+  `rows.ts`, the blueprints' game columns the client reads; `cd client && bun
   run generate` also clears the ones whose type went and lists the rest
   in its `index.ts`.
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`; a save

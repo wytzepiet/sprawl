@@ -84,3 +84,4 @@ export type * from "./Trip";
 export type * from "./TripLine";
 export type * from "./WantView";
 export type * from "./When";
+export type * from "./rows";

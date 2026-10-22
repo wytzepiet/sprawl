@@ -1,9 +1,11 @@
+import { PER_BOX, ROWS } from "./generated/rows";
 import type { Building, BuildingKind, Good, GridCoord } from "./generated";
 
 /**
  * Every kind of building, one row each, as the client draws it: its colour,
  * its glyph, and the shape it stands as on the map. The server's
- * `blueprint.rs` holds what a kind *does*; this holds what it looks like.
+ * `blueprint.rs` holds what a kind *does*, and writes the columns the
+ * client reads of it (`generated/rows.ts`); this holds what it looks like.
  * Adding a kind is one row in each.
  *
  * Colours are chosen mid-dark so a white glyph reads on them, and spread far
@@ -14,7 +16,7 @@ import type { Building, BuildingKind, Good, GridCoord } from "./generated";
 export const TABS = ["trade", "homes", "shops", "work", "services"] as const;
 export type Tab = (typeof TABS)[number];
 
-export interface Blueprint {
+interface Look {
   label: string;
   /** What it does, for its page in the build menu. */
   about: string;
@@ -29,21 +31,17 @@ export interface Blueprint {
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
   heights: number[];
-  /** What it is built from, a material each and how much, which a
-   *  depot's vans bring to its site; none stands at once (`blueprint.rs`'s
-   *  `materials`). */
-  materials: Partial<Record<Good, number>>;
   /** Which shelf of the build menu it stands on. */
   tab: Tab;
-  /** The building's own footprint in tiles, wide along its frontage. */
-  size: [number, number];
-  /** Its yard in tiles along the frontage and deep, on the street side; [0, 0] is none: it parks on its drive. */
-  lot: [number, number];
-  /** A harbour: a quay along its back wall, out over the water, where the ferry berths. */
-  quay?: boolean;
-  /** What its hands make into its yard, for a depot's lorry (`blueprint.rs`'s `makes`). */
-  makes?: Good;
 }
+
+/** A kind's look, and the server's columns of its row: what it is built
+ *  from, which a depot's vans bring to its site, none standing at once;
+ *  its footprint in tiles, wide along its frontage; its yard, along the
+ *  frontage and deep, on the street side, [0, 0] none, parking on its
+ *  drive; and a harbour's quay, along its back wall, where the ferry
+ *  berths. */
+export type Blueprint = Look & (typeof ROWS)[BuildingKind];
 
 /** The four ways a plot can lie: which side the lot and street are on. */
 export const FACINGS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -131,7 +129,7 @@ export function standing(b: Building): { at: [number, number]; size: [number, nu
 /** Where a building stands: the middle of its bounds, its yard left out. */
 export const middle = (b: Building): [number, number] => standing(b).at;
 
-export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
+const LOOKS: Record<BuildingKind, Look> = {
   Harbour: {
     label: "Harbour",
     about: "The town's door. The ferry lands settlers and boxes on its quay and takes boxes away. Built on the coast with its back to the sea, from nothing.",
@@ -141,10 +139,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
     shape: "box",
     heights: [0.5],
-    materials: {}, tab: "trade",
-    size: [3, 0],
-    lot: [3, 2],
-    quay: true,
+    tab: "trade",
   },
   Depot: {
     label: "Depot",
@@ -155,9 +150,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
     shape: "box",
     heights: [0.6],
-    materials: { Timber: 10 }, tab: "trade",
-    size: [2, 2],
-    lot: [3, 2],
+    tab: "trade",
   },
   House: {
     label: "House",
@@ -168,9 +161,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z",
     shape: "gabled",
     heights: [0],
-    materials: { Timber: 4 }, tab: "homes",
-    size: [1, 1],
-    lot: [0, 0],
+    tab: "homes",
   },
   Apartment: {
     label: "Apartment",
@@ -181,9 +172,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M5 2h14v20H5zM8 5h3v3H8zM13 5h3v3h-3zM8 10h3v3H8zM13 10h3v3h-3zM8 15h3v3H8zM13 15h3v3h-3zM10.5 19h3v3h-3z",
     shape: "box",
     heights: [0.85, 1.15, 1.5],
-    materials: { Timber: 12, Stone: 8 }, tab: "homes",
-    size: [2, 1],
-    lot: [0, 0],
+    tab: "homes",
   },
   Shop: {
     label: "Shop",
@@ -195,9 +184,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
       "M3 3h18l2 5.5a2.5 2.5 0 0 1-4.7 1.2A2.5 2.5 0 0 1 14.2 9.7a2.5 2.5 0 0 1-4.4 0 2.5 2.5 0 0 1-4.1 0A2.5 2.5 0 0 1 1 8.5zM4 12h16v10H4zM6 14h6v4H6zM14 14h4v8h-4z",
     shape: "box",
     heights: [0.45, 0.55],
-    materials: { Timber: 4 }, tab: "shops",
-    size: [1, 1],
-    lot: [0, 0],
+    tab: "shops",
   },
   Office: {
     label: "Office",
@@ -211,9 +198,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // Tall, and worth varying: a few towers among them is what gives a
     // business district a skyline instead of a plateau.
     heights: [1.0, 1.45, 2.3],
-    materials: { Timber: 10, Stone: 6 }, tab: "work",
-    size: [2, 1],
-    lot: [0, 0],
+    tab: "work",
   },
   Factory: {
     label: "Factory",
@@ -224,9 +209,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M17 2h4v8.5l-4 0zM2 22V10.5l6 3v-3l6 3v-3l6 3V22zM5 16h3v3H5zM10 16h3v3h-3zM15 16h3v3h-3z",
     shape: "sawtooth",
     heights: [0],
-    materials: { Timber: 14, Stone: 8 }, tab: "work",
-    size: [2, 1],
-    lot: [0, 0],
+    tab: "work",
   },
   GasStation: {
     label: "Gas station",
@@ -237,9 +220,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M3 2h11v20H3zM5.5 4.5h6v5h-6zM15.5 7h2.2l3.3 3.3V19a2.5 2.5 0 0 1-5 0v-1h2v1a.5.5 0 0 0 1 0v-7.9L17 9.2h-1.5z",
     shape: "box",
     heights: [0.3],
-    materials: { Timber: 6, Stone: 4 }, tab: "services",
-    size: [1, 1],
-    lot: [0, 0],
+    tab: "services",
   },
   Supermarket: {
     label: "Supermarket",
@@ -250,9 +231,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M12 2.5c3 0 5.5 2.4 6.3 5.5H21l-2 13H5L3 8h2.7C6.5 4.9 9 2.5 12 2.5zm0 2c-1.9 0-3.5 1.5-4.2 3.5h8.4C15.5 6 13.9 4.5 12 4.5zM7.5 11h1.6v6H7.5zm3.7 0h1.6v6h-1.6zm3.7 0h1.6v6h-1.6z",
     shape: "box",
     heights: [0.5],
-    materials: { Timber: 16, Stone: 10 }, tab: "services",
-    size: [2, 2],
-    lot: [0, 0],
+    tab: "services",
   },
   Farm: {
     label: "Farm",
@@ -263,10 +242,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M12 2 21 8.5V22H3V8.5zM10.5 6.5h3v3h-3zM8 13h8v9H8zm1.6 1.6v5.8h4.8v-5.8z",
     shape: "box",
     heights: [0.4],
-    materials: { Timber: 8 }, tab: "work",
-    makes: "Crates",
-    size: [3, 2],
-    lot: [2, 2],
+    tab: "work",
   },
   Sawmill: {
     label: "Sawmill",
@@ -277,10 +253,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M12 2l1.6 2.2 2.6-.8.4 2.7 2.7.4-.8 2.6L20.7 11l-2.2 1.6.8 2.6-2.7.4-.4 2.7-2.6-.8L12 19.7l-1.6-2.2-2.6.8-.4-2.7-2.7-.4.8-2.6L3.3 11l2.2-1.6-.8-2.6 2.7-.4.4-2.7 2.6.8zm0 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM3 20h18v2H3z",
     shape: "box",
     heights: [0.35],
-    materials: { Timber: 6 }, tab: "work",
-    makes: "Timber",
-    size: [2, 2],
-    lot: [2, 2],
+    tab: "work",
   },
   Quarry: {
     label: "Quarry",
@@ -291,49 +264,44 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     glyph: "M2 21 8 7l3 4 4-7 7 17zM9.5 13.5l2 2.5 2-3.5 2.5 5.5h-8zM3 22h18v1H3z",
     shape: "box",
     heights: [0.3],
-    materials: { Timber: 8 }, tab: "work",
-    makes: "Stone",
-    size: [2, 2],
-    lot: [2, 2],
+    tab: "work",
   },
 };
+
+export const BLUEPRINTS = Object.fromEntries(Object.entries(LOOKS).map(([k, look]) => [k, { ...look, ...ROWS[k as BuildingKind] }])) as Record<BuildingKind, Blueprint>;
 
 /** Every kind the mayor may put down, the opening's first: the harbour, the depot. */
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
 
 /**
  * Every good, as the client shows it: its name, its colour, its glyph, and
- * `box` units to a box (`Good::per_box`). What it trades at is the
+ * `box` units to a box (`Good::per_box`, `generated/rows.ts`). What it trades at is the
  * server's, a deal at a time (`Sea::offers`).
  */
-export const GOODS: Record<Good, { label: string; color: string; glyph: string; box: number }> = {
+const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> = {
   Timber: {
     label: "timber",
     color: "#B07A3E",
     // Three logs stacked, their ends ringed.
     glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
-    box: 20,
   },
   Crates: {
     label: "crates",
     color: "#5E9E52",
     // A crate: its lid and two slats.
     glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
-    box: 100,
   },
   Stone: {
     label: "stone",
     color: "#737A83",
     // A heap of broken rock, three stones on a pile.
     glyph: "M2 21l3.5-6 4 1 2.5-5 4 2 2.5 3.5L22 21zM7 9.5l3-3 3.5 1.5L12 11l-4 .5zM14.5 6.5 17 4l3 2-1 3.5-3 .5z",
-    box: 20,
   },
   Fuel: {
     label: "fuel",
     color: "#D4513B",
     // A jerrycan: its handle and spout.
     glyph: "M8 2h6v3h-6zM5 6h11l3 3v13H5zm3 5v8h8v-8zM17 2.5l3 3-1.5 1.5-3-3z",
-    box: 50,
   },
 };
-
+export const GOODS = Object.fromEntries(Object.entries(GOOD_LOOKS).map(([g, look]) => [g, { ...look, box: PER_BOX[g as Good] }])) as Record<Good, (typeof GOOD_LOOKS)[Good] & { box: number }>;

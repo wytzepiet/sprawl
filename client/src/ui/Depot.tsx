@@ -3,11 +3,8 @@ import { createMemo, createSignal, Index, Show } from "solid-js";
 import { buildingAt, getEntity, useGame } from "../state/gameObjects";
 import { load, now, until } from "../state/sea";
 import { Btn, coins, Follow, Section } from "./kit";
+import { LORRY_PRICE, MORE_LORRIES } from "../generated/rows";
 import type { Building, Car } from "../generated";
-
-/** What another lorry costs from the world, and how many a depot may buy (`haul.rs`). */
-const LORRY_PRICE = 40;
-const MORE_LORRIES = 3;
 
 /** A building of the client's, read again four times a second. */
 const building = (id: number) =>
