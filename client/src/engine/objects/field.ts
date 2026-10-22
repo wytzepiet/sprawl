@@ -1,7 +1,7 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
 import type { Casters } from "../DayNightCycle";
-import { drop, meshOf, show } from "../geometry";
+import { drop, meshOf } from "../geometry";
 import { grain } from "../ground";
 import { townMaterial, type TownMaterial } from "../material";
 import { LAYER_ORDER } from "../town/draw";
@@ -251,7 +251,7 @@ class Strips {
       mesh.renderOrder = LAYER_ORDER.field;
       setMeshAttribute(ctx.engine, mesh, "strip", data);
       setMeshAttribute(ctx.engine, mesh, "stripTex", tex);
-      show(ctx.scene, mesh);
+      addToScene(ctx.scene, mesh);
       return mesh;
     });
     for (const crop of this.crops) casters.add(crop);

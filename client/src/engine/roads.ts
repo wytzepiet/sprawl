@@ -1,6 +1,6 @@
-import { markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { addToScene, markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
 import { setTint, townMaterial, type TownMaterial } from "./material";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import { theme } from "./theme";
 import { Atlas } from "./atlas";
 import { grain } from "./ground";
@@ -243,7 +243,7 @@ export class RoadTiles {
       return { mesh, material, matrices, slots, lifts, keys: [], dirty: false };
     });
     this.atlas.upload();
-    for (const kind of this.kinds) show(scene, kind.mesh);
+    for (const kind of this.kinds) addToScene(scene, kind.mesh);
   }
 
   /** The tile at (x, y) asphalt of this shape, in place of whatever was;

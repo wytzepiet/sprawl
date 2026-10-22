@@ -1,5 +1,5 @@
-import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
-import { drop, meshOf, show, type MeshGeometry } from "./geometry";
+import { addToScene, type EngineContext, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { rgb, type Rgb } from "./rgb";
 import { CHAMFER, CUT } from "./kerbs";
@@ -140,7 +140,7 @@ export class Decks {
       const mesh = meshOf(this.engine, name, geo);
       mesh.material = this.materials[i];
       mesh.receiveShadows = true;
-      show(this.scene, mesh);
+      addToScene(this.scene, mesh);
       this.casters?.add(mesh);
       this.meshes.push(mesh);
     }

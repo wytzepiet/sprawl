@@ -1,9 +1,9 @@
-import type { Mesh } from "@babylonjs/lite";
+import { addToScene, type Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import * as Comlink from "comlink";
 import { theme } from "./theme";
 import {
@@ -267,7 +267,7 @@ export class TerrainChunks {
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
-      show(scene, mesh);
+      addToScene(scene, mesh);
       if (shadows.cast) this.casters.add(mesh);
       chunk.meshes.push(mesh);
       return mesh;

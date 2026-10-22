@@ -1,8 +1,8 @@
-import { markMaterialUboDirty, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { addToScene, markMaterialUboDirty, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import type { Area } from "./cull";
 import { lacquer } from "./bevel";
 import { COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS } from "./crowns";
@@ -320,7 +320,7 @@ export function plant(ctx: EngineContext, g: Grove, matrices: Float32Array, colo
     setThinInstanceColors(mesh, colors);
     if (!fresh) continue;
     ctx.cull.keep(mesh, area);
-    show(ctx.scene, mesh);
+    addToScene(ctx.scene, mesh);
     // What of it casts: a broadleaf its card and its crown, which costs no
     // frame (it stands still, and the shadows' cache keeps it); a conifer
     // its card alone, as its layered top is not one surface.

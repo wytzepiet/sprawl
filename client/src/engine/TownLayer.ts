@@ -1,4 +1,4 @@
-import type { Mesh } from "@babylonjs/lite";
+import { addToScene, type Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
@@ -6,7 +6,7 @@ import { ROOF } from "./roofs";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { setTint, townMaterial, type TownMaterial } from "./material";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import { hex, rgb, WHITE, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
 import { areaOf, CHUNK, grow, kerbed, MARGIN, turned, widen, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
@@ -520,7 +520,7 @@ export class TownLayer {
       mesh.position.y = oy;
       mesh.receiveShadows = true;
       this.ctx.cull.keep(mesh, area);
-      show(scene, mesh);
+      addToScene(scene, mesh);
       if (p.name === "mass") this.casters.add(mesh);
       meshes.push(mesh);
     }

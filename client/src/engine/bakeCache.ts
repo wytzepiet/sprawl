@@ -34,7 +34,7 @@ function open(): Promise<IDBDatabase> {
 /** What the bake worker bakes of that name (`bakeWorker.ts`), a worker
  *  each, so bakes run side by side; kept under the name by its recipe's
  *  source. */
-export function baked(name: Bake, recipe: string): Promise<Uint8Array> {
+function baked(name: Bake, recipe: string): Promise<Uint8Array> {
   return cached(name, versionOf(recipe), () => new Promise((done) => {
     const w = new Worker(new URL("./bakeWorker.ts", import.meta.url), { type: "module" });
     w.onmessage = ({ data }: MessageEvent<Uint8Array>) => (w.terminate(), done(data));

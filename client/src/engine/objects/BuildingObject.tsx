@@ -63,7 +63,7 @@ export function mountBuilding(
   const [dx, dy] = FACINGS[data.facing % 4];
   const put = (name: string, [w, l, h]: number[], colour: Rgb, [x, y]: number[], [ox, oy]: number[], across: number, out: number, z: number) => {
     const key = `${name}_${w}_${l}_${h}${look.key}`;
-    pool.ensureBucket(key, boxGeometry(w, l, h), look.tint(colour), look.castShadow, true);
+    pool.ensureBucket(key, boxGeometry(w, l, h), look.tint(colour), true, true);
     placed.push({ key, id: pool.addInstance(key, [x - oy * across + ox * out, y + ox * across + oy * out, z + h / 2], [0, 0, Math.atan2(oy, ox) - Math.PI / 2]) });
   };
 

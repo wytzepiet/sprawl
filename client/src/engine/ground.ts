@@ -1,6 +1,6 @@
-import { createTexture2DFromPixels, updateTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
 import { townMaterial, type TownMaterial } from "./material";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import { WHITE, type Rgb } from "./rgb";
 import type { Culler } from "./cull";
 import { Atlas } from "./atlas";
@@ -10,7 +10,7 @@ import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_SIDE, RIPPLE_TILES } from "./sand";
 import recipe from "./sand.ts?raw";
-import { baked } from "./bakeCache";
+import { bakedTexture } from "./bakeCache";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
@@ -141,24 +141,14 @@ export function grain(engine: EngineContext): Texture2D {
 
 /** The sand's ripples, an engine's: level until the worker has baked them,
  *  or read back from the last bake (`bakeCache.ts`). */
-const SANDS = new WeakMap<EngineContext, Texture2D>();
-function sand(engine: EngineContext): Texture2D {
-  let texture = SANDS.get(engine);
-  if (!texture) {
-    const level = new Uint8Array(RIPPLE_SIDE * RIPPLE_SIDE * 4);
-    for (let k = 0; k < level.length; k += 4) level.set([128, 128, 128, 255], k);
-    const made = createTexture2DFromPixels(engine, level, RIPPLE_SIDE, RIPPLE_SIDE, {
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "repeat",
-      addressModeV: "repeat",
-    });
-    SANDS.set(engine, (texture = made));
-    void baked("sand", recipe).then((data) => updateTexture2DFromPixels(engine, made, data));
-  }
-  return texture;
-}
+const sand = (engine: EngineContext): Texture2D =>
+  bakedTexture(engine, "sand", recipe, [RIPPLE_SIDE, RIPPLE_SIDE, new Uint8Array(RIPPLE_SIDE * RIPPLE_SIDE * 4).map((_, k) => (k % 4 < 3 ? 128 : 255))], {
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+    addressModeU: "repeat",
+    addressModeV: "repeat",
+  });
 
 /** A tile's share of a layer (`TileShape`'s key), baked: how far inside
  *  its outline, and how far inside its edges onto lower ground. */
@@ -390,7 +380,7 @@ export class GroundTiles {
     // Baked before it is shown, so the atlas holds its shapes when it is bound.
     this.atlas.upload();
     this.cull.keep(mesh, [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
-    show(this.scene, mesh);
+    addToScene(this.scene, mesh);
     this.chunks.set(key, mesh);
     if (old) this.replaced.push({ old, by: mesh });
   }

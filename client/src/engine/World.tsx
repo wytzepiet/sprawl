@@ -114,7 +114,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
       case "Building":
         return mountBuilding(entry, pool, ctx, theme, lookOf(entry));
       case "Car":
-        return mountCar(entry, pool, ctx, theme, SOLID);
+        return mountCar(entry, pool, ctx, theme);
       default:
         return null;
     }

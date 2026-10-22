@@ -7,7 +7,6 @@ import { boxGeometry } from "./buildings";
 import { carShape, ROUNDING } from "./carShape";
 import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
-import { SOLID, type Look } from "./look";
 import type { Fix } from "./drawnPath";
 import type { Theme } from "../theme";
 import { running as runs } from "./field";
@@ -45,12 +44,10 @@ const [PAINT_ROUGH, GLASS_ROUGH] = [0.18, 0.06];
 /** A car's, whose shape has its glass; a box's (a van, a lorry, a ferry), paint alone. */
 const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
 
-/** A bucket of a vehicle's shape in its colour as `look` has it, its
- *  material lacquered and its edges rounded tight (a lit bucket's is the
+/** A bucket of a vehicle's shape in its colour, its material lacquered and its edges rounded tight (a lit bucket's is the
  *  town's, `InstancePool`); its key. */
-export function paint(pool: InstancePool, name: string, geo: MeshGeometry, colour: Rgb, look: Look, coat = PAINT_COAT): string {
-  const key = name + look.key;
-  pool.ensureBucket(key, geo, look.tint(colour), look.castShadow, true, undefined, [coat]);
+export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT): string {
+  pool.ensureBucket(key, geo, colour, true, true, undefined, [coat]);
   const bucket = pool.finish(key)!;
   bucket.bevel.width = ROUNDING;
   lacquer(bucket.material, "car");
@@ -64,11 +61,11 @@ export const setCarColour = (f: typeof carColour) => (carColour = f);
 
 /** A car's bucket, its colour its own, or the level's for it, parked or
  *  not (`mountCar`). */
-function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look, car?: Car): string {
+function carBucket(pool: InstancePool, id: number, parked: boolean, car?: Car): string {
   const given = car && carColour?.(car);
-  if (given) return paint(pool, `car_x${[given.r, given.g, given.b].map((v) => Math.round(v * 255)).join("_")}${parked ? "p" : ""}`, carGeo, given, look, CLEAR_COAT);
+  if (given) return paint(pool, `car_x${[given.r, given.g, given.b].map((v) => Math.round(v * 255)).join("_")}${parked ? "p" : ""}`, carGeo, given, CLEAR_COAT);
   const c = colourOf(id);
-  return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], look, CLEAR_COAT);
+  return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], CLEAR_COAT);
 }
 
 /** A box (`sea.ts`) standing at a pose, its base at `z`, `k` of a box's
@@ -77,7 +74,7 @@ function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look, 
 export function placeBox(pool: InstancePool, shape: BoxPart[], p: Stand, z: number) {
   const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], z], [0, 0, q.heading - Math.PI / 2]];
   const parts = shape.map(({ key, geo, scale }) => {
-    const k = paint(pool, key, geo, WHITE, SOLID);
+    const k = paint(pool, key, geo, WHITE);
     return { key: k, id: pool.addInstance(k, ...placed(p), scale) };
   });
   return {
@@ -92,10 +89,9 @@ export function mountCar(
   pool: InstancePool,
   ctx: EngineContext,
   theme: Theme,
-  look: Look,
 ): () => void {
   const car = entry.object.data as Car;
-  if (car.role === "Truck" || car.role === "Van") return mountLorry(entry.id, car, pool, ctx, look);
+  if (car.role === "Truck" || car.role === "Van") return mountLorry(entry.id, car, pool, ctx);
   if (car.role === "Ferry") return mountFerry(entry.id, car, pool, ctx);
   if (car.role === "Tug") return mountTug(entry.id, car, pool, ctx);
   // A tractor is a box in the farm's green until it has a shape of its own.
@@ -103,7 +99,7 @@ export function mountCar(
   // Parked cars in buckets of their own: a bucket where one car moves is
   // drawn into the shadow map every frame, and one that stands still is not.
   const parked = !car.trip && !car.run;
-  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor, look) : carBucket(pool, entry.id, parked, look, car);
+  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor) : carBucket(pool, entry.id, parked, car);
   const z = CAR_Z;
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
@@ -156,8 +152,8 @@ export function mountCar(
  *  it has one, as `driver.ts` steers them; a bobtail cab alone, without.
  *  A van the same, rigid, its body short (`vanParts`): a flatbed with a
  *  builder's load on it, or a shop's in a closed box (`rigidShape`). */
-function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext, look: Look): () => void {
-  const cab = paint(pool, "lorry_cab", LORRY_SHAPE, LIVERY.cab, look);
+function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext): () => void {
+  const cab = paint(pool, "lorry_cab", LORRY_SHAPE, LIVERY.cab);
   const stand = (p: Pose): Stand => ({ at: [p.x, p.y], heading: p.heading });
   const drive = follow(id, car);
   if (!drive && !car.spot) return () => {};
@@ -195,14 +191,14 @@ function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
  *  their slots and the settlers' cars, two to a free slot, the first off
  *  at the land end, gone as each rolls off; all moving with it. */
 function mountFerry(id: number, car: Car, pool: InstancePool, ctx: EngineContext): () => void {
-  const hull = paint(pool, "ferry", FERRY_SHAPE, LIVERY.ferry, SOLID);
+  const hull = paint(pool, "ferry", FERRY_SHAPE, LIVERY.ferry);
   const sail = voyage(car);
   if (!sail && !car.spot) return () => {};
   const pose = (): Stand => (sail ? sail(simNow()) : car.spot!);
   const p0 = pose();
   const h = pool.addInstance(hull, [p0.at[0], p0.at[1], DECK_Z], [0, 0, p0.heading - Math.PI / 2]);
   const settler = (who: number) => (p: Stand) => {
-    const key = carBucket(pool, who, false, SOLID);
+    const key = carBucket(pool, who, false);
     const at = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], DECK_Z + CAR.h / 2], [0, 0, q.heading - Math.PI / 2]];
     const i = pool.addInstance(key, ...at(p));
     return { move: (q: Stand) => pool.updateInstance(key, i, ...at(q)), remove: () => pool.removeInstance(key, i) };
@@ -228,7 +224,7 @@ function mountFerry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
 /** The tug (`sea.ts`): on a move by the server's clock, or standing where
  *  its last one ended; the box on its hitch behind it. */
 function mountTug(id: number, car: Car, pool: InstancePool, ctx: EngineContext): () => void {
-  const key = paint(pool, "tug", TUG_SHAPE, TUG, SOLID);
+  const key = paint(pool, "tug", TUG_SHAPE, TUG);
   const move = car.shunt && car.spot ? shunting(car.shunt, car.spot, !!car.hitched) : null;
   if (!move && !car.spot) return () => {};
   const p0 = move ? move(simNow()) : { tug: car.spot!, box: behind(car.spot!) };
