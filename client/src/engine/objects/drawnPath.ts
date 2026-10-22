@@ -1,67 +1,86 @@
-/** A point on the map. */
-export type P = { x: number; y: number };
+import type { P } from "../geometry";
 
 const BEZIER_SAMPLES = 8;
 
-/** A point on a drawn path: where, which way, how far along. */
-export type Fix = { pos: [number, number, number]; rot: [number, number, number]; dist: number };
-
-/** A run of points, and where along it any distance falls: a point and
- *  the way it runs there, each point's way the sum of its two legs, read
- *  from the point before. */
-export class Polyline {
-  readonly distances: number[] = [0];
-  private ways: P[] = [];
-
-  constructor(readonly points: P[]) {
-    for (let i = 1; i < points.length; i++) this.distances.push(this.distances[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y));
-    for (let i = 0; i < points.length; i++) {
-      const [a, b] = [points[Math.max(0, i - 1)], points[Math.min(points.length - 1, i + 1)]];
-      const [x, y] = [b.x - a.x, b.y - a.y];
-      const l = Math.hypot(x, y) || 1;
-      this.ways.push({ x: x / l, y: y / l });
+/** A polyline measured: the point at any distance (straight on past either
+ *  end) and the way it runs there, and the distance of the point on it
+ *  nearest to a point, searched near a guess. */
+export function measure(points: P[]) {
+  const distances = [0];
+  for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+  const d = distances;
+  const length = d[d.length - 1];
+  const dir = (i: number): P => {
+    const [a, b] = [points[i], points[i + 1]];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  };
+  /** The first point at or past a distance along. */
+  const index = (s: number) => {
+    let lo = 1, hi = points.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (d[mid] < s) lo = mid + 1;
+      else hi = mid;
     }
-  }
-
-  get length(): number {
-    return this.distances[this.distances.length - 1];
-  }
-
-  /** The leg a share of the way along falls in, and how far into it. */
-  private find(share: number): [number, number] {
-    const d = Math.min(Math.max(0, share), 1) * this.length;
-    let i = 0;
-    while (i < this.distances.length - 2 && this.distances[i + 1] < d) i++;
-    const leg = this.distances[i + 1] - this.distances[i];
-    return [i, leg > 0 ? (d - this.distances[i]) / leg : 0];
-  }
-
-  pointAt(share: number): P {
-    const [i, t] = this.find(share);
-    const [a, b] = [this.points[i], this.points[Math.min(i + 1, this.points.length - 1)]];
-    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-  }
-
-  wayAt(share: number): P {
-    return this.ways[this.find(share)[0]];
-  }
+    return lo;
+  };
+  const at = (s: number): P => {
+    if (s <= 0) {
+      const u = dir(0);
+      return [points[0][0] + u[0] * s, points[0][1] + u[1] * s];
+    }
+    if (s >= length) {
+      const u = dir(points.length - 2);
+      const e = points[points.length - 1];
+      return [e[0] + u[0] * (s - length), e[1] + u[1] * (s - length)];
+    }
+    const i = index(s);
+    const t = (s - d[i - 1]) / (d[i] - d[i - 1] || 1);
+    return [points[i - 1][0] + (points[i][0] - points[i - 1][0]) * t, points[i - 1][1] + (points[i][1] - points[i - 1][1]) * t];
+  };
+  /** The distance along of the nearest point, from `back` behind a guess
+   *  to `reach` ahead of it; past either end, on the straight run on. */
+  const near = (p: P, guess: number, back: number, reach: number) => {
+    const [from, to] = [guess - back, guess + reach];
+    let best = guess, bd = Infinity;
+    const consider = (s: number, dd: number) => {
+      if (dd < bd) (bd = dd), (best = s);
+    };
+    for (const [a, u] of [[0, dir(0)], [length, dir(points.length - 2)]] as const) {
+      const e = a === 0 ? points[0] : points[points.length - 1];
+      const t = (p[0] - e[0]) * u[0] + (p[1] - e[1]) * u[1];
+      if (a === 0 ? t < 0 : t > 0) consider(a + t, Math.hypot(p[0] - e[0] - u[0] * t, p[1] - e[1] - u[1] * t));
+    }
+    for (let i = Math.max(1, index(from)); i < points.length && d[i - 1] <= to; i++) {
+      const [a, b] = [points[i - 1], points[i]];
+      const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
+      const l2 = ex * ex + ey * ey || 1;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / l2));
+      consider(d[i - 1] + t * (d[i] - d[i - 1]), Math.hypot(p[0] - a[0] - ex * t, p[1] - a[1] - ey * t));
+    }
+    return Math.max(from, Math.min(to, best));
+  };
+  /** The way the leg a distance along falls in runs, radians. */
+  const heading = (s: number) => {
+    const u = dir(index(s) - 1);
+    return Math.atan2(u[1], u[0]);
+  };
+  return { points, distances, length, at, near, heading };
 }
 
-export interface DrawnPath {
-  points: P[];
-  path: Polyline;
-  /** The distance along the path of each point. */
-  distances: number[];
+export type DrawnPath = ReturnType<typeof measure> & {
   /** The distance along the path where the car passes each node — through
    *  the middle of the curve at a corner. */
   atNode: number[];
-  length: number;
-  at(dist: number, z: number): Fix;
-}
+  /** Where it passes node `k`, a fraction of the way on to the next
+   *  between two: as far along as that. */
+  passing(k: number): number;
+};
 
 function quadBezier(a: P, control: P, b: P, t: number): P {
   const mt = 1 - t;
-  return { x: mt * mt * a.x + 2 * mt * t * control.x + t * t * b.x, y: mt * mt * a.y + 2 * mt * t * control.y + t * t * b.y };
+  return [mt * mt * a[0] + 2 * mt * t * control[0] + t * t * b[0], mt * mt * a[1] + 2 * mt * t * control[1] + t * t * b[1]];
 }
 
 /**
@@ -73,28 +92,28 @@ function offsetNodes(nodes: P[], offsets: number | number[], fromLot: number, to
   const result: P[] = [];
   for (let i = 0; i < nodes.length; i++) {
     if (i < fromLot || i >= nodes.length - toLot) {
-      result.push({ ...nodes[i] });
+      result.push(nodes[i]);
       continue;
     }
     let dx = 0,
       dy = 0;
     if (i > 0) {
-      dx += nodes[i].x - nodes[i - 1].x;
-      dy += nodes[i].y - nodes[i - 1].y;
+      dx += nodes[i][0] - nodes[i - 1][0];
+      dy += nodes[i][1] - nodes[i - 1][1];
     }
     if (i < nodes.length - 1) {
-      dx += nodes[i + 1].x - nodes[i].x;
-      dy += nodes[i + 1].y - nodes[i].y;
+      dx += nodes[i + 1][0] - nodes[i][0];
+      dy += nodes[i + 1][1] - nodes[i][1];
     }
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len < 1e-9) {
-      result.push({ ...nodes[i] });
+      result.push(nodes[i]);
       continue;
     }
     const offset = typeof offsets === "number" ? offsets : offsets[i];
     const rx = (-dy / len) * offset;
     const ry = (dx / len) * offset;
-    result.push({ x: nodes[i].x + rx, y: nodes[i].y + ry });
+    result.push([nodes[i][0] + rx, nodes[i][1] + ry]);
   }
   return result;
 }
@@ -109,28 +128,28 @@ export function drawnPath(centerNodes: P[], offset: number | number[], fromLot: 
   for (let i = 0; i < nodes.length - 1; i++) {
     const a = nodes[i];
     const b = nodes[i + 1];
-    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    const segLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (segLen < 1e-9) {
       nodeIndex.push(points.length - 1);
       continue;
     }
-    const dir = { x: (b.x - a.x) / segLen, y: (b.y - a.y) / segLen };
+    const dir = [(b[0] - a[0]) / segLen, (b[1] - a[1]) / segLen];
 
     if (i === 0) {
-      points.push({ ...a });
+      points.push(a);
       nodeIndex.push(0);
     }
 
     if (i + 2 < nodes.length) {
       const r1 = segLen * 0.5;
-      const beforeB = { x: b.x - dir.x * r1, y: b.y - dir.y * r1 };
+      const beforeB: P = [b[0] - dir[0] * r1, b[1] - dir[1] * r1];
       points.push(beforeB);
 
       const c = nodes[i + 2];
-      const nextLen = Math.hypot(c.x - b.x, c.y - b.y);
+      const nextLen = Math.hypot(c[0] - b[0], c[1] - b[1]);
       const r2 = nextLen * 0.5;
       const k = r2 / Math.max(nextLen, 1e-9);
-      const afterB = { x: b.x + (c.x - b.x) * k, y: b.y + (c.y - b.y) * k };
+      const afterB: P = [b[0] + (c[0] - b[0]) * k, b[1] + (c[1] - b[1]) * k];
 
       for (let s = 1; s <= BEZIER_SAMPLES; s++) {
         points.push(quadBezier(beforeB, b, afterB, s / BEZIER_SAMPLES));
@@ -143,15 +162,12 @@ export function drawnPath(centerNodes: P[], offset: number | number[], fromLot: 
   }
 
   if (points.length < 2) return null;
-  const path = new Polyline(points);
-  const { distances, length } = path;
-  const atNode = nodeIndex.map((i) => distances[Math.max(0, i)]);
-
-  const at = (dist: number, z: number): Fix => {
-    const normalized = Math.min(Math.max(0, dist / length), 1);
-    const p = path.pointAt(normalized);
-    const tangent = path.wayAt(normalized);
-    return { pos: [p.x, p.y, z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2], dist: normalized * length };
+  const path = measure(points);
+  const atNode = nodeIndex.map((i) => path.distances[Math.max(0, i)]);
+  const passing = (k: number) => {
+    const t = Math.min(Math.max(0, k), atNode.length - 1);
+    const i = Math.min(Math.floor(t), atNode.length - 2);
+    return atNode[i] + (atNode[i + 1] - atNode[i]) * (t - i);
   };
-  return { points, path, distances, atNode, length, at };
+  return { ...path, atNode, passing };
 }

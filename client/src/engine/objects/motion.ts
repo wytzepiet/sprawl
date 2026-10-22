@@ -1,10 +1,10 @@
-import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
-import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Rig } from "./driver";
+import { drawnPath } from "./drawnPath";
+import { ahead, CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Rig } from "./driver";
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
-import type { Car, RoadNode, Trailer, Trip, Pose as Stand } from "../../generated";
+import type { Car, Pose, RoadNode, Run, Sail, Trailer, Trip } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
 
 /**
@@ -61,19 +61,20 @@ const rigOf = (car: Car): Rig => (car.role !== "Truck" ? CAR_RIG : car.hitched ?
 
 /** Each vehicle's drive, kept while its trip's route and lanes are the
  *  same; a change of lanes, driven across from the lanes it left. */
-const drives = new Map<number, { key: string; lanes: number[]; drive: Drive | null }>();
+const drives = new Map<number, { car: Car; key: string; lanes: number[]; drive: Drive | null }>();
 export function driveOf(id: number, car: Car): Drive | null {
   const t = car.trip;
   if (!t) return void drives.delete(id), null;
+  const me = drives.get(id);
+  if (me?.car === car) return me.drive;
   const rig = rigOf(car);
   const key = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig, t.lanes, t.shift?.along]);
-  const me = drives.get(id);
-  if (me?.key === key) return me.drive;
+  if (me?.key === key) return (me.car = car), me.drive;
   const lanes = lanesOf(t.route_positions, t.route_heights ?? [], t.lanes ?? []);
   const sh = t.shift;
   const was = me && sh && sh.from !== sh.to && me.lanes.length === lanes.length ? { lanes: me.lanes, along: sh.along, over: sh.over } : undefined;
   const drive = driveTrip(t, rig, lanes, was);
-  drives.set(id, { key, lanes, drive });
+  drives.set(id, { car, key, lanes, drive });
   return drive;
 }
 /** A vehicle gone: its drive with it. */
@@ -120,36 +121,34 @@ function roadAt(x: number, y: number, height: number): { id: number; data: RoadN
 }
 
 /** A parked lorry's box, straight behind its cab. */
-export const straightBehind = (p: Pose): Pose => straight(p, LORRY_RIG)!;
+export const straightBehind = (p: Pose): Pose => ahead(p, -(LORRY_RIG.axle + LORRY_RIG.trailer!.middle));
 
 /** A tractor on its run over the land (a ferry's is `sailing`): the
  *  planned tiles, centre to centre with no lane, on the same rounded path
  *  as a trip so it corners like anything else — but by the server's
  *  clock, not by its own physics: on the run's `k`th tile `k` paces after
  *  it started, wherever the corners put that on the path, so it is where
- *  the server has it when the job is done there. */
-export function running(car: Car): { drawn: DrawnPath; at(now: number, z: number): Fix } | null {
-  const run = car.run!;
-  const drawn = drawnPath(run.path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 })), 0, 0, 0);
-  if (!drawn) return null;
-  const { atNode } = drawn;
-  return {
-    drawn,
-    at(now, z) {
-      const tile = Math.min(Math.max(0, (now - run.started) / run.pace), run.path.length - 1);
-      const k = Math.min(Math.floor(tile), atNode.length - 2);
-      return drawn.at(atNode[k] + (atNode[k + 1] - atNode[k]) * (tile - k), z);
-    },
-  };
+ *  the server has it when the job is done there. Kept for the run. */
+const runs = new WeakMap<Run, ((now: number) => Pose) | null>();
+function running(run: Run): ((now: number) => Pose) | null {
+  if (runs.has(run)) return runs.get(run)!;
+  const drawn = drawnPath(run.path.map(({ x, y }) => [x + 0.5, y + 0.5]), 0, 0, 0);
+  const at = drawn && ((now: number): Pose => {
+    const s = drawn.passing((now - run.started) / run.pace);
+    return { at: drawn.at(s), heading: drawn.heading(s) };
+  });
+  runs.set(run, at);
+  return at;
 }
 
-/** A ferry's leg, by the server's clock; none while it is moored or away. */
-export const voyage = (car: Car): ((now: number) => Stand) | null => (car.sail ? sailing(car.sail) : null);
+/** A ferry's leg, by the server's clock, kept for the leg. */
+const sails = new WeakMap<Sail, (now: number) => Pose>();
+const voyage = (s: Sail) => sails.get(s) ?? sails.set(s, sailing(s)).get(s)!;
 
 /** What stands on a ferry's deck, each in its slot `k` and so far along
  *  it, `d`: the boxes, and the settlers' cars in the free slots from the
  *  sea end, two to a slot, so the first to roll off is at the land end. */
-export function aboard(car: Car): { k: number; d: number; box?: Trailer; settler?: number }[] {
+function aboard(car: Car): { k: number; d: number; box?: Trailer; settler?: number }[] {
   const slots = car.deck.length ? car.deck : Array<null>(15).fill(null);
   const free = [...slots.keys()].filter((k) => !slots[k]).reverse();
   return [
@@ -158,16 +157,14 @@ export function aboard(car: Car): { k: number; d: number; box?: Trailer; settler
   ];
 }
 
-/** A pose moved `d` along its heading. */
-export const ahead = (p: Stand, d: number): Stand => ({ at: [p.at[0] + Math.cos(p.heading) * d, p.at[1] + Math.sin(p.heading) * d], heading: p.heading });
-
 /** What a box behind a cab holds: a good, and how much. */
 export type Load = Pick<Trailer, "good" | "units">;
 
-/** The box behind a vehicle's cab: a lorry's on its hitch, the world's; a
- *  van's its load on a call. None for a bobtail, or anything else. */
+/** The box behind a vehicle's cab: a lorry's or a tug's on its hitch, the
+ *  world's; a van's its load on a call. None for a bobtail, or anything
+ *  else. */
 export function carried(car: Car): Load | null {
-  if (car.role === "Truck") return car.hitched;
+  if (car.role === "Truck" || car.role === "Tug") return car.hitched;
   if (car.role === "Van") return car.load && { good: car.load[0], units: car.load[1] };
   return null;
 }
@@ -178,45 +175,38 @@ export function carried(car: Car): Load | null {
  *  box for a shop's; `VAN_BOX` of a box's length, so it holds that share
  *  of one. */
 export const VAN_BOX = (VAN.l - CAB_BLOCK) / TRAILER.l;
-export const vanParts = (middle: Stand): { body: Stand; box: Stand } => ({ body: ahead(middle, (VAN.l - CAB.l) / 2), box: ahead(middle, -CAB_BLOCK / 2) });
+const vanParts = (middle: Pose): Moment => ({ body: ahead(middle, (VAN.l - CAB.l) / 2), box: ahead(middle, -CAB_BLOCK / 2) });
 
-const stand = (p: Pose): Stand => ({ at: [p.x, p.y], heading: p.heading });
-
-/** A vehicle at a moment: its body; the box on its hitch; on a ferry's
- *  deck, what stands there. */
+/** A vehicle at a moment: its body (a lorry's or a van's, its cab); the
+ *  box behind it (`carried`); on a ferry's deck, what stands there. */
 export interface Moment {
-  body: Stand;
-  box?: Stand;
-  deck?: { at: Stand; box?: Trailer; settler?: number }[];
+  body: Pose;
+  box?: Pose;
+  deck?: { at: Pose; box?: Trailer; settler?: number }[];
 }
 
-/** Where a vehicle is at `now`, exactly where the server's physics has it
- *  (the 3D view eases a change of pedal in over half a second; this does
- *  not); none if it is out of sight. */
-export function moment(id: number, car: Car, now: number): Moment | null {
+/** Where a vehicle is at `now`: on a trip, `along` its route if that is
+ *  given (the 3D view eases a change of pedal in over half a second),
+ *  else exactly where the server's physics has it; none if it is out of
+ *  sight. */
+export function moment(id: number, car: Car, now: number, along?: number): Moment | null {
   switch (car.role) {
     case "Ferry": {
-      const sail = voyage(car);
-      if (!sail && !car.spot) return null;
-      const body = sail ? sail(now) : car.spot!;
-      return { body, deck: aboard(car).map(({ k, d, box, settler }) => ({ at: ahead(deckPose(body, k), d), box, settler })) };
+      const body = car.sail ? voyage(car.sail)(now) : car.spot;
+      return body && { body, deck: aboard(car).map(({ k, d, box, settler }) => ({ at: ahead(deckPose(body, k), d), box, settler })) };
     }
     case "Tug": {
       const p = car.shunt && car.spot ? shunting(car.shunt, car.spot, !!car.hitched)(now) : car.spot && { tug: car.spot, box: behind(car.spot) };
-      return p ? { body: p.tug, box: car.hitched ? p.box : undefined } : null;
+      return p && { body: p.tug, box: car.hitched ? p.box : undefined };
     }
   }
   if (car.run) {
-    const fix = running(car)?.at(now, 0);
-    return fix ? { body: { at: [fix.pos[0], fix.pos[1]], heading: fix.rot[2] + Math.PI / 2 } } : null;
+    const body = running(car.run)?.(now);
+    return body ? { body } : null;
   }
   const drive = driveOf(id, car);
-  const lorry = car.role === "Truck";
-  if (drive) {
-    const p = drive.at(Math.min(travelled(car.trip!, now)[0], drive.length));
-    return { body: stand(p.body), box: lorry && car.hitched ? stand(p.trailer ?? straightBehind(p.body)) : undefined };
-  }
-  if (!car.spot) return null;
-  const body = car.spot;
-  return { body, box: lorry && car.hitched ? stand(straightBehind({ x: body.at[0], y: body.at[1], heading: body.heading })) : undefined };
+  const p = drive ? drive.at(Math.min(along ?? travelled(car.trip!, now)[0], drive.length)) : car.spot && { body: car.spot };
+  if (!p) return null;
+  if (car.role === "Van") return vanParts(p.body);
+  return { body: p.body, box: car.role === "Truck" && car.hitched ? p.trailer ?? straightBehind(p.body) : undefined };
 }

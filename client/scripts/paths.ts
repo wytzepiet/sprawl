@@ -5,7 +5,8 @@
  * --paths` draws them, every bend tighter than a car can turn marked.
  */
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
-import { CAR_RIG, driveTrip, LORRY_RIG, type Driven, type Pose } from "../src/engine/objects/driver";
+import { CAR_RIG, driveTrip, LORRY_RIG, type Driven } from "../src/engine/objects/driver";
+import type { Pose } from "../src/generated";
 
 type Pt = [number, number];
 
@@ -51,7 +52,7 @@ export function part(t: Recorded, points: Pt[], i: number): "out" | "street" | "
 /** A box on the plan: its corners. */
 const box = (p: Pose, l: number, w: number): Pt[] => {
   const [c, n] = [Math.cos(p.heading), Math.sin(p.heading)];
-  return [[-l / 2, -w / 2], [l / 2, -w / 2], [l / 2, w / 2], [-l / 2, w / 2]].map(([a, b]): Pt => [p.x + c * a - n * b, p.y + n * a + c * b]);
+  return [[-l / 2, -w / 2], [l / 2, -w / 2], [l / 2, w / 2], [-l / 2, w / 2]].map(([a, b]): Pt => [p.at[0] + c * a - n * b, p.at[1] + n * a + c * b]);
 };
 
 /** Every trip as it is driven (`driver.ts`): the track of its middle,
@@ -65,7 +66,7 @@ export const trace = (trips: Recorded[]) =>
     const points: Pt[] = [], strobe: Pt[][] = [];
     for (let s = 0; s <= d.length; s += 0.02) {
       const { body, trailer } = d.at(s);
-      points.push([body.x, body.y]);
+      points.push(body.at);
       if (Math.round(s / 0.02) % 12 === 0) {
         strobe.push(box(body, lorry ? CAB.l : CAR.l, lorry ? CAB.w : CAR.w));
         if (trailer) strobe.push(box(trailer, TRAILER.l, TRAILER.w));

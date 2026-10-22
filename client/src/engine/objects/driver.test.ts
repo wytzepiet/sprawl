@@ -12,7 +12,7 @@ function jolts(d: Drive, ds = 0.005) {
     const p = d.at(s);
     for (const [a, b] of [[prev.body, p.body], [prev.trailer, p.trailer]] as const) {
       if (!a || !b) continue;
-      move = Math.max(move, Math.hypot(b.x - a.x, b.y - a.y) / ds);
+      move = Math.max(move, Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]) / ds);
       turn = Math.max(turn, Math.abs(Math.atan2(Math.sin(b.heading - a.heading), Math.cos(b.heading - a.heading))) / ds);
     }
     prev = p;
@@ -36,20 +36,20 @@ test("backing a lorry into a dock: no jump, no snap, and it ends where it stands
   expect(move).toBeLessThan(2.5);
   expect(turn).toBeLessThan(6);
   const end = d.at(d.length);
-  expect(Math.hypot(end.body.x - dock.at[0], end.body.y - dock.at[1])).toBeLessThan(1e-6);
+  expect(Math.hypot(end.body.at[0] - dock.at[0], end.body.at[1] - dock.at[1])).toBeLessThan(1e-6);
   expect(Math.cos(end.body.heading - dock.heading)).toBeCloseTo(1, 6);
   // Its box straight behind it, in the dock.
   expect(Math.cos(end.trailer!.heading - dock.heading)).toBeCloseTo(1, 6);
   // At the cusp it is where the server has it: at the stop point.
   const cusp = d.at(3.0).body;
-  expect(Math.hypot(cusp.x - 2.95, cusp.y - 0.5)).toBeLessThan(0.15);
+  expect(Math.hypot(cusp.at[0] - 2.95, cusp.at[1] - 0.5)).toBeLessThan(0.15);
 });
 
 test("a car leaves from where it stood, though its route points elsewhere", () => {
   const leaves = { at: [0, 0] as Pt, heading: 0.3 };
   const d = driveTrip({ route_positions: [[0, 0], [0, -1], [1, -1]], from_lot: 1, to_lot: 0, backing: [[0, 1]], leaves }, CAR_RIG)!;
   const start = d.at(0).body;
-  expect(Math.hypot(start.x, start.y)).toBeLessThan(1e-9);
+  expect(Math.hypot(start.at[0], start.at[1])).toBeLessThan(1e-9);
   expect(start.heading).toBeCloseTo(0.3, 9);
   const { move, turn } = jolts(d);
   expect(move).toBeLessThan(2.5);
@@ -114,8 +114,8 @@ test("whatever the way, a vehicle keeps to it: near it, as far as it, and never 
     // The way as it is drawn, each part on its own.
     const drawn: Pt[] = [];
     for (const [i, j] of backsOut ? [[0, 1], [1, len - 1]] : [[0, len - 1]]) {
-      const p = drawnPath(route.slice(i, j + 1).map(([x, y]) => ({ x, y })), LANE_OFFSET, Math.max(t.from_lot - i, i > 0 ? 1 : 0), Math.max(j + 1 - (len - toLot), j < len - 1 ? 1 : 0));
-      if (p) drawn.push(...p.points.map((q): Pt => [q.x, q.y]));
+      const p = drawnPath(route.slice(i, j + 1), LANE_OFFSET, Math.max(t.from_lot - i, i > 0 ? 1 : 0), Math.max(j + 1 - (len - toLot), j < len - 1 ? 1 : 0));
+      if (p) drawn.push(...p.points);
     }
     const off = (q: Pt) => {
       let best = Infinity;
@@ -131,10 +131,10 @@ test("whatever the way, a vehicle keeps to it: near it, as far as it, and never 
     let prev = d.at(0);
     for (let s = 0.01; s <= d.length; s += 0.01) {
       const p = d.at(s);
-      const step = Math.hypot(p.body.x - prev.body.x, p.body.y - prev.body.y);
+      const step = Math.hypot(p.body.at[0] - prev.body.at[0], p.body.at[1] - prev.body.at[1]);
       travel += step;
-      stray = Math.max(stray, off([p.body.x, p.body.y]));
-      if (p.trailer && prev.trailer) box = Math.max(box, Math.hypot(p.trailer.x - prev.trailer.x, p.trailer.y - prev.trailer.y));
+      stray = Math.max(stray, off(p.body.at));
+      if (p.trailer && prev.trailer) box = Math.max(box, Math.hypot(p.trailer.at[0] - prev.trailer.at[0], p.trailer.at[1] - prev.trailer.at[1]));
       // A hundredth of a tile on, the body never more than two and a half.
       expect(step).toBeLessThan(0.025);
       prev = p;
@@ -154,7 +154,7 @@ test("a car changing lanes steers across, round no corner, and no jump", () => {
   const t = { route_positions: road, from_lot: 0, to_lot: 0, backing: [] as [number, number][] };
   const [right, left] = [Array(11).fill(0.11), Array(11).fill(-0.11)];
   const d = driveTrip(t, CAR_RIG, left, { lanes: right, along: 3, over: 1.5 })!;
-  const y = (s: number) => d.at(s).body.y;
+  const y = (s: number) => d.at(s).body.at[1];
   // In the lane it left before it, in the lane it took after.
   expect(y(2.5)).toBeCloseTo(0.5 + 0.11, 2);
   expect(y(7)).toBeCloseTo(0.5 - 0.11, 2);

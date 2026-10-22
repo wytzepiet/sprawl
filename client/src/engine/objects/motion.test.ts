@@ -13,8 +13,7 @@ test("a vehicle is where the server's state has it, and what it carries with it"
   const spot = { at: [3, 4] as [number, number], heading: 0.5 };
   const lorry = moment(1, car({ role: "Truck", spot, hitched: box }), 0)!;
   near(lorry.body.at, spot.at);
-  const b = straightBehind({ x: 3, y: 4, heading: 0.5 });
-  near(lorry.box!.at, [b.x, b.y]);
+  near(lorry.box!.at, straightBehind(spot).at);
   // Moored: its boxes in their deck slots.
   const ferry = moment(2, car({ role: "Ferry", spot, deck: [null, box] }), 0)!;
   expect(ferry.deck!.map((d) => d.box?.id)).toEqual([9]);

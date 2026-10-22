@@ -3,7 +3,7 @@ import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
-import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX, vanParts } from "../engine/objects/motion";
+import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Pose as Stand, Compass, Neighbour } from "../generated";
 import { crest } from "./crest";
@@ -380,6 +380,8 @@ function dock(g: CanvasRenderingContext2D, p: Stand, colour = "rgba(255,255,255,
 
 /** A vehicle by its role, at its moment, with what it carries. */
 function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
+  const load = carried(car);
+  if (m.box && load) box(g, m.box, load, car.role === "Van" ? VAN_BOX : 1);
   switch (car.role) {
     case "Ferry": {
       // Its hull, the same at both ends; the bridge amidships; the deck's
@@ -402,18 +404,11 @@ function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
       return;
     }
     case "Tug":
-      if (m.box && car.hitched) box(g, m.box, car.hitched);
       return body(g, m.body, 0.25, 0.16, css(TUG));
+    // A van, a small rigid lorry: its cab, and its load in a short box behind.
     case "Truck":
-      if (m.box && car.hitched) box(g, m.box, car.hitched);
+    case "Van":
       return body(g, m.body, CAB.l, CAB.w, css(LIVERY.cab));
-    case "Van": {
-      // A small rigid lorry: its cab, and its load in a short box behind.
-      const p = vanParts(m.body);
-      const load = carried(car);
-      if (load) box(g, p.box, load, VAN_BOX);
-      return body(g, p.body, CAB.l, CAB.w, css(LIVERY.cab));
-    }
     case "Tractor":
       return body(g, m.body, VAN.l, VAN.w, css(LIVERY.tractor));
     default:

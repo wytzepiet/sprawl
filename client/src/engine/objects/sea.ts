@@ -2,7 +2,7 @@ import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
 import { CAB, TRAILER } from "./roadGeometry";
 import { drawnPath } from "./drawnPath";
-import { drive, paced, type Pt, type Rig } from "./driver";
+import { ahead, drive, paced, type Pt, type Rig } from "./driver";
 import { hex, rgb, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
 import type { Good, Sail, Shunt, Trailer, Pose } from "../../generated";
@@ -347,32 +347,28 @@ export function shunting(s: Shunt, from: Pose, hitched: boolean): (now: number) 
   if (known) return known;
   const n = s.path.length;
   const cuts = [...new Set([0, Math.min(Math.max(s.backs_from, 0), n - 1), n - 1])].sort((a, b) => a - b);
-  const runs: { points: Pt[]; backing: boolean }[] = [];
+  const runs: { points: Pt[]; length: number; backing: boolean }[] = [];
   for (let c = 1; c < cuts.length; c++) {
-    const d = drawnPath(s.path.slice(cuts[c - 1], cuts[c] + 1).map(([x, y]) => ({ x, y })), 0, 0, 0);
-    if (d) runs.push({ points: d.points.map((p): Pt => [p.x, p.y]), backing: cuts[c - 1] >= s.backs_from });
+    const d = drawnPath(s.path.slice(cuts[c - 1], cuts[c] + 1), 0, 0, 0);
+    if (d) runs.push({ points: d.points, length: d.length, backing: cuts[c - 1] >= s.backs_from });
   }
-  const pose = (p: Pose) => ({ x: p.at[0], y: p.at[1], heading: p.heading });
-  const stand = (p: { x: number; y: number; heading: number }): Pose => ({ at: [p.x, p.y], heading: p.heading });
   if (!runs.length) {
     const still = () => ({ tug: s.stands, box: behind(s.stands) });
     moves.set(s, still);
     return still;
   }
-  const lengths = runs.map((r) => r.points.slice(1).reduce((l, p, i) => l + Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), 0));
-  const bounds = lengths.reduce((b, l) => [...b, b[b.length - 1] + l], [0]);
-  const drv = drive(runs.map((r, k) => ({ ...r, from: bounds[k], to: bounds[k + 1] })), hitched ? TUG_RIG : { axle: TUG_RIG.axle }, pose(from), pose(s.stands));
-  const pace = paced(lengths.map((l, k) => ({ length: l, top: runs[k].backing ? BACKING : FORWARD })), PUSH, CUSP_S);
+  const bounds = runs.reduce((b, r) => [...b, b[b.length - 1] + r.length], [0]);
+  const drv = drive(runs.map((r, k) => ({ ...r, from: bounds[k], to: bounds[k + 1] })), hitched ? TUG_RIG : { axle: TUG_RIG.axle }, from, s.stands);
+  const pace = paced(runs.map((r) => ({ length: r.length, top: r.backing ? BACKING : FORWARD })), PUSH, CUSP_S);
   const window = Math.max(0.001, (s.ends - s.started - HITCH_MS) / 1000);
   const move = (now: number) => {
     const t = (Math.min(Math.max(0, (now - s.started) / 1000), window) / window) * pace.secs;
-    const p = drv.at(pace.at(t));
-    const tug = stand(p.body);
-    return { tug, box: p.trailer ? stand(p.trailer) : behind(tug) };
+    const { body, trailer } = drv.at(pace.at(t));
+    return { tug: body, box: trailer ?? behind(body) };
   };
   moves.set(s, move);
   return move;
 }
 
 /** A box's place behind a tug standing still. */
-export const behind = (p: Pose, d = TUG_BOX): Pose => ({ at: [p.at[0] - Math.cos(p.heading) * d, p.at[1] - Math.sin(p.heading) * d], heading: p.heading });
+export const behind = (p: Pose): Pose => ahead(p, -TUG_BOX);
