@@ -7,7 +7,7 @@ import type { Good } from "./Good";
  */
 export type Quote = { good: Good, price: number, floor: number, ceiling: number, 
 /**
- * How far a box moves the price, a unit's: each box is paid at the
+ * How far a package moves the price, a unit's: each is paid at the
  * price it moved to.
  */
 step: number, 

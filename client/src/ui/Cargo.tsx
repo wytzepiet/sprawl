@@ -8,21 +8,21 @@ import { GoodDot, onMap } from "./kit";
 import type { Good, Shipment } from "../generated";
 
 /**
- * Boxes on the map: over whatever carries them, the ferry, the tug, a
- * lorry, the harbour's park, a chip of each good aboard and how many. A
+ * Packages on the map: over whatever carries them, the ferry, a lorry,
+ * the harbour's quay, a chip of each good aboard and how many. A
  * tap follows the first. Drawn under every pane of glass, so a card over
  * one hides it.
  */
 export default function Cargo() {
-  const shown = (s: Shipment) => s.carrier !== null && !!s.good && s.units > 0 && s.leg !== "Booked";
+  const shown = (s: Shipment) => s.carrier !== null && !!s.good && s.leg !== "Booked";
   const carried = createMemo(() => [...new Set(sea.shipments.filter(shown).map((s) => s.carrier!))].sort((a, b) => a - b), undefined, { equals: (a, b) => a.join() === b.join() });
   const goodsOn = (carrier: number) => {
-    const l: { good: Good; boxes: number; trailer: number }[] = [];
+    const l: { good: Good; n: number; package: number }[] = [];
     for (const s of sea.shipments) {
       if (s.carrier !== carrier || !shown(s)) continue;
       const g = l.find((x) => x.good === s.good);
-      if (g) g.boxes++;
-      else l.push({ good: s.good!, boxes: 1, trailer: s.trailer });
+      if (g) g.n++;
+      else l.push({ good: s.good!, n: 1, package: s.package });
     }
     return l;
   };
@@ -51,14 +51,14 @@ export default function Cargo() {
                 fill="glass/0.85"
                 shadow
                 onSize={(w, h) => setSize([w, h])}
-                onTap={() => goodsOn(id)[0] && track(goodsOn(id)[0].trailer)}
+                onTap={() => goodsOn(id)[0] && track(goodsOn(id)[0].package)}
               >
                 <For each={goodsOn(id)}>
                   {(g) => (
                     <box dir="row" align="center">
                       <GoodDot good={g.good} size={16} />
-                      <Show when={g.boxes > 1}>
-                        <box pad={{ x: 2 }}><text size={10} weight={700}>{g.boxes}</text></box>
+                      <Show when={g.n > 1}>
+                        <box pad={{ x: 2 }}><text size={10} weight={700}>{g.n}</text></box>
                       </Show>
                     </box>
                   )}

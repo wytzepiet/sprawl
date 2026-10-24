@@ -2,7 +2,7 @@
 import type { Good } from "./Good";
 
 /**
- * A "when" order: so many boxes of a good, bought once the price falls
+ * A "when" order: so many packages of a good, bought once the price falls
  * to this, or sold once it rises to it.
  */
-export type When = { id: number, good: Good, out: boolean, boxes: number, price: number, };
+export type When = { id: number, good: Good, out: boolean, packages: number, price: number, };

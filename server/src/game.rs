@@ -319,12 +319,12 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for id in waiting {
         crate::calls::turn(world, events, id, events.now());
     }
-    // A harbour built, or its line changed: its ferries and tugs look
+    // A harbour built, or its line changed: its ferries look
     // again. Not at every settle: a moored ferry woken rolls its next
     // settler off at once, not ROLL_MS after the last.
     let harbours: Vec<EntityId> = if changed { world.harbours.keys().copied().collect() } else { Vec::new() };
     for h in harbours {
-        for id in world.ferries_of(h).into_iter().chain(world.tug_of(h)) {
+        for id in world.ferries_of(h) {
             events.wake(0, id);
         }
     }

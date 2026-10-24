@@ -163,7 +163,7 @@ function ResidentLines(c: ResidentCard) {
   );
 }
 
-const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry", Tug: "Tug" };
+const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry" };
 
 function CarLines(c: CarCard) {
   return (

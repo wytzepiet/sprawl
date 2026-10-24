@@ -3,8 +3,6 @@ import { hex, lerp, type Rgb } from "../rgb";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { BLUEPRINTS, FACINGS, standing } from "../../blueprints";
-import { placeBox } from "./CarObject";
-import { boxShape } from "./sea";
 import { KERB_Z } from "../town/draw";
 import { INSET } from "../town/footprint";
 import { eaves } from "../town/mass";
@@ -41,8 +39,8 @@ const WHITE_RGB = hex("#FFFFFF");
 const round = (h: number) => Math.max(0.01, Math.round(h * 100) / 100);
 /**
  * What a building lays on the ground past its own walls, which the town
- * grid does not draw: a harbour's quay out over the water and the boxes in
- * its park, a farm's field, and a site going up. The building itself, once
+ * grid does not draw: a harbour's quay out over the water, a farm's
+ * field, and a site going up. The building itself, once
  * it stands, is the town grid's (`TownLayer`).
  */
 export function mountBuilding(
@@ -54,7 +52,6 @@ export function mountBuilding(
 ): () => void {
   const data = entry.object.data as Building;
   const placed: { key: string; id: number }[] = [];
-  const boxes: { remove(): void }[] = [];
 
   /** A box `w` across, `l` out and `h` high, painted, in a frame round
    *  (x, y) whose out is (ox, oy): `across` and `out` from it, its base
@@ -71,10 +68,9 @@ export function mountBuilding(
   // meets the water as a quay: a link span from the quay's edge down onto
   // the ferry's land end, under a gantry on two towers that lifts it; two
   // dolphins either side of the ferry, out along it, that it lies between,
-  // a walkway out to those on one side; bollards along the quay. In the
-  // corner on the quay across the lane from the tug's stand, the
-  // terminal: the harbour master's and the ticket office. And in its park,
-  // either side of the lane, the boxes standing in their slots.
+  // a walkway out to those on one side; bollards along the quay. In a
+  // corner on the quay, the terminal: the harbour master's and the
+  // ticket office.
   if (BLUEPRINTS[data.kind].quay) {
     const out = [-dx, -dy];
     const deep = dx === 0 ? bh : bw;
@@ -97,7 +93,6 @@ export function mountBuilding(
     for (let a = -wide / 2 + 0.2; a < wide / 2 - 0.1; a += 0.42) if (Math.abs(a) > SPAN.across / 2 + 0.1 && Math.abs(a - DOLPHINS.across) > 0.12) at("bollard", [0.05, 0.05, 0.05], IRON, a, -0.07, KERB_Z);
     at("terminal", [0.36, 0.26, 0.17], hex(BLUEPRINTS[data.kind].material), -(wide / 2 - 0.32), -0.18, KERB_Z);
     at("roof", [0.4, 0.3, 0.025], TOWER, -(wide / 2 - 0.32), -0.18, KERB_Z + 0.17);
-    for (const { pose, trailer } of data.park) if (trailer) boxes.push(placeBox(pool, boxShape(trailer), pose, KERB_Z));
   }
 
   // A site going up: its slab, the walls rising on it as its materials
@@ -146,7 +141,6 @@ export function mountBuilding(
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const box of boxes) box.remove();
     field?.();
   };
 }

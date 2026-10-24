@@ -3,10 +3,10 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Door } from "./Door";
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
-import type { Slot } from "./Slot";
+import type { Lift } from "./Lift";
+import type { Package } from "./Package";
 import type { Stock } from "./Stock";
 import type { Tile } from "./Tile";
-import type { Trailer } from "./Trailer";
 
 export type Building = { kind: BuildingKind, 
 /**
@@ -35,17 +35,23 @@ stocks: { [key in Good]?: Stock },
  */
 site: { [key in Good]?: Stock } | null, 
 /**
- * A harbour's trailer park: its docks, each where a box stands and
- * the box standing there, if any (`world/sea.rs`). The poses are its
- * lot's, laid when the lot is.
+ * A harbour's quay: the packages standing on it, off the ferry for
+ * the town or brought by a lorry for the ferry (`world/sea.rs`),
+ * each in a slot of the pad the client lays out, in order.
  */
-park: Array<Slot>, 
+pad: Array<Package>, 
 /**
- * A harbour's slots going out, booked and not yet loaded: a box
+ * A harbour's slots going out, booked and not yet loaded: a package
  * each, its good, partner and price, for the first depot's lorry
  * with the good to fill (`haul::lorry_wake`).
  */
-outgoing: Array<Trailer>, 
+outgoing: Array<Package>, 
+/**
+ * Its forklifts' work: each a run of packages lifted between its pad
+ * and a vehicle standing at it, one at a time (`World::lift`). The
+ * server moves the goods as a run starts; the client plays it.
+ */
+lifts: Array<Lift>, 
 /**
  * Lorries bought for it beyond the one its row comes with.
  */

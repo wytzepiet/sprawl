@@ -2,8 +2,8 @@ import { BLUEPRINTS, GOODS, middle } from "../blueprints";
 import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
-import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
-import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX } from "../engine/objects/motion";
+import { FERRY, deckPose, hull } from "../engine/objects/sea";
+import { carried, colourOf, ITEM, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Pose as Stand, Compass, Neighbour } from "../generated";
 import { crest } from "./crest";
@@ -13,7 +13,7 @@ import { crest } from "./crest";
  * (`bun run flat`), from the same state the
  * 3D view draws, its vehicles placed by the same code (`motion.ts`). For
  * reading, not for looking at: every kind of thing its own plain shape and
- * colour, boxes by their good, and, close enough, ids beside things.
+ * colour, packages by their good, and, close enough, ids beside things.
  *
  * World to screen is a half turn, as the camera has it: +x to the left,
  * +y up.
@@ -221,13 +221,6 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     }
     g.globalAlpha = 1;
     outline(g, b.tiles, colour, 0.06, b.site ? [0.15, 0.1] : []);
-    // A harbour's park: each dock, and the box standing there.
-    for (const slot of b.park) {
-      dock(g, slot.pose);
-      if (slot.trailer) box(g, slot.pose, slot.trailer);
-      const town = slot.trailer && world.marked?.(slot.trailer.order);
-      if (town) crested.push([slot.pose, town]);
-    }
   }
 
   // Vehicles where the server's clock has them now.
@@ -236,8 +229,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     const m = moment(e.id, car, world.now);
     if (m && on(m.body.at[0], m.body.at[1], 4)) moments.push([e, car, m]);
   }
-  // Ships under what drives on land, which drives under the tug.
-  const order = (c: Car) => (c.role === "Ferry" ? 0 : c.role === "Tug" ? 2 : 1);
+  // Ships under what drives on land.
+  const order = (c: Car) => (c.role === "Ferry" ? 0 : 1);
   moments.sort((a, b) => order(a[1]) - order(b[1]));
   const dot = S < 6;
   for (const [e, car, m] of moments) {
@@ -352,40 +345,34 @@ function body(g: CanvasRenderingContext2D, p: Stand, l: number, w: number, fill:
   g.restore();
 }
 
-/** A box, `k` of a box's length, in its good's colour. */
-function box(g: CanvasRenderingContext2D, p: Stand, t: Load, k = 1) {
-  const l = TRAILER.l * k;
-  g.save();
-  g.translate(p.at[0], p.at[1]);
-  g.rotate(p.heading);
-  g.fillStyle = GOODS[t.good].color;
-  g.fillRect(-l / 2, -TRAILER.w / 2, l, TRAILER.w);
-  g.strokeStyle = INK;
-  g.lineWidth = 0.02;
-  g.strokeRect(-l / 2, -TRAILER.w / 2, l, TRAILER.w);
-  g.restore();
+/** A package, a square in its good's colour. */
+export function item(g: CanvasRenderingContext2D, p: Stand, good: Good) {
+  body(g, p, ITEM, ITEM, GOODS[good].color, false);
 }
 
-/** Where a box stands in a park or on a deck, a box in it or not. */
-function dock(g: CanvasRenderingContext2D, p: Stand, colour = "rgba(255,255,255,0.8)") {
+/** A deck's bay, a pallet's in it or not. */
+function dock(g: CanvasRenderingContext2D, p: Stand, colour: string) {
   g.save();
   g.translate(p.at[0], p.at[1]);
   g.rotate(p.heading);
   g.strokeStyle = colour;
   g.lineWidth = 0.02;
   g.setLineDash([0.05, 0.04]);
-  g.strokeRect(-TRAILER.l / 2 - 0.02, -TRAILER.w / 2 - 0.02, TRAILER.l + 0.04, TRAILER.w + 0.04);
+  g.strokeRect(-0.25, -0.115, 0.5, 0.23);
   g.restore();
 }
 
 /** A vehicle by its role, at its moment, with what it carries. */
 function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
-  const load = carried(car);
-  if (m.box && load) box(g, m.box, load, car.role === "Van" ? VAN_BOX : 1);
+  if (m.bed) {
+    const l = car.role === "Van" ? VAN_BED : TRAILER.l;
+    body(g, m.bed, l, TRAILER.w, "#80838a", false);
+    carried(car).forEach((good, k) => item(g, onBed(m.bed!, l, k), good));
+  }
   switch (car.role) {
     case "Ferry": {
       // Its hull, the same at both ends; the bridge amidships; the deck's
-      // slots, three lanes by five.
+      // bays, three lanes by five.
       g.save();
       g.translate(m.body.at[0], m.body.at[1]);
       g.rotate(m.body.heading - Math.PI / 2);
@@ -400,12 +387,10 @@ function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
       g.restore();
       body(g, m.body, 0.2, FERRY.w, "#3d73a8", false);
       for (let k = 0; k < 15; k++) dock(g, deckPose(m.body, k), "rgba(40,50,70,0.45)");
-      for (const d of m.deck ?? []) d.box ? box(g, d.at, d.box) : body(g, d.at, CAR.l, CAR.w, css(PALETTE[colourOf(d.settler!)]));
+      for (const d of m.deck ?? []) d.good ? item(g, d.at, d.good) : body(g, d.at, CAR.l, CAR.w, css(PALETTE[colourOf(d.settler!)]));
       return;
     }
-    case "Tug":
-      return body(g, m.body, 0.25, 0.16, css(TUG));
-    // A van, a small rigid lorry: its cab, and its load in a short box behind.
+    // A van, a small rigid lorry: its cab, and its load on a short flatbed behind.
     case "Truck":
     case "Van":
       return body(g, m.body, CAB.l, CAB.w, css(LIVERY.cab));
@@ -455,16 +440,14 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
   };
   const ferries = cars.filter(([, c]) => c.role === "Ferry").map(([e, c]) => {
     const where = c.spot ? `moored, casts off ${hhmm(c.due)}` : c.sail ? `at sea, ${c.sail.ends <= world.now ? "waiting at a junction, " : ""}${c.sail.astern ? "out to the edge" : `berths ${hhmm(c.due)}`}` : `away, berths ${hhmm(c.due)}`;
-    const boxes = c.deck.filter(Boolean).length;
+    const pallets = c.deck.filter(Boolean).length;
     const harbour = byId.get(c.owner)?.object.data as Building | undefined;
-    const parked = harbour?.park.filter((s) => s.trailer).length ?? 0;
-    return `ferry #${e.id} ${where}; ${boxes} boxes, ${c.passengers.length} settlers aboard; ${parked} in the park`;
+    return `ferry #${e.id} ${where}; ${pallets} pallets, ${c.passengers.length} settlers aboard; ${harbour?.pad.length ?? 0} on the quay`;
   });
   const keys: [string, (x: number, y: number) => void][] = [
     ...(Object.keys(GOODS) as (keyof typeof GOODS)[]).map((good): [string, (x: number, y: number) => void] => [GOODS[good].label, (x, y) => swatch(g, x, y, GOODS[good].color)]),
     ["lorry", (x, y) => swatch(g, x, y, css(LIVERY.cab))],
     ["tractor", (x, y) => swatch(g, x, y, css(LIVERY.tractor))],
-    ["tug", (x, y) => swatch(g, x, y, css(TUG))],
   ];
   const lines = [clock, ...ferries];
   g.font = "11px sans-serif";

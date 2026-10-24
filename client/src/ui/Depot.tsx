@@ -71,13 +71,13 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
 /** A depot's lorry in words, and when it is due. */
 function doing(depot: number, car: Car | null, at: { x: number; y: number } | null): { words: string; eta: number | null } {
   if (!car) return { words: "out of sight", eta: null };
-  const box = car.hitched;
+  const on = car.cargo.length ? load(car.cargo) : null;
   if (car.trip) {
     const home = car.trip.destination === depot;
-    const words = home ? (box ? `bringing ${load(box)} home` : "coming home") : box ? `taking ${load(box)} to the harbour` : "on its way to the harbour";
+    const words = home ? (on ? `bringing ${on} home` : "coming home") : on ? `taking ${on} out` : "on its way to fetch";
     return { words, eta: car.trip.eta };
   }
-  if (atHarbour(at)) return { words: "at the harbour, hitching up", eta: null };
-  if (box && !box.outbound) return { words: `unloading ${load(box)}`, eta: null };
-  return { words: box ? `in the yard with ${load(box)}` : "in the yard", eta: null };
+  if (atHarbour(at)) return { words: "at the harbour, by the forklift", eta: null };
+  if (on && car.cargo.some((p) => !p.outbound)) return { words: `unloading ${on}`, eta: null };
+  return { words: on ? `in the yard with ${on}` : "in the yard", eta: null };
 }

@@ -6,7 +6,6 @@
 pub(crate) const WAKE_BUDGET: u64 = 120;
 use super::*;
 use std::time::Instant;
-use crate::calls;
 use crate::protocol::{Build, BuildingKind, Good, GridCoord, Leg, TerrainType, Tool};
 
 /// What a test's hand does: a step of road or the demolisher, or a
@@ -17,7 +16,7 @@ pub(crate) enum Do {
     Place(BuildingKind, GridCoord),
     /// The building on a tile taken down whole.
     Raze(GridCoord),
-    /// A box a letter wants, sent.
+    /// A package a letter wants, sent.
     Send(u64),
 }
 /// The hand's act done, as a player's command is; a building refused is
@@ -27,7 +26,7 @@ pub(crate) fn does(game: &mut Game, d: Do) {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
         Do::Raze(at) => ClientMessage::Raze { building: game.world.occupied[&(at.x, at.y)] },
-        Do::Send(letter) => ClientMessage::Send { letter, boxes: 1 },
+        Do::Send(letter) => ClientMessage::Send { letter, packages: 1 },
     };
     game.command(PLAYER, message);
     if let Do::Place(kind, at) = d {
@@ -387,9 +386,9 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
     let mut game = game(world);
     assert!(!game.world.harbours.is_empty(), "no harbour, or nobody can arrive at all");
     // The mayor at the market as each ferry casts off, looked for every
-    // hour: a box of fuel bought, which nothing in town makes, once the
-    // last is off the border; and a box of the farm's crates sold, once
-    // the last is loaded.
+    // hour: a lorry's load of fuel bought, which nothing in town makes,
+    // once the last is off the border; and a load of the farm's crates
+    // sold, once the last is loaded.
     let mut berthed = false;
     let mut market = |game: &mut Game, exporting: bool| {
         let world = &mut game.world;
@@ -398,13 +397,13 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
         if !was || berthed {
             return;
         }
-        let boxes = crate::haul::boxes(world);
-        if !boxes.iter().any(|(t, l, _)| !t.outbound && t.good == Good::Fuel && matches!(l, Leg::Booked | Leg::Aboard | Leg::Parked)) {
-            crate::market::trade(world, Good::Fuel, false, 1);
+        let packages = crate::haul::packages(world);
+        if !packages.iter().any(|(t, l, _)| !t.outbound && t.good == Good::Fuel && matches!(l, Leg::Booked | Leg::Aboard | Leg::Quay)) {
+            crate::market::trade(world, Good::Fuel, false, crate::haul::LOAD);
         }
         let harbour = harbour_of(world);
         if exporting && !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Crates) {
-            crate::market::trade(world, Good::Crates, true, 1);
+            crate::market::trade(world, Good::Crates, true, crate::haul::LOAD);
         }
         crate::haul::call_lorries(world, &mut game.events);
     };
@@ -756,8 +755,8 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
     // street beside it; and the letters read, and a slot booked going
-    // out for each box an order still wants, while the depot keeps a
-    // box back for the sites.
+    // out for each package an order still wants, while the depot keeps a
+    // lorry's load back for the sites.
     let hand = |world: &World, day: u64| -> Steps {
         let x = 112 + 4 * (day as i32 - 1);
         let at = |x, y| GridCoord { x, y };
@@ -772,8 +771,8 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
         // Waiting at the harbour, and booked tonight for a letter before this one.
         let queued = |g: Good, steps: &Steps| (building_of(world, harbour).outgoing.iter().filter(|t| t.good == g).count() + steps.iter().filter(|d| matches!(d, Do::Send(l) if crate::orders::letters(world).iter().any(|o| o.letter == *l && o.good == g))).count()) as f64;
         for o in crate::orders::letters(world) {
-            let spare = (building_of(world, depot).stocks[&o.good].level / o.good.per_box()).floor() - 1.0 - queued(o.good, &steps);
-            steps.extend((0..(o.boxes as f64).min(spare).max(0.0) as usize).map(|_| Do::Send(o.letter)));
+            let spare = (building_of(world, depot).stocks[&o.good].level / o.good.per_package()).floor() - crate::haul::LOAD as f64 - queued(o.good, &steps);
+            steps.extend((0..(o.packages as f64).min(spare).max(0.0) as usize).map(|_| Do::Send(o.letter)));
         }
         steps
     };
@@ -1000,20 +999,20 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     assert!((harvest - stages(&game.world).len() as f64 * crop).abs() < 1e-6, "the harvest came to {harvest}, not a yard's worth");
 
     // Then the depot's shelf runs low: its lorry fetches from the farm,
-    // and no coin moves.
+    // and no coin moves. The quay cleared first: the starter pack waits
+    // there for the depot's room, and would be fetched first.
     let now = game.now;
+    let harbour = harbour_of(&game.world);
+    game.world.building_mut(harbour).unwrap().pad.clear();
     game.world.building_mut(farm).unwrap().stocks.get_mut(&Good::Crates).unwrap().level = 300.0;
     let before = yard(&game.world);
     let bought = |world: &World| world.town.on(now).bought.get(&Good::Crates).copied().unwrap_or(0.0);
     let bought_before = bought(&game.world);
     game.world.building_mut(depot).unwrap().stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
-    calls::turn(&mut game.world, &mut game.events, depot, now);
-    let world = &game.world;
-    let fetch = world.calls.iter().find(|c| c.at == depot && c.kind == calls::CallKind::Fetch).expect("the depot fetches");
-    assert_eq!(fetch.from, Some(farm), "the lorry went past the farm to the edge");
+    crate::haul::call_lorries(&mut game.world, &mut game.events);
     game.run_to(now + 3 * day / 24);
     let world = &game.world;
-    assert!(world.calls.iter().all(|c| c.at != depot), "the fetch did not land: {:?}; lorries {:?}", world.calls, world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck)).map(|e| (e.id, e.position, matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))).collect::<Vec<_>>());
+    assert!(building_of(world, depot).stocks[&Good::Crates].level > 0.0, "the fetch did not land; lorries {:?}", world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck)).map(|e| (e.id, e.position, matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))).collect::<Vec<_>>());
     let fetched = before - yard(world);
     assert!(fetched > 0.0, "the lorry took nothing from the yard");
     assert_eq!(bought(world), bought_before, "crates fetched in town were paid for");
@@ -1100,9 +1099,9 @@ fn the_opening_from_the_harbour() {
     assert_eq!(opening(&mut game), [true, true, true, false, false], "a depot on the harbour's street");
     let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
-    let tug = world.tug_of(harbour).expect("the harbour's tug");
     let lorry = lorries_of(world, depot)[0];
-    assert_eq!(car_of(world, ferry).booked.len(), 6, "the starter pack is booked");
+    let starter: u32 = crate::world::sea::STARTER.iter().map(|&(_, n)| n).sum();
+    assert_eq!(car_of(world, ferry).booked.len(), starter as usize, "the starter pack is booked");
     // A settle with nothing new touches nothing: what it touches goes
     // to every client, and is written down, each tick.
     game.world.objects.drain_dirty();
@@ -1124,27 +1123,31 @@ fn the_opening_from_the_harbour() {
     let berthed = game.now;
     assert!(sailed, "it never sailed in");
     assert!(berthed <= FIRST_CALL + 100, "the first ferry berthed at {berthed}, due at {FIRST_CALL}");
-    assert_eq!(car_of(&game.world, ferry).deck.iter().flatten().count(), 6, "the starter pack is not aboard");
-    // The tug unloads while it is in, and it sails on time.
-    let mut shunted = false;
+    // Aboard, or already being lifted off onto the quay.
+    let landed = car_of(&game.world, ferry).deck.iter().flatten().count() + building_of(&game.world, harbour).pad.len();
+    assert_eq!(landed, starter as usize, "the starter pack is not aboard");
+    // The forklifts unload it onto the quay while it is in, and it
+    // sails on time.
+    let mut lifted = false;
     while car_of(&game.world, ferry).spot.is_some() {
         assert!(game.step_to(day), "the ferry never sailed");
-        shunted |= car_of(&game.world, tug).shunt.is_some();
+        lifted |= building_of(&game.world, harbour).lifts.iter().any(|l| l.car == ferry);
     }
-    assert!(shunted, "the tug never moved");
+    assert!(lifted, "no forklift ever worked the deck");
     assert!(game.now - berthed <= DWELL + 100, "it sailed late: {} after berthing", game.now - berthed);
-    let parked = |w: &World| building_of(w, harbour).park.iter().filter(|s| s.trailer.is_some()).count();
-    assert!(parked(&game.world) >= 3, "only {} boxes landed in the park", parked(&game.world));
+    assert!(!car_of(&game.world, ferry).deck.iter().flatten().any(|t| !t.outbound), "it sailed with the starter pack aboard");
+    let quay = |w: &World| building_of(w, harbour).pad.len();
+    assert!(quay(&game.world) >= 10, "only {} packages landed on the quay", quay(&game.world));
     assert_eq!(game.world.treasury, crate::economy::STAKE, "the starter pack was paid for");
 
-    // The lorry fetches a box as it lands, and unloads it.
+    // The lorry fetches a load as it lands, and unloads it.
     let stock = |w: &World| building_of(w, depot).stocks.values().map(|s| s.level).sum::<f64>();
     let until = game.now + day / 12;
     while stock(&game.world) == 0.0 && game.step_to(until) {}
     assert!(stock(&game.world) > 0.0, "the lorry brought nothing home in two hours");
-    assert!(car_of(&game.world, lorry).hitched.is_none(), "the box was not gone into stock");
+    assert!(car_of(&game.world, lorry).cargo.is_empty(), "the load was not gone into stock");
     assert!(game.world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
-    assert_eq!(opening(&mut game), [true, true, true, true, false], "the box fetched");
+    assert_eq!(opening(&mut game), [true, true, true, true, false], "the load fetched");
 
     // A second lorry, bought from the world: the two fetch the rest.
     let before = game.world.treasury;
@@ -1152,7 +1155,7 @@ fn the_opening_from_the_harbour() {
     assert_eq!(lorries_of(&game.world, depot).len(), 2, "no second lorry");
     assert!((before - game.world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
     let until = game.now + day / 4;
-    while (parked(&game.world) > 0 || car_of(&game.world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && game.step_to(until) {}
+    while (quay(&game.world) > 0 || car_of(&game.world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && game.step_to(until) {}
     let shelf = |w: &World, g: Good| building_of(w, depot).stocks[&g].level;
     assert!(shelf(&game.world, Good::Timber) >= 40.0, "the timber did not come in: {}", shelf(&game.world, Good::Timber));
 
@@ -1187,8 +1190,8 @@ fn the_opening_from_the_harbour() {
     }
     assert!(rolled > 0, "no settler was seen rolling off the deck");
     assert!(settlers.iter().all(|&id| at_of(&game.world, id) == Some(house)), "the settlers never got home");
-    // The opening done, and paid; the trunk opens on the market: a box
-    // bought.
+    // The opening done, and paid; the trunk opens on the market: a
+    // package bought.
     // Paid in the step they came home in, as coins landing at the harbour.
     assert_eq!(opening(&mut game), [true; 5], "the settlers came");
     let paid = game.world.lumps.iter().filter(|l| l.building == harbour && l.good.is_none()).map(|l| l.coins).sum::<f64>();
@@ -1197,27 +1200,27 @@ fn the_opening_from_the_harbour() {
     let trunk = |game: &mut Game| missions(game).into_iter().filter(|(k, ..)| !matches!(k, Key::Order(_))).map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
     assert_eq!(trunk(&mut game), [(Key::Opening, true), (Key::Book, false)]);
     let price = game.world.market.price(Good::Timber);
-    game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, boxes: 1, out: false });
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: false });
     assert_eq!(trunk(&mut game)[1..], [(Key::Book, true), (Key::Sell, false)]);
     assert!(game.world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
-    // A box of crates sold: out on the ferry, paid as it casts off.
-    game.command(PLAYER, ClientMessage::Trade { good: Good::Crates, boxes: 1, out: true });
+    // A crate of food sold: out on the ferry, paid as it casts off.
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Crates, packages: 1, out: true });
     let until = game.now + 2 * turn;
     while game.world.town.on(game.now).sold.get(&Good::Crates).is_none() && game.step_to(until) {}
     let sold = game.world.town.on(game.now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
     // What the depot spares over its own shelf, at the market's price less freight.
-    assert!(sold > 0.0 && sold <= 100.0 * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the box went out for {sold}");
+    assert!(sold > 0.0 && sold <= Good::Crates.per_package() * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the crate went out for {sold}");
     assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
-    assert_eq!(trunk(&mut game)[2], (Key::Sell, true), "the box sold");
+    assert_eq!(trunk(&mut game)[2], (Key::Sell, true), "the crate sold");
 }
 
 /// One lorry, its depot a short street from the harbour, fetches the
-/// starter pack: each box is dropped under the
-/// canopy and the lorry is off again at once, and the six are home
+/// starter pack: each load is lifted off in the yard and the lorry is
+/// off again once the forklift is done, and the whole pack is home
 /// within eight hours of the first ferry sailing. A round trip is two
 /// drives, each ending in a backing into a dock; it once also stood
-/// ten minutes at the depot, a van's unloading, and the six took more
+/// ten minutes at the depot, a van's unloading, and the pack took more
 /// than eight hours.
 #[test]
 fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
@@ -1234,30 +1237,30 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
     while car_of(&game.world, ferry).spot.is_none() && game.step_to(day) {}
     while car_of(&game.world, ferry).spot.is_some() && game.step_to(day) {}
     let (sailed, hour) = (game.now, day / 24);
-    let home = |w: &World| w.lumps.iter().filter(|l| l.building == depot && l.units > 0.0).count();
+    let left = |w: &World| crate::haul::packages(w).iter().filter(|(t, ..)| !t.outbound).count();
     let mut parked_home = None;
-    while home(&game.world) < 6 && game.step_to(sailed + 8 * hour) {
+    while left(&game.world) > 0 && game.step_to(sailed + 8 * hour) {
         let (c, now) = (car_of(&game.world, lorry), game.now);
         match (c.trip.is_none() && game.world.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
             (false, Some(at)) => {
-                assert!(now - at <= 2 * crate::haul::COUPLE_MS, "the lorry stood {} ms at home", now - at);
+                assert!(now - at <= (crate::haul::LOAD as u64 + 1) * crate::world::HANDLE_MS, "the lorry stood {} ms at home", now - at);
                 parked_home = None;
             }
             _ => {}
         }
     }
-    assert_eq!(home(&game.world), 6, "{} boxes home in eight hours", home(&game.world));
-    eprintln!("six boxes home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
+    assert_eq!(left(&game.world), 0, "{} packages still out after eight hours", left(&game.world));
+    eprintln!("the starter pack home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }
 
-/// A lorry on its way to the park is scrapped, as one is when the road
-/// under it is taken up and no way home is left: the box it was after
-/// is the next lorry's. Its claim on the box once outlived it, and the
-/// depot's other lorries, finding the park's first box taken, stood at
-/// home for good.
+/// A lorry on its way to the quay is scrapped, as one is when the road
+/// under it is taken up and no way home is left: the load it was after
+/// is the next lorry's. Its claim once outlived it, and the depot's
+/// other lorries, finding the quay's first load taken, stood at home
+/// for good.
 #[test]
-fn a_lorry_scrapped_on_its_way_leaves_its_box() {
+fn a_lorry_scrapped_on_its_way_leaves_its_load() {
     let mut world = street();
     let harbour = harbour_of(&world);
     let x = HARBOUR_X - 12;
@@ -1276,5 +1279,5 @@ fn a_lorry_scrapped_on_its_way_leaves_its_box() {
     game.world.despawn_car(scrapped);
     let until = game.now + DAY_MS as u64 / 24;
     while going(&game.world).is_none() && game.step_to(until) {}
-    assert!(going(&game.world).is_some(), "no lorry went for the boxes after one was scrapped");
+    assert!(going(&game.world).is_some(), "no lorry went for the starter pack after one was scrapped");
 }

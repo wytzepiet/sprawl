@@ -975,7 +975,7 @@ mod tests {
         }
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Cut));
-        assert!((yard(&world) - 2592.0).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
+        assert!((yard(&world) - 2600.0).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
         // Round again: plough the stubble. And a full yard leaves the
         // crop standing.
         assert_eq!(world.batch(farm, now).map(|b| b.0), Some(Job::Plough));

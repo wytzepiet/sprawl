@@ -9,9 +9,9 @@ import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import { running as runs } from "./field";
 import { CAR, ROAD_Z, VAN } from "./roadGeometry";
-import { boxShape, type BoxPart, DECK_Z, rigidShape, FERRY_SHAPE, LORRY_SHAPE, TUG, TUG_SHAPE } from "./sea";
+import { DECK_Z, FERRY_SHAPE, LORRY_BED, LORRY_SHAPE, vanBed } from "./sea";
 import type { Drive } from "./driver";
-import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, PALETTE, travelled, VAN_BOX } from "./motion";
+import { colourOf, driveOf, forgetDrive, LIVERY, moment, PALETTE, travelled, VAN_BED } from "./motion";
 import type { Car, GameObjectEntry, Pose } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 import { HALF_LEVEL, heightAlong } from "../decks";
@@ -82,10 +82,9 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
   };
 }
 
-/** A box (`sea.ts`) standing at a pose, its base at `z`. A box is the
- *  world's: no building's look is on it. */
-export const placeBox = (pool: InstancePool, shape: BoxPart[], p: Pose, z: number) =>
-  place(pool, shape.map(({ key, geo, scale }) => ({ key: paint(pool, key, geo, WHITE), scale })), p, z);
+/** A shape with colours of its own (`sea.ts`, `goods.ts`) standing at a
+ *  pose, its base at `z`. It is the world's: no building's look is on it. */
+export const placeShape = (pool: InstancePool, { key, geo }: { key: string; geo: MeshGeometry }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs
@@ -97,8 +96,6 @@ function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { ke
   switch (car.role) {
     case "Ferry":
       return { key: paint(pool, "ferry" + p, FERRY_SHAPE, LIVERY.ferry), z: DECK_Z };
-    case "Tug":
-      return { key: paint(pool, "tug" + p, TUG_SHAPE, TUG), z: GROUND };
     case "Truck":
     case "Van":
       return { key: paint(pool, "lorry_cab" + p, LORRY_SHAPE, LIVERY.cab), z: GROUND, light: CAB_LIGHT };
@@ -110,9 +107,8 @@ function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { ke
   }
 }
 
-/** A vehicle, where `moment` has it: its body; the box behind its cab, a
- *  lorry's on its hitch, a van's load (`rigidShape`), a tug's; on a
- *  ferry's deck the boxes in their slots and the settlers' cars, all
+/** A vehicle, where `moment` has it: its body; the flatbed behind a
+ *  lorry's or a van's cab; on a ferry's deck the settlers' cars, all
  *  moving with it. Parked, where the server placed it; out of sight
  *  where it has no place. On the move, by the server's clock, a trip's
  *  distance eased (`follow`) and lifted over decks and slopes. */
@@ -127,16 +123,13 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   };
   const first = now();
   if (!first.m) return () => {};
-  const moving = !!(car.trip || car.run || car.sail || car.shunt);
+  const moving = !!(car.trip || car.run || car.sail);
   const look = bodyOf(pool, id, car, !moving);
-  const load = carried(car);
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
-  const box = load && first.m.box ? placeBox(pool, car.role === "Van" ? rigidShape(load, VAN_BOX) : boxShape(load), first.m.box, GROUND + first.lift) : null;
-  const deck = (first.m.deck ?? []).map(({ at, box, settler }) =>
-    box ? placeBox(pool, boxShape(box), at, DECK_Z) : place(pool, [{ key: carBucket(pool, settler!, false) }], at, DECK_Z + CAR.h / 2),
-  );
+  const bed = first.m.bed ? placeShape(pool, car.role === "Van" ? vanBed(VAN_BED) : LORRY_BED, first.m.bed, GROUND + first.lift) : null;
+  const deck = (first.m.deck ?? []).flatMap(({ at, settler }) => (settler === undefined ? [] : [place(pool, [{ key: carBucket(pool, settler, false) }], at, DECK_Z + CAR.h / 2)]));
   carPoses.set(id, first.m.body.at);
-  parts.set(id, [...body.parts, ...(box?.parts ?? [])]);
+  parts.set(id, [...body.parts, ...(bed?.parts ?? [])]);
   // On a run the farm's field turns behind the tractor to what the job
   // leaves (`field.ts`).
   if (car.run) runs.set(car.owner, car.run);
@@ -144,15 +137,15 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     const { m, lift } = now();
     if (!m) return;
     body.move(m.body, lift);
-    if (box && m.box) box.move(m.box, lift);
-    m.deck?.forEach((d, k) => deck[k].move(d.at));
+    if (bed && m.bed) bed.move(m.bed, lift);
+    m.deck?.filter((d) => d.settler !== undefined).forEach((d, k) => deck[k].move(d.at));
     carPoses.set(id, m.body.at);
     if (look.light !== undefined) beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
   }) : () => {};
   return () => {
     stop();
     unbeam(id);
-    for (const it of [body, box, ...deck]) it?.remove();
+    for (const it of [body, bed, ...deck]) it?.remove();
     if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
     carPoses.delete(id);
     parts.delete(id);

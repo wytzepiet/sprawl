@@ -248,7 +248,7 @@ fn met(world: &World, goal: Goal) -> bool {
         Goal::Joined => world.depots().into_iter().any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
         Goal::Fetched => world.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
         Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
-        Goal::Booked => crate::haul::boxes(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
+        Goal::Booked => crate::haul::packages(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
         Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
     }

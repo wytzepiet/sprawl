@@ -1,52 +1,56 @@
-//! Boxes between the harbour and the depots (docs/trade.md §The deck,
-//! docs/shipping.md §Boxes and lorries).
+//! Packages between the harbour, the makers and the depots
+//! (docs/plan-goods.md, docs/shipping.md §Boxes and lorries).
 //!
-//! A depot's lorry hauls the deck's boxes of its own accord: when a box
-//! for the town stands in the park and its depot has room for it, the
-//! nearest depot's first, or when a slot going out at its harbour wants a
-//! good its depot, or a maker in town, has a box of. An
-//! export is loaded under the depot's canopy, or at a maker's yard, and
-//! the lorry pulls it out and drops it in a free dock for the ferry, drop
-//! and hook: then it backs under the box it came for and drives it home,
-//! backs it under the canopy, where it is unloaded into stock and is gone,
-//! and drives off bobtail. With nothing to take it goes bobtail. Nothing
-//! about an errand is remembered: a lorry reads what it should do from
-//! where it is and what it carries, as a resident does.
+//! A depot's lorry is a flatbed that carries a few packages, and it hauls
+//! of its own accord: home from the harbour's quay with what landed there
+//! for the town and its depot has room for, the nearest depot's first;
+//! home from a maker's yard with what the depot is short of; out to the
+//! quay with what a slot going out wants, loaded at the depot, or at a
+//! maker's yard. At every pad it stands while the forklift lifts its
+//! packages on or off (`World::lift`): the one simulated cost of a move,
+//! and the queue at a busy pad. Nothing about an errand is remembered: a
+//! lorry reads what it should do from where it is and what it carries, as
+//! a resident does.
 
 use std::collections::BTreeMap;
 
 use crate::blueprint::blueprint;
 
+use crate::economy::whole;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{CarRole, EntityId, GameObject, Good, Leg, Sailing, Sea, Shipment, Trailer};
+use crate::protocol::{CarRole, EntityId, GameObject, Good, Leg, Package, Sailing, Sea, Shipment};
 use crate::world::World;
 
-/// Every box in the world, and where it is: the shipments list, read off
-/// every place a box can be.
-pub fn boxes(world: &World) -> Vec<(Trailer, Leg, Option<EntityId>)> {
+/// Packages a lorry's flatbed carries.
+pub const LOAD: u32 = 5;
+
+/// Every package in the world, and where it is: the shipments list, read
+/// off every place a package can be.
+pub fn packages(world: &World) -> Vec<(Package, Leg, Option<EntityId>)> {
     let mut out = Vec::new();
     for e in world.objects.iter() {
         match e.object {
             GameObject::Car(ref c) => {
                 out.extend(c.booked.iter().map(|&t| (t, Leg::Booked, Some(e.id))));
                 out.extend(c.deck.iter().flatten().map(|&t| (t, Leg::Aboard, Some(e.id))));
-                out.extend(c.hitched.map(|t| (t, if c.role == CarRole::Truck && world.claims.get(&e.id) == Some(&c.owner) { Leg::Yard } else { Leg::Hauled }, Some(e.id))));
+                let home = world.claims.get(&e.id) == Some(&c.owner);
+                out.extend(c.cargo.iter().map(|&t| (t, if home { Leg::Yard } else { Leg::Hauled }, Some(e.id))));
             }
-            GameObject::Building(ref b) => out.extend(b.park.iter().filter_map(|s| s.trailer).map(|t| (t, Leg::Parked, Some(e.id)))),
+            GameObject::Building(ref b) => out.extend(b.pad.iter().map(|&t| (t, Leg::Quay, Some(e.id)))),
             _ => {}
         }
     }
     out
 }
 
-/// What is on its way to a depot of a good, booked, at sea, in the park
-/// or on a hitch: as good as in stock.
-/// A box for the town, for whichever depot's lorry comes first, counts
+/// What is on its way to a depot of a good, booked, at sea, on the quay or
+/// on a lorry, in units: as good as in stock.
+/// A package for the town, for whichever depot's lorry comes first, counts
 /// for every depot: a town of one depot, which is the town that has them,
 /// counts it once.
 pub fn incoming(world: &World, depot: EntityId, good: Good) -> f64 {
-    boxes(world).iter().filter(|(t, _, _)| t.to.is_none_or(|d| d == depot) && t.good == good && !t.outbound).map(|(t, _, _)| t.units).sum()
+    packages(world).iter().filter(|(t, _, _)| t.to.is_none_or(|d| d == depot) && t.good == good && !t.outbound).count() as f64 * good.per_package()
 }
 
 /// The harbour a depot books through: the nearest standing, by its tile.
@@ -60,7 +64,7 @@ fn harbour_for(world: &World, depot: EntityId) -> Option<EntityId> {
         .map(|(h, _)| h)
 }
 
-/// Something landed in a park, or a slot going out was booked: every
+/// Something landed on a quay, or a slot going out was booked: every
 /// lorry standing idle thinks again.
 pub fn call_lorries(world: &mut World, events: &mut EventQueue) {
     let idle: Vec<EntityId> = world
@@ -74,29 +78,44 @@ pub fn call_lorries(world: &mut World, events: &mut EventQueue) {
     }
 }
 
-/// A box in a harbour's park the depot's lorry should fetch: one bound
-/// for the depot, or for the town; the nearest harbour's first. And the
-/// dock it stands in.
-fn waiting_for(world: &World, depot: EntityId, lorry: EntityId) -> Option<(EntityId, usize)> {
+/// Packages of a good a depot has room for, whole, less what is on the
+/// lorry already.
+fn room(world: &World, depot: EntityId, good: Good, aboard: &[Package]) -> u32 {
+    let free = world.building(depot).and_then(|d| d.stocks.get(&good)).map_or(0, |s| whole(s.short(), good));
+    free.saturating_sub(aboard.iter().filter(|t| t.good == good && !t.outbound).count() as u32)
+}
+
+/// Is this package on a quay one for the depot's lorry: the depot's, or
+/// the town's, or one whose depot has gone.
+fn for_depot(world: &World, t: &Package, depot: EntityId) -> bool {
+    !t.outbound && (t.to == Some(depot) || t.to.is_none_or(|d| world.objects.get(d).is_none()))
+}
+
+/// The harbour whose quay has packages the depot's lorry should fetch,
+/// ones the depot has room for, more than the other lorries on their way
+/// there can take: the nearest.
+fn waiting_for(world: &World, depot: EntityId, lorry: EntityId) -> Option<EntityId> {
     let at = world.objects.get(depot)?.position?;
-    let taken: Vec<(EntityId, usize)> = world.aims.iter().filter(|&(&l, _)| l != lorry).map(|(_, &a)| a).collect();
     world
         .harbours
         .keys()
         .filter_map(|&h| {
             let b = world.building(h)?;
             let p = world.objects.get(h)?.position?;
-            // One the depot has room for, whole: a lorry does not fetch a
-            // box to stand in the yard on its hitch.
-            let room = |g: Good, units: f64| world.building(depot).and_then(|d| d.stocks.get(&g)).is_some_and(|s| s.short() >= units);
-            let i = (0..b.park.len()).find(|&i| {
-                !taken.contains(&(h, i))
-                    && b.park[i].trailer.is_some_and(|t| !t.outbound && room(t.good, t.units) && (t.to == Some(depot) || t.to.is_none_or(|d| world.objects.get(d).is_none())))
-            })?;
-            Some(((p.x - at.x).abs() + (p.y - at.y).abs(), h, i))
+            let fits = b.pad.iter().filter(|t| for_depot(world, t, depot) && room(world, depot, t.good, &[]) > 0).count() as u32;
+            let coming: u32 = world
+                .objects
+                .iter()
+                .filter(|e| e.id != lorry)
+                .filter_map(|e| match e.object {
+                    GameObject::Car(ref c) if c.role == CarRole::Truck && c.trip.as_ref().is_some_and(|t| t.destination == h) => Some(LOAD.saturating_sub(c.cargo.iter().filter(|t| !t.outbound).count() as u32)),
+                    _ => None,
+                })
+                .sum();
+            (fits > coming).then_some(((p.x - at.x).abs() + (p.y - at.y).abs(), h))
         })
         .min()
-        .map(|(_, h, i)| (h, i))
+        .map(|(_, h)| h)
 }
 
 /// The goods slots going out at the depot's harbour want.
@@ -104,19 +123,19 @@ fn wanted_out(world: &World, depot: EntityId) -> Vec<Good> {
     harbour_for(world, depot).and_then(|h| world.building(h)).map_or(Vec::new(), |b| b.outgoing.iter().map(|t| t.good).collect())
 }
 
-/// A slot going out at the depot's harbour, taken to be filled with
-/// `units` of its good: the box as it is loaded.
-fn fill_out(world: &mut World, depot: EntityId, good: Good, units: f64) -> Option<Trailer> {
+/// A slot going out at the depot's harbour, taken to be filled with a
+/// package of its good: the package as it is loaded.
+fn fill_out(world: &mut World, depot: EntityId, good: Good) -> Option<Package> {
     let h = harbour_for(world, depot)?;
-    let Some(b) = world.building_mut(h) else { return None };
+    let b = world.building_mut(h)?;
     let i = b.outgoing.iter().position(|t| t.good == good)?;
-    Some(Trailer { units, ..b.outgoing.remove(i) })
+    Some(b.outgoing.remove(i))
 }
 
-/// A maker's load for its depot.
-fn for_home(world: &mut World, good: Good, units: f64, depot: EntityId) -> Trailer {
+/// A maker's package for its depot.
+fn for_home(world: &mut World, good: Good, depot: EntityId) -> Package {
     let id = world.objects.reserve_id();
-    Trailer { id, good, units, to: Some(depot), outbound: false, order: id, partner: None, price: 0.0 }
+    Package { id, good, to: Some(depot), outbound: false, order: id, partner: None, price: 0.0 }
 }
 
 /// Is the depot under its reorder point of a good, counting what is on
@@ -127,12 +146,17 @@ fn short_of(world: &World, depot: EntityId, good: Good) -> bool {
     s.level + incoming(world, depot, good) < crate::economy::reorder(world, depot, good)
 }
 
-/// The nearest maker in town with a box's worth in its yard of a good the
-/// depot is short of, by the tiles between them, or else of one a slot
-/// going out wants:
-/// the town's own shelf before the world's. A lorry is free to go to a
-/// maker whenever it is bobtail, so a farm's endless crates for the world
-/// would otherwise keep it from the sawmill's timber the town is out of.
+/// Whole packages of a good a depot has over its reorder point.
+fn spare(world: &World, depot: EntityId, good: Good) -> u32 {
+    world.building(depot).and_then(|b| b.stocks.get(&good)).map_or(0, |s| whole(s.level - crate::economy::reorder(world, depot, good), good))
+}
+
+/// The nearest maker in town with a load in its yard of a good the depot
+/// is short of, as much as it has room for up to a lorry's, or else of
+/// one a slot going out wants, by the tiles between them: the town's own
+/// shelf before the world's. A lorry is free to go to a maker whenever it
+/// is empty, so a farm's endless crates for the world would otherwise keep
+/// it from the sawmill's timber the town is out of.
 fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
     let at = world.objects.get(depot)?.position?;
     let out = wanted_out(world, depot);
@@ -143,8 +167,8 @@ fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
             GameObject::Building(ref b) => {
                 let good = blueprint(b.kind).makes?;
                 let short = short_of(world, depot, good);
-                (short || out.contains(&good)).then_some(())?;
-                (b.stocks.get(&good)?.level >= good.per_box() && world.street_of(e.id).is_some()).then_some((!short, e.id, e.position?))
+                let load = if short { room(world, depot, good, &[]).min(LOAD) } else { out.iter().filter(|&&g| g == good).count() as u32 }.min(LOAD);
+                (load > 0 && whole(b.stocks.get(&good)?.level, good) >= load && world.street_of(e.id).is_some()).then_some((!short, e.id, e.position?))
             }
             _ => None,
         })
@@ -152,175 +176,200 @@ fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
         .map(|(_, id, _)| id)
 }
 
-/// The lorry woke, parked: at the end of its service where it stands, or
-/// called. At home it unloads what it brought, pulls out a box a slot
-/// going out wants, and sets out if there is a reason to; at a harbour it drops what
-/// it brought and hooks what it came for, and goes home.
+/// The lorry woke, parked, the forklift done with it: at the end of its
+/// drive, or called. At home it has its packages for the town lifted off
+/// into stock, is loaded with what a slot going out wants, and sets out if
+/// there is a reason to; at a maker's yard it is loaded, and goes; at a
+/// harbour it has what it brought lifted off onto the quay and what it
+/// came for lifted on, and goes home.
 pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, now: GameTime) {
     let Some(c) = world.car(lorry) else { return };
     if c.trip.is_some() {
         return;
     }
-    let (depot, hitched) = (c.owner, c.hitched);
+    let depot = c.owner;
     let Some(home) = world.street_of(depot) else { return };
     let at = world.claims.get(&lorry).copied().unwrap_or(depot);
     if world.harbours.contains_key(&at) {
-        at_harbour(world, events, lorry, depot, at, now);
-        return;
+        return at_harbour(world, events, lorry, depot, at, now);
     }
     if at != depot {
-        // At a maker's yard, bobtail: a box loaded with what it makes, and
-        // home with it while the depot is short, else on to the harbour
-        // for the world.
-        let good = world.building(at).and_then(|b| blueprint(b.kind).makes).filter(|&g| short_of(world, depot, g) || wanted_out(world, depot).contains(&g));
-        if let (Some(good), None) = (good, hitched) {
-            let units = crate::economy::loaded(world, at, good, good.per_box());
-            if units > 0.0 {
-                let home = short_of(world, depot, good);
-                let t = match home {
-                    true => Some(for_home(world, good, units, depot)),
-                    false => fill_out(world, depot, good, units),
-                };
-                set_load(world, lorry, t);
-                crate::calls::turn(world, events, at, now);
-                let to = if home { Some(depot) } else { harbour_for(world, depot) };
-                let gone = to.zip(world.street_of(at)).is_some_and(|(h, door)| crate::car::spawn::start_trip(world, events, lorry, door, h, now, GameTime::MAX));
-                if !gone {
-                    events.wake(crate::calls::RETRY_MS, lorry);
-                }
-                return;
-            }
-        }
-        return go_home(world, events, lorry, at, now);
+        return at_maker(world, events, lorry, depot, at, now);
     }
     crate::economy::refilled(world, lorry, now);
-    // Home, backed under the canopy. A box from the harbour is dropped,
-    // unloaded into stock and gone; what does not fit the shelf is stacked
-    // in the yard over its line. The lorry is bobtail, and thinks on.
-    if let Some(t) = hitched.filter(|t| !t.outbound) {
-        let left = crate::economy::delivered(world, depot, t.good, t.units);
-        if let Some(b) = world.building_mut(depot)
-            && let Some(s) = b.stocks.get_mut(&t.good)
-        {
-            s.level += left;
+    // Home: what it brought for the town is lifted off into stock; what
+    // does not fit is stacked in the yard over its line.
+    let cargo = world.car(lorry).map_or(Vec::new(), |c| c.cargo.clone());
+    let (home_goods, out): (Vec<Package>, Vec<Package>) = cargo.into_iter().partition(|t| !t.outbound);
+    if !home_goods.is_empty() {
+        if let Some(c) = world.car_mut(lorry) {
+            c.cargo = out;
         }
-        set_load(world, lorry, None);
-        world.lumps.push(crate::protocol::Lump { building: depot, coins: 0.0, gdp: 0.0, at: now, good: Some(t.good), units: t.units });
+        for good in crate::market::GOODS {
+            let n = home_goods.iter().filter(|t| t.good == good).count() as u32;
+            if n == 0 {
+                continue;
+            }
+            let units = n as f64 * good.per_package();
+            let left = crate::economy::delivered(world, depot, good, units);
+            if let Some(s) = world.building_mut(depot).and_then(|b| b.stocks.get_mut(&good)) {
+                s.level += left;
+            }
+            world.lumps.push(crate::protocol::Lump { building: depot, coins: 0.0, gdp: 0.0, at: now, good: Some(good), units });
+            world.lift(depot, lorry, good, n, false, now);
+        }
         crate::calls::turn(world, events, depot, now);
+        return wait(world, events, lorry, now);
     }
-    let hitched = world.car(lorry).and_then(|c| c.hitched);
-    // Bobtail, and a maker in town has a load of what the depot is short
-    // of or a slot going out wants: the lorry fetches it from the maker's
+    let empty = world.car(lorry).is_none_or(|c| c.cargo.is_empty());
+    // Empty, and a maker in town has a load of what the depot is short of
+    // or a slot going out wants: the lorry fetches it from the maker's
     // yard.
-    if hitched.is_none()
-        && let Some(maker) = maker_with_surplus(world, depot)
-        && let Some(door) = world.street_of(depot)
-    {
-        if !crate::car::spawn::start_trip(world, events, lorry, door, maker, now, GameTime::MAX) {
+    if empty && let Some(maker) = maker_with_surplus(world, depot) {
+        if !crate::car::spawn::start_trip(world, events, lorry, home, maker, now, GameTime::MAX) {
             events.wake(crate::calls::RETRY_MS, lorry);
         }
         return;
     }
-    // Still bobtail, and a slot going out wants a good the depot has a
-    // quarter of a box of over its reorder point: a box is loaded with it
-    // under the canopy, and the lorry pulls it out. The town's own shelf
-    // comes before the world's.
-    let spare = |g: Good| world.building(depot).and_then(|b| b.stocks.get(&g)).map_or(0.0, |s| s.level - crate::economy::reorder(world, depot, g)).min(g.per_box());
-    if hitched.is_none()
-        && let Some(good) = wanted_out(world, depot).into_iter().find(|&g| spare(g) >= g.per_box() / 4.0)
-    {
-        let units = crate::economy::loaded(world, depot, good, spare(good));
-        let t = fill_out(world, depot, good, units);
-        set_load(world, lorry, t);
+    // Still empty, and slots going out want goods the depot has whole
+    // packages of over its reorder point: they are lifted on, a load at
+    // most. The town's own shelf comes before the world's.
+    if empty {
+        let mut loaded = 0;
+        for good in wanted_out(world, depot) {
+            if loaded == LOAD || spare(world, depot, good) == 0 {
+                continue;
+            }
+            let Some(t) = fill_out(world, depot, good) else { continue };
+            crate::economy::loaded(world, depot, good, 1);
+            if let Some(c) = world.car_mut(lorry) {
+                c.cargo.push(t);
+            }
+            world.lift(depot, lorry, good, 1, true, now);
+            loaded += 1;
+        }
+        if loaded > 0 {
+            crate::calls::turn(world, events, depot, now);
+            return wait(world, events, lorry, now);
+        }
     }
-    let hitched = world.car(lorry).and_then(|c| c.hitched);
-    // At home every box on the hitch is going out.
-    // At home it is after no box yet.
-    world.aims.remove(&lorry);
-    let wanted = waiting_for(world, depot, lorry);
-    if hitched.is_none() && wanted.is_none() {
-        return;
-    }
-    let harbour = wanted.map(|(h, _)| h).or_else(|| harbour_for(world, depot));
+    // With exports aboard, or packages on a quay for the depot: to the
+    // harbour.
+    let laden = world.car(lorry).is_some_and(|c| !c.cargo.is_empty());
+    let harbour = waiting_for(world, depot, lorry).or_else(|| laden.then(|| harbour_for(world, depot)).flatten());
     let Some(harbour) = harbour else { return };
-    // Bobtail, it backs straight under the box it came for; with a box,
-    // it takes a free dock to drop it first.
-    if let (None, Some(aim)) = (hitched, wanted) {
-        world.aims.insert(lorry, aim);
-    }
     if !crate::car::spawn::start_trip(world, events, lorry, home, harbour, now, GameTime::MAX) {
-        world.aims.remove(&lorry);
         events.wake(crate::calls::RETRY_MS, lorry);
     }
 }
 
-/// At a harbour, in a dock: a box on the hitch going out is dropped here
-/// for the ferry; bobtail, the box in this dock is hooked if it is one the
-/// lorry came for; then on to the box it came for, or home.
-fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot: EntityId, harbour: EntityId, now: GameTime) {
-    let dock = match world.claim_of_dock(harbour, lorry) {
-        Some(i) => i,
-        None => return go_home(world, events, lorry, harbour, now),
-    };
-    let hitched = world.car(lorry).and_then(|c| c.hitched);
-    let in_dock = world.building(harbour).and_then(|b| b.park.get(dock).and_then(|s| s.trailer));
-    match (hitched, in_dock) {
-        (Some(t), None) if t.outbound => {
-            if let Some(b) = world.building_mut(harbour) {
-                b.park[dock].trailer = Some(t);
-            }
-            set_load(world, lorry, None);
-            if let Some(tug) = world.tug_of(harbour) {
-                events.wake(0, tug);
-            }
-            // Dropped: on to the box it came for, if there is one.
-            match waiting_for(world, depot, lorry).filter(|&(h, _)| h == harbour) {
-                Some((_, i)) if i != dock => {
-                    let leaves = world.car(lorry).and_then(|c| c.spot);
-                    world.aims.insert(lorry, (harbour, i));
-                    let moved = world.redock(harbour, lorry, i, now).is_some_and(|(way, backs)| crate::car::spawn::manoeuvre(world, events, lorry, harbour, way, backs, leaves, now));
-                    if !moved {
-                        go_home(world, events, lorry, harbour, now);
-                    }
-                }
-                _ => go_home(world, events, lorry, harbour, now),
-            }
-        }
-        (None, Some(t)) if !t.outbound => {
-            if let Some(b) = world.building_mut(harbour) {
-                b.park[dock].trailer = None;
-            }
-            // A box for the town is the depot's once its lorry has it.
-            set_load(world, lorry, Some(Trailer { to: Some(t.to.unwrap_or(depot)), ..t }));
-            go_home(world, events, lorry, harbour, now);
-        }
-        _ => go_home(world, events, lorry, harbour, now),
-    }
+/// The lorry stands until its forklift is done.
+fn wait(world: &World, events: &mut EventQueue, lorry: EntityId, now: GameTime) {
+    let due = world.car(lorry).map_or(now, |c| c.due);
+    events.wake(due.saturating_sub(now).max(1), lorry);
 }
 
-/// Coupling to a box or dropping one: a few seconds' work for a driver,
-/// a moment to watch.
-pub const COUPLE_MS: GameTime = 400;
+/// At a maker's yard: empty, it is loaded with what the depot is short of,
+/// as much as it has room for, or else with what slots going out want;
+/// loaded, it goes, home with what is the depot's, to the harbour with
+/// what is the world's.
+fn at_maker(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot: EntityId, maker: EntityId, now: GameTime) {
+    let cargo = world.car(lorry).map_or(Vec::new(), |c| c.cargo.clone());
+    if !cargo.is_empty() {
+        let to = if cargo.iter().any(|t| !t.outbound) { Some(depot) } else { harbour_for(world, depot) };
+        let gone = to.zip(world.street_of(maker)).is_some_and(|(to, door)| crate::car::spawn::start_trip(world, events, lorry, door, to, now, GameTime::MAX));
+        if !gone {
+            events.wake(crate::calls::RETRY_MS, lorry);
+        }
+        return;
+    }
+    let Some(good) = world.building(maker).and_then(|b| blueprint(b.kind).makes) else { return go_home(world, events, lorry, maker, now) };
+    let home = short_of(world, depot, good);
+    let want = if home { room(world, depot, good, &[]).min(LOAD) } else { wanted_out(world, depot).iter().filter(|&&g| g == good).count() as u32 }.min(LOAD);
+    let n = crate::economy::loaded(world, maker, good, want);
+    if n == 0 {
+        return go_home(world, events, lorry, maker, now);
+    }
+    for _ in 0..n {
+        let t = if home { Some(for_home(world, good, depot)) } else { fill_out(world, depot, good) };
+        if let (Some(t), Some(c)) = (t, world.car_mut(lorry)) {
+            c.cargo.push(t);
+        }
+    }
+    world.lift(maker, lorry, good, n, true, now);
+    crate::calls::turn(world, events, maker, now);
+    wait(world, events, lorry, now);
+}
 
-fn go_home(world: &mut World, events: &mut EventQueue, lorry: EntityId, harbour: EntityId, now: GameTime) {
-    world.aims.remove(&lorry);
+/// At a harbour, in a dock: what it brought for the ferry is lifted off
+/// onto the quay, as far as the quay has room; then what is on the quay
+/// for its depot, that the depot has room for, is lifted on, a load at
+/// most. Nothing to move, it goes home; with exports the quay has no room
+/// for, it waits.
+fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot: EntityId, harbour: EntityId, now: GameTime) {
+    let cargo = world.car(lorry).map_or(Vec::new(), |c| c.cargo.clone());
+    let quay = world.building(harbour).map_or(0, |b| b.pad.len());
+    let (mut dropped, mut kept): (Vec<Package>, Vec<Package>) = cargo.into_iter().partition(|t| t.outbound);
+    let space = crate::world::sea::QUAY.saturating_sub(quay);
+    kept.extend(dropped.split_off(space.min(dropped.len())));
+    let mut taken = Vec::new();
+    if let Some(b) = world.building(harbour) {
+        for (i, t) in b.pad.iter().enumerate() {
+            if kept.len() + taken.len() >= LOAD as usize {
+                break;
+            }
+            let aboard: Vec<Package> = kept.iter().chain(taken.iter().map(|(_, t)| t)).copied().collect();
+            if for_depot(world, t, depot) && room(world, depot, t.good, &aboard) > 0 {
+                taken.push((i, *t));
+            }
+        }
+    }
+    if dropped.is_empty() && taken.is_empty() {
+        if kept.iter().any(|t| t.outbound) {
+            return events.wake(crate::world::HANDLE_MS * LOAD as GameTime, lorry);
+        }
+        return go_home(world, events, lorry, harbour, now);
+    }
+    if let Some(b) = world.building_mut(harbour) {
+        for &(i, _) in taken.iter().rev() {
+            b.pad.remove(i);
+        }
+        b.pad.extend(&dropped);
+    }
+    // A package for the town is the depot's once its lorry has it.
+    kept.extend(taken.iter().map(|&(_, t)| Package { to: Some(depot), ..t }));
+    if let Some(c) = world.car_mut(lorry) {
+        c.cargo = kept;
+    }
+    for good in crate::market::GOODS {
+        let off = dropped.iter().filter(|t| t.good == good).count() as u32;
+        world.lift(harbour, lorry, good, off, false, now);
+    }
+    for good in crate::market::GOODS {
+        let on = taken.iter().filter(|(_, t)| t.good == good).count() as u32;
+        world.lift(harbour, lorry, good, on, true, now);
+    }
+    // The ferry at the ramp may load what was dropped, or land more.
+    if let Some(ferry) = world.ferry_of(harbour).filter(|&f| world.car(f).is_some_and(|c| c.spot.is_some())) {
+        events.wake(0, ferry);
+    }
+    wait(world, events, lorry, now);
+}
+
+fn go_home(world: &mut World, events: &mut EventQueue, lorry: EntityId, from: EntityId, now: GameTime) {
     let Some(depot) = world.car(lorry).map(|c| c.owner) else { return };
-    let from = world.street_of(harbour);
-    let gone = from.is_some_and(|from| crate::car::spawn::start_trip(world, events, lorry, from, depot, now, GameTime::MAX));
+    let door = world.street_of(from);
+    let gone = door.is_some_and(|door| crate::car::spawn::start_trip(world, events, lorry, door, depot, now, GameTime::MAX));
     if !gone {
         events.wake(crate::calls::RETRY_MS, lorry);
     }
 }
 
-fn set_load(world: &mut World, lorry: EntityId, t: Option<Trailer>) {
-    world.set_hitch(lorry, t);
-}
-
-/// The sea's part of an update: every box with an order, where it is and
-/// when it lands; every harbour's timetable.
+/// The sea's part of an update: every package with an order, where it is
+/// and when it lands; every harbour's timetable.
 pub fn sea(world: &World) -> Sea {
     let calls: BTreeMap<EntityId, Option<GameTime>> = world.harbours.keys().flat_map(|&h| world.ferries_of(h)).map(|f| (f, world.next_call(f))).collect();
-    let shipments = boxes(world)
+    let shipments = packages(world)
         .into_iter()
         .map(|(t, leg, carrier)| {
             let c = carrier.and_then(|id| world.car(id));
@@ -330,7 +379,7 @@ pub fn sea(world: &World) -> Sea {
                 Leg::Hauled => c.and_then(|c| c.trip.as_ref()).map(|t| t.eta),
                 _ => None,
             };
-            Shipment { order: t.order, partner: t.partner, price: t.price, trailer: t.id, good: t.good, units: t.units, to: t.to, outbound: t.outbound, leg, carrier, at: carrier.and_then(|id| world.objects.get(id)?.position), eta }
+            Shipment { order: t.order, partner: t.partner, price: t.price, package: t.id, good: t.good, to: t.to, outbound: t.outbound, leg, carrier, at: carrier.and_then(|id| world.objects.get(id)?.position), eta }
         })
         .collect();
     let sailings = world
@@ -349,7 +398,7 @@ pub fn sea(world: &World) -> Sea {
                 arrives,
                 departs,
                 berthed,
-                boxes: c.deck.iter().flatten().count() as u32,
+                packages: c.deck.iter().flatten().count() as u32,
                 settlers: c.passengers.len() as u32,
                 deck: crate::world::sea::DECK as u32,
                 booked: c.booked.len() as u32,
@@ -387,20 +436,20 @@ pub fn buy_lorry(world: &mut World, events: &mut EventQueue, depot: EntityId, no
 }
 
 /// The sea as the server has it, for reading: the summary the client gets,
-/// every harbour's park and ferry, and every lorry and what it hauls.
+/// every harbour's quay, forklifts and ferry, and every lorry and what it
+/// carries.
 pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
     use serde_json::json;
     let harbours: Vec<_> = world
         .harbours
         .keys()
         .map(|&h| {
-            let park = world.building(h).map(|b| b.park.iter().map(|s| s.trailer).collect::<Vec<_>>());
+            let quay = world.building(h).map(|b| (b.pad.clone(), b.lifts.clone()));
             let ferry = world.ferry_of(h).and_then(|f| world.car(f).map(|c| json!({
                 "id": f, "at": world.objects.get(f).and_then(|e| e.position), "due": c.due, "moored": c.spot.is_some(),
                 "sailing": c.sail.is_some(), "deck": c.deck, "passengers": c.passengers, "booked": c.booked,
             })));
-            let tug = world.tug_of(h).and_then(|t| world.car(t).map(|c| json!({ "id": t, "spot": c.spot, "shunt": c.shunt, "hitched": c.hitched })));
-            json!({ "harbour": h, "park": park, "ferry": ferry, "tug": tug })
+            json!({ "harbour": h, "quay": quay.as_ref().map(|q| &q.0), "lifts": quay.as_ref().map(|q| &q.1), "ferry": ferry })
         })
         .collect();
     let lorries: Vec<_> = world
@@ -409,7 +458,7 @@ pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
         .filter_map(|e| match e.object {
             GameObject::Car(ref c) if c.role == CarRole::Truck => Some(json!({
                 "id": e.id, "depot": c.owner, "at": e.position, "to": c.trip.as_ref().map(|t| t.destination),
-                "hitched": c.hitched, "standing_at": world.claims.get(&e.id),
+                "cargo": c.cargo, "due": c.due, "standing_at": world.claims.get(&e.id),
             })),
             _ => None,
         })

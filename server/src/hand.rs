@@ -33,15 +33,15 @@ pub(crate) fn handle_player_action(
                 crate::car::simulation::park_at_home(world, events, car_id);
             }
         }
-        ClientMessage::Trade { good, boxes, out } => {
-            crate::market::trade(world, good, out, boxes);
+        ClientMessage::Trade { good, packages, out } => {
+            crate::market::trade(world, good, out, packages);
             crate::haul::call_lorries(world, events);
         }
-        ClientMessage::Send { letter, boxes } => {
-            crate::orders::send(world, letter, boxes);
+        ClientMessage::Send { letter, packages } => {
+            crate::orders::send(world, letter, packages);
             crate::haul::call_lorries(world, events);
         }
-        ClientMessage::Order { good, out, boxes, price } => crate::market::order(world, good, out, boxes, price),
+        ClientMessage::Order { good, out, packages, price } => crate::market::order(world, good, out, packages, price),
         ClientMessage::Cancel { order } => crate::market::cancel(world, order),
         ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
         ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::Card(_) => {

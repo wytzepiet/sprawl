@@ -56,12 +56,11 @@ const LINE = rgb(0.82, 0.81, 0.77);
  * buildings, and a canopy over a depot's docks; the roads are the game's
  * (`roads.ts`).
  * Geometry alone, in the same frame, and the lines painted on the yards'
- * asphalt: the docks', and the game's own `marks`, a harbour's trailer
- * park's slots. The trees the dressing plants are the caller's to plant
+ * asphalt. The trees the dressing plants are the caller's to plant
  * (`treeInstances`), and what stands on its roofs and its street lamps the
  * props' (`props.ts`); what moves on it the game draws itself.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: P[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Rgb | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
@@ -86,7 +85,7 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   add("canopy", canopy, CANOPY);
   add("canopyPosts", posts, POST);
   // Each wound as the sheets' outlines are.
-  add("lines", flatPolygons([...dressing.yardLines, ...marks].map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
+  add("lines", flatPolygons(dressing.yardLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
   // A street lamp stands on the pavement, a prop like what stands on a roof.
   const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: KERB_Z, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
   return { pieces, dressing, props: [...mass.props, ...lamps] };

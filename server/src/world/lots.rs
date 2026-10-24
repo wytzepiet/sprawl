@@ -192,24 +192,24 @@ pub struct Ways {
     bays: HashMap<EntityId, Vec<EntityId>>,
 }
 
-/// A yard's docks, in rows in from its back up the lane, a box's width
-/// apart, the last just in from the gate: a yard is two tiles deep, so the
+/// A yard's docks, in rows in from its back up the lane, a flatbed's
+/// width apart, the last just in from the gate: a yard is two tiles deep, so the
 /// gate's middle is 1.5 in.
 pub const DOCK_ROWS: [f64; 4] = [0.55, 0.85, 1.15, 1.45];
-/// A docked lorry's cab, out from the lane's middle: its box behind it
-/// reaches to the yard's side, and the cab stands clear of the lane.
+/// A docked lorry's cab, out from the lane's middle: its flatbed behind
+/// it reaches to the yard's side, and the cab stands clear of the lane.
 pub const DOCK_OUT: f64 = 0.9;
-/// How far out from the lane's middle a docked box reaches: a side of the
-/// yard narrower than this has no docks.
+/// How far out from the lane's middle a docked flatbed reaches: a side of
+/// the yard narrower than this has no docks.
 const DOCK_REACH: f64 = 1.4;
-/// How far past a dock's mouth, toward the back, a lorry or the tug pulls
-/// up to back in.
+/// How far past a dock's mouth, toward the back, a lorry pulls up to back
+/// in.
 pub const PAST: f64 = 0.5;
 
 /// A yard's park, a harbour's and a depot's alike: a lane straight in
 /// from the gate to the yard's back, and off it, on each of `sides`, a
-/// row of docks, a docked lorry's cab facing the lane and its box behind
-/// it out to the yard's side. A lorry drives in past a dock's mouth, pulls
+/// row of docks, a docked lorry's cab facing the lane and its flatbed
+/// behind it out to the yard's side. A lorry drives in past a dock's mouth, pulls
 /// up `PAST` beyond it and backs in; it leaves forward, up the lane to the
 /// gate: a right angle in from the street, the dock, a right angle out,
 /// and never a hairpin. `at(s, side)` is a point `s` in from the back and
@@ -287,103 +287,8 @@ impl World {
             lot.shape = shape;
             self.lots.insert(building, lot);
             self.reseat(building, held);
-            self.lay_park(building);
         }
         self.lots.get_mut(&building)
-    }
-
-    /// A harbour's trailer park is its docks: each slot where a box stands
-    /// in one, its middle behind a docked lorry's cab. The boxes keep their
-    /// slots when the lot is laid again.
-    fn lay_park(&mut self, building: EntityId) {
-        let Some(GameObject::Building(b)) = self.objects.get(building).map(|e| &e.object) else { return };
-        if !crate::blueprint::blueprint(b.kind).quay {
-            return;
-        }
-        let poses: Vec<Pose> = self.lots[&building]
-            .spots
-            .iter()
-            .map(|s| Pose { at: [s.pose.at[0] - s.pose.heading.cos() * crate::world::sea::CAB_BOX, s.pose.at[1] - s.pose.heading.sin() * crate::world::sea::CAB_BOX], heading: s.pose.heading })
-            .collect();
-        if let Some(GameObject::Building(b)) = self.objects.get_mut(building).map(|e| &mut e.object) {
-            b.park.resize(poses.len(), crate::protocol::Slot { pose: Pose { at: [0.0, 0.0], heading: 0.0 }, trailer: None });
-            for (slot, pose) in b.park.iter_mut().zip(poses) {
-                slot.pose = pose;
-            }
-        }
-    }
-
-    /// The dock a lorry stands in or is bound for, at a yard.
-    pub fn claim_of_dock(&self, building: EntityId, car: EntityId) -> Option<usize> {
-        match self.claim_of(building, car) {
-            Some(Claim::Spot(i)) => Some(i),
-            _ => None,
-        }
-    }
-
-    /// Someone holds a dock of this yard, now or later: a lorry on its way
-    /// or standing in it, or the tug bringing a box.
-    pub fn dock_held(&self, building: EntityId, i: usize) -> bool {
-        self.lots.get(&building).is_some_and(|l| l.spots.get(i).is_some_and(|s| !s.windows.is_empty()))
-    }
-
-    /// The tug holds a dock while it brings a box to it.
-    pub fn hold_dock(&mut self, building: EntityId, car: EntityId, i: usize, from: GameTime, to: GameTime) {
-        if self.lot_mut(building).is_some() {
-            self.unhold_dock(building, car);
-            self.hold(building, car, Claim::Spot(i), from, to);
-        }
-    }
-
-    /// A lorry in one dock of a yard moves along to another: drop and hook,
-    /// out of the dock it dropped a box in and back under the box it came
-    /// for, along the same lane, never out to the street. Toward the lane's
-    /// far end it pulls out that way and stops past the dock's mouth, as it
-    /// came in; toward the door it pulls out that way, on past the mouth,
-    /// and backs down the lane and round into the dock. The way, and how
-    /// many of its last edges are backed; the dock is held from now.
-    pub fn redock(&mut self, building: EntityId, car: EntityId, j: usize, now: GameTime) -> Option<(Vec<EntityId>, usize)> {
-        self.lot_mut(building)?;
-        let lot = &self.lots[&building];
-        let Way::Yard { lane, bays, .. } = &lot.way else { return None };
-        let Claim::Spot(i) = self.claim_of(building, car)? else { return None };
-        let ((mi, _), (mj, sj)) = (bays[i], *bays.get(j)?);
-        let mut way = vec![lot.spots[i].node];
-        if sj > mi {
-            way.extend(&lane[mi..=sj]);
-        } else {
-            let at = self.node_pos(lane[mj])?;
-            let far = |k: &usize| self.node_pos(lane[*k]).is_some_and(|p| ((p[0] - at[0]).powi(2) + (p[1] - at[1]).powi(2)).sqrt() >= 0.45);
-            let k = (0..mj).rev().find(far).unwrap_or(0);
-            way.extend(lane[k..=mi].iter().rev());
-        }
-        way.extend([lane[mj], lot.spots[j].node]);
-        self.release_spot(car);
-        self.hold(building, car, Claim::Spot(j), now, GameTime::MAX);
-        Some((way, 2))
-    }
-
-    /// The tug lets go of the dock it held, and stands where it stands.
-    pub fn unhold_dock(&mut self, building: EntityId, car: EntityId) {
-        if let Some(lot) = self.lots.get_mut(&building) {
-            for s in &mut lot.spots {
-                s.windows.retain(|w| w.car != car);
-            }
-        }
-        self.claims.remove(&car);
-    }
-
-    /// Whether a dock is one this car may back into: one with no box in it,
-    /// or the one whose box it is coming to hook.
-    fn dock_open(&self, building: EntityId, car: EntityId, i: usize) -> bool {
-        let boxed = match self.objects.get(building).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.park.get(i).is_some_and(|s| s.trailer.is_some()),
-            _ => false,
-        };
-        match self.aims.get(&car) {
-            Some(&(at, dock)) if at == building => dock == i,
-            _ => !boxed,
-        }
     }
 
     fn building_of(&self, id: EntityId) -> Option<(Vec<GridCoord>, crate::protocol::BuildingKind, u8)> {
@@ -664,7 +569,7 @@ impl World {
                     id
                 })
                 .collect();
-            for k in 0..crate::world::sea::DECK {
+            for k in 0..crate::world::sea::BAYS {
                 for at in crate::world::sea::seats(ship, k) {
                     let id = node(self, at.at);
                     edge(self, id, ends[k % crate::world::sea::LANES]);
@@ -841,7 +746,7 @@ impl World {
             .or_else(|| door_only.then_some(Claim::Door))
             .or_else(|| {
                 (0..lot.spots.len())
-                    .filter(|&i| usable(i) && self.dock_open(building, car, i) && lot.spots[i].clear_from(car, from, len) == from)
+                    .filter(|&i| usable(i) && lot.spots[i].clear_from(car, from, len) == from)
                     .map(|i| (i, appeal(i)))
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(i, _)| Claim::Spot(i))
@@ -1117,9 +1022,8 @@ impl World {
             .objects
             .iter()
             .filter_map(|e| match e.object {
-                // A ferry at its berth and a tug on its apron stand where they
-                // stand: neither is in a lot.
-                GameObject::Car(ref c) if c.trip.is_none() && !matches!(c.role, crate::protocol::CarRole::Ferry | crate::protocol::CarRole::Tug) => Some((e.id, c.spot, e.position?)),
+                // A ferry at its berth stands where it stands: it is in no lot.
+                GameObject::Car(ref c) if c.trip.is_none() && c.role != crate::protocol::CarRole::Ferry => Some((e.id, c.spot, e.position?)),
                 _ => None,
             })
             .collect();

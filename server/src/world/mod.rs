@@ -7,6 +7,7 @@ pub mod fields;
 mod geometry;
 pub mod lots;
 pub mod network;
+pub mod pads;
 pub mod pathfinding;
 mod residents;
 pub mod roads;
@@ -25,6 +26,8 @@ use crate::protocol::{
 use crate::engine::tracked::Tracked;
 use crate::world::network::RoadNetwork;
 use crate::world::segments::EdgeSegment;
+
+pub use pads::HANDLE_MS;
 
 pub struct World {
     pub objects: Tracked,
@@ -123,9 +126,6 @@ pub struct World {
     /// the town, so what reaches it is joined. Derived by `mark_harbours`,
     /// never saved.
     pub harbours: std::collections::BTreeMap<EntityId, Option<EntityId>>,
-    /// The dock a lorry is on its way to back under, to hook the box in it
-    /// (`haul`). Trips are not saved, and neither is this.
-    pub aims: HashMap<EntityId, (EntityId, usize)>,
     /// Who lives or works at each building. Derived from the residents at
     /// startup (`resettle`), and kept by the only code that moves anyone.
     pub people: HashMap<EntityId, BTreeSet<EntityId>>,
@@ -267,7 +267,6 @@ impl World {
             decks: HashMap::default(),
             calls: Vec::new(),
             harbours: Default::default(),
-            aims: HashMap::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
             vacancies: BTreeSet::new(),
@@ -365,7 +364,6 @@ impl World {
     pub fn despawn_car(&mut self, car_id: EntityId) {
         self.release_spot(car_id);
         self.remove_car_from_edges(car_id);
-        self.aims.remove(&car_id);
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position
         {

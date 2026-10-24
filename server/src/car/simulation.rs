@@ -834,10 +834,10 @@ fn advance(world: &mut World, events: &mut EventQueue, role: CarRole, trip: &mut
             // or the car would stay on their queues as a ghost.
             leave_crossed(world, events, car_id, &trip, old_ri, ri);
             park_car(world, events, car_id, trip.destination);
-            // A lorry only couples or drops a box, wherever it stops: a
-            // moment. The box is the load, not the lorry.
-            if role == CarRole::Truck {
-                events.wake(crate::haul::COUPLE_MS, car_id);
+            // A lorry or a van stands for the forklift, as long as what it
+            // lifts takes (`World::lift`).
+            if matches!(role, CarRole::Truck | CarRole::Van) {
+                events.wake(0, car_id);
             } else if role != CarRole::Private {
                 events.wake(crate::calls::SERVICE_MS, car_id);
             }

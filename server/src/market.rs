@@ -8,12 +8,12 @@
 //! pushes the price up, what it sells pushes it down. How lively a good
 //! is is how wide its band is: stone narrow, fuel wide.
 //!
-//! One price, the same to buy and to sell. Each box moves it a step, a
-//! fortieth of the way from the world's price to the band's edge, and is
-//! paid at the price it moved to: a box bought pushes the price up and
-//! costs the new price, a box sold pushes it down and gets the new one.
-//! So a quick flip always loses a step a box, and a town that buys a
-//! whole ferry of a good pays more for the last box than the first. Past
+//! One price, the same to buy and to sell. Each package moves it a step,
+//! a two-hundredth of the way from the world's price to the band's edge, and is
+//! paid at the price it moved to: a package bought pushes the price up and
+//! costs the new price, a package sold pushes it down and gets the new one.
+//! So a quick flip always loses a step a package, and a town that buys a
+//! whole ferry of a good pays more for the last package than the first. Past
 //! the band there is no more room: the world sells at its ceiling and
 //! buys at its floor. Freight leaves the price for now; real distances
 //! later.
@@ -22,7 +22,7 @@
 //! and the hour alone, so the same seed and the same trades give the same
 //! graph on every machine. A week of hours is kept, and saved.
 //!
-//! A "when" order waits for a price: buy so many boxes when it falls to
+//! A "when" order waits for a price: buy so many packages when it falls to
 //! it, sell when it rises to it. It is read each hour, and booked as far
 //! as the deck and the treasury go.
 
@@ -54,11 +54,12 @@ fn band(good: Good) -> f64 {
 pub const HOUR: GameTime = DAY_MS as GameTime / 24;
 /// Hours of price kept: a week.
 const KEPT: usize = 7 * 24;
-/// Boxes the town trades to move a price from the world's to its ceiling
-/// or floor. A town that buys a box of fuel a sailing barely moves it,
-/// the drift back taking each step away again within the day; a whole
-/// ferry of fifteen bought at once moves it most of a half of its band.
-const DEPTH: f64 = 40.0;
+/// Packages the town trades to move a price from the world's to its
+/// ceiling or floor. A town that buys a lorry of fuel a sailing barely
+/// moves it, the drift back taking each step away again within the day;
+/// a whole deck of sixty bought at once moves it most of a third of its
+/// band.
+const DEPTH: f64 = 200.0;
 /// How much of an hour's push from the mayors lasts into the next: a
 /// glut or a shortage lasts most of a day.
 const LASTS: f64 = 0.85;
@@ -67,7 +68,7 @@ const LASTS: f64 = 0.85;
 const PUSH: f64 = 0.12;
 const BACK: f64 = 0.03;
 
-/// A "when" order: so many boxes of a good, bought once the price falls
+/// A "when" order: so many packages of a good, bought once the price falls
 /// to this, or sold once it rises to it.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -76,7 +77,7 @@ pub struct When {
     pub id: u64,
     pub good: Good,
     pub out: bool,
-    pub boxes: u32,
+    pub packages: u32,
     pub price: f64,
 }
 
@@ -106,7 +107,7 @@ pub struct Quote {
     pub price: f64,
     pub floor: f64,
     pub ceiling: f64,
-    /// How far a box moves the price, a unit's: each box is paid at the
+    /// How far a package moves the price, a unit's: each is paid at the
     /// price it moved to.
     pub step: f64,
     /// The price each hour kept, oldest first; the last is the hour just
@@ -137,20 +138,20 @@ impl Market {
     pub fn floor(good: Good) -> f64 {
         world_price(good) * (1.0 - band(good))
     }
-    /// How far a box moves a good's price, a unit's.
+    /// How far a package moves a good's price, a unit's.
     pub fn nudge(good: Good) -> f64 {
         world_price(good) * band(good) / DEPTH
     }
-    /// What a unit of the next box costs bought, or gets sold: the price
+    /// What a unit of the next package costs bought, or gets sold: the price
     /// it moves to, never past the band.
     pub fn next(&self, good: Good, out: bool) -> f64 {
         (self.price(good) + if out { -1.0 } else { 1.0 } * Self::nudge(good)).clamp(Self::floor(good), Self::ceiling(good))
     }
 
-    /// The town traded so many units: the price moves its way.
-    fn traded(&mut self, good: Good, units: f64, out: bool) {
+    /// The town traded so many packages: the price moves its way.
+    fn traded(&mut self, good: Good, packages: f64, out: bool) {
         let at = self.at.entry(good).or_default();
-        *at = (*at + if out { -1.0 } else { 1.0 } * units / (good.per_box() * DEPTH)).clamp(-1.0, 1.0);
+        *at = (*at + if out { -1.0 } else { 1.0 } * packages / DEPTH).clamp(-1.0, 1.0);
         self.changed = true;
     }
 
@@ -221,12 +222,12 @@ pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQue
             if if o.out { price < o.price } else { price > o.price } {
                 continue;
             }
-            let left = o.boxes - trade(world, o.good, o.out, o.boxes);
-            traded |= left < o.boxes;
+            let left = o.packages - trade(world, o.good, o.out, o.packages);
+            traded |= left < o.packages;
             if left == 0 {
                 world.market.orders.remove(i);
             } else {
-                world.market.orders[i].boxes = left;
+                world.market.orders[i].packages = left;
             }
         }
     }
@@ -235,28 +236,28 @@ pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQue
     }
 }
 
-/// Buy so many boxes of a good from the market, on the next ferry in, or
+/// Buy so many packages of a good from the market, on the next ferry in, or
 /// sell them, to wait at the harbour for a lorry: each at the price it
 /// moves to. How many were booked.
-pub fn trade(world: &mut World, good: Good, out: bool, boxes: u32) -> u32 {
+pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
     let Some(&harbour) = world.harbours.keys().next() else { return 0 };
-    for n in 0..boxes {
+    for n in 0..packages {
         let price = world.market.next(good, out);
         if !crate::orders::book(world, harbour, good, out, None, price, None) {
             return n;
         }
-        world.market.traded(good, good.per_box(), out);
+        world.market.traded(good, 1.0, out);
     }
-    boxes
+    packages
 }
 
 /// A "when" order placed.
-pub fn order(world: &mut World, good: Good, out: bool, boxes: u32, price: f64) {
-    if boxes == 0 || !price.is_finite() {
+pub fn order(world: &mut World, good: Good, out: bool, packages: u32, price: f64) {
+    if packages == 0 || !price.is_finite() {
         return;
     }
     let id = world.objects.reserve_id();
-    world.market.orders.push(When { id, good, out, boxes, price });
+    world.market.orders.push(When { id, good, out, packages, price });
     world.market.changed = true;
 }
 
@@ -308,8 +309,8 @@ mod tests {
         assert_eq!(run(), run());
         let mut m = Market::default();
         let before = m.price(Good::Fuel);
-        assert!(m.next(Good::Fuel, false) > before && m.next(Good::Fuel, true) < before, "a box is paid at the price it moves to");
-        m.traded(Good::Fuel, 10.0 * Good::Fuel.per_box(), false);
+        assert!(m.next(Good::Fuel, false) > before && m.next(Good::Fuel, true) < before, "a package is paid at the price it moves to");
+        m.traded(Good::Fuel, 50.0, false);
         assert!(m.price(Good::Fuel) > before, "buying did not push the price");
         m.traded(Good::Fuel, 1e6, false);
         assert!(m.next(Good::Fuel, false) <= Market::ceiling(Good::Fuel) + 1e-9);
