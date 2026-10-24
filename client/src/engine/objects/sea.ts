@@ -2,11 +2,10 @@ import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
 import { CAB, TRAILER } from "./roadGeometry";
 import { drawnPath } from "./drawnPath";
-import { drive, paced, type Pt, type Rig } from "./driver";
-import { hex, rgb, type Rgb } from "../rgb";
+import { ahead, drive, paced, type Rig } from "./driver";
+import { hex, rgb, type RGB, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
-import type { Good, Sail, Shunt, Trailer } from "../../generated";
-import type { Pose } from "../../generated/Pose";
+import type { Good, Sail, Shunt, Trailer, Pose } from "../../generated";
 
 /**
  * What the harbour moves, shaped: the boxes, the tug that shunts them and
@@ -16,8 +15,7 @@ import type { Pose } from "../../generated/Pose";
  */
 
 type Shape = MeshGeometry & { colors: number[] };
-type Shade = [number, number, number];
-type Part = [MeshGeometry, [number, number, number], Shade];
+type Part = [MeshGeometry, [number, number, number], RGB];
 
 /** Parts as one shape, each a geometry moved to `at` and painted a shade
  *  of what the bucket's colour is multiplied by. */
@@ -59,8 +57,8 @@ function barrel(r: number, l: number): MeshGeometry {
   return { positions: [...a.positions, ...b.positions], normals: [...a.normals, ...b.normals], indices: [...a.indices, ...b.indices.map((k) => k + a.positions.length / 3)] };
 }
 
-const WHITE: Shade = [1, 1, 1];
-const CHASSIS: Shade = [0.28, 0.29, 0.31];
+const WHITE: RGB = [1, 1, 1];
+const CHASSIS: RGB = [0.28, 0.29, 0.31];
 
 /** A shape of flat faces, each a convex outline anticlockwise from
  *  outside, fanned from its middle as `boxGeometry` fans a box's. */
@@ -91,7 +89,7 @@ function faces(outlines: [number, number, number][][]): MeshGeometry {
  */
 const { w: W, l: L, h: H } = TRAILER;
 const BED = 0.045;
-const shade = (c: Rgb, s = 1): Shade => [c.r * s, c.g * s, c.b * s];
+const shade = (c: Rgb, s = 1): RGB => [c.r * s, c.g * s, c.b * s];
 const chassis = (w = W): Part => [box(w, L, BED), [0, 0, BED / 2], CHASSIS];
 
 /** A dry van: a closed body, ribs across its roof, its doors a pale band
@@ -127,7 +125,7 @@ function tank(c: Rgb): Shape {
 const WALL = 0.02;
 const RIM = 0.12;
 const INSIDE = { w: W - 2 * WALL, l: L - 2 * WALL };
-function tipper(walls: Shade, floor: Shade): Shape {
+function tipper(walls: RGB, floor: RGB): Shape {
   const wall = (w: number, l: number, x: number, y: number, h = RIM): Part => [box(w, l, h), [x, y, BED + h / 2], walls];
   return shape([
     chassis(),
@@ -159,7 +157,7 @@ export function heap(c: Rgb): Shape {
 
 /** A dropside flatbed: a deck, sides and a tail a hand high, and a
  *  headboard behind the cab; what it carries is open to the sky. */
-function flatbed(sides: Shade, deck: Shade): Shape {
+function flatbed(sides: RGB, deck: RGB): Shape {
   const side = (w: number, l: number, x: number, y: number, h: number): Part => [box(w, l, h), [x, y, BED + h / 2], sides];
   return shape([
     chassis(),
@@ -209,7 +207,7 @@ const loaded = (load: Drawn, t: Pick<Trailer, "good" | "units">, k: number): Box
  *  hitch is (`LORRY_RIG`), under a box's nose. Its middle on the origin,
  *  ahead +y, its base on z = 0; the bucket's colour is the cab's. */
 export const CAB_BLOCK = 0.095;
-const TYRE: Shade = [0.12, 0.12, 0.13];
+const TYRE: RGB = [0.12, 0.12, 0.13];
 const [CAB_FRONT, HITCH] = [CAB.l / 2, -CAB.l / 3];
 export const LORRY_SHAPE = shape([
   [box(CAB.w - 0.05, CAB.l, 0.03), [0, 0, 0.03], CHASSIS],
@@ -253,8 +251,8 @@ export const hull = (inset: number): P[] => {
   const [x, y] = [FERRY.w / 2 - inset, FERRY.l / 2 - inset];
   return [[x, -y + 0.35], [x, y - 0.35], [x - 0.12, y - 0.1], [x - 0.27, y], [-x + 0.27, y], [-x + 0.12, y - 0.1], [-x, y - 0.35], [-x, -y + 0.35], [-x + 0.12, -y + 0.1], [-x + 0.27, -y], [x - 0.27, -y], [x - 0.12, -y + 0.1]];
 };
-const NAVY: Shade = [0.2, 0.24, 0.32];
-const BLUE: Shade = [0.24, 0.45, 0.66];
+const NAVY: RGB = [0.2, 0.24, 0.32];
+const BLUE: RGB = [0.24, 0.45, 0.66];
 export const FERRY_SHAPE = shape([
   [prism(hull(0), 0.14), [0, 0, -FREEBOARD - 0.1], NAVY],
   [prism(hull(0), FREEBOARD - 0.046), [0, 0, -FREEBOARD + 0.04], WHITE],
@@ -348,32 +346,28 @@ export function shunting(s: Shunt, from: Pose, hitched: boolean): (now: number) 
   if (known) return known;
   const n = s.path.length;
   const cuts = [...new Set([0, Math.min(Math.max(s.backs_from, 0), n - 1), n - 1])].sort((a, b) => a - b);
-  const runs: { points: Pt[]; backing: boolean }[] = [];
+  const runs: { points: P[]; length: number; backing: boolean }[] = [];
   for (let c = 1; c < cuts.length; c++) {
-    const d = drawnPath(s.path.slice(cuts[c - 1], cuts[c] + 1).map(([x, y]) => ({ x, y })), 0, 0, 0);
-    if (d) runs.push({ points: d.points.map((p): Pt => [p.x, p.y]), backing: cuts[c - 1] >= s.backs_from });
+    const d = drawnPath(s.path.slice(cuts[c - 1], cuts[c] + 1), 0, 0, 0);
+    if (d) runs.push({ points: d.points, length: d.length, backing: cuts[c - 1] >= s.backs_from });
   }
-  const pose = (p: Pose) => ({ x: p.at[0], y: p.at[1], heading: p.heading });
-  const stand = (p: { x: number; y: number; heading: number }): Pose => ({ at: [p.x, p.y], heading: p.heading });
   if (!runs.length) {
     const still = () => ({ tug: s.stands, box: behind(s.stands) });
     moves.set(s, still);
     return still;
   }
-  const lengths = runs.map((r) => r.points.slice(1).reduce((l, p, i) => l + Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), 0));
-  const bounds = lengths.reduce((b, l) => [...b, b[b.length - 1] + l], [0]);
-  const drv = drive(runs.map((r, k) => ({ ...r, from: bounds[k], to: bounds[k + 1] })), hitched ? TUG_RIG : { axle: TUG_RIG.axle }, pose(from), pose(s.stands));
-  const pace = paced(lengths.map((l, k) => ({ length: l, top: runs[k].backing ? BACKING : FORWARD })), PUSH, CUSP_S);
+  const bounds = runs.reduce((b, r) => [...b, b[b.length - 1] + r.length], [0]);
+  const drv = drive(runs.map((r, k) => ({ ...r, from: bounds[k], to: bounds[k + 1] })), hitched ? TUG_RIG : { axle: TUG_RIG.axle }, from, s.stands);
+  const pace = paced(runs.map((r) => ({ length: r.length, top: r.backing ? BACKING : FORWARD })), PUSH, CUSP_S);
   const window = Math.max(0.001, (s.ends - s.started - HITCH_MS) / 1000);
   const move = (now: number) => {
     const t = (Math.min(Math.max(0, (now - s.started) / 1000), window) / window) * pace.secs;
-    const p = drv.at(pace.at(t));
-    const tug = stand(p.body);
-    return { tug, box: p.trailer ? stand(p.trailer) : behind(tug) };
+    const { body, trailer } = drv.at(pace.at(t));
+    return { tug: body, box: trailer ?? behind(body) };
   };
   moves.set(s, move);
   return move;
 }
 
 /** A box's place behind a tug standing still. */
-export const behind = (p: Pose, d = TUG_BOX): Pose => ({ at: [p.at[0] - Math.cos(p.heading) * d, p.at[1] - Math.sin(p.heading) * d], heading: p.heading });
+export const behind = (p: Pose): Pose => ahead(p, -TUG_BOX);

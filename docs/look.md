@@ -1,10 +1,9 @@
 # The look: a town that knows what it is next to
 
-Status: direction, 2026-09-28; the town grid's state as of 2026-10-02.
-Built: the palette, the fixture sheet (the pen, an ink line round
-everything, dropped 2026-10-02), and in the sandbox the
-town grid (§The town grid), which goes into the game with parking. How to
-judge a new thing, and every verdict so far, is `style.md`. The concepts it was argued from are the pattern
+Status: direction, 2026-09-28. Built: the palette, the fixture sheet
+(the pen, an ink line round everything, dropped 2026-10-02), and the
+town grid (§The town grid), which draws the game (`engine/TownLayer.ts`).
+How to judge a new thing, and every verdict so far, is `style.md`. The concepts it was argued from are the pattern
 book (https://claude.ai/artifact/XUGqKzMYVtypqraRp9R8tE), where every
 drawing carries the verdict it was given.
 
@@ -166,23 +165,8 @@ The code is `client/src/engine/town/`:
   of those, so a kerb runs on rather than on and off (`Town.sidewalk`,
   `kerbed`). Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
-- **Buildings are painted** in the sandbox, a tile at a time as roads
-  are drawn, with a brush per kind (`town/brush.ts`); in the game a
-  building is placed whole, its kind's plot (`game.md` §Buildings, and
-  `shelved.md` for why painting went). Each kind has a program: the smallest
-  rectangle it works in, fronting a street along its long side, and how far
-  from a street it may reach (a house: one tile, the frontage only; a depot:
-  three by two, and back six). A stroke is completed as it is painted to the
-  smallest working building holding it, shown as a ghost: one tile becomes a
-  whole depot, painting sideways turns it, painting on makes it bigger, a
-  bump and all. Only tiles it can take are lit, so nothing invalid is ever
-  painted. Letting go builds it. A stroke begun on a building grows that
-  one.
-- **The sandbox** (`/sandbox` on the dev client) draws any fixture with
-  no server, at any time of day (`?t=`, 0 midnight, 0.5 noon), over a
-  faint grid of its tiles (`g` hides it), and paints: a brush per kind,
-  taller and lower, and "Copy" to take the map away as a fixture. `bun run
-  shots --sandbox` photographs every fixture this way in seconds.
+- **A building is placed whole**, its kind's plot (`game.md`
+  §Buildings; `shelved.md` for why painting it a tile at a time went).
 - **A ferry port** (16-ferry, after Den Helder, Harlingen, Hoek van Holland
   and Harwich in OpenStreetMap, 2026-10-02) lays out as they do: down one
   side, the side whose end reaches a street, its exit road, from the ramp
@@ -193,9 +177,7 @@ The code is `client/src/engine/town/`:
   the back; and the terminal in the far corner. The ferry is moored stern
   on to the ramp, drawn bigger than true so it reads beside the yard. More
   than a sailing's cars queue back onto the approach road: the player's
-  to give a port road enough. A look of the sandbox's for now: `P` is a
-  port there and grass to the server, until the game says which berths a
-  port has. **Not right, and kept as the counter-example** (`style.md`):
+  to give a port road enough. **Not right, and kept as the counter-example** (`style.md`):
   its yard is drawn, so its back rows cannot be reached, and a real queue
   is a wide road of many lanes, not a square. It is rebuilt on
   `network.md`.
@@ -216,7 +198,7 @@ The code is `client/src/engine/town/`:
 
 What it does not do yet: heights come from the kind alone; the yards'
 lanes, bays and docks are drawn by hand in `dressing.ts`, not yet the
-links and stops of `network.md`; and it is in the sandbox, not the game.
+links and stops of `network.md`.
 Next (`style.md` §Next): the network primitives, the yards re-made on
 them, cars that turn naturally; then into the game on the terrain's chunks
 and worker, with the facts that change play (a depot's docks, an
@@ -288,8 +270,8 @@ What the pattern book and the image models taught:
    into the pattern book, with image models (`OPENROUTER_API_KEY`) for
    ideas when there are none, asked for game zoom and top-down.
 3. **Verdicts** are the mayor's. Nothing goes into the game unkept.
-4. **Rules**: a kept drawing becomes a rule of the town grid; the sandbox
-   shows it on every fixture.
+4. **Rules**: a kept drawing becomes a rule of the town grid; `bun run
+   plan` and `bun run shots` show it on every fixture.
 
 ## Patterns to borrow
 
@@ -351,7 +333,7 @@ nothing, on the new asphalt, and a drive drawn to a door on the
 diagonal.
 
 - **One toolbar, drag for everything.** Select, each kind of road, each
-  kind of building the tree has opened, demolish. Pick one and drag on
+  kind of building, demolish. Pick one and drag on
   the map, or tap: it is built as the drag goes. The card shelf's
   drag-to-place, its ghost and `/site` go.
 - **The world is tiles and links, and buildings are worked out from
@@ -371,15 +353,14 @@ diagonal.
   a house or a block of flats is always freestanding (`kin` in
   `mass.ts`, `01-terrace`); a kind that works as one building (the depot, the
   supermarket, the factory, the port) is one building as far as it is
-  painted. A building smaller than its kind needs (`brush.ts`'s
-  programs) stands and does not work, as one no road reaches; nothing is
+  painted. A building smaller than its kind needs stands and does not work, as one no road reaches; nothing is
   filled in for the mayor, who paints it out to size. The economy is
   untouched: it counts buildings as it does now. The plot, its facing
   and its fixed size go.
 - **The rings go.** A house parks on its drive pair, as now. A building
   whose kind keeps a yard has the yard read off its shape (`facts.ts`):
   the depot's docks, the port's lanes, the supermarket's car park, laid
-  out as aisles (`parking.md` §3.9). Everyone else parks on the row's
+  out as aisles (`parking.md` §8). Everyone else parks on the row's
   slots until kerb bays come.
 
 What changes, in the order it can be built and seen:
@@ -396,8 +377,7 @@ What changes, in the order it can be built and seen:
    over the smallest building that works, so a depot painted to size
    costs what one did. `Building` carries its tiles in place of `size`
    and `facing`.
-   The rule lives only on the server: the sandbox draws fixtures and
-   paints no more.
+   The rule lives only on the server.
 2. **The server.** A building is its tiles: `blueprint::plot`, facings
    and the ring in `world/lots.rs` are deleted, its drive pairs and yards
    kept; the yard is read off the building's shape by the rule `facts.ts`
@@ -414,7 +394,7 @@ What changes, in the order it can be built and seen:
    `objects/lots.ts` are deleted.
 4. **The toolbar.** The build menu becomes the way to pick a tool; the
    shelf goes.
-5. **The car park** (`parking.md` §3.9): the supermarket's yard laid out
+5. **The car park** (`parking.md` §8): the supermarket's yard laid out
    as aisles, on the server as lot nodes and in the drawing as asphalt
    and bays, one layout for both.
 

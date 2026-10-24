@@ -1,7 +1,7 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createRoot, createSignal, For, Show } from "solid-js";
 import { priority, setPriority, setTool, tool } from "./buildMode";
-import { Info, Press } from "./kit";
+import { BAD, Info, Press } from "./kit";
 
 /** The road tools, first in the build menu: a road is a street with priority. */
 export const ROAD_KINDS = [
@@ -12,7 +12,7 @@ export const ROAD_KINDS = [
     id: "Demolish",
     label: "Demolish",
     about: "Tap a road to take it up, drag along one to cut it. To take a building down, press and hold it.",
-    color: "#D9483B",
+    color: BAD,
     glyph: "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z",
   },
 ] as const;

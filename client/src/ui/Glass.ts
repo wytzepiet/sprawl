@@ -18,9 +18,9 @@ const mix = (a: Rgb, b: Rgb, f: number): Rgb => a.map((v, i) => Math.round(v + (
 
 /**
  * The UI is a pane held up in the game's own light (`lightOnPane`): white
- * at noon, rose and gold as the sun goes down, the sky's blue at night. Set
- * as CSS variables (`app.css`) whenever the day turns it a shade: the
- * glass's colour, always dark, and the white ink on it.
+ * at noon, rose and gold as the sun goes down, the sky's blue at night.
+ * Whenever the day turns it a shade: the glass's colour, always dark, and
+ * the white ink on it.
  * The glass itself the GPU draws (`engine/glass.ts`), in the same light:
  * its body, the sky round its edges, and the sun's glint on the rim that
  * faces it.
@@ -58,9 +58,6 @@ export default function Glass() {
     light.tint = now.tint;
     light.ink = now.ink;
     light.text = now.text;
-    const s = document.documentElement.style;
-    s.setProperty("--glass", now.tint.map((v) => Math.round(v * 255)).join(" "));
-    s.setProperty("--ink", now.text.map((v) => Math.round(v * 255)).join(" "));
     const t = performance.now();
     frame = still ? 0 : requestAnimationFrame(() => ease(t));
   };

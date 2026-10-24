@@ -56,7 +56,7 @@ Pathfinding is A* over the road graph.
 WebSocket, MessagePack. Spatial pub/sub by chunk: the client reports the
 chunks in view and the server sends full upserts for changed objects in
 them, plus deletes for what left. Send rate is decoupled from the tick.
-Every update carries the clock, the growth meter and the build alongside
+Every update carries the clock and the growth meter alongside
 its ops, so a client never asks for ambient state separately. Terrain is
 generated from the seed on both sides and sent per chunk.
 
@@ -65,8 +65,9 @@ SQLite JSON shape, the wire format and the TypeScript types.
 
 ## Persistence
 
-SQLite, one table of objects as JSON, one of metadata. Only dirty objects
-are written, once a second, in one transaction. Trips are not saved: a
+SQLite, a row of JSON for each object and one for the rest of the world
+(the clock, the coins, the missions, the market's week). Only dirty
+objects are written, with that row, once a second, in one transaction. Trips are not saved: a
 loaded world is people standing still until they think. Terrain is not
 saved: it comes from the seed.
 
@@ -95,19 +96,20 @@ its buildings, the ferry's new deals, the stock's every depot's shelves
 as one; with nothing to show, it is the bar alone. A building's own ring, its card and taking it down, opens on a
 long press or a right click. The clock and the level are along the top.
 There is no undo button: what was built lately, taken down, gives back
-what it cost (`undo::raze`, `undo::recoup`). The interchange's panels are still the page's, glass
-under `data-glass` elements.
+what it cost (`undo::raze`, `undo::recoup`). The interchange's panels are the GPU's too
+(`ui/interchange/`); only its map of levels is the page's.
 
-## Deployment (plan)
+## Deployment
 
-Docker Compose on a small VPS: the Rust server, the client, Nginx for TLS
-and the WebSocket upgrade, SQLite on a volume. The server flushes on
-SIGTERM; clients reconnect. Not yet done.
+One VPS, set up once by `setup-server.sh`: Caddy for TLS and the
+WebSocket in front of port 4801, the server a systemd unit serving the
+built client too, SQLite on a volume. `deploy.sh` pulls, builds both and
+restarts the unit; clients reconnect.
 
 ## Build philosophy
 
-- HashMaps, a priority queue, event handlers. Nothing cleverer until it
-  has to be.
+- Deterministic maps (`fixed.rs`), a priority queue, event handlers.
+  Nothing cleverer until it has to be.
 - The simulation does not know about rendering; the renderer does not
   know about the network.
 - Measure before optimising, and only on a signal.

@@ -4,6 +4,6 @@
  * Something that runs down: a shelf of meals, a tank, a night's sleep, a
  * day of time off. `(level, cap)` on whoever holds it; it drains by use
  * and refills at a tap or by a delivery. What is missing is the need, and
- * how much of the cap is missing is its weight. docs/economy.md §4.
+ * how much of the cap is missing is its weight.
  */
 export type Stock = { level: number, cap: number, };

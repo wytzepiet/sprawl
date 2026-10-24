@@ -1,6 +1,5 @@
 import { createSignal } from "solid-js";
-import type { Mission } from "../generated";
-import type { Neighbour } from "../generated/Neighbour";
+import type { Mission, Neighbour } from "../generated";
 
 /**
  * The town's open missions, and those just finished, as the last update had

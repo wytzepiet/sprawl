@@ -6,8 +6,7 @@ import { useEngine } from "../engine/Canvas";
 import { projector } from "../engine/view";
 import { select, setFollowing } from "../state/selection";
 import { GOODS } from "../blueprints";
-import type { Good } from "../generated";
-import type { Neighbour } from "../generated/Neighbour";
+import type { Good, Neighbour } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
 
 /**
@@ -16,6 +15,15 @@ import type { JSX } from "~ui/jsx-runtime";
  * crest. Ink is the glass's own ("ink"), black on the day's glass and
  * white on the night's.
  */
+
+/** The colours the cards name, each for one thing: well and done; wrong,
+ *  short or gone; GDP, and the missions that grow it; the sea and what
+ *  comes over it; coins. */
+export const GOOD = "#57A773";
+export const BAD = "#D9483B";
+export const GDP = "#7B77E0";
+export const SEA = "#2B6CA3";
+export const COIN = "#B7791F";
 
 /** Something to press: it rises under the pointer, gives under the finger and springs back,
  *  by a few pixels whatever its size: a button's twelfth, a row's hair. */
@@ -27,7 +35,8 @@ export function Press(props: JSX.Box & { onTap: () => void }) {
   const [s] = follow(() => (down() ? 1 - by() : over() ? 1 + by() : 1), { rest: 0.001 });
   const [y] = follow(() => (over() && !down() ? -2 : 0));
   const sized = (w: number, h: number) => (setSize(Math.max(w, h, 1)), props.onSize?.(w, h));
-  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={setOver} onSize={sized} />;
+  const hover = (o: boolean) => (setOver(o), props.onHover?.(o));
+  return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={hover} onSize={sized} />;
 }
 
 /** A tab bar: one pill, and in it a darker one that slides to the tab
@@ -114,7 +123,7 @@ export function Btn(props: { onTap: () => void; children: JSX.Element; color?: s
       h={props.big ? 44 : 30}
       pad={{ x: props.big ? 20 : 12 }}
       round={22}
-      fill={props.big ? props.color ?? "#2B6CA3" : undefined}
+      fill={props.big ? props.color ?? SEA : undefined}
       stroke={props.big ? undefined : [1.5, "ink/0.18"]}
       shadow={props.big}
       opacity={props.disabled ? 0.4 : 1}
@@ -163,6 +172,8 @@ export const Line = (props: { d: string; size: number; width?: number; ink?: str
 
 /** The ferry, side on: news of it, and the dock's new deal. */
 export const FERRY = "M2 14h20l-2.5 5.5h-15zM6 9h9v4H6zM8 5.5h4V9H8z";
+/** The empty hand's arrow. */
+export const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 
 /** The window's size, and whether it is wide: a phone's is not. */
 export const { view, wide } = createRoot(() => {
@@ -170,6 +181,22 @@ export const { view, wide } = createRoot(() => {
   window.addEventListener("resize", () => setView({ w: window.innerWidth, h: window.innerHeight }));
   return { view, wide: () => view().w >= 768 };
 });
+
+/** Asks `url` now and every `ms` after, handing on each answer, until
+ *  the scope that asked ends. */
+export function poll<T>(url: string, ms: number, got: (answer: T) => void) {
+  let live = true;
+  const ask = async () => {
+    const answer = (await (await fetch(url)).json()) as T;
+    if (live) got(answer);
+  };
+  ask();
+  const timer = setInterval(ask, ms);
+  onCleanup(() => {
+    live = false;
+    clearInterval(timer);
+  });
+}
 
 /** How far a moment has run since it was made, 0 to 1 over `ms`: what a
  *  thing that comes, does its turn and goes is drawn by. */
@@ -230,7 +257,7 @@ export function Bar(props: { value: number; color?: string; w?: number; h?: numb
   const [v] = follow(() => Math.max(0, Math.min(1, props.value)), { rest: 0.001 });
   return (
     <box w={w()} h={h()} round={h() / 2} fill="ink/0.1">
-      <box at={{ left: 0, top: 0 }} w={w() * Math.max(0, v())} h={h()} round={h() / 2} fill={props.color ?? "#7B77E0"} />
+      <box at={{ left: 0, top: 0 }} w={w() * Math.max(0, v())} h={h()} round={h() / 2} fill={props.color ?? GDP} />
     </box>
   );
 }

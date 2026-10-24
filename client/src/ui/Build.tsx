@@ -2,9 +2,9 @@
 import { createEffect, createRoot, createSignal, For, Index, Show } from "solid-js";
 import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
-import { planSvg } from "../../scripts/planDraw";
+import { shapes, type Shape } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
-import { Fade, Info, Press, Tabs } from "./kit";
+import { BAD, Fade, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
@@ -14,44 +14,6 @@ import type { BuildingKind, Good } from "../generated";
 const PIC = 76;
 const CELL = 96;
 const GAP = 6;
-
-/** A shape of a picture: its outline, its colour, and its line's width if it is drawn as a line. */
-interface Shape {
-  d: string;
-  ink: string;
-  stroke?: number;
-}
-
-/** An SVG of the plan's (`scripts/planDraw.ts`) as the shapes the GPU
- *  draws: each rect, circle, line and path one, its transform worked in. */
-function shapesOf(svg: string): Shape[] {
-  const out: Shape[] = [];
-  for (const [, tag, body] of svg.matchAll(/<(rect|circle|line|path)\b([^>]*)\/?>/g)) {
-    const a = (k: string) => body.match(new RegExp(`\\b${k}="([^"]*)"`))?.[1];
-    const n = (k: string) => Number(a(k) ?? 0);
-    const share = a("fill-opacity") ?? a("opacity");
-    const ink = (c: string | undefined) => c && c !== "none" && `${c}${share ? `/${share}` : ""}`;
-    // translate(x y) rotate(deg), all the plan uses.
-    const [tx, ty] = (a("transform")?.match(/translate\(([-\d.e]+)[ ,]+([-\d.e]+)\)/)?.slice(1).map(Number) ?? [0, 0]) as number[];
-    const turn = ((Number(a("transform")?.match(/rotate\(([-\d.e]+)\)/)?.[1] ?? 0)) * Math.PI) / 180;
-    const p = (x: number, y: number) => `${(tx + x * Math.cos(turn) - y * Math.sin(turn)).toFixed(3)} ${(ty + x * Math.sin(turn) + y * Math.cos(turn)).toFixed(3)}`;
-    let d = "";
-    if (tag === "rect") {
-      const [x, y, w, h] = [n("x"), n("y"), n("width"), n("height")];
-      d = `M${p(x, y)}L${p(x + w, y)}L${p(x + w, y + h)}L${p(x, y + h)}Z`;
-    } else if (tag === "circle") {
-      const [x, y, r] = [n("cx"), n("cy"), n("r")];
-      d = `M${p(x - r, y)}A${r} ${r} 0 1 0 ${p(x + r, y)}A${r} ${r} 0 1 0 ${p(x - r, y)}Z`;
-    } else if (tag === "line") d = `M${p(n("x1"), n("y1"))}L${p(n("x2"), n("y2"))}`;
-    else if (!tx && !turn) d = a("d") ?? "";
-    if (!d) continue;
-    const fill = ink(a("fill") ?? (tag === "line" ? "none" : "#000"));
-    const line = ink(a("stroke"));
-    if (fill) out.push({ d, ink: fill });
-    if (line) out.push({ d, ink: line, stroke: n("stroke-width") || 1 });
-  }
-  return out;
-}
 
 /** Each kind as the town grid draws it, its plot on a street, the sea
  *  behind a harbour: a picture made once, from the same code as the map
@@ -73,7 +35,7 @@ function picture(kind: BuildingKind) {
     const row = (mid: string) => ".".repeat(left) + mid + ".".repeat(16 - left - mid.length);
     const behind = (BLUEPRINTS[kind].quay ? "≈" : ".").repeat(16);
     const rows = [...Array.from({ length: side - 1 - d }, () => behind), ...Array.from({ length: d }, () => row(letter.repeat(w))), "=".repeat(16), ".".repeat(16)];
-    pic = { shapes: shapesOf(planSvg(rows.join("\n"), { px: 18, crop: [5, 0, 5 + side, side] })), x: 5, y: 0, side };
+    pic = { shapes: shapes(rows.join("\n"), { px: 18, crop: [5, 0, 5 + side, side] }), x: 5, y: 0, side };
   }
   pictures.set(kind, pic);
   return pic;
@@ -105,8 +67,8 @@ export function BuildHead() {
       }
     >
       <box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
-        <box h={44} round={16} align="center" justify="center" stroke={[2, over() ? "#D9483B" : "ink/0.2"]}>
-          <text size={13} weight={600} ink={over() ? "#D9483B" : "ink/0.6"}>Drop here to put it back</text>
+        <box h={44} round={16} align="center" justify="center" stroke={[2, over() ? BAD : "ink/0.2"]}>
+          <text size={13} weight={600} ink={over() ? BAD : "ink/0.6"}>Drop here to put it back</text>
         </box>
       </box>
     </Show>

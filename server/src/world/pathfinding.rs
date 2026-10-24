@@ -120,7 +120,7 @@ impl<'w> Routes<'w> {
         // So the search starts at whichever junctions this stretch leads to,
         // already carrying the cost of reaching them.
         let here = (start, start);
-        for leg in junctions_from(world, start) {
+        for leg in stretch_ends(world, start, true) {
             if leg.to == start {
                 routes.cost.insert(here, 0.0);
                 routes.open.push(Node { at: here, f: 0.0 });
@@ -197,7 +197,7 @@ impl<'w> Routes<'w> {
         // destination's stretch may be settled first and still be the dearer
         // way in, so the search runs on until nothing left in the queue could
         // beat the best way in found so far.
-        let exits = junctions_into(world, end);
+        let exits = stretch_ends(world, end, false);
         let way_in = |routes: &Routes| -> Option<(f64, At, Leg)> {
             exits
                 .iter()
@@ -265,21 +265,12 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
         .collect()
 }
 
-/// The junctions this node's own stretch leads to, with what it costs to get
-/// there from where it stands. A junction leads to itself, for nothing.
-fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
-    stretch_ends(world, from, true)
-}
-
-/// The junctions this node's own stretch can be reached from, named from the
-/// node's side as `junctions_from` names them, costed the way they are
-/// driven: in.
-fn junctions_into(world: &World, to: EntityId) -> Vec<Leg> {
-    stretch_ends(world, to, false)
-}
-
+/// The junctions this node's own stretch leads to, `leaving`, with what it
+/// costs to get there from where it stands; or else those it can be reached
+/// from, named from the node's side the same way, costed the way they are
+/// driven: in. A junction leads to itself, for nothing.
 fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
-    if world.network.is_junction(node) {
+    if world.network.ends_run(node) {
         return vec![Leg { to: node, cost: 0.0, step: node, behind: node }];
     }
     world
@@ -346,7 +337,7 @@ fn run_length(world: &World, nodes: &[EntityId]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{GameObject, GridCoord, TerrainType};
+    use crate::protocol::{GameObject, GridCoord};
 
     fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
         Routes::from(world, start).route_to(end)
@@ -421,12 +412,7 @@ mod tests {
     /// one broken off short, and two long diagonals across it, so a route
     /// has junctions of every kind to find its way through.
     fn a_town_of_streets() -> World {
-        let mut world = World::new();
-        for y in -2..100 {
-            for x in -2..100 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-2..100, -2..100);
         for (i, y) in (0..98).step_by(7).enumerate() {
             world.place_road_path(&(0..if i % 2 == 0 { 98 } else { 60 }).map(|x| GridCoord { x, y }).collect::<Vec<_>>());
         }
@@ -517,13 +503,7 @@ mod tests {
     }
 
     fn straight_world() -> World {
-        let mut world = World::new();
-        for y in -4..8 {
-            for x in -4..8 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world
+        World::meadow(-4..8, -4..8)
     }
 
     #[test]
@@ -548,7 +528,7 @@ mod tests {
 
         let from = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
         let to = world.road_node_at(GridCoord { x: 3, y: 4 }).unwrap();
-        assert!(!world.network.is_junction(from), "the start is mid-street on purpose");
+        assert!(!world.network.ends_run(from), "the start is mid-street on purpose");
 
         let route = find_path(&world, from, to).unwrap();
         assert_eq!(route.first(), Some(&from));
@@ -588,12 +568,7 @@ mod tests {
     /// Two ways round, one short and one long, with a stub at each end so both
     /// junctions are real. The short way is taken until it jams.
     fn two_ways_round() -> (World, EntityId, EntityId) {
-        let mut world = World::new();
-        for y in -2..10 {
-            for x in -2..10 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-2..10, -2..10);
         let at = |x, y| GridCoord { x, y };
         // The short way: straight along the bottom.
         world.place_road_path(&(0..=6).map(|x| at(x, 0)).collect::<Vec<_>>());

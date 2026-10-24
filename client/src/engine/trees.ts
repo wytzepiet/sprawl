@@ -1,13 +1,13 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, updateTexture2DFromPixels, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { addToScene, markMaterialUboDirty, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import type { Area } from "./cull";
 import { lacquer } from "./bevel";
 import { COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS } from "./crowns";
 import recipe from "./crowns.ts?raw";
-import { baked } from "./bakeCache";
+import { bakedTexture, whenBaked } from "./bakeCache";
 
 /**
  * Trees, forest and street alike: a crown on a trunk, a broadleaf's round
@@ -142,36 +142,17 @@ let cardOut = cardX > cardReach || cardGap;`,
   },
 };
 
-const SHAPES = new WeakMap<LiteEngine, Texture2D>();
-const BAKED = new WeakMap<LiteEngine, Promise<void>>();
+/** An engine's crowns: every texel past its crown's outline until the
+ *  worker has baked them, so no tree shows before its crown does. */
+const crownShapes = (engine: LiteEngine): Texture2D =>
+  bakedTexture(engine, "crowns", recipe, [COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, () => new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255)], {
+    format: "rgba8unorm",
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+  });
 /** When an engine's crowns are baked: at once if it has none. */
-export function crownsBaked(engine: LiteEngine): Promise<void> {
-  return BAKED.get(engine) ?? Promise.resolve();
-}
-function crownShapes(engine: LiteEngine): Texture2D {
-  let texture = SHAPES.get(engine);
-  if (!texture) {
-    // Every texel past its crown's outline until the worker has baked them:
-    // no tree shows before its crown does.
-    const none = new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255);
-    const made = createTexture2DFromPixels(engine, none, COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, {
-      format: "rgba8unorm",
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-    });
-    SHAPES.set(engine, (texture = made));
-    const asked = performance.now();
-    BAKED.set(
-      engine,
-      baked("crowns", recipe, () => new Worker(new URL("./crownWorker.ts", import.meta.url), { type: "module" })).then((data) => {
-        updateTexture2DFromPixels(engine, made, data);
-        if (import.meta.env.DEV) console.info(`[crowns] ready ${(performance.now() - asked).toFixed(0)} ms after asked`);
-      }),
-    );
-  }
-  return texture;
-}
+export const crownsBaked = (engine: LiteEngine): Promise<void> => whenBaked(engine, "crowns");
 
 /** Where the pixel is on its crown, in the world's turn, a radius out at 1,
  *  and, by where the tree stands, which crown it wears and how it is turned,
@@ -305,50 +286,54 @@ function treeMaterials({ engine, scene, beforeRender }: EngineContext, kind: Kin
 }
 
 export interface Grove {
-  bodies: Mesh;
-  tops: Mesh;
-  /** What of it casts: a broadleaf its card and its crown, which costs no
-   *  frame (it stands still, and the shadows' cache keeps it); a conifer
-   *  its card alone, as its layered top is not one surface. */
-  casting: Mesh[];
-  planted: boolean;
+  name: string;
+  kind: Kind;
+  /** The corner its trees are placed from. */
+  at: [number, number];
+  /** Its bodies and its tops while it has trees; none while it has none. */
+  meshes: Mesh[];
 }
 
-/** A set of trees of a kind, none planted yet: its tops take shadows. */
-export function grove(ctx: EngineContext, name: string, kind: Kind = "broad"): Grove {
-  const { body, top } = treeMaterials(ctx, kind);
-  const [bodies, tops] = ([[BODY, body], [kind === "conifer" ? CONIFER_TOP : BROAD_TOP, top]] as const).map(([geo, material], i) => {
-    const mesh = meshOf(ctx.engine, `${name}_${kind === "broad" ? "tree" : "conifer"}_${i ? "tops" : "bodies"}`, geo);
-    mesh.material = material;
-    return mesh;
-  });
-  tops.receiveShadows = true;
-  return { bodies, tops, casting: kind === "conifer" ? [bodies] : [bodies, tops], planted: false };
-}
+/** A set of trees of a kind, none planted yet. */
+export const grove = (name: string, at: [number, number], kind: Kind = "broad"): Grove => ({ name, kind, at, meshes: [] });
 
 /** Trees planted, 16 floats of matrix and 4 of colour each, in place of
  *  any before, over an area of the map: shown while it is in view, and
- *  casting. False when there are none. */
-export function plant({ scene, cull }: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined, area: Area): boolean {
+ *  casting, its tops taking shadows. None uproots it. */
+export function plant(ctx: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined, area: Area) {
   const count = matrices.length / 16;
-  if (!count) return false;
-  for (const mesh of [g.bodies, g.tops]) {
+  if (!count) return uproot(ctx, g, casters);
+  const fresh = !g.meshes.length;
+  if (fresh) {
+    const { body, top } = treeMaterials(ctx, g.kind);
+    g.meshes = ([[BODY, body], [g.kind === "conifer" ? CONIFER_TOP : BROAD_TOP, top]] as const).map(([geo, material], i) => {
+      const mesh = meshOf(ctx.engine, `${g.name}_${g.kind === "broad" ? "tree" : "conifer"}_${i ? "tops" : "bodies"}`, geo);
+      mesh.material = material;
+      mesh.position.x = g.at[0];
+      mesh.position.y = g.at[1];
+      mesh.receiveShadows = i === 1;
+      return mesh;
+    });
+  }
+  for (const [i, mesh] of g.meshes.entries()) {
     setThinInstances(mesh, matrices, count);
     setThinInstanceColors(mesh, colors);
-    if (g.planted) continue;
-    cull.keep(mesh, area);
-    show(scene, mesh);
-    if (g.casting.includes(mesh)) casters?.add(mesh);
+    if (!fresh) continue;
+    ctx.cull.keep(mesh, area);
+    addToScene(ctx.scene, mesh);
+    // What of it casts: a broadleaf its card and its crown, which costs no
+    // frame (it stands still, and the shadows' cache keeps it); a conifer
+    // its card alone, as its layered top is not one surface.
+    if (i === 0 || g.kind === "broad") casters?.add(mesh);
   }
-  g.planted = true;
-  return true;
 }
 
+/** A grove's trees gone, and its meshes with them. */
 export function uproot({ scene, cull }: EngineContext, g: Grove, casters: Casters | undefined) {
-  if (!g.planted) return;
-  for (const mesh of [g.bodies, g.tops]) {
+  for (const mesh of g.meshes) {
     casters?.remove(mesh);
     cull.forget(mesh);
     drop(scene, mesh);
   }
+  g.meshes = [];
 }

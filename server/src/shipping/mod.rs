@@ -1,26 +1,19 @@
 //! The sea's decisions, as pure functions over plain data: the water and
-//! the ways over it (`water.rs`), the lines and their timetables
-//! (`lines.rs`), and how a ship moves along a leg (here). Nothing in this
-//! module names `World` or `EventQueue`: the game and the scenario
-//! harness (`sim.rs`, `cargo test scenario`) call the same functions, so
-//! what the harness measures is what the game does (docs/plan-sea.md).
-
-// The game sails one line a harbour, to the world, so far: the rest of
-// `lines.rs` (journeys, the company's rule) is the harness's until stage 3.
-#![cfg_attr(not(test), allow(dead_code))]
+//! the ways over it (`water.rs`), the lanes they are laid in
+//! (`lanes.rs`), a ship's passage through their junctions (`voyage.rs`),
+//! a line's round (`lines.rs`), and how a ship moves along a leg (here).
+//! Nothing in this module names `World` or `EventQueue`.
 
 pub mod lanes;
 pub mod voyage;
 pub mod water;
 pub mod lines;
-#[cfg(test)]
-mod sim;
 
 use crate::engine::GameTime;
-use crate::protocol::{Pose, Sail, CHUNK_SIZE, DAY_MS};
+use crate::protocol::{Pose, Sail, CHUNK_SIZE};
 
-/// An hour of the clock.
-pub const HOUR: GameTime = DAY_MS as GameTime / 24;
+/// An hour of the clock, as the sea counts time.
+pub const HOUR: GameTime = crate::protocol::HOUR as GameTime;
 /// How long a ship at full speed takes to cross a tile of open water: a
 /// fifth of a second, five tiles a second at speed one. The map's sea is
 /// compressed (islands thirty-odd tiles apart), and so are its ships: at
@@ -35,6 +28,8 @@ pub const GATHER: GameTime = 30_000;
 /// How long a ship stays beyond the map's edge, at the world, between
 /// sailing out and sailing back in: half an hour.
 pub const WORLD_STAY: GameTime = HOUR / 2;
+/// How long a ship stands at a harbour's ramp: an hour and a quarter.
+pub const DWELL: GameTime = HOUR * 5 / 4;
 
 /// How far a ship has come from the start of a leg `len` tiles long, `t`
 /// ms after it set out. A ship gathers way at an even push from rest at

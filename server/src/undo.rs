@@ -1,20 +1,18 @@
-//! Undo (docs/game.md §Undo): each player's last actions, kept a while to
-//! take back. An action is what one gesture did: a drag of road, a
-//! building placed, a building or a drag of road taken down. Taken back,
-//! it leaves the town as it was, and gives back what it paid: the stone
-//! off the depots' shelves to their shelves, express coins to the purse,
-//! a site's delivered materials to the nearest depot. A demolition taken
-//! back stands again as it stood, for nothing.
+//! Undo (docs/game.md §Undo). What the mayor places or lays, taken down
+//! again while it is recent (`WINDOW`), is as if it never was: it gives
+//! back what it paid, the stone off the depots' shelves to their shelves,
+//! express coins to the purse, a site's delivered materials to the
+//! nearest depot (`raze`, `recoup`).
 //!
-//! The history is the server's, a stack a player, and dies with the
-//! process. It is taken back in order, newest first, while it is recent
-//! (`WINDOW`); an action something since rests on, someone else's
-//! building opening onto a street it laid, or ground it would build on
-//! taken since, is refused, with why, and stays.
+//! The road a player laid or took up is also kept, a stack a player, for
+//! the interchange's Z (`undo`): taken back in order, newest first; an
+//! action something since rests on, someone else's building opening onto
+//! a street it laid, or ground it ran over built on since, is refused,
+//! with why, and stays. All of it is the server's, and dies with the
+//! process.
 
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
 use crate::world::decks::Side;
@@ -79,7 +77,7 @@ pub struct Purse {
 
 impl Purse {
     pub fn of(world: &World) -> Purse {
-        Purse { coins: world.treasury, stone: depots(world).map(|(id, b)| (id, stone(b))).collect() }
+        Purse { coins: world.treasury, stone: world.depots().into_iter().map(|(id, b)| (id, stone(b))).collect() }
     }
 
     pub fn paid(&self, world: &World) -> Paid {
@@ -102,22 +100,10 @@ fn stone(b: &Building) -> f64 {
     b.stocks.get(&Good::Stone).map_or(0.0, |s| s.level)
 }
 
-fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
-    world.objects.iter().filter_map(|e| match e.object {
-        GameObject::Building(ref b) if crate::economy::depot(b.kind) && b.site.is_none() => Some((e.id, b)),
-        _ => None,
-    })
-}
-
 #[derive(Debug, Clone)]
 pub enum Act {
     /// Road laid in one drag.
     Laid { links: Vec<Link>, paid: Paid },
-    /// A building placed, with the street a harbour brings; `free` if it
-    /// stood at once for nothing, the town's first depot.
-    Placed { id: EntityId, kind: BuildingKind, laid: Vec<Link>, paid: Paid, free: bool },
-    /// A building taken down, as it stood, and what it was known by.
-    Razed(EntityId, Building),
     /// Road taken up in one tap or drag.
     Cut(Vec<Link>),
     /// A drag of road drawn as a whole (`draw.rs`): the drag, as last
@@ -138,12 +124,12 @@ pub struct Laid {
 
 /// Steps of a drawn drag taken back, newest first: what each laid taken
 /// up, and what it paid given back; what was given back, said.
-pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, steps: &[Laid], now: GameTime) -> String {
+pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, steps: &[Laid], now: GameTime) -> String {
     let mut paid = Paid::default();
     for step in steps.iter().rev() {
         let [a, b] = step.nodes;
         if step.fresh && (world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))) {
-            crate::game::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
         }
         paid.add(step.paid.clone());
     }
@@ -224,40 +210,54 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
         }
     };
     // The drag is the action: said once, where it first buys stone.
-    (road && first && express > 0.0).then(|| News {
-        text: format!("Stone bought express, {express:.0} coins"),
-        sub: "the depots have none for the road; a rule on a depot keeps some in".into(),
-        at: world.harbours.keys().next().copied().unwrap_or(0),
-    })
+    (road && first && express > 0.0).then(|| bought_express(world, express))
 }
 
-/// A building placed, kept to undo, with the street it brought.
-pub fn placed(world: &mut World, owner: OwnerId, id: EntityId, laid: Vec<Link>, paid: Paid, after: EntityId, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return };
-    let act = Act::Placed { id, kind: b.kind, free: b.site.is_none(), laid, paid };
-    done(world, owner, act, after, now);
+/// Stone for a road the depots could not give, bought from the world.
+pub fn bought_express(world: &World, coins: f64) -> News {
+    News {
+        text: format!("Stone bought express, {coins:.0} coins"),
+        sub: "the depots have none for the road".into(),
+        at: world.harbours.keys().next().copied().unwrap_or(0),
+    }
+}
+
+/// A building placed lately, with the street a harbour brings and what
+/// it paid: what razing it within `WINDOW` gives back. `free` if it stood
+/// at once for nothing, the town's first depot.
+#[derive(Debug, Clone)]
+pub struct Placed {
+    pub id: EntityId,
+    kind: BuildingKind,
+    laid: Vec<Link>,
+    paid: Paid,
+    free: bool,
+    at: GameTime,
+    /// The first id handed out for it.
+    after: EntityId,
+}
+
+/// A building placed, kept a while for razing to give back.
+pub fn placed(world: &mut World, id: EntityId, laid: Vec<Link>, paid: Paid, after: EntityId, now: GameTime) {
+    let Some(b) = world.building(id) else { return };
+    let placed = Placed { id, kind: b.kind, free: b.site.is_none(), laid, paid, at: now, after };
+    world.placed.retain(|p| now.saturating_sub(p.at) <= WINDOW);
+    world.placed.push(placed);
 }
 
 /// A building taken down whole. Placed lately, it is as if it never
 /// was, and gives back what it cost (`unplace`): what the mayor takes
-/// down of their own slip is the slip undone. Else it is kept to undo.
-pub fn raze(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, id: EntityId, now: GameTime) -> Option<News> {
-    let lately = world.undo.values_mut().find_map(|h| {
-        let i = h.iter().position(|d| now.saturating_sub(d.at) <= WINDOW && matches!(d.act, Act::Placed { id: placed, .. } if placed == id))?;
-        Some(h.remove(i))
-    });
-    if let Some(Done { act: Act::Placed { kind, laid, paid, free, .. }, after, .. }) = lately {
-        // The street it brought stays if a building since opens onto it.
-        let (laid, paid) = if rests_on(world, &laid, after).is_some() { (Vec::new(), Paid::default()) } else { (laid, paid) };
-        let back = unplace(world, events, intersections, id, kind, &laid, &paid, free, now);
-        return Some(News { text: format!("The {} taken back", label(kind)), sub: back, at: 0 });
-    }
-    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return None };
-    let act = Act::Razed(id, b.clone());
-    let after = world.objects.next_id();
-    world.remove_building(id);
-    done(world, owner, act, after, now);
-    None
+/// down of their own slip is the slip undone.
+pub fn raze(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime) -> Option<News> {
+    let lately = world.placed.iter().position(|p| p.id == id && now.saturating_sub(p.at) <= WINDOW).map(|i| world.placed.remove(i));
+    let Some(Placed { kind, laid, paid, free, after, .. }) = lately else {
+        world.remove_building(id);
+        return None;
+    };
+    // The street it brought stays if a building since opens onto it.
+    let (laid, paid) = if rests_on(world, &laid, after).is_some() { (Vec::new(), Paid::default()) } else { (laid, paid) };
+    let back = unplace(world, events, id, kind, &laid, &paid, free, now);
+    Some(News { text: format!("The {} taken back", label(kind)), sub: back, at: 0 })
 }
 
 /// Road the demolisher took up: what of it was laid lately given back
@@ -308,33 +308,17 @@ fn laid_lately(world: &mut World, l: &Link, now: GameTime) -> Option<Paid> {
     None
 }
 
-fn done(world: &mut World, owner: OwnerId, act: Act, after: EntityId, now: GameTime) {
-    let history = world.undo.entry(owner).or_default();
-    history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
-    history.push(Done { act, at: now, after });
-}
-
 /// The player's last action taken back, if it is recent and nothing since
 /// rests on it; what was done, or why not, as a line of news for them.
-pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, now: GameTime) -> News {
+pub fn undo(world: &mut World, events: &mut EventQueue, owner: OwnerId, now: GameTime) -> News {
     let say = |text: String, sub: String, at: EntityId| News { text, sub, at };
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
     let Some(done) = history.last().cloned() else {
-        return say("Nothing to undo".into(), "only the last few minutes' building can be taken back".into(), 0);
+        return say("Nothing to undo".into(), "only the last few minutes' road can be taken back".into(), 0);
     };
-    // A building someone else has taken down since leaves nothing to take
-    // back: it goes from the history, and the next undo goes on before it.
-    if let Act::Placed { id, kind, .. } = done.act
-        && world.objects.get(id).is_none()
-    {
-        world.undo.get_mut(&owner).and_then(|h| h.pop());
-        return say(format!("The {} is gone already", label(kind)), "nothing of it to undo; again for the action before".into(), 0);
-    }
     let refused = match &done.act {
         Act::Laid { links, .. } => rests_on(world, links, done.after),
-        Act::Placed { laid, .. } => rests_on(world, laid, done.after),
-        Act::Razed(_, b) => (!b.tiles.iter().all(|&t| world.may_stand(t))).then_some("Something stands where it stood"),
         Act::Cut(links) => links.iter().any(|l| world.occupied.contains_key(&(l.to.x, l.to.y)) || world.occupied.contains_key(&(l.from.x, l.from.y))).then_some("Something stands where it ran"),
         Act::Drawn { steps, .. } => rests_on(world, &steps.iter().filter(|s| s.fresh).map(|s| s.link).collect::<Vec<_>>(), done.after),
     };
@@ -344,36 +328,19 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     world.undo.get_mut(&owner).and_then(|h| h.pop());
     match done.act {
         Act::Laid { links, paid } => {
-            take_up(world, events, intersections, &links, now);
+            take_up(world, events, &links, now);
             let back = refund(world, &paid, now);
             say(format!("Undone: {}", tiles(&links)), back, 0)
         }
-        Act::Placed { id, kind, laid, paid, free } => {
-            let back = unplace(world, events, intersections, id, kind, &laid, &paid, free, now);
-            say(format!("Undone: the {}", label(kind)), back, 0)
-        }
-        Act::Razed(was, b) => {
-            let kind = b.kind;
-            let id = world.raise_as(Building { door: None, park: Vec::new(), land: Vec::new(), ruts: Vec::new(), ..b });
-            // Standing again, it is the one placed: undo of that takes it.
-            for d in world.undo.values_mut().flatten() {
-                if let Act::Placed { id: placed, .. } = &mut d.act
-                    && *placed == was
-                {
-                    *placed = id;
-                }
-            }
-            say(format!("The {} stands again", label(kind)), "as it stood, for nothing".into(), id)
-        }
         Act::Cut(links) => {
             for l in &links {
-                crate::game::lay(world, *l);
+                crate::hand::lay(world, *l);
             }
             say(format!("Undone: {} put back", tiles(&links)), "for nothing".into(), 0)
         }
         Act::Drawn { steps, .. } => {
             let laid: Vec<Link> = steps.iter().filter(|s| s.fresh).map(|s| s.link).collect();
-            let back = take_back(world, events, intersections, &steps, now);
+            let back = take_back(world, events, &steps, now);
             say(format!("Undone: {}", tiles(&laid)), back, 0)
         }
     }
@@ -395,7 +362,7 @@ fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static s
 /// van on its way to it; the street it brought taken up, and what that
 /// paid given back. What was given back, said.
 #[allow(clippy::too_many_arguments)]
-fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, id: EntityId, kind: BuildingKind, laid: &[Link], paid: &Paid, free: bool, now: GameTime) -> String {
+fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: BuildingKind, laid: &[Link], paid: &Paid, free: bool, now: GameTime) -> String {
     let site = match world.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Building(b)) => b.site.clone(),
         _ => None,
@@ -411,7 +378,7 @@ fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
     let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
     materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
     world.remove_building(id);
-    take_up(world, events, intersections, laid, now);
+    take_up(world, events, laid, now);
     let mut back = vec![refund(world, paid, now)];
     back.push(give_back(world, &materials, at, now));
     back.retain(|s| !s.is_empty());
@@ -422,10 +389,10 @@ fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut Inter
 }
 
 /// The links taken up, newest first, as the demolisher would.
-fn take_up(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, links: &[Link], now: GameTime) {
+fn take_up(world: &mut World, events: &mut EventQueue, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
         if let Some((a, b)) = world.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
-            crate::game::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
         }
     }
 }
@@ -461,8 +428,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
         *all.entry(good).or_default() += units;
     }
     for (good, units) in all.into_iter().filter(|(_, u)| *u > 0.0) {
-        let mut near: Vec<(i32, EntityId)> = depots(world).filter_map(|(id, _)| Some(((world.objects.get(id)?.position?.x - at.x).abs() + (world.objects.get(id)?.position?.y - at.y).abs(), id))).collect();
-        near.sort();
+        let near = world.nearest(at, world.depots().into_iter().map(|(id, _)| id));
         let mut left = units;
         for (_, depot) in near {
             left -= shelve(world, depot, good, left);
@@ -482,7 +448,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
 
 /// Units of a good put on a depot's shelf, as far as it has room: how many.
 fn shelve(world: &mut World, depot: EntityId, good: Good, units: f64) -> f64 {
-    let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) else { return 0.0 };
+    let Some(b) = world.building_mut(depot) else { return 0.0 };
     let Some(stock) = b.stocks.get_mut(&good) else { return 0.0 };
     let put = units.min(stock.cap - stock.level).max(0.0);
     stock.level += put;

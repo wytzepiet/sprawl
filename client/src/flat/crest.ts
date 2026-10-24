@@ -1,11 +1,11 @@
-import type { Neighbour } from "../generated/Neighbour";
+import type { Neighbour } from "../generated";
 
 /**
  * A town beyond the edge, drawn: its crest, the town's initials on a disc
  * of its colour, rimmed in glass white. The one place a mayor is drawn,
  * on a card, a pin at the map's edge or a box marked for them; a portrait
- * from `looks` replaces it here (docs/shelved.md §Faces). Upright, in
- * whatever pixels `g` is set to: the minimap's, a script's, a card's.
+ * would replace it here (docs/shelved.md §Faces). Upright, in
+ * whatever pixels `g` is set to: a script's, a card's.
  */
 export function crest(g: CanvasRenderingContext2D, n: Pick<Neighbour, "town" | "colour">, x: number, y: number, r: number) {
   g.save();

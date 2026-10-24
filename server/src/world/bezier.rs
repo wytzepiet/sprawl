@@ -1,8 +1,8 @@
-/// Perpendicular offset from center-line to lane, for a route's lengths.
-/// The client now draws lanes at 0.1; this keeps the old lanes' 0.15, as
-/// the season's economy was settled on those lengths and rings on the
-/// new ones (`season_the_band_holds_and_nothing_rings`).
-pub const LANE_OFFSET: f64 = 0.15;
+/// How far a lane's middle keeps from its road's, in tiles: where a
+/// junction's tracks are laid and a kerb bay is pulled out of, as the
+/// client draws it (`LANE_OFFSET` in `roadGeometry.ts`). A route is still
+/// measured on the old lanes (`MEASURED_LANE` in `geometry.rs`).
+pub const LANE_OFFSET: f64 = 0.1;
 
 const BEZIER_SAMPLES: usize = 8;
 

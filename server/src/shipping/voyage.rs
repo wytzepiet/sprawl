@@ -45,11 +45,6 @@ pub struct Voyage {
     pass: Vec<Pass>,
     /// Where along the way the piece it sails now starts.
     from: f64,
-    /// Since when it has waited at the gate ahead, while it does.
-    since: Option<GameTime>,
-    /// How long it has waited at junctions on this leg, by whether the
-    /// junction was a berth's approach.
-    pub waited: [GameTime; 2],
     /// Not into the berth it sails to before this: the ships due there
     /// before it have it.
     not_before: GameTime,
@@ -102,7 +97,7 @@ impl Voyage {
             woken = junctions.clear_car(g.id, ship, now);
         }
         let len = length(&way);
-        let mut v = Voyage { way, len, ease, astern, gates, pass, from: 0.0, since: None, waited: [0, 0], not_before: berth[0], free: berth[1] };
+        let mut v = Voyage { way, len, ease, astern, gates, pass, from: 0.0, not_before: berth[0], free: berth[1] };
         let sail = v.piece(ship, 0.0, ease[0], now, junctions);
         (v, sail, woken)
     }
@@ -131,14 +126,9 @@ impl Voyage {
         }
         if !early && junctions.has_passage(g.id, ship) {
             self.pass[k] = Pass::Through;
-            if let Some(since) = self.since.take() {
-                self.waited[(g.kind == Kind::Berth) as usize] += now.saturating_sub(since);
-            }
             return true;
         }
         self.pass[k] = if early { Pass::Early } else { Pass::Waiting };
-        // Waiting for its time is the timetable's, not the junction's.
-        self.since.get_or_insert(now.max(if self.kept(k) { self.not_before.saturating_sub(arrives.saturating_sub(now)) } else { 0 }));
         false
     }
 
@@ -176,12 +166,8 @@ impl Voyage {
     /// Not let into the berth at the end of the way, it sails on all the
     /// same if the ship there will have cast off by the time it is in: it
     /// may slip into the approach as that one leaves.
-    fn sails_on(&mut self, k: usize, sail: &Sail) -> bool {
-        let on = self.kept(k) && self.pass[k] == Pass::Waiting && sail.ends + SLACK >= self.free;
-        if on {
-            self.since = None;
-        }
-        on
+    fn sails_on(&self, k: usize, sail: &Sail) -> bool {
+        self.kept(k) && self.pass[k] == Pass::Waiting && sail.ends + SLACK >= self.free
     }
 
     /// Where along the way it is at `now`.
@@ -240,7 +226,6 @@ impl Voyage {
                 if !self.sails_on(k, sail) && d >= d0 - 1e-6 {
                     *sail = self.sail(d, d, [true, true], now);
                     self.from = d;
-                    self.since = Some(now);
                 }
             }
             if self.pass[k] != Pass::Through || now < sail.ends {

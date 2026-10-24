@@ -1,11 +1,11 @@
-import type { Mesh } from "@babylonjs/lite";
+import { addToScene, type Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import * as Comlink from "comlink";
-import type { Theme } from "./theme";
+import { theme } from "./theme";
 import {
   buildTrees,
   CHUNK_SIZE,
@@ -14,7 +14,6 @@ import {
   TYPE_BY_BYTE,
   type ChunkGeometry,
   type MeshBuffers,
-  type TerrainPalette,
 } from "./objects/terrainGeometry";
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
@@ -23,7 +22,7 @@ import { grove, plant, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
-import { viewExtent } from "./view";
+import { groundCover } from "./view";
 
 export { CHUNK_SIZE };
 
@@ -39,7 +38,6 @@ interface ChunkMeshes {
   meshes: Mesh[];
   cliffs: Mesh | null;
   trees: Record<Kind, Grove>;
-  hasTrees: Record<Kind, boolean>;
   dispose: (() => void)[];
   tick: (() => void) | null;
 }
@@ -89,7 +87,6 @@ export class TerrainChunks {
   constructor(
     private ctx: EngineContext,
     private casters: Casters,
-    private theme: () => Theme,
     private isBuilt: (x: number, y: number) => boolean,
   ) {
     // The one material that genuinely wants both sides. Cliff walls exist only
@@ -103,7 +100,8 @@ export class TerrainChunks {
     this.wallMat = townMaterial([CAST_ONLY]);
 
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
-    this.paintGround();
+    // Each layer of the land its colour, bottom up (`LAYERS`).
+    this.ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
 
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
@@ -112,25 +110,6 @@ export class TerrainChunks {
     });
   }
 
-  /** Each layer of the land its colour, bottom up (`LAYERS`). */
-  private paintGround(): void {
-    const t = this.theme();
-    this.ground.paint([t.beach, t.rock, t.land, t.forest]);
-  }
-
-  /** The worker has no Babylon, so the theme crosses as plain floats. */
-  private palette(): TerrainPalette {
-    const t = this.theme();
-    return {
-      Water: { r: t.water.r, g: t.water.g, b: t.water.b },
-      // The sea a shade deeper than a lake.
-      Sea: { r: t.water.r * 0.85, g: t.water.g * 0.85, b: t.water.b * 0.9 },
-      Beach: { r: t.beach.r, g: t.beach.g, b: t.beach.b },
-      Grass: { r: t.land.r, g: t.land.g, b: t.land.b },
-      Forest: { r: t.forest.r, g: t.forest.g, b: t.forest.b },
-      Mountain: { r: t.mountain.r, g: t.mountain.g, b: t.mountain.b },
-    };
-  }
 
   // --- Tile data ---------------------------------------------------------
 
@@ -194,12 +173,6 @@ export class TerrainChunks {
     this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
 
-  /** Rebuild every chunk — used when the theme changes all terrain colours. */
-  markAllDirty(): void {
-    this.paintGround();
-    for (const key of this.chunks.keys()) this.invalidate(key);
-  }
-
   private invalidate(key: string): void {
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
     this.dirtyGeometry.add(key);
@@ -257,7 +230,7 @@ export class TerrainChunks {
         if (!this.isBuilt(x, y)) return b;
         return this.ashore(x, y, own) ? sea : b === forest ? grass : b;
       });
-      geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy, this.palette());
+      geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy);
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.
@@ -279,7 +252,7 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? { broad: grove(this.ctx, `chunk_${key}`), conifer: grove(this.ctx, `chunk_${key}`, "conifer") }, hasTrees: old?.hasTrees ?? { broad: false, conifer: false }, dispose: [], tick: null };
+    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? { broad: grove(`chunk_${key}`, [ox, oy]), conifer: grove(`chunk_${key}`, [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     this.ground.set(key, [ox, oy], geometry.layers);
@@ -294,7 +267,7 @@ export class TerrainChunks {
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
-      show(scene, mesh);
+      addToScene(scene, mesh);
       if (shadows.cast) this.casters.add(mesh);
       chunk.meshes.push(mesh);
       return mesh;
@@ -330,16 +303,11 @@ export class TerrainChunks {
     if (!chunk || !tiles) return;
 
     const [cx, cy] = parseKey(key);
-    const sets = buildTrees(tiles, cx, cy, this.isBuilt, this.theme());
+    const sets = buildTrees(tiles, cx, cy, this.isBuilt, theme);
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     for (const kind of ["broad", "conifer"] as const) {
-      // Grown from the chunk's corner.
-      for (const mesh of [chunk.trees[kind].bodies, chunk.trees[kind].tops]) {
-        mesh.position.x = ox;
-        mesh.position.y = oy;
-      }
       const { matrices, colors } = sets[kind];
-      chunk.hasTrees[kind] = plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
+      plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
     }
     this.applyDetail(chunk);
   }
@@ -366,7 +334,7 @@ export class TerrainChunks {
   /** Cliffs and trees are illegible when zoomed far out — skip them entirely. */
   private updateDetail(): void {
     if (!this.ctx.scene.camera) return;
-    const visible = viewExtent(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_ORTHO;
+    const visible = groundCover(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_ORTHO;
     if (visible === this.detailVisible) return;
     this.detailVisible = visible;
     for (const chunk of this.chunks.values()) this.applyDetail(chunk);
@@ -376,7 +344,7 @@ export class TerrainChunks {
     const { cull } = this.ctx;
     if (chunk.cliffs) cull.want(chunk.cliffs, this.detailVisible);
     for (const kind of ["broad", "conifer"] as const) {
-      if (chunk.hasTrees[kind]) for (const mesh of [chunk.trees[kind].bodies, chunk.trees[kind].tops]) cull.want(mesh, this.detailVisible);
+      for (const mesh of chunk.trees[kind].meshes) cull.want(mesh, this.detailVisible);
     }
   }
 

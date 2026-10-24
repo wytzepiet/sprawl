@@ -1,13 +1,19 @@
 //! One card per thing on the map: what it is, who is in it, and where
 //! every line points. Every fact here is something that happened on the
 //! map; a line that names another thing carries its id, so the reader can
-//! go there. docs/game.md, Legibility.
+//! go there. docs/game.md, Legibility. Asked for by `ClientMessage::Card`,
+//! sent as `ServerMessage::Card`.
 
-use serde_json::{json, Value};
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::blueprint::blueprint;
+use crate::calls::Call;
 use crate::engine::GameTime;
-use crate::protocol::{Building, Car, CarRole, EntityId, GameObject, Resident, DAY_MS};
+use crate::needs::Need;
+use crate::protocol::{Building, BuildingKind, Car, CarRole, EntityId, GameObject, Good, Resident, DAY_MS};
 use crate::world::World;
 
 const FIRST: [&str; 32] = [
@@ -27,17 +33,182 @@ pub fn name(id: EntityId) -> String {
     format!("{} {}", FIRST[(h >> 20) as usize % FIRST.len()], LAST[(h >> 40) as usize % LAST.len()])
 }
 
-fn hhmm(t: GameTime) -> String {
+/// A time of day as the clock shows it.
+pub(crate) fn hhmm(t: GameTime) -> String {
     let day = DAY_MS as u64;
     format!("{:02}:{:02}", (t % day) / (day / 24), (t % (day / 24)) / (day / 24 / 60))
 }
 
+/// The card of one thing, by what it is.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Card {
+    Resident(ResidentCard),
+    Car(CarCard),
+    Building(BuildingCard),
+    Gone {
+        #[ts(type = "number")]
+        id: EntityId,
+    },
+}
+
 /// A line that points at something: its id, what to call it, and what it is.
-fn link(world: &World, id: EntityId) -> Value {
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Link {
+    #[ts(type = "number")]
+    pub id: EntityId,
+    pub label: String,
+    pub kind: LinkKind,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "lowercase")]
+pub enum LinkKind {
+    Resident,
+    Building,
+    Car,
+    Gone,
+}
+
+/// How full a tank or a shelf is, 0 to 1, and of what.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Gauge {
+    pub what: String,
+    pub full: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ResidentCard {
+    #[ts(type = "number")]
+    pub id: EntityId,
+    pub name: String,
+    pub home: Link,
+    pub work: Option<Link>,
+    pub at: Option<Link>,
+    pub car: Link,
+    pub selected: Option<Need>,
+    /// When they last thought.
+    pub since: String,
+    /// The tank is the car's; its card shows it.
+    pub needs: Vec<NeedLine>,
+}
+
+/// One need: how full it is, and where it would be met now
+/// (`resident::needs`).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NeedLine {
+    pub need: Need,
+    pub full: f64,
+    #[ts(type = "number | null")]
+    pub option: Option<EntityId>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CarCard {
+    #[ts(type = "number")]
+    pub id: EntityId,
+    pub role: CarRole,
+    pub owner: Link,
+    pub rider: Option<Link>,
+    pub stocks: Vec<Gauge>,
+    pub trip: Option<TripLine>,
+    pub parked_at: Option<Link>,
+    pub answering: Vec<CallLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TripLine {
+    pub to: Link,
+    pub due: String,
+    /// Against empty roads: what traffic has cost so far.
+    #[ts(type = "number")]
+    pub late_s: u64,
+}
+
+/// A call: what for, from where, since when, and the vehicle answering.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CallLine {
+    pub what: String,
+    pub good: Good,
+    pub at: Link,
+    pub since: String,
+    pub answered_by: Option<Link>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct BuildingCard {
+    #[ts(type = "number")]
+    pub id: EntityId,
+    pub building_kind: BuildingKind,
+    pub reached: bool,
+    pub stocks: Vec<Gauge>,
+    /// A site's: where its materials are.
+    pub depots: Vec<DepotLine>,
+    pub makers: Vec<MakerLine>,
+    pub here: Vec<Present>,
+    pub household: Vec<Link>,
+    pub staff: Vec<Staff>,
+    pub fleet: Vec<Link>,
+    pub calls: Vec<CallLine>,
+    pub served: Vec<Served>,
+}
+
+/// A depot, as a site's card lists it: what it has, and whether its
+/// street is joined to the harbour.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DepotLine {
+    pub depot: Link,
+    pub joined: bool,
+    pub stocks: BTreeMap<Good, f64>,
+}
+
+/// A maker of one of a site's materials, and what is in its yard.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct MakerLine {
+    pub maker: Link,
+    pub kind: BuildingKind,
+    pub good: Good,
+    pub level: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Present {
+    pub who: Link,
+    pub doing: Option<Need>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Staff {
+    pub who: Link,
+    pub present: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Served {
+    pub need: Need,
+    pub hours_today: f64,
+}
+
+fn link(world: &World, id: EntityId) -> Link {
     let (kind, label) = match world.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Resident(_)) => ("resident", name(id)),
-        Some(GameObject::Building(b)) => ("building", format!("{:?}", b.kind)),
-        Some(GameObject::Car(c)) => ("car", match c.role {
+        Some(GameObject::Resident(_)) => (LinkKind::Resident, name(id)),
+        Some(GameObject::Building(b)) => (LinkKind::Building, format!("{:?}", b.kind)),
+        Some(GameObject::Car(c)) => (LinkKind::Car, match c.role {
             CarRole::Private => name(c.owner) + "'s car",
             CarRole::Van => "Van".into(),
             CarRole::Truck => "Lorry".into(),
@@ -45,169 +216,122 @@ fn link(world: &World, id: EntityId) -> Value {
             CarRole::Ferry => "Ferry".into(),
             CarRole::Tug => "Tug".into(),
         }),
-        _ => ("gone", "gone".into()),
+        _ => (LinkKind::Gone, "gone".into()),
     };
-    json!({ "id": id, "label": label, "kind": kind })
+    Link { id, label, kind }
 }
 
-pub fn card(world: &World, id: EntityId, now: GameTime) -> Value {
+pub fn card(world: &World, id: EntityId, now: GameTime) -> Card {
     match world.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Resident(r)) => resident(world, id, r, now),
-        Some(GameObject::Car(c)) => car(world, id, c, now),
-        Some(GameObject::Building(b)) => building(world, id, b, now),
-        _ => json!({ "kind": "gone", "id": id }),
+        Some(GameObject::Resident(r)) => Card::Resident(resident(world, id, r, now)),
+        Some(GameObject::Car(c)) => Card::Car(car(world, id, c, now)),
+        Some(GameObject::Building(b)) => Card::Building(building(world, id, b, now)),
+        _ => Card::Gone { id },
     }
 }
 
-fn residents(world: &World) -> impl Iterator<Item = (EntityId, &Resident)> {
-    world.objects.iter().filter_map(|e| match e.object {
-        GameObject::Resident(ref r) => Some((e.id, r)),
-        _ => None,
-    })
+fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> ResidentCard {
+    ResidentCard {
+        id,
+        name: name(id),
+        home: link(world, r.home),
+        work: r.work.map(|w| link(world, w)),
+        at: r.at.map(|a| link(world, a)),
+        car: link(world, r.car),
+        selected: r.selected,
+        since: hhmm(r.last_update),
+        needs: crate::resident::needs(world, id, now).into_iter().filter(|n| n.need != Need::Fuel).collect(),
+    }
 }
 
-fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
-    // The arithmetic behind the choice is the resident's own inspect; the
-    // card wears it.
-    let thinking = crate::resident::inspect(world, id, now);
-    json!({
-        "kind": "resident",
-        "id": id,
-        "name": name(id),
-        "home": link(world, r.home),
-        "work": r.work.map(|w| link(world, w)),
-        "at": r.at.map(|a| link(world, a)),
-        "car": link(world, r.car),
-        "selected": r.selected,
-        "since": hhmm(r.last_update),
-        // The tank is the car's; its card shows it.
-        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel").cloned().collect::<Vec<_>>()),
-    })
+fn call_line(world: &World, call: &Call) -> CallLine {
+    CallLine {
+        what: format!("{:?}", call.kind),
+        good: call.good,
+        at: link(world, call.at),
+        since: hhmm(call.raised),
+        answered_by: call.answered_by.map(|c| link(world, c)),
+    }
 }
 
-fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> Value {
+fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> CarCard {
     let owner = world.objects.get(c.owner).map(|e| &e.object);
     let rider = match owner {
         Some(GameObject::Resident(r)) if r.at == Some(id) => Some(link(world, c.owner)),
         _ => None,
     };
-    let trip = c.trip.as_ref().map(|t| json!({
-        "to": link(world, t.destination),
-        "due": hhmm(t.eta),
-        // Against empty roads: what traffic has cost so far.
-        "late_s": now.saturating_sub(t.eta) / 1000,
-    }));
-    let parked_at = if c.trip.is_none() {
-        match owner {
-            Some(GameObject::Resident(r)) => r.at.filter(|&a| a != id).map(|a| link(world, a)),
-            Some(GameObject::Building(_)) => Some(link(world, c.owner)),
-            _ => None,
-        }
-    } else {
-        None
+    let parked_at = match (&c.trip, owner) {
+        (Some(_), _) => None,
+        (None, Some(GameObject::Resident(r))) => r.at.filter(|&a| a != id).map(|a| link(world, a)),
+        (None, Some(GameObject::Building(_))) => Some(link(world, c.owner)),
+        _ => None,
     };
-    let answering: Vec<Value> = world
-        .calls
-        .iter()
-        .filter(|call| call.answered_by == Some(id))
-        .map(|call| json!({ "what": format!("{:?}", call.kind), "for": link(world, call.at), "since": hhmm(call.raised) }))
-        .collect();
-    json!({
-        "kind": "car",
-        "id": id,
-        "role": c.role,
-        "owner": link(world, c.owner),
-        "rider": rider,
-        "stocks": c.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
-        "trip": trip,
-        "parked_at": parked_at,
-        "answering": answering,
-    })
+    CarCard {
+        id,
+        role: c.role,
+        owner: link(world, c.owner),
+        rider,
+        stocks: c.stocks.iter().map(|(need, s)| Gauge { what: format!("{need:?}"), full: s.level / s.cap }).collect(),
+        trip: c.trip.as_ref().map(|t| TripLine { to: link(world, t.destination), due: hhmm(t.eta), late_s: now.saturating_sub(t.eta) / 1000 }),
+        parked_at,
+        answering: world.calls.iter().filter(|call| call.answered_by == Some(id)).map(|call| call_line(world, call)).collect(),
+    }
 }
 
-fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
-    let bp = blueprint(b.kind);
+fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> BuildingCard {
     let mut here = Vec::new();
     let mut household = Vec::new();
     let mut staff = Vec::new();
-    for (rid, r) in residents(world) {
+    for e in world.objects.iter() {
+        let GameObject::Resident(ref r) = e.object else { continue };
         if r.at == Some(id) {
-            here.push(json!({ "who": link(world, rid), "doing": r.selected }));
+            here.push(Present { who: link(world, e.id), doing: r.selected });
         }
         if r.home == id {
-            household.push(link(world, rid));
+            household.push(link(world, e.id));
         }
         if r.work == Some(id) {
-            staff.push(json!({ "who": link(world, rid), "present": r.at == Some(id) }));
+            staff.push(Staff { who: link(world, e.id), present: r.at == Some(id) });
         }
     }
-    let fleet: Vec<Value> = world
-        .objects
-        .iter()
-        .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == id && c.role != CarRole::Private))
-        .map(|e| link(world, e.id))
-        .collect();
-    let calls: Vec<Value> = world
-        .calls
-        .iter()
-        .filter(|call| call.at == id)
-        .map(|call| json!({ "what": format!("{:?}", call.kind), "good": call.good, "since": hhmm(call.raised), "answered_by": call.answered_by.map(|c| link(world, c)) }))
-        .collect();
-    let served: Vec<Value> = bp
-        .taps
-        .iter()
-        .map(|t| {
-            let today = world.books.get(&id).and_then(|k| k.on(now).served.get(&t.need).copied()).unwrap_or(0.0);
-            json!({ "need": t.need, "hours_today": today })
-        })
-        .collect();
-    // Where an order can be sent and timber found: every depot, nearest
-    // first, on a harbour's card and a site's, and whether its street is
-    // joined to the harbour.
-    let here = world.objects.get(id).and_then(|e| e.position);
-    let mut depots: Vec<(i32, Value)> = Vec::new();
-    if b.kind == crate::protocol::BuildingKind::Harbour || b.site.is_some() {
-        for e in world.objects.iter() {
-            let GameObject::Building(ref d) = e.object else { continue };
-            let (Some(at), Some(here)) = (e.position, here) else { continue };
-            if !crate::economy::depot(d.kind) || d.site.is_some() {
-                continue;
-            }
-            let joined = world.street_of(e.id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
-            let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
-            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
-        }
+    // A site's: where its materials are, nearest first. Every depot, and
+    // whether its street is joined to the harbour; every maker of one, and
+    // its yard.
+    let pos = world.objects.get(id).and_then(|e| e.position).filter(|_| b.site.is_some());
+    let site = b.site.as_ref();
+    let depots = pos.map_or_else(Vec::new, |at| {
+        let depots = world.depots().into_iter().map(|(d, _)| d);
+        world.nearest(at, depots).into_iter().filter_map(|(_, d)| {
+            let joined = world.street_of(d).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
+            let stocks = world.building(d)?.stocks.iter().map(|(&g, s)| (g, s.level)).collect();
+            Some(DepotLine { depot: link(world, d), joined, stocks })
+        }).collect()
+    });
+    let makers = pos.map_or_else(Vec::new, |at| {
+        let makes = |k: BuildingKind| blueprint(k).makes.is_some_and(|g| site.is_some_and(|s| s.contains_key(&g)));
+        let makers = world.of_kinds(makes).into_iter().filter(|(_, m)| m.site.is_none()).map(|(m, _)| m);
+        world.nearest(at, makers).into_iter().filter_map(|(_, m)| {
+            let yard = world.building(m)?;
+            let good = blueprint(yard.kind).makes?;
+            Some(MakerLine { maker: link(world, m), kind: yard.kind, good, level: yard.stocks.get(&good).map_or(0.0, |s| s.level) })
+        }).collect()
+    });
+    BuildingCard {
+        id,
+        building_kind: b.kind,
+        reached: world.street_of(id).is_some(),
+        stocks: b.stocks.iter().map(|(good, s)| Gauge { what: format!("{good:?}"), full: s.level / s.cap }).collect(),
+        depots,
+        makers,
+        here,
+        household,
+        staff,
+        fleet: world.objects.fleet(id).filter(|&c| world.car(c).is_some_and(|c| c.role != CarRole::Private)).map(|c| link(world, c)).collect(),
+        calls: world.calls.iter().filter(|call| call.at == id).map(|call| call_line(world, call)).collect(),
+        served: blueprint(b.kind)
+            .taps
+            .iter()
+            .map(|t| Served { need: t.need, hours_today: world.books.get(&id).and_then(|k| k.on(now).served.get(&t.need).copied()).unwrap_or(0.0) })
+            .collect(),
     }
-    depots.sort_by_key(|(t, _)| *t);
-    // Where a site's materials are made in town: every maker of one, its
-    // yard, nearest first.
-    let mut makers: Vec<(i32, Value)> = Vec::new();
-    if let (Some(site), Some(here)) = (&b.site, here) {
-        for e in world.objects.iter() {
-            let GameObject::Building(ref m) = e.object else { continue };
-            let (Some(good), Some(at)) = (crate::blueprint::blueprint(m.kind).makes, e.position) else { continue };
-            if m.site.is_none() && site.contains_key(&good) {
-                let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
-                makers.push((tiles, json!({ "maker": link(world, e.id), "kind": m.kind, "good": good, "level": m.stocks.get(&good).map_or(0.0, |s| s.level), "tiles": tiles })));
-            }
-        }
-    }
-    makers.sort_by_key(|(t, _)| *t);
-    json!({
-        "kind": "building",
-        "id": id,
-        "label": format!("{:?}", b.kind),
-        "building_kind": b.kind,
-        "reached": world.street_of(id).is_some(),
-        "stocks": b.stocks.iter().map(|(good, s)| json!({ "need": good, "good": good, "full": s.level / s.cap, "level": s.level, "cap": s.cap })).collect::<Vec<_>>(),
-        "site": b.site,
-        "depots": depots.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
-        "makers": makers.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
-        "here": here,
-        "household": household,
-        "staff": staff,
-        "fleet": fleet,
-        "calls": calls,
-        "served": served,
-    })
 }

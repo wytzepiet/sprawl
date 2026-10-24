@@ -10,12 +10,7 @@ export type Neighbour = { mayor: Mayor, name: string, town: string, toward: Comp
 /**
  * The town's colour, the crest's ground.
  */
-colour: string, 
-/**
- * The face, in words: what a portrait would be drawn from
- * (docs/shelved.md §Faces). The crest is drawn for now.
- */
-looks: string, standing: number, 
+colour: string, standing: number, 
 /**
  * Writes to the town yet.
  */

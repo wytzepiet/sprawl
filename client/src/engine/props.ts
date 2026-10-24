@@ -1,8 +1,8 @@
-import { markMaterialUboDirty, setThinInstances, type MaterialPlugin, type Mesh } from "@babylonjs/lite";
+import { addToScene, markMaterialUboDirty, setThinInstances, type MaterialPlugin, type Mesh } from "@babylonjs/lite";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import type { Area } from "./cull";
-import { drop, meshOf, show, slab, type P } from "./geometry";
+import { drop, meshOf, slab, type P } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { PROP_FLOATS } from "./town/layer";
 import { PROP_KINDS } from "./town/roof";
@@ -303,7 +303,7 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
     mesh.position.y = oy;
     setThinInstances(mesh, new Float32Array(m), m.length / 16);
     ctx.cull.keep(mesh, area);
-    show(ctx.scene, mesh);
+    addToScene(ctx.scene, mesh);
     if (cast) casters?.add(mesh);
     meshes.push(mesh);
   }

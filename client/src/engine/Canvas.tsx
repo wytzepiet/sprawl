@@ -22,7 +22,7 @@ import {
   type EngineContext as Engine,
   type SceneContext,
 } from "@babylonjs/lite";
-import { useTheme } from "./theme";
+import { theme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
 import { createGlass, light } from "./glass";
@@ -49,7 +49,7 @@ export type EngineContext = {
   registered: () => boolean;
 };
 
-export const BabylonContext = createContext<EngineContext>();
+const BabylonContext = createContext<EngineContext>();
 
 /** What is drawn, once the scene is registered (`registered`). */
 export function Registered(props: ParentProps) {
@@ -102,7 +102,6 @@ function hooks() {
 }
 
 export default function Canvas(props: ParentProps) {
-  const theme = useTheme();
   const [ctx, setCtx] = createSignal<EngineContext>();
   const [registered, setRegistered] = createSignal(false);
   // Set once the engine is up; the canvas's owner is gone by then, so it is taken down from here.
@@ -115,7 +114,7 @@ export default function Canvas(props: ParentProps) {
     const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO, msaaSamples: devicePixelRatio < 2 ? 4 : 1, copySource: true });
     const stopResizing = enableSurfaceResizeObserver(engine.surfaces[0]);
     const scene = createSceneContext(engine);
-    const land = theme().land;
+    const land = theme.land;
     scene.clearColor = { r: land.r, g: land.g, b: land.b, a: 1 };
     // Every material of the town's is made of plugins, some reading data of their own off the vertices.
     enableMaterialPlugins(scene);

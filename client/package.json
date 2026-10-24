@@ -4,24 +4,18 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "generate": "cd ../server && TS_RS_EXPORT_DIR=../client/src/generated cargo test",
-    "start": "bun run wasm && vite",
+    "generate": "bun scripts/generate.ts",
     "dev": "bun run wasm && vite",
     "build": "bun run wasm && vite build",
-    "serve": "vite preview",
     "wasm": "cd ../server && cargo build -q -p sprawl-web --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir ../client/src/wasm target/wasm32-unknown-unknown/release/sprawl_web.wasm"
   },
   "license": "MIT",
   "devDependencies": {
     "@napi-rs/canvas": "1.0.11",
-    "@tailwindcss/postcss": "^4.2.1",
     "@types/bun": "^1.3.14",
     "@types/clipper-lib": "^6.4.0",
-    "@types/earcut": "^3.0.0",
     "@webgpu/types": "0.1.74",
     "playwright-core": "^1.63.0",
-    "postcss": "^8.5.8",
-    "tailwindcss": "^4.2.1",
     "typescript": "^5.7.2",
     "vite": "^8.0.1",
     "vite-plugin-solid": "^2.10.0"
@@ -31,7 +25,6 @@
     "clipper-lib": "^6.4.2",
     "comlink": "^4.4.2",
     "earcut": "^3.2.4",
-    "simplex-noise": "^4.0.3",
     "solid-js": "^1.9.0"
   }
 }

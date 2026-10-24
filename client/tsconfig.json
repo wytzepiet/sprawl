@@ -25,6 +25,7 @@
 
     // Type Checking & Safety
     "strict": true,
+    "noUnusedLocals": true,
     // bun-types and vite/client disagree about import.meta; that is theirs.
     "skipLibCheck": true,
     "types": ["vite/client", "bun-types", "@webgpu/types"]

@@ -1,4 +1,4 @@
-import type { Mesh } from "@babylonjs/lite";
+import { addToScene, type Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
@@ -6,16 +6,16 @@ import { ROOF } from "./roofs";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { setTint, townMaterial, type TownMaterial } from "./material";
-import { drop, meshOf, show } from "./geometry";
-import { hex, rgb, WHITE, type Rgb } from "./rgb";
+import { drop, meshOf } from "./geometry";
+import { hex, rgb, WHITE, type RGB, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
-import { CHUNK, kerbed, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
+import { areaOf, CHUNK, grow, kerbed, MARGIN, turned, widen, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
-import type { Theme } from "./theme";
+import { theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z, LAYER_ORDER } from "./town/draw";
-import type { MeshGeometry } from "./geometry";
+import type { MeshGeometry, P } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { surfacesAt } from "./town/surface";
 import { Decks, liftOf, type DeckPiece } from "./decks";
@@ -26,12 +26,8 @@ import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
-import type { RGB } from "./town/mass";
-import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing, Pose } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
-import type { Placing } from "../generated";
-import type { Pose } from "../generated/Pose";
-import type { Pt } from "./town/footprint";
 import { TRAILER } from "./objects/roadGeometry";
 
 /** How many roads one tile may hold: the ground's two side by side, and
@@ -82,7 +78,7 @@ interface Gathered {
  * the main thread (`town/layer.ts`, `townWorker.ts`), one drawing at a
  * time; meshes are made of them as they land. Cars
  * moving are not a change. The grid runs in the fixture's frame, turned
- * half round onto the map, as the sandbox draws a fixture. Kerbs are
+ * half round onto the map. Kerbs are
  * rounded from each sheet's own kerb texture (`kerbs.ts`).
  */
 export class TownLayer {
@@ -111,8 +107,6 @@ export class TownLayer {
   private preview = new Map<string, Shown>();
   private heldWorker = new Worker(new URL("./townWorker.ts", import.meta.url), { type: "module" });
   private previewer = Comlink.wrap<TownApi>(this.heldWorker);
-  /** How long each drawing of a held building took, from asking to shown, in ms. */
-  readonly previewMs: number[] = [];
 
   /** The masses' material, every chunk's: their buildings' colours read
    *  off the tints, their roofs tiled, lacquered as a building is. And each
@@ -124,7 +118,6 @@ export class TownLayer {
   constructor(
     private ctx: EngineContext,
     private casters: Casters,
-    private theme: () => Theme,
     private entities: (f: (e: GameObjectEntry) => void) => void,
     private ground: (x: number, y: number) => TerrainType | undefined,
     private look: (e: GameObjectEntry) => Look,
@@ -133,8 +126,8 @@ export class TownLayer {
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
-    this.roads = new RoadTiles(ctx.engine, ctx.scene, () => this.theme().road);
-    const { r, g, b } = this.theme().paved;
+    this.roads = new RoadTiles(ctx.engine, ctx.scene);
+    const { r, g, b } = theme.paved;
     this.concrete = new Decks(ctx.engine, ctx.scene, casters, rgb(r, g, b));
   }
 
@@ -177,13 +170,6 @@ export class TownLayer {
     this.settle();
   }
 
-  /** Everything drawn again: the theme changed. */
-  repaint() {
-    for (const key of this.roads.tiles()) this.dirty.add(key.split("#")[0]);
-    for (const key of this.chunks.keys()) this.stale.add(key);
-    this.settle();
-  }
-
   /** A building held over the map, as it would stand, or none. Only one
    *  that may stand there is drawn: one that may not is the hand's to
    *  show, with why. */
@@ -198,12 +184,16 @@ export class TownLayer {
     this.settle();
   }
 
+  /** On the next frame, what changed drawn: the world as a town made at
+   *  most once for it. */
   private settle() {
     this.frame ??= requestAnimationFrame(() => {
       this.frame = null;
-      this.draw();
-      this.retile();
-      this.drawHeld();
+      let made: Town | undefined;
+      const world = () => (made ??= this.world());
+      this.draw(world);
+      this.retile(world);
+      this.drawHeld(world);
     });
   }
 
@@ -243,8 +233,7 @@ export class TownLayer {
   }
 
   /** The roads on each of these road tiles, as they are drawn here. */
-  private views(roads: Snapshot["roads"]): Snapshot["views"] {
-    const world = this.world();
+  private views(roads: Snapshot["roads"], world: Town): Snapshot["views"] {
     const tiles = new Set(roads.map(([x, y]) => `${x},${y}`));
     return [...tiles].map((k) => {
       const [x, y] = k.split(",").map(Number);
@@ -266,7 +255,7 @@ export class TownLayer {
 
   /** The chunks round the building held drawn again with it standing, and
    *  shown in place of the town's own; or, let go, the town's own again. */
-  private drawHeld() {
+  private drawHeld(world: () => Town) {
     if (this.previewing || !this.heldDirty) return;
     this.heldDirty = false;
     const held = this.held;
@@ -278,20 +267,12 @@ export class TownLayer {
     const todo = new Set<string>();
     for (const t of held.tiles) for (let dy = -MARGIN; dy <= MARGIN; dy += MARGIN) for (let dx = -MARGIN; dx <= MARGIN; dx += MARGIN) todo.add(chunkOf(t.x + dx, t.y + dy));
     // The town round them, a margin wider, all a tile's look can read.
-    const area: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const key of todo) {
-      const [cx, cy] = key.split(",").map(Number);
-      grow(area, cx * CHUNK, cy * CHUNK);
-      grow(area, cx * CHUNK + CHUNK - 1, cy * CHUNK + CHUNK - 1);
-    }
-    const box = widen(area, TOWN_MARGIN + MARGIN);
+    const box = widen(areaOf(todo), TOWN_MARGIN + MARGIN);
     const g = this.gather(held);
     const inside = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
     const snapshot: Snapshot = {
-      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside)), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
+      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside), world()), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS,
     };
-    // Kept, in development, to time the drawing alone, off the page.
-    if (import.meta.env.DEV) Object.assign(window, { sprawlHeldSnapshot: { ...snapshot, ground: [...snapshot.ground] } });
     this.previewing = true;
     this.previewer
       .draw(snapshot)
@@ -304,7 +285,6 @@ export class TownLayer {
           if (real) this.want(real, false);
           this.preview.set(c.key, this.make(c, window, g.byId));
         }
-        this.previewMs.push(performance.now() - started);
         perfCount("town.heldMs", performance.now() - started);
       })
       .catch((e) => console.error("[town] the building held could not be drawn", e))
@@ -326,10 +306,10 @@ export class TownLayer {
 
   /** A chunk shown or hidden, whatever the view. */
   private want(shown: Shown, wanted: boolean) {
-    for (const m of [...shown.meshes, shown.trees.bodies, shown.trees.tops, ...shown.props]) this.ctx.cull.want(m, wanted);
+    for (const m of [...shown.meshes, ...shown.trees.meshes, ...shown.props]) this.ctx.cull.want(m, wanted);
   }
 
-  private draw() {
+  private draw(world: () => Town) {
     // One drawing at a time: what goes stale meanwhile is drawn when it lands.
     if (this.drawing) return;
     const started = performance.now();
@@ -356,7 +336,7 @@ export class TownLayer {
     if (!todo.length) return;
 
     const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
-    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near)), doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
+    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near), world()), doors, marks, ground: this.groundUnder(box), kinds: KINDS };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder
@@ -401,12 +381,12 @@ export class TownLayer {
    *  make: the world as a town in the fixture's frame round the map's
    *  origin, asked about those tiles alone. Two roads may share a tile,
    *  side by side, each its own: `x,y#0` and `x,y#1`. */
-  private retile() {
-    const world = this.world();
+  private retile(world: () => Town) {
+    if (!this.dirty.size) return;
     let decked = false;
     for (const key of this.dirty) {
       const [x, y] = key.split(",").map(Number);
-      const surfaces = surfacesAt(world, -x, -y);
+      const surfaces = surfacesAt(world(), -x, -y);
       for (let i = 0; i < ROADS_A_TILE; i++) {
         const k = `${key}#${i}`;
         const s = surfaces[i];
@@ -434,7 +414,8 @@ export class TownLayer {
     const onTile = new Map<string, (RoadNode & { id: number })[]>();
     const byId = new Map<number, { n: RoadNode & { id: number }; x: number; y: number }>();
     const built = new Map<string, Tile>();
-    const doors = doorsOf(this.entities);
+    // Every building's door, by its tile: the way on the map to its street.
+    const doors = new Map<string, [number, number]>();
     const raise = (id: number, { tiles, kind, facing, site }: Pick<Building, "tiles" | "kind" | "facing"> & { site?: unknown }) => {
       const yard = site ? new Set<string>() : yardTiles(tiles, kind, facing);
       for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
@@ -447,7 +428,11 @@ export class TownLayer {
         if (!n.height && !n.side?.[0] && !n.side?.[1]) nodes.set(k, n);
         (onTile.get(k) ?? onTile.set(k, []).get(k)!).push(n);
       }
-      else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
+      else if (e.object.kind === "Building") {
+        const b = e.object.data as Building;
+        raise(e.id, b);
+        if (b.door) doors.set(`${b.door.tile.x},${b.door.tile.y}`, [b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
+      }
     });
     // And the building held, its drive on its street.
     const held = this.held;
@@ -489,8 +474,6 @@ export class TownLayer {
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
       },
       through: (c, r) => !!road(c, r)?.road.length,
-      light: (c, r) => road(c, r)?.light != null,
-      flow: (c0, r0, c1, r1) => flowOf(road(c0, r0)!, road(c1, r1)!),
       roadsOn: (c, r): RoadView[] =>
         built.has(key(c, r))
           ? []
@@ -528,23 +511,19 @@ export class TownLayer {
       const geo = bevelled(paved ? square(cut, KERB_Z) : p.geo);
       const mesh = meshOf(engine, `town_${p.name}_${key}`, geo);
       giveBevel(engine, mesh, geo);
-      const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
+      const colour = p.colour ?? WHITE;
       mesh.material = p.name === "mass" ? this.masses : paved ? this.pavement(colour, kerbs) : this.pieceMaterial(p.name, colour);
       if (p.name === "mass" || paved) mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
       mesh.position.x = ox;
       mesh.position.y = oy;
       mesh.receiveShadows = true;
       this.ctx.cull.keep(mesh, area);
-      show(scene, mesh);
+      addToScene(scene, mesh);
       if (p.name === "mass") this.casters.add(mesh);
       meshes.push(mesh);
     }
     const { matrices, colors } = trees;
-    const g = grove(this.ctx, `town_${key}`);
-    for (const mesh of [g.bodies, g.tops]) {
-      mesh.position.x = ox;
-      mesh.position.y = oy;
-    }
+    const g = grove(`town_${key}`, [ox, oy]);
     plant(this.ctx, g, matrices, colors, this.casters, area);
     const placed = placeProps(this.ctx, `town_${key}`, props, [ox, oy], area, this.casters);
     return { meshes, trees: g, kerbs, props: placed };
@@ -599,7 +578,7 @@ function slotLine(marks: Map<string, Snapshot["marks"][number]>, { at: [x, y], h
   const [ux, uy] = [Math.cos(heading), Math.sin(heading)];
   const [cx, cy] = [x - uy * side * SLOT / 2, y + ux * side * SLOT / 2];
   const [a, b, w] = [-TRAILER.l / 2 - 0.04, TRAILER.l / 2 + 0.12, 0.008];
-  const at = (t: number, o: number): Pt => [cx + ux * t - uy * o, cy + uy * t + ux * o];
+  const at = (t: number, o: number): P => [cx + ux * t - uy * o, cy + uy * t + ux * o];
   marks.set(`${cx.toFixed(2)},${cy.toFixed(2)}`, [at(a, -w), at(b, -w), at(b, w), at(a, w)]);
 }
 /** A slot's width: the docks' spacing (`BAY_W` in the server's `lots.rs`). */
@@ -608,26 +587,10 @@ const SLOT = 0.3;
 /** A building's yard, as the server lays its lot out, by tile. */
 const yardTiles = (tiles: GridCoord[], kind: BuildingKind, facing: number) => new Set((yardOf(tiles, kind, facing) ?? []).map((t) => `${t.x},${t.y}`));
 
-/** Every building's door, by its tile: the way on the map to its street. */
-function doorsOf(each: (f: (e: GameObjectEntry) => void) => void): Map<string, [number, number]> {
-  const doors = new Map<string, [number, number]>();
-  each((e) => {
-    const door = e.object.kind === "Building" ? (e.object.data as Building).door : null;
-    if (door) doors.set(`${door.tile.x},${door.tile.y}`, [door.street.x - door.tile.x, door.street.y - door.tile.y]);
-  });
-  return doors;
-}
-
-/** A way on the map as the town grid's frame has it, turned half round. */
-const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
 
 /** The chunk a tile is on. */
 const chunkOf = (x: number, y: number) => `${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
 
-const grow = (b: Bounds, x: number, y: number) => {
-  [b[0], b[1], b[2], b[3]] = [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)];
-};
-const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
 
 /** A square over a box, facing up, at a height. */
 const square = ([x0, y0, x1, y1]: Box, z: number): MeshGeometry => ({

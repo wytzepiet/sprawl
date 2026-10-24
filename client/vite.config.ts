@@ -73,13 +73,10 @@ export default defineConfig({
     // has to forward /ws to the game server or it dials itself.
     proxy: {
       "/ws": { target: `ws://${server}`, ws: true },
-      "/inspect": { target: `http://${server}` },
       "/town": { target: `http://${server}` },
     },
   },
   build: {
     target: "esnext",
-    rolldownOptions: {},
   },
-  dev: {},
 });

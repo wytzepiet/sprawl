@@ -1,10 +1,10 @@
 import type { TerrainType } from "../../generated";
 import { kerbsOf, kerbTexels, roadsOf, type KerbTexels } from "../kerbLines";
-import type { Theme } from "../theme";
+import { theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt, SIDEWALK, VERGE_KERB } from "./surface";
-import type { Pt } from "./footprint";
+import type { P } from "../geometry";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type RoadView, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
@@ -50,23 +50,22 @@ export interface Snapshot {
   doors: [number, number, number, number][];
   /** Lines painted on the yards where the game says, on the map: a
    *  harbour's trailer park's slots. */
-  marks: Pt[][];
+  marks: P[][];
   /** The ground under the box, a row of x at a time, as `kinds` lists it,
    *  255 where it is not known. */
   ground: Uint8Array;
   kinds: TerrainType[];
-  theme: Theme;
 }
 
-/** One chunk drawn: its pieces in the frame of the window they were drawn
- *  in, its trees, the tiles it covers in that frame, and its paving's kerb
- *  texels over them. The masses' vertex colours carry each surface's shade
- *  and its building (`Paint`). */
 /** A prop as it crosses from the worker: its kind (its place in
  *  `PROP_KINDS`), where, its roof's height, how broad and how high, and
  *  its second point. */
 export const PROP_FLOATS = 8;
 
+/** One chunk drawn: its pieces in the frame of the window they were drawn
+ *  in, its trees, the tiles it covers in that frame, and its paving's kerb
+ *  texels over them. The masses' vertex colours carry each surface's shade
+ *  and its building (`Paint`). */
 export interface ChunkDrawing {
   key: string;
   pieces: Piece[];
@@ -83,12 +82,22 @@ export interface Drawing {
   window: Bounds;
 }
 
-const grow = (b: Bounds, x: number, y: number) => {
+export const grow = (b: Bounds, x: number, y: number) => {
   [b[0], b[1], b[2], b[3]] = [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)];
 };
-const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
+export const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
 /** A way on the map as the town grid's frame has it, turned half round. */
-const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
+export const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
+/** The tiles these chunks cover, corner to corner. */
+export function areaOf(chunks: Iterable<string>): Bounds {
+  const area: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const key of chunks) {
+    const [cx, cy] = key.split(",").map(Number);
+    grow(area, cx * CHUNK, cy * CHUNK);
+    grow(area, cx * CHUNK + CHUNK - 1, cy * CHUNK + CHUNK - 1);
+  }
+  return area;
+}
 
 /** The road tiles kerbed out of town (`Town.sidewalk`): a junction's, a
  *  node with three ways or more; two roads side by side, a divided road,
@@ -164,8 +173,9 @@ export function drawChunks(s: Snapshot): Drawing {
   const beyond = (c: number, r: number) => tiles.get(`${x1 - c},${y1 - r}`);
   const tileOn = (c: number, r: number): Tile => (inside(c, r) ? grid[r * w + c] : (beyond(c, r) ?? OPEN));
   const roadOn = (c: number, r: number) => (inside(c, r) ? nodes[r * w + c] : beyond(c, r) === ROAD ? roads.get(`${x1 - c},${y1 - r}`) : undefined);
-  const linked = (c0: number, r0: number, c1: number, r1: number) => {
-    const [a, b] = [road(c0, r0), road(c1, r1)];
+  /** Whether a street runs between two road tiles, as `at` has their roads. */
+  const linkedBy = (at: typeof road) => (c0: number, r0: number, c1: number, r1: number) => {
+    const [a, b] = [at(c0, r0), at(c1, r1)];
     return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
   };
   const knots = kerbed(s.roads);
@@ -174,7 +184,7 @@ export function drawChunks(s: Snapshot): Drawing {
     w,
     h,
     tile,
-    linked,
+    linked: linkedBy(road),
     through: (c, r) => !!road(c, r)?.road,
     roadsOn: (c, r) => views.get(`${x1 - c},${y1 - r}`) ?? [],
     sidewalk: (c, r) => (inTown(x1 - c, y1 - r) ? SIDEWALK : knots.has(`${x1 - c},${y1 - r}`) ? VERGE_KERB : 0),
@@ -186,10 +196,7 @@ export function drawChunks(s: Snapshot): Drawing {
   const on: Town = {
     ...whole,
     tile: tileOn,
-    linked: (c0, r0, c1, r1) => {
-      const [a, b] = [roadOn(c0, r0), roadOn(c1, r1)];
-      return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
-    },
+    linked: linkedBy(roadOn),
     through: (c, r) => !!roadOn(c, r)?.road,
   };
 
@@ -200,21 +207,15 @@ export function drawChunks(s: Snapshot): Drawing {
   // The whole town, and what it cannot see from its tiles; then a window
   // of it round the chunks to draw, a margin wider, drawn once.
   const known = facts(whole);
-  const area: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const key of s.todo) {
-    const [cx, cy] = key.split(",").map(Number);
-    grow(area, cx * CHUNK, cy * CHUNK);
-    grow(area, cx * CHUNK + CHUNK - 1, cy * CHUNK + CHUNK - 1);
-  }
-  const window = widen(area, MARGIN);
+  const window = widen(areaOf(s.todo), MARGIN);
   const [wx0, wy0, wx1, wy1] = window;
   // The window in the whole town's frame: column box[2] - x, row box[3] - y.
   const [c0, r0] = [x1 - wx1, y1 - wy1];
   const [ww, wh] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
   const inWindow = windowOf(whole, c0, r0, ww, wh);
   // The game's own marks, turned half round into the window.
-  const marks = s.marks.map((m) => m.map(([x, y]): Pt => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
-  const { pieces, dressing, props } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh), marks);
+  const marks = s.marks.map((m) => m.map(([x, y]): P => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
+  const { pieces, dressing, props } = drawTown(inWindow, theme, paint, windowFacts(known, c0, r0, ww, wh), marks);
   // The roads, as the paving is cut for them: every tile's asphalt,
   // overlapping as they are drawn.
   const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));
@@ -258,7 +259,7 @@ export function drawChunks(s: Snapshot): Drawing {
     const mine = props.filter((p) => p.x >= cut[0] && p.x < cut[2] && p.y >= cut[1] && p.y < cut[3]);
     const packed = new Float32Array(mine.length * PROP_FLOATS);
     mine.forEach((p, i) => packed.set([PROP_KINDS.indexOf(p.kind), p.x, p.y, p.z, p.size, p.high, p.tx, p.ty], i * PROP_FLOATS));
-    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), props: packed, cut, paving };
+    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, theme), props: packed, cut, paving };
   });
   return { chunks, window };
 }
