@@ -45,14 +45,15 @@ function baked(name: Bake, recipe: string): Promise<Uint8Array> {
 /** Each engine's texture of each bake, and when it has its texels. */
 const TEXTURES = new Map<Bake, WeakMap<EngineContext, { texture: Texture2D; ready: Promise<void> }>>();
 
-/** An engine's texture of a bake, made once: `placeholder`, `width` by
- *  `height`, until the worker has baked it or it is read back from the
- *  last bake. */
-export function bakedTexture(engine: EngineContext, name: Bake, recipe: string, [width, height, placeholder]: [number, number, Uint8Array], options: TextureOptions): Texture2D {
+/** An engine's texture of a bake, made once: what `placeholder` makes,
+ *  `width` by `height`, until the worker has baked it or it is read back
+ *  from the last bake. Asked for on every bind, so the placeholder is made
+ *  only with the texture. */
+export function bakedTexture(engine: EngineContext, name: Bake, recipe: string, [width, height, placeholder]: [number, number, () => Uint8Array], options: TextureOptions): Texture2D {
   const made = TEXTURES.get(name) ?? TEXTURES.set(name, new WeakMap()).get(name)!;
   let it = made.get(engine);
   if (!it) {
-    const texture = createTexture2DFromPixels(engine, placeholder, width, height, options);
+    const texture = createTexture2DFromPixels(engine, placeholder(), width, height, options);
     it = { texture, ready: baked(name, recipe).then((data) => updateTexture2DFromPixels(engine, texture, data)) };
     made.set(engine, it);
   }

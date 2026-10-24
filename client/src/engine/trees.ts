@@ -145,7 +145,7 @@ let cardOut = cardX > cardReach || cardGap;`,
 /** An engine's crowns: every texel past its crown's outline until the
  *  worker has baked them, so no tree shows before its crown does. */
 const crownShapes = (engine: LiteEngine): Texture2D =>
-  bakedTexture(engine, "crowns", recipe, [COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255)], {
+  bakedTexture(engine, "crowns", recipe, [COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, () => new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255)], {
     format: "rgba8unorm",
     mipmaps: true,
     minFilter: "linear",

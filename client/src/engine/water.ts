@@ -164,12 +164,12 @@ const REPEAT = { mipmaps: true, minFilter: "linear", magFilter: "linear", addres
 /** The water's ripple (`waves.ts`), an engine's: still until the worker
  *  has baked it, or read back from the last bake (`bakeCache.ts`). */
 export const ripples = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "waves", wavesRecipe, [WAVES_SIDE, WAVES_SIDE, new Uint8Array(new Float16Array(WAVES_SIDE * WAVES_SIDE * 4).map((_, k) => (k % 4 === 3 ? 1 : 0)).buffer)], { format: "rgba16float", ...REPEAT });
+  bakedTexture(engine, "waves", wavesRecipe, [WAVES_SIDE, WAVES_SIDE, () => new Uint8Array(new Float16Array(WAVES_SIDE * WAVES_SIDE * 4).map((_, k) => (k % 4 === 3 ? 1 : 0)).buffer)], { format: "rgba16float", ...REPEAT });
 
 /** The foam's lace, an engine's: clear until the worker has baked it, or
  *  read back from the last bake. */
 const lace = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "lace", laceRecipe, [LACE_SIDE, LACE_SIDE, new Uint8Array(LACE_SIDE * LACE_SIDE)], { format: "r8unorm", ...REPEAT });
+  bakedTexture(engine, "lace", laceRecipe, [LACE_SIDE, LACE_SIDE, () => new Uint8Array(LACE_SIDE * LACE_SIDE)], { format: "r8unorm", ...REPEAT });
 
 const f = (x: number) => x.toFixed(4);
 const water = () => {

@@ -492,12 +492,8 @@ export function keepField(ctx: EngineContext, casters: Casters, farm: number, ti
 
 /** The wheat's stages, an engine's: bare earth until the worker has
  *  baked them, or read back from the last bake (`bakeCache.ts`). */
-let bare: Uint8Array | undefined;
 function wheat(engine: Engine): Texture2D {
-  if (!bare) {
-    bare = new Uint8Array(WHEAT_TEXELS * WHEAT_STRIDE * WHEAT_STAGES * 4);
-    for (let k = 0; k < bare.length; k += 4) bare.set([128, 128, 200, 0], k);
-  }
+  const bare = () => new Uint8Array(WHEAT_TEXELS * WHEAT_STRIDE * WHEAT_STAGES * 4).map((_, k) => [128, 128, 200, 0][k % 4]);
   return bakedTexture(engine, "wheat", recipe, [WHEAT_TEXELS, WHEAT_STRIDE * WHEAT_STAGES, bare], {
     mipmaps: true,
     minFilter: "linear",

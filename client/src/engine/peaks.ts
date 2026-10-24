@@ -137,7 +137,7 @@ N = normalize(vec3f(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TIL
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
  *  land stands on break along it too (`ground.ts`). */
 export const slate = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "slate", recipe, [SLATE_SIDE, SLATE_SIDE, new Uint8Array(SLATE_SIDE * SLATE_SIDE * 4).map((_, k) => (k % 4 < 2 ? 128 : 255))], {
+  bakedTexture(engine, "slate", recipe, [SLATE_SIDE, SLATE_SIDE, () => new Uint8Array(SLATE_SIDE * SLATE_SIDE * 4).map((_, k) => (k % 4 < 2 ? 128 : 255))], {
     mipmaps: true,
     minFilter: "linear",
     magFilter: "linear",
