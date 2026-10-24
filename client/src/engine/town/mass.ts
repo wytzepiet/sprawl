@@ -9,10 +9,11 @@ import { isBuilt, type Tile } from "./grid";
  */
 
 /** What stands in a building's yard, the tiles the server lays its lot in
- *  (`Tile.yard`): lorries at docks against the building, or boxes in a
- *  trailer park. */
+ *  (`Tile.yard`): lorries at docks against the building; a harbour's
+ *  lane, docks and quay; or a depot's pad, its goods out in the open
+ *  (`pads.ts`). */
 export interface Yard {
-  fill: "docks" | "park";
+  fill: "docks" | "park" | "pad";
 }
 
 /** Homes and the shops of a high street are one family; offices, sheds
@@ -20,13 +21,16 @@ export interface Yard {
 interface Form {
   family: string;
   yard?: Yard;
+  /** What stands where its walls would: a kind with none, all yard. */
+  open?: Yard["fill"];
 }
 const STREET: Form = { family: "street" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
   Office: { family: "office" },
   Factory: { family: "industry" },
-  // A depot's lorries come and go at its back, out of sight of the junction.
-  Depot: { family: "industry", yard: { fill: "docks" } },
+  // A depot is an open yard, its goods on the ground in bays, no roof
+  // over them; its lorries come and go at its docks in front.
+  Depot: { family: "industry", yard: { fill: "docks" }, open: "pad" },
   // A sawmill's yard is its log and plank stacks, a lorry backed to them.
   Sawmill: { family: "industry", yard: { fill: "docks" } },
   // A quarry's yard is its heaps of broken stone, a lorry backed to them.
@@ -34,19 +38,16 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   // A supermarket is a big box, its customers parked at the kerb.
   Supermarket: { family: "box" },
   GasStation: { family: "box" },
-  // A harbour is open ground all through: its trailer park on the street
-  // side, the apron the tug crosses to the ramp on the water side. Its
+  // A harbour is open ground all through: the lane from its gate to the
+  // ramp, the docks one side of it and the quay's pad the other. Its
   // terminal stands on the quay (`BuildingObject.tsx`).
-  Harbour: { family: "port", yard: { fill: "park" } },
+  Harbour: { family: "port", yard: { fill: "park" }, open: "park" },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 /** What stands in a tile of yard, if it is one: where the server lays a
- *  building's lot (`Tile.yard`), or anywhere on a kind that is all yard,
- *  as a harbour is. Docks, unless its kind says. */
-export const yardFill = (t: Tile): Yard["fill"] | undefined => {
-  const y = formOf(t).yard;
-  return t.yard ? (y?.fill ?? "docks") : y?.fill === "park" ? "park" : undefined;
-};
+ *  building's lot (`Tile.yard`), docks unless its kind says; or anywhere
+ *  on a kind with no walls, as a harbour and a depot are. */
+export const yardFill = (t: Tile): Yard["fill"] | undefined => (t.yard ? (formOf(t).yard?.fill ?? "docks") : formOf(t).open);
 export const isYard = (t: Tile) => yardFill(t) !== undefined;
 
 /** The walls' height. */

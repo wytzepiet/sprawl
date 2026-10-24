@@ -8,9 +8,15 @@ import { INSET } from "../town/footprint";
 import { eaves } from "../town/mass";
 import { storeysOf } from "../town/grid";
 import { keepField } from "./field";
+import { placeShape } from "./CarObject";
+import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
+import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
+import { carried, slotOn } from "./motion";
+import { getEntity } from "../../state/gameObjects";
+import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
-import type { Building, GameObjectEntry } from "../../generated";
+import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated";
 
 /** The ferry's berth, out from the quay's edge (`town/draw.ts`): the link
  *  span over its land end, the dolphins it lies between, this far either
@@ -31,8 +37,6 @@ const BOARDS = hex("#8C7A64");
 const SLAB = hex("#BDB2A0");
 const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
-const TIMBER = hex("#9E6B40");
-const STONE = hex("#9A9C9F");
 const CRANE = hex("#E9B530");
 const WHITE_RGB = hex("#FFFFFF");
 /** Heights in steps of a hundredth, so a site's buckets are few. */
@@ -97,14 +101,13 @@ export function mountBuilding(
 
   // A site going up: its slab, the walls rising on it as its materials
   // come in, in its colour still pale, scaffolding round them a little
-  // higher, the timber stacked at the front and the stone heaped beside
-  // it, and over it all a tower crane in builders' yellow, the sign of a
+  // higher, its materials at the front as they come (`pads.ts`), and over
+  // it all a tower crane in builders' yellow, the sign of a
   // site anywhere.
   if (data.site) {
     const materials = Object.values(data.site);
     const sum = (f: (s: { level: number; cap: number }) => number) => materials.reduce((a, s) => a + (s ? f(s) : 0), 0);
     const done = sum((s) => s.cap) > 0 ? Math.min(1, sum((s) => s.level) / sum((s) => s.cap)) : 0;
-    const stone = data.site.Stone ? data.site.Stone.level / data.site.Stone.cap : 0;
     const full = eaves({ kind: data.kind, storeys: storeysOf(data.kind) });
     const high = full * done;
     const [w, d] = dx === 0 ? [bw, bh] : [bh, bw];
@@ -125,8 +128,6 @@ export function mountBuilding(
     for (const [a, o] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) frame("pole", [0.03, 0.03, top], SCAFFOLD, a * sa, o * so, KERB_Z + 0.025);
     for (const o of [-1, 1]) frame("boards", [2 * sa + 0.06, 0.06, 0.02], SCAFFOLD, 0, o * so, KERB_Z + top);
     for (const a of [-1, 1]) frame("boards", [0.06, 2 * so - 0.06, 0.02], SCAFFOLD, a * sa, 0, KERB_Z + top);
-    if (done > 0) frame("timber", [Math.min(0.5, w - 0.5), 0.1, round(0.02 + 0.08 * done)], TIMBER, 0, d / 2 - 0.15, KERB_Z + 0.025);
-    if (stone > 0) frame("stone", [0.18, 0.14, round(0.02 + 0.06 * stone)], STONE, Math.min(0.5, w - 0.5) / 2 + 0.14, d / 2 - 0.15, KERB_Z + 0.025);
     // The crane at a back corner, its jib across the site over the walls.
     const [ca, co] = [-(ww / 2 - 0.1), -(wd / 2 - 0.1)];
     const mast = round(full + 0.25);
@@ -135,12 +136,77 @@ export function mountBuilding(
     frame("weight", [0.09, 0.08, 0.05], STEEL, ca - 0.12, co, KERB_Z + 0.025 + mast - 0.02);
   }
 
+  // Its pad: each good's packages in their bay, as many as it holds less
+  // what a forklift has yet to set down, and more what it has yet to take
+  // away; and its forklifts, at home, or across between the pad and a
+  // vehicle with a package in their forks, one lift at a time.
+  setLifts(entry.id, data.lifts);
+  const pad = BLUEPRINTS[data.kind].quay ? null : padOf(data);
+  const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
+  const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
+  const lay = (now: number) =>
+    pad?.bays.forEach((bay, b) => {
+      const want = packagesOf(data, bay.good) + data.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, now), 0);
+      const have = stood[b];
+      while (have.length > Math.max(0, want)) have.pop()!.remove();
+      while (have.length < want) {
+        const [at, up] = placeIn(bay, have.length);
+        have.push(placeShape(pool, itemOf(bay.good, false), at, base + up * ITEMS[bay.good].h));
+      }
+    });
+  lay(simNow());
+  const working = pad && data.lifts.some((l) => ends(l) > simNow());
+  // A yard's forklifts stand in it; a shop's or a site's come out to a lift.
+  const forks = (pad && (pad.yard || working) ? pad.homes : []).map((home) => ({ home, truck: placeShape(pool, FORKLIFT, home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
+  const stop = working
+    ? ctx.beforeRender(() => {
+        const now = simNow();
+        lay(now);
+        forks.forEach((f, k) => {
+          const l = data.lifts.find((l) => l.k === k && l.start <= now && ends(l) > now);
+          const at = l && pad && lifting(l, pad.bays.find((b) => b.good === l.good), now);
+          f.truck.move(at ? at.truck : f.home);
+          if (at?.load && !f.load) f.load = placeShape(pool, itemOf(l!.good, true), at.load, base);
+          if (!at?.load && f.load) (f.load.remove(), (f.load = null));
+          if (at?.load) f.load!.move(at.load, 0.02);
+        });
+      })
+    : () => {};
+  /** Where a forklift is in a lift, and the package in its forks if one
+   *  is: in to it, across, set down, and back, between its place on the
+   *  pad and its place on the vehicle. */
+  const lifting = (l: Lift, bay: Bay | undefined, now: number): { truck: Pose; load: Pose | null } | null => {
+    const e = getEntity(l.car);
+    if (!bay || e?.object.kind !== "Car") return null;
+    const car = e.object.data as Car;
+    const p = progress(l, now);
+    // The package's place at either end: the next free, or the last
+    // taken, of what is seen there now.
+    const onPad = placeIn(bay, packagesOf(data, l.good) + atPad(l, now))[0];
+    const aboard = carried(car).length;
+    const onCar = slotOn(l.car, car, now, l.onto ? aboard - l.n + p.on : aboard + l.n - p.off)?.at;
+    if (!onCar) return null;
+    const [from, to] = l.onto ? [onPad.at, onCar.at] : [onCar.at, onPad.at];
+    const t = (now - l.start) / l.every % 1;
+    const heading = Math.atan2(to[1] - from[1], to[0] - from[0]);
+    const back = (q: [number, number]): Pose => ({ at: [q[0] - Math.cos(heading) * FORKS, q[1] - Math.sin(heading) * FORKS], heading });
+    const mix = (k: number): [number, number] => [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
+    if (t < PICK) return { truck: back(from), load: null };
+    if (t < DROP) {
+      const k = (t - PICK) / (DROP - PICK);
+      return { truck: back(mix(k)), load: { at: mix(k), heading: bay.slots[0].heading } };
+    }
+    return { truck: back(mix(1 - (t - DROP) / (1 - DROP))), load: null };
+  };
+
   // A farm's field: its land, worked as its tractor last left it, or as
   // it is working it now.
   const field = data.land.length ? keepField(ctx, pool.casters, entry.id, data.land, data.ruts, theme) : null;
 
   return () => {
+    stop();
     for (const { key, id } of placed) pool.removeInstance(key, id);
+    for (const it of [...stood.flat(), ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
   };
 }

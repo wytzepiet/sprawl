@@ -105,6 +105,7 @@ pub fn build(world: &mut World, dir: &Path) {
     }
     finish_sites(world);
     till_farms(world);
+    stock_yards(world);
     println!("fixtures: built {} from {}", placed.len(), dir.display());
     let _ = PLACED.set(placed);
 }
@@ -255,6 +256,21 @@ fn till_farms(world: &mut World) {
 
 /// A town written by hand stands as written: no site waits for its
 /// materials.
+/// Every shelf and yard part full, as a town in use keeps them: what
+/// the look shows of a pad is its goods (docs/plan-goods.md), a share
+/// of each stock the same for the same building every time.
+fn stock_yards(world: &mut World) {
+    let ids: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
+    for id in ids {
+        if let Some(b) = world.building_mut(id) {
+            for (k, s) in b.stocks.values_mut().enumerate() {
+                let share = (id.wrapping_mul(2_654_435_761).wrapping_add(k as u64 * 40_503) % 1000) as f64 / 1000.0;
+                s.level = (s.cap * (0.3 + 0.65 * share)).floor();
+            }
+        }
+    }
+}
+
 fn finish_sites(world: &mut World) {
     let sites: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some())).map(|e| e.id).collect();
     for id in sites {

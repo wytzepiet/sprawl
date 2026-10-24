@@ -1,8 +1,9 @@
 import { drawnPath } from "./drawnPath";
 import { ahead, CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Rig } from "./driver";
-import { CAB_BLOCK, deckPose, sailing } from "./sea";
+import { BED_TOP, CAB_BLOCK, DECK_Z, deckPose, sailing } from "./sea";
+import { ITEM } from "./goods";
 import { rgb } from "../rgb";
-import { CAB, LANE_OFFSET, VAN } from "./roadGeometry";
+import { CAB, LANE_OFFSET, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
 import type { Car, Good, Pose, RoadNode, Run, Sail, Trip } from "../../generated";
 import { GOODS } from "../../blueprints";
@@ -153,14 +154,15 @@ const [PER_BAY, BAYS] = [4, 15];
 function aboard(car: Car, ship: Pose): { at: Pose; good?: Good; settler?: number }[] {
   const empty = [...Array(BAYS).keys()].filter((k) => car.deck.slice(k * PER_BAY, (k + 1) * PER_BAY).every((p) => !p)).reverse();
   return [
-    ...car.deck.flatMap((p, i) => {
-      if (!p) return [];
-      const bay = deckPose(ship, Math.floor(i / PER_BAY));
-      const q = i % PER_BAY;
-      return [{ at: aside(ahead(bay, q < 2 ? 0.08 : -0.08), q % 2 ? 0.055 : -0.055), good: p.good }];
-    }),
+    ...car.deck.flatMap((p, i) => (p ? [{ at: deckPlace(ship, i), good: p.good }] : [])),
     ...[...car.passengers].reverse().flatMap((settler, j) => (empty[j >> 1] === undefined ? [] : [{ at: ahead(deckPose(ship, empty[j >> 1]), j & 1 ? 0.15 : -0.15), settler }])),
   ];
+}
+/** A pallet's place `i` on a ferry's deck: its bay, `i` over four, and
+ *  in it two by two, the land end's pair first (`DECK` in `sea.rs`). */
+export function deckPlace(ship: Pose, i: number): Pose {
+  const q = i % PER_BAY;
+  return aside(ahead(deckPose(ship, Math.floor(i / PER_BAY)), q < 2 ? 0.08 : -0.08), q % 2 ? 0.055 : -0.055);
 }
 /** So far to the left of a pose, facing the same way. */
 const aside = (p: Pose, d: number): Pose => ({ at: [p.at[0] - Math.sin(p.heading) * d, p.at[1] + Math.cos(p.heading) * d], heading: p.heading });
@@ -174,12 +176,9 @@ export function carried(car: Car): Good[] {
   return [];
 }
 
-/** A package's footprint, square, in tiles: a pallet's, a crate's, a
- *  bundle's; five stand in a row on a lorry's flatbed, three on a van's
- *  (`LOAD`, `VAN_LOAD`). */
-export const ITEM = 0.084;
 /** Where the `k`th package from the front stands on a flatbed at `bed`,
- *  `l` long: in a row down its middle, from the headboard back. */
+ *  `l` long: in a row down its middle, from the headboard back; five on
+ *  a lorry's, three on a van's (`LOAD`, `VAN_LOAD`). */
 export const onBed = (bed: Pose, l: number, k: number): Pose => ahead(bed, l / 2 - 0.022 - (k + 0.5) * (ITEM + 0.004));
 
 /** A van is a small rigid lorry, VAN long: a lorry's tractor at the front,
@@ -214,4 +213,14 @@ export function moment(id: number, car: Car, now: number, along?: number): Momen
   if (!p) return null;
   if (car.role === "Van") return vanParts(p.body);
   return { body: p.body, bed: car.role === "Truck" ? p.trailer ?? straightBehind(p.body) : undefined };
+}
+
+/** Where the `i`th package aboard a vehicle stands at `now`, and how
+ *  high its base is: on a flatbed, from the front, or in a ferry's deck
+ *  place. */
+export function slotOn(id: number, car: Car, now: number, i: number): { at: Pose; z: number } | null {
+  const m = moment(id, car, now);
+  if (m?.bed) return { at: onBed(m.bed, car.role === "Van" ? VAN_BED : TRAILER.l, i), z: ROAD_Z + BED_TOP };
+  if (m && car.role === "Ferry") return { at: deckPlace(m.body, i), z: DECK_Z };
+  return null;
 }

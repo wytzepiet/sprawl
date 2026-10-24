@@ -28,7 +28,7 @@ export function shape(parts: Part[]): Shape {
 /** An outline round the origin, convex and anticlockwise, extruded `h` up
  *  from z = 0: its top fanned from the middle, and its sides; every
  *  triangle its own three vertices, as the bevel wants (`slab`). */
-function prism(ring: P[], h: number): MeshGeometry {
+export function prism(ring: P[], h: number): MeshGeometry {
   const positions: number[] = [], normals: number[] = [];
   ring.forEach((a, i) => {
     const b = ring[(i + 1) % ring.length];

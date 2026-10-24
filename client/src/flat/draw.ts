@@ -3,7 +3,9 @@ import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, deckPose, hull } from "../engine/objects/sea";
-import { carried, colourOf, ITEM, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
+import { carried, colourOf, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
+import { ITEM } from "../engine/objects/goods";
+import { packagesOf, padOf, placeIn } from "../engine/objects/pads";
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Pose as Stand, Compass, Neighbour } from "../generated";
 import { crest } from "./crest";
@@ -221,6 +223,12 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     }
     g.globalAlpha = 1;
     outline(g, b.tiles, colour, 0.06, b.site ? [0.15, 0.1] : []);
+    // Its pad: each package in its slot, a stack drawn once.
+    if (b.kind === "Harbour") continue;
+    for (const bay of padOf(b).bays) {
+      const n = packagesOf(b, bay.good);
+      for (let i = 0; i < n; i += bay.stack) item(g, placeIn(bay, i)[0], bay.good);
+    }
   }
 
   // Vehicles where the server's clock has them now.

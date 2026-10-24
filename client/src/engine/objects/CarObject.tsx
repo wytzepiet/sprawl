@@ -8,11 +8,13 @@ import { carShape, ROUNDING } from "./carShape";
 import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import { running as runs } from "./field";
-import { CAR, ROAD_Z, VAN } from "./roadGeometry";
-import { DECK_Z, FERRY_SHAPE, LORRY_BED, LORRY_SHAPE, vanBed } from "./sea";
+import { CAR, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
+import { BED_TOP, DECK_Z, FERRY_SHAPE, LORRY_BED, LORRY_SHAPE, vanBed } from "./sea";
 import type { Drive } from "./driver";
-import { colourOf, driveOf, forgetDrive, LIVERY, moment, PALETTE, travelled, VAN_BED } from "./motion";
-import type { Car, GameObjectEntry, Pose } from "../../generated";
+import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, type Moment, onBed, PALETTE, travelled, VAN_BED } from "./motion";
+import { itemOf } from "./goods";
+import { liftsOf, onVehicle } from "./pads";
+import type { Car, GameObjectEntry, Good, Pose } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 import { HALF_LEVEL, heightAlong } from "../decks";
 import { beam, unbeam } from "../lights";
@@ -108,8 +110,8 @@ function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { ke
 }
 
 /** A vehicle, where `moment` has it: its body; the flatbed behind a
- *  lorry's or a van's cab; on a ferry's deck the settlers' cars, all
- *  moving with it. Parked, where the server placed it; out of sight
+ *  lorry's or a van's cab and the packages on it; on a ferry's deck its
+ *  pallets and the settlers' cars, all moving with it. Parked, where the server placed it; out of sight
  *  where it has no place. On the move, by the server's clock, a trip's
  *  distance eased (`follow`) and lifted over decks and slopes. */
 export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: EngineContext): () => void {
@@ -126,26 +128,54 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const moving = !!(car.trip || car.run || car.sail);
   const look = bodyOf(pool, id, car, !moving);
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
+  const bedLength = car.role === "Van" ? VAN_BED : TRAILER.l;
   const bed = first.m.bed ? placeShape(pool, car.role === "Van" ? vanBed(VAN_BED) : LORRY_BED, first.m.bed, GROUND + first.lift) : null;
-  const deck = (first.m.deck ?? []).flatMap(({ at, settler }) => (settler === undefined ? [] : [place(pool, [{ key: carBucket(pool, settler, false) }], at, DECK_Z + CAR.h / 2)]));
+  const deck = (first.m.deck ?? []).map(({ at, good, settler }) =>
+    good ? placeShape(pool, itemOf(good, moving), at, DECK_Z) : place(pool, [{ key: carBucket(pool, settler!, false) }], at, DECK_Z + CAR.h / 2),
+  );
+  // What stands on its flatbed: its cargo, less what a forklift has yet
+  // to set on it, and more what it has yet to take off (`pads.ts`).
+  const goodsAt = (t: number) => {
+    let g = carried(car);
+    for (const l of liftsOf(id)) {
+      const d = onVehicle(l, t);
+      g = d < 0 ? g.slice(0, Math.max(0, g.length + d)) : [...g, ...Array<Good>(d).fill(l.good)];
+    }
+    return g;
+  };
+  const aboard: { good: Good; it: ReturnType<typeof place> }[] = [];
+  const load = (m: Moment, lift: number, t: number) => {
+    if (!m.bed) return;
+    const want = goodsAt(t);
+    let same = 0;
+    while (same < aboard.length && same < want.length && aboard[same].good === want[same]) same++;
+    for (const { it } of aboard.splice(same)) it.remove();
+    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedLength, k), GROUND + lift + BED_TOP) });
+    if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedLength, k), lift));
+  };
+  load(first.m, first.lift, simNow());
   carPoses.set(id, first.m.body.at);
   parts.set(id, [...body.parts, ...(bed?.parts ?? [])]);
   // On a run the farm's field turns behind the tractor to what the job
   // leaves (`field.ts`).
   if (car.run) runs.set(car.owner, car.run);
-  const stop = moving ? ctx.beforeRender(() => {
+  // A vehicle a forklift works looks each frame at what is on it: the
+  // building's lifts may be heard after the vehicle's own change.
+  const stop = moving || first.m.bed || car.role === "Ferry" ? ctx.beforeRender(() => {
     const { m, lift } = now();
     if (!m) return;
+    load(m, lift, simNow());
+    if (!moving) return;
     body.move(m.body, lift);
     if (bed && m.bed) bed.move(m.bed, lift);
-    m.deck?.filter((d) => d.settler !== undefined).forEach((d, k) => deck[k].move(d.at));
+    m.deck?.forEach((d, k) => deck[k].move(d.at));
     carPoses.set(id, m.body.at);
     if (look.light !== undefined) beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
   }) : () => {};
   return () => {
     stop();
     unbeam(id);
-    for (const it of [body, bed, ...deck]) it?.remove();
+    for (const it of [body, bed, ...deck, ...aboard.map((a) => a.it)]) it?.remove();
     if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
     carPoses.delete(id);
     parts.delete(id);

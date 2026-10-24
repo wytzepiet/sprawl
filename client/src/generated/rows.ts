@@ -3,19 +3,19 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Good } from "./Good";
 
 /** The game's half of each kind's row (`blueprint.rs`). */
-export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean }> = {
-  House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false },
-  Apartment: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false },
-  Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false },
-  Office: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false },
-  Factory: { materials: { Timber: 16, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false },
-  GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false },
-  Supermarket: { materials: { Timber: 16, Stone: 12 }, size: [2, 2], lot: [0, 0], quay: false },
-  Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false },
-  Farm: { materials: { Timber: 8 }, size: [3, 2], lot: [2, 2], quay: false },
-  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true },
-  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false },
-  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false },
+export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {
+  House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  Apartment: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  Office: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  Factory: { materials: { Timber: 16, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  Supermarket: { materials: { Timber: 16, Stone: 12 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+  Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, forklifts: 1 },
+  Farm: { materials: { Timber: 8 }, size: [3, 2], lot: [2, 2], quay: false, makes: "Crates", forklifts: 1 },
+  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, forklifts: 3 },
+  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", forklifts: 1 },
+  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", forklifts: 1 },
 };
 
 /** Units a package of each good holds (`Good::per_package`). */

@@ -307,13 +307,14 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean }> = {\n",
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
             let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {} }},\n", pair(b.size), pair(b.lot), b.quay);
+            let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
         }
         let packages: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
