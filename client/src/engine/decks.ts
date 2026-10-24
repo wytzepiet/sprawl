@@ -1,12 +1,12 @@
-import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
-import { drop, meshOf, show, type MeshGeometry } from "./geometry";
+import { addToScene, type EngineContext, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { drop, meshOf, type MeshGeometry, type P } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { rgb, type Rgb } from "./rgb";
 import { CHAMFER, CUT } from "./kerbs";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { flatPolygons, PAVED_Z } from "./town/draw";
 import { seams, shapeOf, type Surface } from "./town/surface";
-import { area, type Pt } from "./town/footprint";
+import { area } from "./town/footprint";
 import type { Casters } from "./DayNightCycle";
 
 /**
@@ -140,7 +140,7 @@ export class Decks {
       const mesh = meshOf(this.engine, name, geo);
       mesh.material = this.materials[i];
       mesh.receiveShadows = true;
-      show(this.scene, mesh);
+      addToScene(this.scene, mesh);
       this.casters?.add(mesh);
       this.meshes.push(mesh);
     }
@@ -174,13 +174,13 @@ function quad(g: MeshGeometry, a: V3, b: V3, c: V3, d: V3) {
 /** A parapet's round end at `at`, come from `from`: a half disc from its
  *  inner corner to its outer, out the way it ran, at height `h`, its edge
  *  cut off as the wall's is (`CHAMFER`), its side down to the road. */
-function cap(g: MeshGeometry, tops: MeshGeometry, top: (p: Pt, dz?: number) => V3, inner: Pt, outer: Pt, from: Pt, at: Pt, h: number) {
-  const c: Pt = [(inner[0] + outer[0]) / 2, (inner[1] + outer[1]) / 2];
+function cap(g: MeshGeometry, tops: MeshGeometry, top: (p: P, dz?: number) => V3, inner: P, outer: P, from: P, at: P, h: number) {
+  const c: P = [(inner[0] + outer[0]) / 2, (inner[1] + outer[1]) / 2];
   const r = Math.hypot(outer[0] - c[0], outer[1] - c[1]);
   const l = Math.hypot(at[0] - from[0], at[1] - from[1]) || 1;
-  const f: Pt = [(at[0] - from[0]) / l, (at[1] - from[1]) / l];
-  const s: Pt = [(inner[0] - c[0]) / (r || 1), (inner[1] - c[1]) / (r || 1)];
-  const arc = (rr: number): Pt[] => Array.from({ length: 9 }, (_, k) => {
+  const f: P = [(at[0] - from[0]) / l, (at[1] - from[1]) / l];
+  const s: P = [(inner[0] - c[0]) / (r || 1), (inner[1] - c[1]) / (r || 1)];
+  const arc = (rr: number): P[] => Array.from({ length: 9 }, (_, k) => {
     const t = (Math.PI * k) / 8;
     return [c[0] + rr * (Math.cos(t) * s[0] + Math.sin(t) * f[0]), c[1] + rr * (Math.sin(t) * f[1] + Math.cos(t) * s[1])];
   });
@@ -202,8 +202,8 @@ function cap(g: MeshGeometry, tops: MeshGeometry, top: (p: Pt, dz?: number) => V
 }
 
 /** A ring cut so no edge is longer than `STEP`. */
-function finer(ring: Pt[]): Pt[] {
-  const out: Pt[] = [];
+function finer(ring: P[]): P[] {
+  const out: P[] = [];
   for (let i = 0; i < ring.length; i++) {
     const [a, b] = [ring[i], ring[(i + 1) % ring.length]];
     const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / STEP));
@@ -220,18 +220,18 @@ function finer(ring: Pt[]): Pt[] {
 function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: number) {
   const lift = liftOf(surface);
   // As high as the road has risen off the ground, down to a kerb's.
-  const rise = ([x, y]: Pt) => liftAt(lift, -x, -y) - ROAD_Z - PAVED_Z;
-  const wall = (p: Pt) => Math.max(LOW, Math.min(WALL, rise(p)));
+  const rise = ([x, y]: P) => liftAt(lift, -x, -y) - ROAD_Z - PAVED_Z;
+  const wall = (p: P) => Math.max(LOW, Math.min(WALL, rise(p)));
   // The road frame: the tile's turned half round, its middle at -0.5.
-  const top = ([x, y]: Pt, dz = 0): V3 => [ox - x, oy - y, liftAt(lift, -x, -y) + dz];
+  const top = ([x, y]: P, dz = 0): V3 => [ox - x, oy - y, liftAt(lift, -x, -y) + dz];
   // Cut just past each seam it runs on over (`OVERLAP`), so a parapet
   // ends there, under the end of the next tile's: not a piece of edge
   // further on, nor short of it with a crack between. Onto the ground, at
   // a slope's foot, further (`FOOT`), its end round.
   const cuts = seams(surface).map(({ way: [dc, dr], past }) => ({ past, reach: rise([0.5 + dc / 2, 0.5 + dr / 2]) < 0.005 ? FOOT : OVERLAP }));
-  const atSeams = (ring: Pt[]) => ring.flatMap((a, i): Pt[] => {
+  const atSeams = (ring: P[]) => ring.flatMap((a, i): P[] => {
     const b = ring[(i + 1) % ring.length];
-    const out: Pt[] = [a];
+    const out: P[] = [a];
     for (const { past, reach } of cuts) {
       const [fa, fb] = [past([-a[0], -a[1]]) - reach, past([-b[0], -b[1]]) - reach];
       if (fa * fb < 0) out.push([a[0] + ((b[0] - a[0]) * fa) / (fa - fb), a[1] + ((b[1] - a[1]) * fa) / (fa - fb)]);
@@ -249,12 +249,12 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
     const kept = ring.map((_, i) => !cuts.some(({ past, reach }) => Math.min(...edge(i).map(([x, y]) => past([-x, -y]))) > reach / 2));
     // Each edge's outward way, a unit long; at a corner, the two edges'
     // between them, as far out as keeps each a kerb's width off.
-    const outward = (i: number): Pt => {
+    const outward = (i: number): P => {
       const [a, b] = edge(i);
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
       return [((b[1] - a[1]) / len) * turn, (-(b[0] - a[0]) / len) * turn];
     };
-    const off = (by: number) => ring.map((p, i): Pt => {
+    const off = (by: number) => ring.map((p, i): P => {
       const [u, v] = [outward((i + n - 1) % n), outward(i)];
       const [before, after] = [kept[(i + n - 1) % n], kept[i]];
       const [mx, my] = before && after ? [u[0] + v[0], u[1] + v[1]] : before ? u : v;
@@ -300,7 +300,7 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
   for (const i of under.indices) g.indices.push(b0 + i);
   // A pier under a level's node, from the ground up.
   if ((surface.height ?? 0) >= 2 && !((surface.height ?? 0) % 2)) {
-    const at: Pt = [0.5 + (surface.shift?.[0] ?? 0), 0.5 + (surface.shift?.[1] ?? 0)];
+    const at: P = [0.5 + (surface.shift?.[0] ?? 0), 0.5 + (surface.shift?.[1] ?? 0)];
     const [x, y, z] = top(at, -DECK);
     const r = PIER / 2;
     const c: [number, number][] = [[x - r, y - r], [x + r, y - r], [x + r, y + r], [x - r, y + r]];

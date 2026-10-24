@@ -16,7 +16,8 @@
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
  *   bun run act lorry 79                another lorry for depot #79
- *   bun run act undo                    the hand's last action taken back
+ *   bun run act undo                    the hand's last road laid or taken up,
+ *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act buy Timber 2            two boxes of timber from the market, on
  *       sell Crates                     the next ferry; or a box of crates sold
@@ -49,12 +50,12 @@
  * own, PLAYER (the browser's is in its localStorage, `sprawl.player`), so
  * its history to undo is its own and outlives the command.
  */
-import { decode, encode } from "@msgpack/msgpack";
+import { PORT, ROOT } from "./lib";
+import { connect } from "./game";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
+import type { P } from "../src/engine/geometry";
+import type { BuildingKind, GameObjectEntry, Good, Mission, Neighbour, Operation, Tool } from "../src/generated";
 
-const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
-/** The server's chunk, in tiles (`CHUNK_SIZE` in `protocol.rs`). */
-const CHUNK = 32;
 /** Quiet this long and the server has said all it will about a command;
  *  silent this long, and it will say nothing. */
 const SETTLE_MS = 400;
@@ -62,63 +63,50 @@ const WAIT_MS = 5000;
 /** The server's top speed (`MAX_SPEED` in `game_loop`). */
 const FULL = 50;
 
-type Pt = [number, number];
-type Entry = { id: number; object: { kind: string; data: any }; position: { x: number; y: number } | null };
-type Op = { op: "Upsert"; data: Entry } | { op: "Delete"; data: number };
 
 const lines = process.argv[2] === "-"
   ? (await Bun.stdin.text()).split("\n").map((l) => l.replace(/#.*/, "").trim()).filter(Boolean).map((l) => l.split(/\s+/))
   : [process.argv.slice(2)];
-const tile = (s: string): Pt => {
+const tile = (s: string): P => {
   const m = s.match(/^(-?\d+),(-?\d+)$/);
   if (!m) throw new Error(`not a tile: ${s} (want x,y)`);
   return [Number(m[1]), Number(m[2])];
 };
 
-// The chunks every tile named lies in, a chunk round, so the server tells
-// us of what is built there.
-const named = lines.flat().filter((a) => /^-?\d+,-?\d+$/.test(a)).map(tile);
-const chunks = named.length ? named : [[0, 0] as Pt];
-const ch = (v: number) => Math.floor(v / CHUNK);
-const bounds = {
-  min_cx: Math.min(...chunks.map((p) => ch(p[0]))) - 1, min_cy: Math.min(...chunks.map((p) => ch(p[1]))) - 1,
-  max_cx: Math.max(...chunks.map((p) => ch(p[0]))) + 1, max_cy: Math.max(...chunks.map((p) => ch(p[1]))) + 1,
-};
-
-const known = new Map<number, Entry>();
-let clock = { now: 0, speed: 1, day_ms: 1 };
+const known = new Map<number, GameObjectEntry>();
 let heard = Date.now();
-let ops: Op[] = [];
+let ops: Operation[] = [];
 /** Every trip seen, once each. */
 const trips = new Map<string, Recorded>();
 const PLAYER = process.env.PLAYER ?? "4242";
 /** The town's missions, as the last update had them. */
-type Mission = { key: unknown; title: string; finished: number | null; due: number | null; reward: { data: number | { coins: number; standing: number } }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
 let missions: Mission[] = [];
 /** The mayors beyond the edge, and how they stand. */
-let neighbours: { name: string; town: string; toward: string; standing: number; writes: boolean }[] = [];
+let neighbours: Neighbour[] = [];
 /** News heard since the last command said what it saw. */
 const told: string[] = [];
-const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
-ws.binaryType = "arraybuffer";
-ws.onmessage = (e) => {
-  const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as { type: string; data: any };
-  // The town spending of its own accord, as the news tells a player.
-  if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
-  if (msg.type !== "Update") return;
-  clock = msg.data.clock;
-  missions = msg.data.missions ?? [];
-  neighbours = msg.data.neighbours ?? [];
-  if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
-  for (const op of msg.data.ops as Op[]) {
-    const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
-    if (!trip) continue;
-    const t: Recorded = { car: (op as any).data.id, role: (op as any).data.object.data.role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing, cusps: trip.cusps, total_route_length: trip.total_route_length, leaves: trip.leaves, stands: trip.stands };
-    trips.set(`${t.car}:${JSON.stringify(t.route)}`, t);
-  }
-};
-await new Promise((ok, fail) => ((ws.onopen = ok), (ws.onerror = () => fail(new Error(`no game on port ${PORT}: bun run dev`)))));
-const send = (type: string, data?: unknown) => ws.send(encode(data === undefined ? { type } : { type, data }));
+// The chunks every tile named lies in, a chunk round, so the server tells
+// us of what is built there.
+const named = lines.flat().filter((a) => /^-?\d+,-?\d+$/.test(a)).map(tile);
+const game = await connect({
+  tiles: named.length ? named : [[0, 0]],
+  player: PLAYER,
+  hear: (msg) => {
+    // The town spending of its own accord, as the news tells a player.
+    if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
+    if (msg.type !== "Update") return;
+    missions = msg.data.missions ?? [];
+    neighbours = msg.data.neighbours ?? [];
+    if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
+    for (const op of msg.data.ops) {
+      if (op.op !== "Upsert" || op.data.object.kind !== "Car" || !op.data.object.data.trip) continue;
+      const { role, trip } = op.data.object.data;
+      const t: Recorded = { car: op.data.id, role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing, cusps: trip.cusps, total_route_length: trip.total_route_length, leaves: trip.leaves, stands: trip.stands };
+      trips.set(`${t.car}:${JSON.stringify(t.route)}`, t);
+    }
+  },
+});
+const { clock, send } = game;
 /** What the server said about a command: its first word, then whatever
  *  follows until it is quiet; or nothing, if it says nothing for a while. */
 async function settled() {
@@ -130,8 +118,8 @@ async function settled() {
   return out;
 }
 /** What a batch of ops made and took away, cars and residents aside. */
-function changes(batch: Op[]): string[] {
-  const made: Entry[] = [], gone: Entry[] = [];
+function changes(batch: Operation[]): string[] {
+  const made: GameObjectEntry[] = [], gone: GameObjectEntry[] = [];
   for (const op of batch) {
     if (op.op === "Upsert") {
       if (!known.has(op.data.id)) made.push(op.data);
@@ -141,13 +129,13 @@ function changes(batch: Op[]): string[] {
       known.delete(op.data);
     }
   }
-  const say = (e: Entry) => {
+  const say = (e: GameObjectEntry) => {
     const at = e.position ? ` at ${e.position.x},${e.position.y}` : "";
     return e.object.kind === "Building" ? `${e.object.data.kind} #${e.id}${at}` : `${e.object.kind}${at}`;
   };
-  const quiet = (e: Entry) => e.object.kind === "Car" || e.object.kind === "Resident";
-  const roads = (es: Entry[]) => es.filter((e) => e.object.kind === "RoadNode").length;
-  const rest = (es: Entry[]) => es.filter((e) => !quiet(e) && e.object.kind !== "RoadNode").map(say);
+  const quiet = (e: GameObjectEntry) => e.object.kind === "Car" || e.object.kind === "Resident";
+  const roads = (es: GameObjectEntry[]) => es.filter((e) => e.object.kind === "RoadNode").length;
+  const rest = (es: GameObjectEntry[]) => es.filter((e) => !quiet(e) && e.object.kind !== "RoadNode").map(say);
   return [
     ...(roads(made) ? [`+ ${roads(made)} road tiles`] : []), ...rest(made).map((s) => `+ ${s}`),
     ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
@@ -183,7 +171,7 @@ function listed(): string[] {
  *  tighter than a car turns, by where on the trip they are. */
 function watched(): string[] {
   const all = [...trips.values()];
-  Bun.write(`${import.meta.dir}/../../.dev/paths.json`, JSON.stringify(all));
+  Bun.write(`${ROOT}/.dev/paths.json`, JSON.stringify(all));
   const tight = { out: [] as number[], street: [] as number[], in: [] as number[] };
   let worst = { r: Infinity, at: [0, 0], car: 0, part: "" };
   const traced = trace(all);
@@ -206,28 +194,27 @@ function watched(): string[] {
 const timeOfDay = () => (clock.now % clock.day_ms) / clock.day_ms;
 const hhmm = (t: number) => `${String(Math.floor(t * 24)).padStart(2, "0")}:${String(Math.floor((t * 1440) % 60)).padStart(2, "0")}`;
 
-send("SetChunks", bounds);
 changes(await settled());
 
 /** A drag through these tiles with this in hand, straight or diagonal: a
  *  road sent whole, as the brush sends it; the demolisher a step at a
  *  time, its tap, one tile alone, taking the road there. */
-function stroke(tool: unknown, pts: Pt[]) {
-  if (pts.length === 1) return send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
+function stroke(tool: Tool, pts: P[], road = false) {
+  if (pts.length === 1) return send({ type: "Build", data: { tool, from: at(pts[0]), to: at(pts[0]), road } });
   const tiles = [{ at: at(pts[0]), want: 0 }];
   for (let i = 1; i < pts.length; i++) {
     let [x, y] = pts[i - 1];
     const [tx, ty] = pts[i];
     while (x !== tx || y !== ty) {
       [x, y] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
-      if (tool === "Demolish") send("Build", { tool, from: tiles[tiles.length - 1].at, to: { x, y } });
+      if (tool === "Demolish") send({ type: "Build", data: { tool, from: tiles[tiles.length - 1].at, to: { x, y }, road } });
       tiles.push({ at: { x, y }, want: 0 });
     }
   }
   // A road, the drag whole, planned by the game (`draw.rs`).
-  if (tool !== "Demolish") send("Draw", { id: Math.floor(Math.random() * 2 ** 30), tool, road: false, tiles });
+  if (tool !== "Demolish") send({ type: "Draw", data: { id: Math.floor(Math.random() * 2 ** 30), tool, road, tiles } });
 }
-const at = ([x, y]: Pt) => ({ x, y });
+const at = ([x, y]: P) => ({ x, y });
 
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];
@@ -238,10 +225,10 @@ for (const line of lines) {
   const args = rest.filter((a) => !a.startsWith("--"));
   switch (verb) {
     case "road":
-      stroke(flags.includes("--road") ? "Road" : flags.includes("--one-way") ? "OneWay" : "Street", args.map(tile));
+      stroke(flags.includes("--one-way") ? "OneWay" : "Street", args.map(tile), flags.includes("--road"));
       break;
     case "build":
-      send("Place", { kind: args[0], at: at(tile(args[1])), facing: args[2] === undefined ? null : Number(args[2]) });
+      send({ type: "Place", data: { kind: args[0] as BuildingKind, at: at(tile(args[1])), facing: args[2] === undefined ? null : Number(args[2]) } });
       break;
     case "demolish":
       stroke("Demolish", args.map(tile));
@@ -249,36 +236,36 @@ for (const line of lines) {
     case "raze": {
       const [x, y] = tile(args[0]);
       const b = [...known.values()].find((e) => e.object.kind === "Building" && e.object.data.tiles.some((t: { x: number; y: number }) => t.x === x && t.y === y));
-      if (b) send("Raze", { building: b.id });
+      if (b) send({ type: "Raze", data: { building: b.id } });
       else report.push(`nothing stands at ${x},${y}`);
       break;
     }
     case "lorry":
-      send("BuyLorry", { depot: Number(args[0]) });
+      send({ type: "BuyLorry", data: { depot: Number(args[0]) } });
       break;
     case "undo":
-      send("Undo");
+      send({ type: "Undo" });
       break;
     case "speed":
-      send("SetSpeed", Number(args[0]));
+      send({ type: "SetSpeed", data: Number(args[0]) });
       break;
     // The border: the market and the letters. The sea's state, and the
     // market's, is at /sea.
     case "buy":
     case "sell":
-      send("Trade", { good: args[0], boxes: Number(args[1] ?? 1), out: verb === "sell" });
+      send({ type: "Trade", data: { good: args[0] as Good, boxes: Number(args[1] ?? 1), out: verb === "sell" } });
       break;
     case "send":
-      send("Send", { letter: Number(args[0]), boxes: Number(args[1] ?? 1) });
+      send({ type: "Send", data: { letter: Number(args[0]), boxes: Number(args[1] ?? 1) } });
       break;
     case "order":
-      send("Order", { out: args[0] === "sell", good: args[1], boxes: Number(args[2]), price: Number(args[3]) });
+      send({ type: "Order", data: { out: args[0] === "sell", good: args[1] as Good, boxes: Number(args[2]), price: Number(args[3]) } });
       break;
     case "cancel":
-      send("Cancel", { order: Number(args[0]) });
+      send({ type: "Cancel", data: { order: Number(args[0]) } });
       break;
     case "reset":
-      send("ResetWorld");
+      send({ type: "ResetWorld" });
       break;
     case "time":
       break;
@@ -296,9 +283,9 @@ for (const line of lines) {
         ? clock.now + (((to - timeOfDay() + 1) % 1) * clock.day_ms)
         : clock.now + (Number(args[0]) * clock.day_ms) / 24;
       const was = clock.speed;
-      send("SetSpeed", FULL);
+      send({ type: "SetSpeed", data: FULL });
       while ((clock.now = await now()) < until) await Bun.sleep(200);
-      send("SetSpeed", was);
+      send({ type: "SetSpeed", data: was });
       clock.speed = was;
       if (verb === "watch") report = watched();
       break;
@@ -311,4 +298,4 @@ for (const line of lines) {
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
   for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "send", "order", "cancel", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
-ws.close();
+game.close();

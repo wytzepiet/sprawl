@@ -6,10 +6,9 @@ use crate::blueprint::blueprint;
 use crate::economy;
 use crate::needs::{Bucket, Need, Tap};
 use crate::world::pathfinding::Routes;
-use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, GridCoord, Resident, DAY_MS};
+use crate::protocol::{EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
-use serde_json::{json, Value};
 use std::collections::BinaryHeap;
 use crate::fixed::HashMap;
 
@@ -21,10 +20,6 @@ const DETOUR: f64 = 1.4;
 /// How long to sit on a failed departure — a blocked driveway, a severed road —
 /// before looking again.
 const RETRY_MS: u64 = 10_000;
-
-/// How many arrivals it takes for the learned delay to mostly forget the
-/// old ones.
-
 
 /// Who is at, or on their way to, each building for each need. Counted
 /// fresh at every wake from what residents are doing — a claim is being
@@ -42,7 +37,7 @@ pub fn handle_resident_wake(
     id: EntityId,
     now: GameTime,
 ) {
-    let Some(r) = resident(world, id).cloned() else { return };
+    let Some(r) = world.resident(id).cloned() else { return };
 
     // Beyond the sea: someone who has not come yet. They come the way
     // everyone comes, on the ferry, car and all (`world/sea.rs`), and the
@@ -66,23 +61,9 @@ pub fn handle_resident_wake(
 
     let crowd = headcount(world);
     settle(world, id, at, now, &crowd);
-    let Some(r) = resident(world, id).cloned() else { return };
-    let mut buckets = buckets(world, &r);
-    let mut routes = routes_from(world, at);
-    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes);
-    drop(routes);
-
-    // The note the demand readout reads: how far short of being served on
-    // the spot each need fell — one where nothing was found at all.
-    for (b, v) in buckets.iter_mut().zip(&verdicts) {
-        b.shortfall = match *v {
-            Verdict::Nothing => 1.0,
-            Verdict::Go { score, .. } => {
-                let ideal = b.need.ceiling(b.stock.short());
-                if ideal > 0.0 { (1.0 - score / ideal).clamp(0.0, 1.0) } else { 0.0 }
-            }
-        };
-    }
+    let Some(r) = world.resident(id).cloned() else { return };
+    let buckets = buckets(world, &r);
+    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     store(world, id, r.car, &buckets);
     if buckets.iter().zip(&verdicts).any(|(b, v)| b.need == Need::Fuel && matches!(v, Verdict::Nothing) && b.stock.level < b.stock.cap / 4.0) {
         crate::missions::sense(world, crate::missions::When::Dry, now);
@@ -156,8 +137,8 @@ pub fn handle_resident_wake(
 /// in one order, so an index into the verdicts is an index into this.
 fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
     let mut all = r.buckets.clone();
-    if let Some(GameObject::Car(c)) = world.objects.get(r.car).map(|e| &e.object) {
-        all.extend(c.stocks.iter().map(|(&need, &stock)| Bucket { need, stock, shortfall: 0.0 }));
+    if let Some(c) = world.car(r.car) {
+        all.extend(c.stocks.iter().map(|(&need, &stock)| Bucket { need, stock }));
     }
     all
 }
@@ -165,10 +146,10 @@ fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
 /// Put the buckets back where each lives: the person's on the person, the
 /// car's on the car.
 fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
-    if let Some(GameObject::Resident(me)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+    if let Some(me) = world.resident_mut(id) {
         me.buckets = buckets.iter().filter(|b| !Need::DRIVEN.contains(&b.need)).cloned().collect();
     }
-    if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+    if let Some(c) = world.car_mut(car) {
         for b in buckets.iter().filter(|b| Need::DRIVEN.contains(&b.need)) {
             c.stocks.insert(b.need, b.stock);
         }
@@ -181,8 +162,7 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
         .iter()
         .map(|b| match b.need {
             Need::Work if !fit(buckets) => Verdict::Nothing,
-            // A maker's yard with no room for the next load offers no work
-            // (docs/economy.md §13.19).
+            // A maker's yard with no room for the next load offers no work.
             Need::Work => r
                 .work
                 .filter(|&w| economy::hiring(world, w))
@@ -193,7 +173,7 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
         .collect()
 }
 
-/// A row with an empty input stops (docs/economy.md §4): a resident
+/// A row with an empty input stops: a resident
 /// whose food, sleep or tank stands at zero cannot work until it does
 /// not. A week of night shifts ends in a lie-in.
 fn fit(buckets: &[Bucket]) -> bool {
@@ -257,7 +237,7 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         .iter()
         .flat_map(|&c| world.buildings_in(c))
         // A home's kitchen is its residents' alone.
-        .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
+        .filter(|&id| id == r.home || world.building(id).map(|b| b.kind).is_some_and(|k| blueprint(k).homes == 0))
         // Empty shelves sell nothing.
         .filter(|&id| crate::calls::stocked(world, id))
         // No road, no visit. Without this a building the road never reached
@@ -457,7 +437,7 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
 /// What was served goes on the tab, drawn off the shelf and banked as
 /// GDP when the visit ends, and on the building's books as hours served.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
-    let Some(r) = resident(world, id) else { return };
+    let Some(r) = world.resident(id) else { return };
     let (last, selected) = (r.last_update, r.selected);
     let elapsed = (now - last) as f64;
     let serving: Option<(f64, f64)> = selected.and_then(|need| {
@@ -473,12 +453,12 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         && served > 0.0
     {
         let out = rate * served;
-        economy::served(world, at, need, out / HOUR, now);
-        if let Some(r) = resident_mut(world, id) {
+        economy::served(world, at, need, out / HOUR as f64, now);
+        if let Some(r) = world.resident_mut(id) {
             r.tab += out / need.unit();
         }
     }
-    let Some(r) = resident(world, id).cloned() else { return };
+    let Some(r) = world.resident(id).cloned() else { return };
     let mut buckets = buckets(world, &r);
     for b in &mut buckets {
         if b.need.constant() {
@@ -493,7 +473,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         b.stock.take(b.need.drain() * idle);
     }
     store(world, id, r.car, &buckets);
-    if let Some(r) = resident_mut(world, id) {
+    if let Some(r) = world.resident_mut(id) {
         r.last_update = now;
     }
 }
@@ -502,8 +482,8 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
 /// there. One pass over everyone.
 fn headcount(world: &World) -> Crowd {
     let mut crowd = Crowd::default();
-    for id in world.resident_ids() {
-        let Some(r) = resident(world, id) else { continue };
+    for e in world.objects.iter() {
+        let GameObject::Resident(ref r) = e.object else { continue };
         let (Some(at), Some(need)) = (r.at, r.selected) else { continue };
         let place = match world.objects.get(at).map(|e| &e.object) {
             Some(GameObject::Building(_)) => at,
@@ -550,204 +530,32 @@ fn drive(
     }
 }
 
-/// The readout the whole system exists for, printed as a trip ends: how the
-/// arrival compares to the shift, and to the free-flow promise made at
-/// departure. People leave on time under free-flow assumptions, so both
-/// numbers worsening together is a direct measurement of congestion on the
-/// roads they actually drove.
-pub fn arrival_readout(world: &mut World, id: EntityId, destination: EntityId, eta: GameTime, now: GameTime) {
-    if let Some(r) = resident(world, id)
-        && r.work == Some(destination)
-        && let Some(open) = taps_of(world, destination)
-            .iter()
-            .find(|t| t.need == Need::Work)
-            .and_then(|t| t.curve.next_nonzero(0))
-    {
-        let day = DAY_MS as i64;
-        let mut diff = (time_of_day(now) as i64 - open as i64).rem_euclid(day);
-        if diff > day / 2 {
-            diff -= day;
-        }
-        let word = if diff > 0 { "late" } else { "early" };
-        let lost = now.saturating_sub(eta) / 1000;
-        println!(
-            "commute: resident {id} at work {}s {word}, {lost}s lost to traffic",
-            (diff / 1000).abs()
-        );
-    }
-}
-
-/// The arithmetic, made visible: what one resident owes, and what every
-/// option scores right now. The model's failure mode is quiet, and this is
-/// the only way to watch it think. Read-only — the buckets are shown as they
-/// stood at the last wake, not settled.
-pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
-    let Some(r) = resident(world, id) else { return json!({ "error": "no such resident" }) };
-    let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
+/// The arithmetic, made visible: what one resident owes, need by need, and
+/// where each would be met right now. The model's failure mode is quiet,
+/// and this is the only way to watch it think. Read-only — the buckets as
+/// they stood at the last wake, not settled. Nothing while off the map.
+pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<crate::card::NeedLine> {
+    let Some((r, at)) = world.resident(id).and_then(|r| Some((r, r.at?))) else { return Vec::new() };
     let crowd = headcount(world);
     let buckets = buckets(world, r);
     let verdicts = verdicts(world, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
-    json!({
-        "id": id,
-        "now": hhmm(now),
-        "at": at,
-        "at_kind": whereabouts(world, at),
-        "home": r.home,
-        "work": r.work,
-        "selected": r.selected,
-        "last_update": hhmm(r.last_update),
-        "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
-            "need": b.need,
-            "short_h": b.stock.short() / HOUR,
-            "full": b.stock.weight(),
-            "option": v.describe(now),
-        })).collect::<Vec<_>>(),
-    })
-}
-
-/// Everyone, one line each: where they are and what they are doing.
-pub fn inspect_all(world: &World, now: GameTime) -> Value {
-    let mut rows: Vec<Value> = world
-        .resident_ids()
-        .into_iter()
-        .filter_map(|id| resident(world, id).map(|r| (id, r)))
-        .map(|(id, r)| json!({
-            "id": id,
-            "at": r.at,
-            "at_kind": r.at.map(|a| whereabouts(world, a)),
-            "selected": r.selected,
-            "short_h": buckets(world, r).iter().map(|b| (format!("{:?}", b.need), b.stock.short() / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
-        }))
-        .collect();
-    rows.sort_by_key(|v| v["id"].as_u64());
-    json!({ "now": hhmm(now), "residents": rows })
-}
-
-/// One resident's note on one need, as left by their last wake: where they
-/// live, how far short of being served it fell, and how much that weighs —
-/// the need's fullness times the shortfall. Someone without a job wants one
-/// outright. Read from the notes; nobody is asked to think again.
-struct Want {
-    home: GridCoord,
-    need: Need,
-    shortfall: f64,
-    weight: f64,
-}
-
-fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
-    world.resident_ids().into_iter().filter_map(|id| resident(world, id)).flat_map(|r| {
-        let home = world.objects.get(r.home).and_then(|e| e.position);
-        let jobless = r.work.is_none();
-        r.at.and(home).into_iter().flat_map(move |home| {
-            r.buckets.iter().filter_map(move |b| {
-                let (shortfall, weight) = if b.need.drain() > 0.0 {
-                    (b.shortfall, b.stock.weight() * b.shortfall)
-                } else if b.need == Need::Work && jobless {
-                    (1.0, 1.0)
-                } else {
-                    (0.0, 0.0)
-                };
-                (weight > 0.0).then_some(Want { home, need: b.need, shortfall, weight })
-            })
-        })
-    })
-}
-
-/// Who found nothing at all, by home chunk: how many, and how badly. What
-/// the demand readout names as missing; a shop that is merely far or full
-/// weighs on `pressure` without showing up here.
-pub fn unmet(world: &World) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
-    let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::default();
-    for w in wants(world).filter(|w| w.shortfall >= 1.0) {
-        let e = unmet.entry((crate::world::chunk_of(w.home), w.need)).or_default();
-        e.0 += 1;
-        e.1 += w.weight;
-    }
-    unmet
-}
-
-pub fn demand(world: &World, now: GameTime) -> Value {
-    let unmet = unmet(world);
-    let mut unmet: Vec<Value> = unmet
-        .into_iter()
-        .map(|((c, need), (people, pressure))| {
-            json!({ "chunk": [c.cx, c.cy], "need": need, "people": people, "pressure": pressure })
-        })
-        .collect();
-    unmet.sort_by_key(|v| (v["chunk"].to_string(), v["need"].to_string()));
-
-    let mut delivered: Vec<Value> = world
-        .books
+    buckets
         .iter()
-        .flat_map(|(&building, k)| {
-            let (today, yesterday) = (k.on(now), k.before(now));
-            let needs: std::collections::BTreeSet<Need> = today.served.keys().chain(yesterday.served.keys()).copied().collect();
-            needs.into_iter().map(move |need| {
-                json!({
-                    "building": building,
-                    "kind": whereabouts(world, building),
-                    "need": need,
-                    "today_h": today.served.get(&need).copied().unwrap_or(0.0),
-                    "yesterday_h": yesterday.served.get(&need).copied().unwrap_or(0.0),
-                })
-            }).collect::<Vec<_>>()
+        .zip(&verdicts)
+        .map(|(b, v)| crate::card::NeedLine {
+            need: b.need,
+            full: 1.0 - b.stock.weight(),
+            option: match *v {
+                Verdict::Go { building, .. } => Some(building),
+                Verdict::Nothing => None,
+            },
         })
-        .collect();
-    delivered.sort_by_key(|v| (v["building"].as_u64(), v["need"].to_string()));
-    json!({ "now": hhmm(now), "unmet": unmet, "delivered": delivered })
-}
-
-impl Verdict {
-    fn describe(&self, now: GameTime) -> Value {
-        match *self {
-            Verdict::Go { score, departure, leave, building, rate, .. } => json!({
-                "building": building,
-                "rate": rate,
-                "score": score,
-                "departure": hhmm(departure),
-                "wait_h": (departure - now) as f64 / HOUR,
-                "leave": hhmm(leave),
-            }),
-            Verdict::Nothing => json!("nothing"),
-        }
-    }
-}
-
-/// What kind of place `at` is — a building by kind, or the car.
-fn whereabouts(world: &World, at: EntityId) -> String {
-    match world.objects.get(at).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => format!("{:?}", b.kind),
-        Some(GameObject::Car(_)) => "Car".into(),
-        _ => "gone".into(),
-    }
-}
-
-const HOUR: f64 = (DAY_MS / 24) as f64;
-
-/// Clock time, with the day in front when it is not today's.
-fn hhmm(t: GameTime) -> String {
-    let day = t / DAY_MS as u64;
-    let tod = time_of_day(t) as f64 / HOUR;
-    format!("d{day} {:02}:{:02}", tod as u32, ((tod % 1.0) * 60.0) as u32)
-}
-
-fn resident(world: &World, id: EntityId) -> Option<&Resident> {
-    match world.objects.get(id)?.object {
-        GameObject::Resident(ref r) => Some(r),
-        _ => None,
-    }
-}
-
-fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
-    match world.objects.get_mut(id)?.object {
-        GameObject::Resident(ref mut r) => Some(r),
-        _ => None,
-    }
+        .collect()
 }
 
 /// A trip's end: what it burned comes off the tank.
 pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
-    if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+    if let Some(c) = world.car_mut(car) {
         for (need, stock) in c.stocks.iter_mut() {
             stock.take(tiles * need.per_tile());
         }
@@ -759,18 +567,18 @@ pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
 /// changes, or the drive would count as a visit. Leaving ends the visit,
 /// and the visit draws its shelf as it ends.
 pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: EntityId, now: GameTime) {
-    if let Some(from) = resident(world, id).and_then(|r| r.at) {
+    if let Some(from) = world.resident(id).and_then(|r| r.at) {
         let crowd = headcount(world);
         settle(world, id, from, now, &crowd);
         end_visit(world, events, id, from, now);
     }
     let mut hired = false;
-    if let Some(r) = resident_mut(world, id) {
+    if let Some(r) = world.resident_mut(id) {
         r.at = Some(place);
         hired = r.work == Some(place);
     }
     // A hand arriving is a change at the workplace: a farm's tractor goes
-    // out with someone to drive it (docs/economy.md §12.8).
+    // out with someone to drive it (`world/fields.rs`).
     if hired {
         crate::calls::turn(world, events, place, now);
     }
@@ -778,13 +586,13 @@ pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: E
 
 /// Turn to something else where they stand: the visit so far is over.
 fn set_selected(world: &mut World, events: &mut EventQueue, id: EntityId, need: Option<Need>, now: GameTime) {
-    if let Some(r) = resident(world, id)
+    if let Some(r) = world.resident(id)
         && r.selected != need
         && let Some(at) = r.at
     {
         end_visit(world, events, id, at, now);
     }
-    if let Some(r) = resident_mut(world, id) {
+    if let Some(r) = world.resident_mut(id) {
         r.selected = need;
     }
 }
@@ -793,7 +601,7 @@ fn set_selected(world: &mut World, events: &mut EventQueue, id: EntityId, need: 
 /// from, the value it added lands as GDP, and the building takes its
 /// turn.
 fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: EntityId, now: GameTime) {
-    let Some(r) = resident_mut(world, id) else { return };
+    let Some(r) = world.resident_mut(id) else { return };
     let (Some(need), tab) = (r.selected, std::mem::take(&mut r.tab)) else { return };
     if tab > 0.0 && matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Building(_))) {
         economy::visited(world, at, need, tab, now);
@@ -801,15 +609,8 @@ fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: Entit
     }
 }
 
-fn kind(world: &World, building: EntityId) -> Option<BuildingKind> {
-    match world.objects.get(building)?.object {
-        GameObject::Building(ref b) => Some(b.kind),
-        _ => None,
-    }
-}
-
 fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
-    kind(world, building).map_or(&[], |k| &blueprint(k).taps)
+    world.building(building).map(|b| b.kind).map_or(&[], |k| &blueprint(k).taps)
 }
 
 /// Travel time between two buildings in game milliseconds: the quickest
@@ -849,39 +650,29 @@ fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
     world.objects.get(id)?.position.map(|p| (p.x, p.y))
 }
 
-fn time_of_day(now: GameTime) -> u32 {
-    (now % DAY_MS as u64) as u32
-}
-
 #[cfg(test)]
 mod bench {
     use super::*;
-    use crate::protocol::{GridCoord, TerrainType};
+    use crate::protocol::{BuildingKind, GridCoord};
 
     /// Not an assertion: what one cheap evaluation costs, for whoever is
     /// sizing a survey over many tiles. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn how_dear_an_estimate_is() {
-        let mut world = World::new();
-        for y in -6..6 {
-            for x in -4..40 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(-2..38).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        let mut world = World::meadow(-4..40, -6..6).street(-2..38);
         world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
         let shop = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
         world.settle();
         let id = world.resident_ids()[0];
-        let r = resident(&world, id).unwrap().clone();
+        let r = world.resident(id).unwrap().clone();
         let b = r.buckets.iter().find(|b| b.need == Need::Eat).unwrap().clone();
         let tap = taps_of(&world, shop).iter().find(|t| t.need == Need::Eat).unwrap();
         let n = 200_000u32;
         let started = std::time::Instant::now();
         let mut hits = 0u32;
         for i in 0..n {
-            let now = (i as u64 * 977) % DAY_MS as u64;
+            let now = (i as u64 * 977) % crate::protocol::DAY_MS as u64;
             let mut bucket = b.clone();
             bucket.stock.take((i % 100) as f64 * 1000.0);
             if let Verdict::Go { .. } = evaluate(&world, shop, tap, &bucket, now, 1, 60_000, false) {

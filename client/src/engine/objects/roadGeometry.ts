@@ -1,4 +1,5 @@
-import type { MeshGeometry } from "../geometry";
+import type { MeshGeometry, P } from "../geometry";
+import { quadBezier } from "./drawnPath";
 
 /**
  * Road surface geometry: pure maths over a set of arm angles, with no Babylon
@@ -11,7 +12,6 @@ export type Flow = "twoway" | "out" | "in";
 /** An arm of a node's road: the way it goes, how it is driven, and, if
  *  not the node's, how wide it is either side of its middle. */
 export type ArmInfo = { angle: number; flow: Flow; hw?: number };
-type Point = { x: number; y: number };
 
 /** A road is its asphalt alone, two lanes: the pavement beside it is its
  *  kerb. */
@@ -33,24 +33,17 @@ const CURVE_SEGMENTS = 8;
 // outlines it: 0.03 over the grass, and still 0.02 over a terrain patch
 // laid on the grass. Lots, their markings and cars sit relative to it.
 export const ROAD_Z = 0.03;
-export const CHEVRON_Z = 0.04;
-const CHEVRON_DEPTH = 0.12;
 
 // --- Geometry helpers ---
 
-function fanGeometry(
-  boundary: Point[],
-  z: number,
-  center?: Point,
-): MeshGeometry {
-  const c = center ?? { x: 0, y: 0 };
+function fanGeometry(boundary: P[], z: number): MeshGeometry {
   const n = boundary.length;
-  const positions: number[] = [c.x, c.y, z];
+  const positions: number[] = [0, 0, z];
   const normals: number[] = [0, 0, 1];
   const indices: number[] = [];
 
-  for (const pt of boundary) {
-    positions.push(pt.x, pt.y, z);
+  for (const [x, y] of boundary) {
+    positions.push(x, y, z);
     normals.push(0, 0, 1);
   }
   // A fan only winds one way if the boundary is star-shaped about its centre,
@@ -62,10 +55,10 @@ function fanGeometry(
   for (let i = 0; i < n; i++) {
     const b = ((i + 1) % n) + 1;
     const d = i + 1;
-    const bx = positions[b * 3] - c.x;
-    const by = positions[b * 3 + 1] - c.y;
-    const dx = positions[d * 3] - c.x;
-    const dy = positions[d * 3 + 1] - c.y;
+    const bx = positions[b * 3];
+    const by = positions[b * 3 + 1];
+    const dx = positions[d * 3];
+    const dy = positions[d * 3 + 1];
     // Front-facing toward +Z is a negative cross product here, matching the
     // (0,2,1) order the rest of the project emits.
     if (bx * dy - by * dx > 0) indices.push(0, d, b);
@@ -75,38 +68,30 @@ function fanGeometry(
   return { positions, indices, normals };
 }
 
-function arcPoints(startAngle: number, endAngle: number, hw: number): Point[] {
+function arcPoints(startAngle: number, endAngle: number, hw: number): P[] {
   let span = endAngle - startAngle;
   if (span <= 0) span += 2 * Math.PI;
   const numSegs = Math.max(
     2,
     Math.round((span / (Math.PI / 2)) * CURVE_SEGMENTS),
   );
-  const pts: Point[] = [];
+  const pts: P[] = [];
   for (let j = 0; j <= numSegs; j++) {
     const angle = startAngle + span * (j / numSegs);
-    pts.push({ x: hw * Math.cos(angle), y: hw * Math.sin(angle) });
+    pts.push([hw * Math.cos(angle), hw * Math.sin(angle)]);
   }
   return pts;
 }
 
-function quadBezier(p0: Point, p1: Point, p2: Point, t: number): Point {
-  const mt = 1 - t;
-  return {
-    x: mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x,
-    y: mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y,
-  };
-}
-
-function edgePoints(a: number, hw: number): { right: Point; left: Point } {
+function edgePoints(a: number, hw: number): { right: P; left: P } {
   const armLen = 0.5 / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
   const ex = armLen * Math.cos(a);
   const ey = armLen * Math.sin(a);
   const px = -Math.sin(a);
   const py = Math.cos(a);
   return {
-    left: { x: ex + hw * px, y: ey + hw * py },
-    right: { x: ex - hw * px, y: ey - hw * py },
+    left: [ex + hw * px, ey + hw * py],
+    right: [ex - hw * px, ey - hw * py],
   };
 }
 
@@ -115,20 +100,20 @@ function edgePoints(a: number, hw: number): { right: Point; left: Point } {
 function curveControlPoint(
   aCurr: number,
   aNext: number,
-  start: Point,
-  end: Point,
+  start: P,
+  end: P,
   hwCurr: number,
   hwNext: number,
-): Point {
+): P {
   const det = Math.sin(aNext - aCurr);
   if (Math.abs(det) < 1e-6) {
-    return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+    return [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
   }
   // s·d1 + h1·n1 = u·d2 − h2·n2, d the arm's way and n its left.
   const [d1x, d1y, d2x, d2y] = [Math.cos(aCurr), Math.sin(aCurr), Math.cos(aNext), Math.sin(aNext)];
   const [rx, ry] = [-hwNext * -d2y - hwCurr * -d1y, -hwNext * d2x - hwCurr * d1x];
   const s = (rx * -d2y - ry * -d2x) / (d1x * -d2y - d1y * -d2x);
-  return { x: s * d1x - hwCurr * d1y, y: s * d1y + hwCurr * d1x };
+  return [s * d1x - hwCurr * d1y, s * d1y + hwCurr * d1x];
 }
 
 // --- Gap fill strategies ---
@@ -136,11 +121,11 @@ function curveControlPoint(
 function smoothCurve(
   aCurr: number,
   aNext: number,
-  currEdge: { left: Point },
-  nextEdge: { right: Point },
+  currEdge: { left: P },
+  nextEdge: { right: P },
   hwCurr: number,
   hwNext: number,
-): Point[] {
+): P[] {
   let gap = aNext - aCurr;
   if (gap <= 0) gap += 2 * Math.PI;
   const cp = curveControlPoint(aCurr, aNext, currEdge.left, nextEdge.right, hwCurr, hwNext);
@@ -148,31 +133,31 @@ function smoothCurve(
     2,
     Math.round((gap / (Math.PI / 2)) * CURVE_SEGMENTS),
   );
-  const pts: Point[] = [];
+  const pts: P[] = [];
   for (let j = 1; j < numSegs; j++) {
     pts.push(quadBezier(currEdge.left, cp, nextEdge.right, j / numSegs));
   }
   return pts;
 }
 
-function deadEndCap(aCurr: number, aNext: number, hw: number): Point[] {
+function deadEndCap(aCurr: number, aNext: number, hw: number): P[] {
   return arcPoints(aCurr + Math.PI / 2, aNext - Math.PI / 2, hw);
 }
 
 function sharpCorner(
   aCurr: number,
   aNext: number,
-  currLeft: Point,
-  nextRight: Point,
-): Point[] {
-  const d1 = { x: -Math.cos(aCurr), y: -Math.sin(aCurr) };
-  const d2 = { x: -Math.cos(aNext), y: -Math.sin(aNext) };
-  const det = d1.x * d2.y - d1.y * d2.x;
+  currLeft: P,
+  nextRight: P,
+): P[] {
+  const d1 = [-Math.cos(aCurr), -Math.sin(aCurr)];
+  const d2 = [-Math.cos(aNext), -Math.sin(aNext)];
+  const det = d1[0] * d2[1] - d1[1] * d2[0];
   if (Math.abs(det) < 1e-6) return [];
-  const dx = nextRight.x - currLeft.x;
-  const dy = nextRight.y - currLeft.y;
-  const t = (dx * d2.y - dy * d2.x) / det;
-  return [{ x: currLeft.x + t * d1.x, y: currLeft.y + t * d1.y }];
+  const dx = nextRight[0] - currLeft[0];
+  const dy = nextRight[1] - currLeft[1];
+  const t = (dx * d2[1] - dy * d2[0]) / det;
+  return [[currLeft[0] + t * d1[0], currLeft[1] + t * d1[1]]];
 }
 
 // --- Geometry builders ---
@@ -183,11 +168,11 @@ export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshG
 }
 
 /** The outline of a node's road surface at a half-width, or null with no arms. */
-function roadBoundary(arms: ArmInfo[], hw: number): Point[] | null {
+function roadBoundary(arms: ArmInfo[], hw: number): P[] | null {
   if (arms.length === 0) return null;
 
   const sorted = [...arms].sort((a, b) => a.angle - b.angle);
-  const boundary: Point[] = [];
+  const boundary: P[] = [];
 
   const half = (arm: ArmInfo) => arm.hw ?? hw;
   if (sorted.length === 1) {

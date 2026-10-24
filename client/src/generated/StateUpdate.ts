@@ -24,7 +24,7 @@ missions: Array<Mission>,
 /**
  * The mayors of the towns beyond the edge, and how they stand.
  */
-neighbours: Array<Neighbour>, terrain_seed: number, 
+neighbours: Array<Neighbour>, 
 /**
  * The island's map, which the client keeps its camera inside.
  */

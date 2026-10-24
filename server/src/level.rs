@@ -15,6 +15,7 @@
 //! @gate 4 in2       a one-way of two lanes, inward (`out2` outward)
 //! @want 1 2 12      twelve cars a minute from 1 to 2
 //! @at 2 1           where it lies on the map of levels (the client's)
+//! @flow 0.934       how our own solve flows, a hundred's worth of it
 //! ```
 //!
 //! After the map, our own solve, if the level has one: the map again, each
@@ -226,33 +227,15 @@ pub struct Level {
 }
 
 impl Level {
-    /// A level from its text, built into a fresh world, its own solve, if
-    /// it has one, tested to know what a hundred is.
-    pub fn build(name: &str, text: &str) -> (Level, World) {
-        let (mut level, world) = Level::parse(name, text);
-        let Some((par, _)) = level.par else { return (level, world) };
-        let (mut reference, world_r) = Level::parse(name, text);
-        let mut game = Game::new(world_r, 0, 1, Box::new(World::new));
-        for step in reference.solve_steps(&game.world) {
-            crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
-        }
-        reference.test(&mut game);
-        while reference.phase == Phase::Test {
-            reference.step(&mut game);
-            game.step();
-        }
-        level.par = Some((par, if reference.phase == Phase::Done { reference.done_flow } else { 1.0 }));
-        (level, world)
-    }
-
-    fn parse(name: &str, text: &str) -> (Level, World) {
+    /// A level from its text, built into a fresh world.
+    pub fn parse(name: &str, text: &str) -> (Level, World) {
         let mut world = World::new();
-        world.build = crate::tree::Build::all();
         world.treasury = f64::MAX / 4.0;
         world.missions.list.clear();
 
         let mut gates_said: HashMap<char, (Way, Lanes)> = HashMap::default();
         let mut wants_said: Vec<(char, char, f64)> = Vec::new();
+        let mut flow = 1.0;
         for line in text.lines().filter_map(|l| l.trim().strip_prefix('@')) {
             let words: Vec<&str> = line.split_whitespace().collect();
             match words.as_slice() {
@@ -266,6 +249,7 @@ impl Level {
                     gates_said.insert(g.chars().next().unwrap_or('?'), (way, wide));
                 }
                 ["want", a, b, n, ..] => wants_said.push((a.chars().next().unwrap_or('?'), b.chars().next().unwrap_or('?'), n.parse().unwrap_or(0.0))),
+                ["flow", f, ..] => flow = f.parse().unwrap_or(1.0),
                 _ => {}
             }
         }
@@ -378,7 +362,7 @@ impl Level {
             *row += 1;
         }
         let par = solution.iter().map(|&(_, h)| if h == 0 { 1 } else if h % 2 == 1 { 2 } else { 3 }).sum::<u32>() + lights.len() as u32 * LIGHT_COST;
-        let par = (!solution.is_empty()).then_some((par, 1.0));
+        let par = (!solution.is_empty()).then_some((par, flow));
         let seed = name.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
         let n = wants.len();
         world.frame = Some((at(w - 1, h - 1), at(0, 0)));
@@ -410,6 +394,7 @@ impl Level {
         (level, world)
     }
 
+    #[cfg(test)]
     pub fn inside(&self, t: GridCoord) -> bool {
         (self.min.x..=self.max.x).contains(&t.x) && (self.min.y..=self.max.y).contains(&t.y)
     }
@@ -744,7 +729,7 @@ impl Level {
 fn clear(game: &mut Game) {
     let cars: Vec<EntityId> = game.world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(_))).map(|e| e.id).collect();
     for car in cars {
-        crate::car::simulation::park_at_home(&mut game.world, &mut game.intersections, &mut game.events, car);
+        crate::car::simulation::park_at_home(&mut game.world, &mut game.events, car);
     }
 }
 
@@ -761,7 +746,7 @@ mod tests {
             "....3....", ".........", ".........", ".........", "2.......1", ".........", ".........", ".........", "....4....",
         ]
         .join("\n");
-        let (mut level, world) = Level::build("cross", &text);
+        let (mut level, world) = Level::parse("cross", &text);
         let mut game = Game::new(world, 0, 1, Box::new(World::new));
         let at = |x: i32, y: i32| crate::protocol::Spot { at: GridCoord { x, y }, want: 0 };
         // 1 to 2 along the middle row (the map is read mirrored, 1 on the
@@ -773,7 +758,7 @@ mod tests {
         ] {
             for n in 2..=tiles.len() {
                 let stroke = crate::protocol::Stroke { id, tool: Tool::OneWay, road: false, tiles: tiles[..n].to_vec(), start: None };
-                crate::draw::draw(&mut game.world, &mut game.events, &mut game.intersections, 1, stroke, 0);
+                crate::draw::draw(&mut game.world, &mut game.events, 1, stroke, 0);
             }
         }
         let node = |x, y| game.world.road_node_at(GridCoord { x, y }).expect("the roads were not laid");
@@ -793,7 +778,7 @@ mod tests {
                     GameObject::Car(ref c) => {
                         let t = c.trip.as_ref()?;
                         let (a, b) = (t.route_positions.get(t.route_index.checked_sub(1)?)?, t.route_positions.get(t.route_index)?);
-                        let f = t.seg_fraction;
+                        let f = (t.progress - t.along[t.route_index - 1]) / t.segment_lengths[t.route_index].max(1e-9);
                         let p = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
                         ((p[0] - corner[0]).hypot(p[1] - corner[1]) < 0.2).then_some(e.id)
                     }
@@ -823,7 +808,7 @@ mod tests {
 ";
 
     fn play(text: &str) -> (Level, Game) {
-        let (level, world) = Level::build("t", text);
+        let (level, world) = Level::parse("t", text);
         let game = Game::new(world, 0, 1, Box::new(World::new));
         (level, game)
     }
@@ -838,8 +823,8 @@ mod tests {
     fn lay(game: &mut Game, path: &[(i32, i32)]) {
         for p in path.windows(2) {
             let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None, sides: None, road: false };
-            assert!(crate::game::may_step(&game.world, step), "{step:?} refused");
-            crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
+            assert!(crate::hand::may_step(&game.world, step), "{step:?} refused");
+            crate::hand::take_step(&mut game.world, &mut game.events, step, game.now);
         }
     }
 
@@ -877,22 +862,25 @@ mod tests {
     }
 
     /// Every level's own solve carries its traffic through a test without
-    /// jamming, at its par, and scores about a hundred.
+    /// jamming, at its par, and flows as its `@flow` says: a hundred is
+    /// what it scores. A change to how cars drive moves those figures, and
+    /// this says what to write in their place.
     #[test]
     fn every_level_is_solved_by_its_own_solve() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/levels");
         let mut names: Vec<_> = std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect();
         names.sort();
         assert!(!names.is_empty());
+        let mut moved = Vec::new();
         for path in names {
             let name = path.file_stem().unwrap().to_string_lossy().into_owned();
             let (mut level, mut game) = play(&std::fs::read_to_string(&path).unwrap());
-            if level.par.is_none() {
+            let Some((_, said)) = level.par else {
                 continue;
-            }
+            };
             for step in level.solve_steps(&game.world) {
-                assert!(crate::game::may_step(&game.world, step), "{name}: {step:?} refused by the level");
-                assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{name}: {step:?} refused by the world");
+                assert!(crate::hand::may_step(&game.world, step), "{name}: {step:?} refused by the level");
+                assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{name}: {step:?} refused by the world");
             }
             let s = level.state(&game);
             assert!(s.wants.iter().all(|w| w.joined), "{name}: the solve leaves a want with no road");
@@ -910,10 +898,12 @@ mod tests {
             }
             let s = level.state(&game);
             assert_eq!(s.phase, Phase::Done, "{name}: {} at {:?}", s.message, s.jam);
-            eprintln!("{name}: efficiency {:.1}, flow {:.2}, cost {}", s.efficiency, s.flow, s.cost);
-            assert!((s.efficiency - 100.0).abs() < 0.5, "{name}: its own solve scores {:.1}", s.efficiency);
-            assert!(s.par_flow.is_some_and(|f| f > 0.5), "{name}: its own solve flows at {:?}", s.par_flow);
+            assert!(s.flow > 0.5, "{name}: its own solve flows at {:.3}", s.flow);
+            if (s.flow - said).abs() >= 0.0005 {
+                moved.push(format!("{name}: @flow {:.3} (it says {said})", s.flow));
+            }
         }
+        assert!(moved.is_empty(), "the solves flow otherwise now:\n{}", moved.join("\n"));
     }
 
     /// An open level, with no solve of ours to prove it, is at least fair:
@@ -948,13 +938,13 @@ mod tests {
         let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/levels/08-over-and-under.txt")).unwrap();
         let (level, mut game) = play(&text);
         for step in level.solve_steps(&game.world) {
-            crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
+            crate::hand::take_step(&mut game.world, &mut game.events, step, game.now);
         }
         let written = Level::layout(&game.world);
         let (_, mut fresh) = play(&text);
         for step in &written {
-            assert!(crate::game::may_step(&fresh.world, *step));
-            assert!(crate::game::take_step(&mut fresh.world, &mut fresh.events, &mut fresh.intersections, *step, fresh.now), "{step:?}");
+            assert!(crate::hand::may_step(&fresh.world, *step));
+            assert!(crate::hand::take_step(&mut fresh.world, &mut fresh.events, *step, fresh.now), "{step:?}");
         }
         assert_eq!(Level::cost(&fresh.world), Level::cost(&game.world));
         assert_eq!(fresh.world.edges.len(), game.world.edges.len());
@@ -973,7 +963,7 @@ mod tests {
             let (mut level, mut game) = play(&format!("# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 {per_min}\n..........\n1........2\n..........\n"));
             for x in (1..=9).rev() {
                 let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None, sides: None, road: false };
-                assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+                assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{step:?}");
             }
             level.test(&mut game);
             let (mut both, mut watch) = (false, crate::replay::Watch::default());
@@ -1031,7 +1021,7 @@ mod tests {
     fn draw_road(game: &mut Game, tool: Tool, tiles: &[(i32, i32)]) {
         for w in tiles.windows(2) {
             let step = Build { tool, from: GridCoord { x: w[0].0, y: w[0].1 }, to: GridCoord { x: w[1].0, y: w[1].1 }, up: None, sides: None, road: false };
-            assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+            assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{step:?}");
         }
     }
 
@@ -1143,9 +1133,9 @@ mod tests {
     fn nothing_is_built_off_the_map_or_on_a_gate() {
         let (_, game) = play(CROSSING);
         let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None, sides: None, road: false };
-        assert!(!crate::game::may_step(&game.world, off));
+        assert!(!crate::hand::may_step(&game.world, off));
         let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None, sides: None, road: false };
-        assert!(!crate::game::may_step(&game.world, gate));
+        assert!(!crate::hand::may_step(&game.world, gate));
     }
 
     /// Priority is the hand's, whatever road it draws, a stretch at a
@@ -1160,7 +1150,7 @@ mod tests {
         };
         let step = |game: &mut Game, tool, x, priority| {
             let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, sides: None, road: priority };
-            assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+            assert!(crate::hand::take_step(&mut game.world, &mut game.events, step, game.now), "{step:?}");
         };
         for x in 0..9 {
             step(&mut game, Tool::OneWay, x, true);

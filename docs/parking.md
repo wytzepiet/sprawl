@@ -1,687 +1,164 @@
-# Parking: lots, spots, manoeuvres and reservations
+# Parking: drives, yards and kerb bays
 
-> **Direction, 2026-09-28: parking belongs to streets.** Not yet
-> specified or built; the sections below stand until it is. Every building
-> owning a lot is what scatters slabs across the map, and it is not how a
-> town parks. The direction (`look.md`):
->
-> - **Kerb bays** along every street that is not a through road, laid by
->   a path rule, at any angle or curve. A bay is a spot like any other: a
->   node hung off the street's edge, booked by a window.
-> - **Car parks and garages are placed buildings**, where the kerb runs
->   out: a surface car park, later a multi-storey on the tree.
-> - **A building keeps a yard only where work needs one**: a
->   warehouse's bays, a port's quay. Homes and shops park in public.
-> - **A trip ends at the nearest free spot within reach of the door**,
->   and the rest of the way is time on the trip. Nobody is drawn walking;
->   `game.md`'s "nobody walks" stands as "no walker is drawn", to be
->   written there when this is built.
-> - **A full kerb makes cars cruise**: circling for a space is traffic,
->   the restaurant with no room jams its own street, and the mayor's
->   answer is a car park round the corner.
-> - **What goes**: the driveway as a kind of road (a road ending on a
->   plot, one per building, the newest), lots, rings and their slabs.
->   The driveway went 2026-10-04: a building keeps its **door**, its tile
->   and the street tile beside it (`Building::door`); the street node is
->   where trips to it end, and the drive from there to the tile is its
->   lot's, drawn as road and gone with it. Drawing a road into a building
->   moves its door; painting over a road's dead end makes that its door.
->   A car park's layout is packed from its shape when it is built.
-> - **Driveways stay where a house leaves room** (2026-10-02, the
->   mayor): a house with open ground beside it parks its cars on a drive
->   down that side, as the town grid draws it (`look.md`); the middle of
->   a row parks at the kerb. Kerb parking is how dense towns park almost
->   everywhere, driveways how suburbs do; the neighbours decide which,
->   not a country. Enough by design: a house's two cars fit its drive or
->   its own frontage of kerb (two bays to a tile); flats outrun their
->   kerb, which is where a car park becomes the mayor's job; a shop's
->   visitors take its frontage and then the nearest bays round about.
->
-> Open: how far "within reach" is; whether a home's residents prefer the
-> bay by their own door; how cruising picks the next street.
-
-Changes of gear, 2026-10-02: a trip carries the stretches of its route
-driven backwards (`Trip::backing`, edges `[a, b)`), not only a tail, and
-the client drives each part as a vehicle steers (`driver.ts`). A house's
-car drives onto its driveway nose first, from the street, and backs out
-onto it; a lorry still backs into its dock. A kerb bay will be the same:
-a few nodes and a change of gear.
-
-Pulling out, 2026-10-06. Backing is a walking pace (`REVERSE_SPEED`,
-a fifth of a tile a second); it used to back out at lot speed and drive
-off at once, the turn of the wheel and the change of direction in one
-instant.
-
-Changes of gear, 2026-10-11. A vehicle stops on the node where its gear
-changes, stands there `CUSP_MS`, and pulls away the other way; a trip
-ends with a stop on its last node, not an arrival at speed. Each
-stretch between changes of gear is measured on its own, so a cusp is a
-point, not a rounded corner. The trip says where each cusp falls by its
-progress (`Trip::cusps`), where the vehicle stood (`leaves`) and where
-it will stand (`stands`), and the client's drive (`driver.ts`) fits each
-part to that, starts from the one and eases onto the other: no jump
-leaving, at a cusp, or parking. A lorry backs its box on a way planned
-from where it stands to its bay (`reverse`), the cab following its
-hitch; a dock's stop point is far enough past its mouth (`STOP`) that
-the box swings in in one sweep. A lorry moving from one dock of a yard
-to another drives it along the lane (`World::redock`), never out to the
-street and never in a jump. `bun run jolt` counts what still jumps. Where a lot's way out meets the street is a **give-way line**:
-the car waits at it until nobody is coming who could not stop for it
-(`gap_at`), then holds the street node (`World::pulling_out`) until its
-tail is clear, and anyone coming either way, or turning in, stops short
-of it. It joins the street's queues where it stands, ahead of whoever is
-still coming, not behind everyone on the run (`join_run`). Before, a car
-backed out blind, queued behind cars that were still behind it, and
-cars drove through each other at drives.
-
-Yards, 2026-10-24. A lorry no longer pulls up in the lane's middle
-and backs in square: it swings across the lane, away from its dock, as
-it pulls up (`SWING`, from short of the dock's mouth), and backs in from
-that angle round a wide arc, as a driver sets up a lorry to back; to a
-dock across the lane it pulls out and on, deeper, first. And a yard is
-one lorry moving at a time: one turning in or pulling out holds the
-yard's door with its street node (`World::stretch`), so one coming waits
-at the gate and one leaving waits in its dock, and two never meet in
-the lane head on or drive through one backing. A depot's lorries also
-went for the park's first box only, so a second lorry stood at home
-while boxes waited; each now takes the first box nobody else is after.
-
-Kerb bays, 2026-10-06. Everything but a house (its drive) and a depot,
-farm or port (its yard) parks at the kerb before it: on a street, not a
-through road, running straight past one of its tiles and straight on to
-the next node, two bays a tile, a quarter tile either side of the street
-node, where the dressing draws kerb cars (`KERB`). A bay is the
-building's it fronts, so they share out with no rule. A bay is driven
-along the lane on its side: the one three quarters past its entry node
-is pulled into, straightening on the kerb's line; the one a quarter
-past is parked in as a driver would, past it on the lane and backed in.
-Both leave forward for the node ahead, through the give-way line. A car
-coming the other way parks on the far kerb as a driver does on a quiet
-street: across the road into the bay, facing against the traffic on
-that side, by the same two manoeuvres from the other end of the stretch
-(the near one backed in from 0.7 past it, through 0.15 along the kerb,
-placed by test against `driver.ts`), and out forward the way it faces.
-A bay's booking says which way it was taken (`Window::side`). A car
-turning off the street holds the node it left it at until it is parked,
-as one pulling out does, and the street waits for it, both ways. Staff
-park in bays too, now that a workplace has some: an office of twelve
-fills its four by nine and leaves the rest at its door, which is what
-the next step is for. Not yet: visitors spilling to the neighbours'
-bays; and cruising when every bay near is taken.
-
-Square bays, 2026-10-06 (the mayor: perpendicular for everything but
-housing, and set back so they sit astride the street's tile and the
-building's). Flats keep the bays along the kerb; everything else parks
-nose in, square to the street, two bays a tile within its walls, 0.27 apart (a car and a door's swing; 2026-10-11), each 0.37 from the
-street's middle, its tail at the road's edge (`SQUARE`; 0.55 in the setback until 2026-10-11). A car turns
-square at the tightest a car turns (0.45) only by starting from the
-road's middle, so it swings out there, turns in round the arc and goes
-straight in at the last, from either way along the street; and backs
-out round the same arc into its lane and drives on, through the
-give-way line (`kerb_bays`, tested against `driver.ts`: in at about
-84°, a few degrees off square, no snap). An office of twelve parks
-five at its own frontage and the rest at its door.
-
-A building parks along as much kerb as it needs, not every side a street
-passes (2026-10-11): as many bays as its long side holds, on its door's
-side first, then on the sides with a street all along them, the fullest
-first, until it has them. So anything that parks at the kerb is placed
-only where a street runs all along one of its sides (`World::fit`,
-"No street along a whole side, for its parking"); a house parks on its
-drive and a yard in itself, and neither needs one.
-
-Turning in gives way too: a car turns off the street when nobody is
-moving toward it from the other way (`clear_to_turn_in`), and from the
-moment it leaves the lane holds its turn until it is parked; a car
-pulling out holds its until it is back in its lane. A kerb bay's turn
-holds every street node of the stretch it is turned across
-(`Trip::stretches`), and only the car at the head of its queue into the
-lot may take it. Every hold lapses after `PATIENCE` standing still, and
-is not taken again on the wake it lapsed. A car waiting to pull out is
-let out by a car standing in a queue short of the node, as drivers do;
-only one on the node, or moving and too near to stop, keeps it waiting.
-The season's lapses are one or two a month. Cost: the town simulates
-about a sixth slower (`how_fast_a_town_runs`), mostly the holds. A house's drive is already a
-perpendicular bay with a drive to it, and may become one of them.
-
-Status: specification, drafted 2026-09-06. §8 step 1 built the same day
-in its generic form: every building has a two-spot lot on its driveway
-(`world/lots.rs`), trips end in a spot and start from one, a parked car
-carries its pose on the wire, and the client draws nothing it is not told.
-The ring lot (§3.1), the plot laid out by its facing, the slab and the
-ring drawn, staff in spots, and a full lot refusing the trip, are
-built (2026-09-07), a visitor tap's slots are its lot's spots (§3.3), a
-claim on a junction lasts until the tail has cleared it (§4.2), spots
-carry windows and a full lot says when it frees (§5), and
-`/debug/lot/{id}` reads any lot (§7); cars park near their building's
-door, loosely (§5.2), and pins sit over buildings (2026-09-07). Lots
-fused along a frontage until 2026-09-09, when a lot became its
-building's own (§3.2), and §3.7 and §3.8 went with the fusing and the
-spawner: what is left of them is history, marked as such. Reverse is not
-needed until the warehouse gets its bays. Follows
-`services.md` (streets, driveways, call-outs) and `residents.md` (how a
-trip is chosen). `game.md` §People says parked cars sit in the building's
-spots; this is how.
-
----
+Status: built, as `server/src/world/lots.rs` says at its top. A house
+parks on its drive, a depot, a farm or a harbour keeps a yard, and
+everything else parks at the kerb before it. Not built: car parks where
+the kerb runs out (§8). The specification this grew from, of 2026-09-06
+(the ring lot, lots fusing along a frontage and spilling past their
+building, the aisle car park, the test lot, the build order), last stood
+whole at `53a9ca6`. Follows `residents.md` (how a trip is chosen);
+`game.md` §People says parked cars sit in the building's spots, and this
+is how.
 
 ## 1. The idea
 
-Four rules carry the whole thing.
+1. **A lot is road.** Its nodes have positions of their own, off the
+   grid, joined by edges cars drive like any other, hung off the street
+   node the building's door opens onto (`Building::door`). The queues,
+   the following and the giving way of the street work in the lot.
+2. **A spot is a node.** A trip ends in a spot and starts from one; the
+   server knows who stands where because that is where the trip ended,
+   and the client draws trips and never invents a spot. Nothing about a
+   lot is streamed: a parked car carries its pose, a moving one its route.
+3. **Reverse is a gear on a stretch of the route** (§6).
+4. **A reservation is a window on a spot** (§5).
 
-1. **A lot is road.** The spots and aisles of a plot are nodes and edges
-   of the same network cars already drive, hung off the street node the
-   building's door opens onto.
-   Nothing new moves; the queues, the following and the giving way that
-   work on the street work in the lot.
-2. **A spot is a node.** Parking is a trip whose destination is a spot.
-   The server knows who stands where because that is where the trip
-   ended. The client draws a trip; it never has to invent a spot.
-3. **Reverse is a gear on an edge.** An edge entered backwards is driven
-   like any other, slowly. Only the drawing and the right of way know.
-4. **A reservation is a window on a spot.** A trip books a spot from the
-   earliest it could arrive to when it plans to leave. What the resident
-   already knows about its own day is what makes the lot's throughput.
+A car that finds no place stops at the door, unseen.
 
-## 2. What exists: how a car gets down a street
+## 2. The drive
 
-The mechanics the lot inherits, as they are built today, so the rest of
-this document can say only what changes.
+A house parks its two cars on its drive, side by side: a car drives in
+nose first from the street and backs out onto it. The drive is the
+lot's, not a road: from the door's street node to the house's tile,
+drawn as road and gone with it (`SPOT_OUT`, `LANE`, and `DRIVE_OUT`,
+`DRIVE_LANE` in the client's `dressing.ts`). The driveway as a kind of
+road went 2026-10-04.
 
-- **Nodes and edges.** A road node is an entity on a grid tile. An edge is
-  a pair of adjacent nodes with a length and a queue of the cars on it, in
-  order (`world.edges`, `EdgeSegment { length, cars }`). A car is a point
-  on an edge with a nose and a tail of 0.175 tiles each, and it must keep
-  `MIN_GAP` behind the car ahead in the same queue.
-- **Runs.** Between two junctions the road is a *segment*: a run with
-  nothing joining it. Each run remembers how long cars took to pass it, a
-  blend of the last twenty or so, so a jam is remembered and forgotten at
-  the rate of traffic through it (`network.rs`, `Passage`).
-- **Pathfinding.** A* from run end to run end, cost in milliseconds: the
-  learned passage where there is one, free-flow at cruise speed where
-  there is not, and the crow's flight as the bound (`pathfinding.rs`).
-  Routes step over whole corridors, not tile by tile.
-- **Giving way.** A junction where paths can actually cross has a
-  first-come queue. A car approaching registers its entry and exit arms;
-  it is let through when its path does not cross anyone already passing,
-  found by sweeping counter-clockwise from its entry arm, which is the
-  right-hand rule. Without passage it must stop `INTERSECTION_STOP_MARGIN`
-  short of the node. Its claim lasts until its tail is through the node,
-  and lapses if it holds it standing still for ten seconds (§9)
-  (`intersection/mod.rs`, `simulation.rs`).
-- **Trips.** A trip is born at a lot's node with a route, a free-flow
-  ETA fixed at departure, and the physics to extrapolate from; it dies on
-  arrival, when the car is placed on the building and the driver steps out
-  (`spawn.rs`, `park_car`). The client draws every car from its trip,
-  offset onto the right-hand lane, corners rounded.
-- **Choosing a trip.** A resident scores each option by what it serves
-  over the time from now until the visit ends. The journey is estimated
-  as distance over cruise speed, times a detour factor, times a city-wide
-  delay learned from every arrival. Departure is set so as to arrive as
-  the tap opens; the resident waits at home until then, which is already
-  the shape a full lot needs (`resident.rs`, `evaluate`).
+## 3. The yard
 
-Two things are missing for a lot and are all that §3–4 add: nodes off
-the grid, and a claim on a junction that lasts for the vehicle's length.
+A depot, a farm and a harbour keep a yard, laid alike (`park`): a lane
+straight in from a gate in the middle of its front, and a row of docks
+either side, a docked lorry's cab facing the lane and its box behind it.
+A lorry drives up the lane and, from short of a dock's mouth, swings
+across it away from the dock (`SWING`), pulling up `PAST` beyond the
+mouth; from that angle it backs in round a wide arc, as a driver sets up
+a lorry to back, the cab following its hitch on a way planned from where
+it stands (`reverse`); it leaves forward, up the lane to the gate. A
+lorry takes a dock, its own depot's included, and anything else at a
+yard stops at the door; with every dock taken, the lorry's trip waits
+and tries again. One moving from dock to dock drives the lane
+(`World::redock`), never out to the street; to the dock across the lane
+it pulls out deeper first and swings back. A harbour's trailer park is
+its docks.
 
-## 3. The lot as a piece of road
+A yard is one lorry moving at a time: one turning in or pulling out holds
+the yard's door with its street node (`World::stretch`, §7), so one
+coming waits at the gate and one leaving waits in its dock, and two never
+meet in the lane head on or drive through one backing (2026-10-24).
 
-Decided 2026-09-07 over drawings at the game's scale (a tile is 12 m, a
-car 4.2 by 2.2, a one-way lane 2.4). The ring lot won; what follows is
-its geometry and the rules around it.
+## 4. Kerb bays
 
-### 3.1 The ring (replaced by §3.9, 2026-10-03)
+Everything else parks at the kerb before it (`kerb_bays`), on streets,
+not through roads. Flats park along the kerb (`KERB`, `ALONG_PITCH`);
+everything else nose in, square to the street, its tail at the road's
+edge (`SQUARE`, `SQUARE_PITCH`: a car and a door's swing), both within
+the building's walls (`WALL_INSET`). A building takes as many bays as its
+long side holds: on its door's side first, then on the sides with a
+street all along them, the fullest first. So it is placed only where a
+street runs all along one of its sides (`World::fit`: "No street along a
+whole side, for its parking"). A bay is the building's it fronts, so bays
+share out with no rule; the client paves the same (`town/surface.ts`).
 
-A lot tile carries a one-way ring of lane hugging its edge, cars in the
-island inside it, each spot a pull-through: in from the lane on the
-street side, straight across the island, out onto the lane on the far
-side. Nothing reverses, nothing waits for a car parking, and a car that
-finds no spot drives round and out. The driveway joins the ring wherever
-the street is, on any side, and a ring takes any number of entrances: a
-road drawn into a lot tile is one more, not the old one moved. The loop
-turns the way that puts the most front lane ahead of its entrances, a
-car takes a free spot near its building's door (§5.2), and it leaves by
-whichever entrance is nearest ahead.
-
-The island of a one-tile ring is 0.4 wide: two cars across it. Wider is
-better: a ring w tiles wide holds `floor((w - 0.6) / 0.2)` cars, so 2, 7,
-12, 17, 22 for one to five tiles. Rings stay one deep: a bigger building
-gets a wider ring, never a deeper one, so there is one drawing and one
-flow for every lot. A building two tiles deep gets its lot beside it
-instead of in front (§3.8), and that lot is a ring with a lane through
-the middle. Two shapes, both rings.
-
-### 3.2 Lots do not fuse (2026-09-09)
-
-A lot is its building's own, as wide as its kind says — two tiles at
-least, so a ring always fits alone — with as many entrances as roads reach
-it. Lots along a frontage used to fuse into one run and spill onto free
-land beside them; that machinery is gone, on both sides. The rest of this
-section is history.
-
-A lot was a run of lot tiles along one frontage, not a building's own.
-Every kind that has a lot arrives with its lot tile on the street side,
-and when two lot tiles touch they are one lot: one slab, one ring, an
-entrance per building, spots shared. Two shops together park seven,
-four in a row seventeen. Nobody places the strip mall; it grows out of
-shops arriving side by side (§3.7), and a long straight street grows
-better ones than a tangle. That is the mayor's lever, and it is the
-thing the mayor already does. Extending a lot by hand is a later
-purchase, not a requirement.
-
-A ring is never one tile wide. A one-tile ring holds two cars, which is
-a driveway drawn expensively, and it is not allowed to exist: a small
-building lands only where its lot reaches two tiles, by joining a
-neighbour's lot or by spilling (§3.8).
-
-### 3.3 The lot decides the slots
-
-Every visitor came by car, so a building serves at once exactly as many
-as can park. Slots are a fact about the asphalt, not a number in a row: a
-visitor tap's slots are the lot's spots (shared taps share them; the
-Fuel tap's are its pump spots, which are pull-throughs with a pump). A
-busier shop is a shop with a wider lot or a neighbour. A lot is bigger
-than its building while the land beside it is free (§3.8), and shrinks
-to the building's width as neighbours fill in.
-
-Staff park like anyone else, in a spot, and a workplace whose lot is
-full turns its own workers away for the morning: nobody drives into a
-building. Twelve staff entering one ring at eight queue for twenty
-seconds, honestly, at lot speed one behind the other; what that queue
-must not do is teach the whole town that its streets are slow, so a
-trip is costed by its route, from the passage the run network
-remembers, and the city-wide delay is gone (2026-09-07). A facility's
-own vehicles still stop at a door node under the building's front,
-unseen, and lorries unload there too until they unload in the strip
-between the back lane and
-the building, a bay entered from the lane and left onto it, when the run
-is as long as the lorry; at a lone shop they stop on the back lane and
-the island waits, or on the street outside, which blocks a lane the
-honest way.
-
-| Kind | Building | Lot | Visitors at once |
-|---|---|---|---|
-| House | 1×1 | driveway | its own 2 |
-| Shop, bar, restaurant, gas station | 1×1 | 1×1, spills to 3, fuses | 12 alone in the open, 7 hemmed in, shared in a row |
-| Apartment | 2×1 | 2×1, spills, fuses | 7 homes, more with room |
-| Workshop | 1×1 | 1×1, spills, fuses | 4 staff |
-| Office, factory | 2×1 | 2×1, spills, fuses | 12 staff |
-| Supermarket | 2×2 | 2×2 beside it, shared (§3.8) | about 14, shared |
-| Warehouse | 2×1 | 2×2 yard, four docks | 2 lorries |
-
-A driveway is for a place where cars live, a ring is for everywhere
-else, workplaces included: staff parking unseen hid exactly the
-pressure a workplace causes, and a full office lot at nine in the
-morning is something the mayor should see. Staff numbers are sized to
-the lot (2026-09-07): a one-wide lot parks seven hemmed in and twelve
-in the open, a two-wide one seven to seventeen, and staff take a third
-at most, so the rows say two at a shop, three at a restaurant, four at
-a workshop, twelve at an office or factory, six at a supermarket or
-warehouse.
-
-### 3.4 Drawn as one unit
-
-The plot is one slab of asphalt, 0.10 in from the plot's edge with the
-street's kerb round it, corners rounded to 0.13, the building standing on
-the back of it and the ring on the front. Box buildings get a corner
-radius of 0.08, which is what keeps a corner out from under a diagonal
-road's kerb; the gabled house and the sawtooth factory stay square. A
-road that passes a slab's corner draws over it. The strip of land between
-slab and plot edge is the map's green; the strip between two stacked
-rings can be too, and an island end can hold a tree. No rule forbids a
-diagonal road cutting a plot's corner; the padding and the radius absorb
-it.
-
-### 3.5 Lot nodes on the server
-
-Lot nodes are server-only, made when a run is (re)computed and dropped
-when it goes. A lot node is an entry in a side table on the world with
-an id from the entity counter, so a route is one `Vec<EntityId>`
-throughout, and edges into the lot are ordinary `world.edges` entries.
-They are not in the run network: a route search ends at the street node
-the door opens onto and the lot path is appended (§3.6). The client holds the same
-generator in TypeScript and draws the slab, ring and spot markings from
-a building's lot rectangle; nothing about a lot is streamed.
-
-### 3.6 Routing
-
-A route to a spot is the street route to the door's street node with the
-path to the spot appended: along the lane to the spot's entry, through
-the spot. A route from a spot is the spot's exit lane round to the
-driveway and the street route on. The trip's length and free-flow ETA
-include the ring, so a spot at the far end is honestly a little later.
-A car with no spot drives the ring and leaves by the driveway.
-
-Choosing *which* spot is §5. Routing takes a spot as given.
-
-### 3.7 Where buildings land (history, 2026-09-09)
-
-Both halves of this section are gone: the site preference belonged to the
-spawner (`shelved.md`), and the fusing it counted on went with §3.2. The
-mayor picks the site now, and a lot is its building's own. What follows is
-the record.
-
-The spawner preferred a site beside a building of the same depth on the
-same street: houses beside houses, lots beside lots. That is what makes
-strips. The first shop on a street claims its frontage, the next shop
-lands next to it and the rings fuse, and a bar and a block of flats
-after that, all on one long lot, without anyone laying out plots or
-fixing how long a strip is. It also ends the dead land behind a house
-wedged between two-deep plots, because a street side keeps one depth,
-which is how streets look. A fresh frontage is opened only when no
-existing one has room. A gap of one tile between two lots is spill for
-both, and they fuse across it.
-
-The same rule applies to a building placed by hand: a shop dropped
-beside a lot with room joins it.
-
-### 3.8 Lots grow past their building (history, 2026-09-09)
-
-Never built, and reversed by §3.2 on 2026-09-09: the spill and the fusing
-it grows by are gone, and every kind with a lot carries one at least two
-tiles wide instead, so a ring always fits alone. What follows is the
-record.
-
-A ring spills one free tile past each end. A building brings a lot as
-wide as itself, and if the frontage tile beyond either end is empty
-roaded land, the ring extends over it. A shop by itself on the edge of
-town has a three-tile lot and twelve spots; the same shop between two
-neighbours has its own tile and a share of theirs. When a neighbour
-lands on a spill tile the spill is gone and the two rings fuse; when a
-neighbour goes, the lot grows back. Nothing is reserved and nothing
-waits, and every footprint uses the same rule.
-
-Spill tiles are open only to buildings that would share the ring. A
-house or a workplace cannot land there, because it would cut the lot to
-one tile, and a ring is never one tile wide (§3.2). That is the one rule
-that keeps small commerce from being boxed down to two spots, and it is
-the strip idea without a template: the first shop claims a frontage,
-the frontage stays open to the next shop, and houses go elsewhere.
-
-Buildings two tiles deep, the supermarket first, get their lot beside
-them rather than in front, so the block stays two deep. A two-by-two lot
-is a ring with a lane through the middle and spots on both sides, about
-fourteen, entrance from the street. The next two-deep building can land
-on the far side of that lot and share it. The row says where a kind's
-lot goes, in front or beside, and lot tiles are open to any building
-whose row would put its lot on the same tiles.
-
-Once a lot's tiles depend on neighbours and free land rather than on the
-row, the lot is its own thing: a run with its own frontage, the
-building just the building. Until then the plot is building plus lot
-and the client draws the building on the back of it; the pin sits over
-the building either way.
-
-### 3.9 The car park: aisles, not a ring (2026-10-03)
-
-The ring was deleted on 2026-10-04, with the plot it stood in front of
-(`look.md` §Into the game). Until a car park is laid as aisles, every
-building parks two on its drive, a depot keeps its yard, and a car that
-finds no spot stops at the door, unseen; a visitor's tap at a kind that
-had a lot seats seven at once, what its lot held (`blueprint::seats`).
-
-The ring is replaced. One tile deep it cannot be driven: its corners turn
-at 0.2 and a car turns no tighter than 0.45, and every lot that turns a
-car round inside one tile is the same. Drawn out at the game's scale in
-`sketches/car-park*.png` (`bun sketches/car-park.ts`), bays placed by
-test:
-
-- **An aisle** is a straight one-way lane 0.22 wide with bays at 60° on
-  both sides, 0.2 across: a car drives in nose first and backs out the
-  way it was going. Aisles run along the lot's long side, the bays along
-  them the whole length of the lot; a lane that only leads to aisles has
-  none.
-- **Two ways out, or no lot.** In at one end and out at the other, on
-  its street, a side street or a back street. A lot that cannot have two
-  (one tile, a street that stops short) is not laid; a building that
-  small parks on the kerb.
-- **Bigger lots branch and gather**: one way in, a feeder branching into
-  an aisle a row, the aisles gathering into one way out. A gathering is
-  a junction (`intersection/`), and gives way as one.
-- About 7 cars a tile, against the ring's 3.5: two tiles hold 12, three
-  21, and a lot through to a back street 8 a tile with no turn at all.
-
-## 4. Driving in the lot
-
-### 4.1 Aisles
-
-An aisle edge is an edge with a speed limit, the way a corner already
-imposes one: the obstacle scan emits `SpeedLimit` for the lot's edges at
-lot speed, a third of cruise. Cars follow each other along it with the
-same gap rule as the street. A car heading for a spot and a car leaving
-one share the aisle in whichever order they got there.
-
-### 4.2 Giving way in the lot, and the claim by length
-
-Where a spot's edge meets the aisle is a node with more than two arms, so
-it is a junction, so the existing first-come queue with the right-hand
-sweep arbitrates it. A car pulling out of a spot registers its entry and
-exit arms and waits for the aisle traffic already passing; a car on the
-aisle waits for the one already pulling out. No new rule.
-
-One change, and it is the one that makes backing up honest: **a claim on
-a junction lasts until the vehicle's tail has cleared it**, not until its
-route index has passed. Today a car is a point and the claim is dropped
-at the node, which is fine at street speed and wrong for a vehicle
-crawling through a node sideways for several seconds. The clearing test
-becomes `progress > node_dist + tail`, where a car's tail is 0.175 and a
-truck's includes its trailer. That applies to street junctions too, and
-is the correct rule there as well; it makes a slow car through a junction
-block the crossing traffic for exactly as long as it is in the way.
-
-### 4.2b The yard
-
-A depot's lot is a yard, not a ring (built 2026-09-07, drawn first at
-https://claude.ai/code/artifact/d34c0f65-2d77-45f4-80da-1f53afac82e6).
-The warehouse's lot is two tiles wide and two deep. A two-way lane runs
-along the street side from the one driveway; against the building's
-wall stand the docks, 0.3 wide with a margin of 0.4 at either end, four
-across two tiles, each a lorry long, numbered on the slab where the
-lorry stands so a docked lorry covers its own number. A lorry drives in
-along the lane past its bay to a stop point half a lorry beyond it,
-then backs in: the last two edges of its way in, back to the mouth and
-into the dock, are driven in reverse at half lot speed, and it leaves
-forward. Every bay is entered from the driveway's side, so the frame is
-mirrored when the driveway is at the right end. A yard fuses with
-nobody and spills nowhere. A lorry takes a dock, its own depot's
-included; anything else at a yard stops at the door, since a yard has
-no car spots. The client draws the backing swing from a table: the
-pull-out from the dock driven forward with the trailer following on
-the hitch, played backwards, blended over its first fifth from how the
-trailer arrived.
-
-### 4.3 Reverse gear
-
-An edge whose table entry says `Reverse` is driven like any edge, at a
-crawl (a fraction of lot speed), and:
-
-- the client draws the vehicle facing against the edge's direction;
-- the vehicle's claim on the junction at the edge's start is taken before
-  it begins, since it is the aisle it is backing out of or across, and
-  held for the whole manoeuvre by the rule in §4.2;
-- at that junction it has right of way: a reversing vehicle is slow and
-  committed, and the sweep is skipped in its favour. Everyone on the
-  aisle waits, which is the thing you asked for.
-
-A truck arriving at a warehouse drives the aisle forward, past its bay,
-to the bend beyond it, then takes the bay's edge in reverse. Leaving, it
-takes the bay's edge forward and is on the aisle facing out. The table
-says both: the bay hangs off the far bend, and its edge is reverse gear.
-
-### 4.4 The trailer
-
-The simulation never sees a trailer except as length. On the client, a
-truck with a trailer is a second body: its heading is the direction from
-its axle to the hitch on the tractor, and its axle sits one trailer
-length behind the hitch along that heading, updated per frame. Forward,
-that follower rule is stable and draws the right curve. In reverse, the
-same pose is a function of where the tractor is along the bay edge,
-whichever way it is moving; walk the tractor forward along the edge once
-with the follower rule and keep the poses as a table per bay edge. Backing
-in is the drive-out played backwards, which is what it looks like in
-life.
+A square bay is turned into at the tightest a car turns (0.45) from the
+road's middle, and backed out round the same arc. A car coming the other
+way parks on the far kerb as on a quiet street, across the road, facing
+against the traffic there, and leaves forward the way it faces; its
+booking says which way it took the bay (`Window::side`). Staff park in
+bays too, and what the bays do not hold stops at the door. A visitor's
+tap at a kind without vehicles seats seven at once (`blueprint::seats`).
 
 ## 5. Reservations
 
-### 5.1 Windows
+A spot holds windows, `(from, to, car)`, sorted. A trip books one when
+it starts, from its free-flow ETA, the earliest it could be there, to
+the visit's planned leave and `SLACK`: a spot clear for the whole
+window, near the door but loosely, each free spot's distance stretched
+by a draw per visit, so a building's cars bunch in front of it without
+filling like a queue. A car standing in a spot holds it until it goes,
+and a resident who stays restates `to` (`restate`). A spot found still
+taken on arrival is squeezed to the door, and counted. `/debug/lot/{id}`
+reads any lot, its windows and its counts (`refused`, `squeezed`). No
+window survives a save; every resident re-plans on load. The berth of a
+harbour is queued for the same way (`shipping.md`).
 
-A spot holds windows: `(from, to, car)`, sorted, past ones pruned. A car
-needs one window on one spot for its visit, and the visit is known at
-decision time: it is the option's arrival and leave (`Verdict::Go`
-carries both).
+## 6. Changes of gear
 
-- `from` is the **free-flow ETA**: the earliest the car could be there.
-  Nothing is reserved before that, since the car cannot be there before
-  it, and the spot is someone else's until then.
-- `to` is the option's **leave**, plus a little slack for the lot itself.
+A trip carries the stretches of its route driven backwards
+(`Trip::backing`), and where each change of gear falls (`Trip::cusps`):
+a vehicle stops on the node where its gear changes, stands `CUSP_MS`,
+and pulls away the other way, and a trip ends with a stop on its last
+node, not an arrival at speed. Backing is a walking pace
+(`REVERSE_SPEED`). The client's drive (`driver.ts`) fits each part
+between cusps from where the vehicle stood to where it will stand, with
+no jump leaving, at a cusp or parking; `bun run jolt` counts what still
+jumps.
 
-The window is booked when the trip starts, not when the option is scored;
-scoring is speculative and happens at every wake. Between the two someone
-else may have taken it, in which case `start_trip` fails the way it fails
-for a blocked driveway now, and the resident re-decides at once. The
-window is released when the car leaves the spot, and trimmed to now.
+## 7. Giving way at a lot
 
-### 5.2 Choosing a spot and a time
+Where a lot's way out meets the street is a **give-way line**: the car
+waits there until nobody is coming who could not stop for it (`gap_at`),
+then holds the street node until its tail is clear, and joins the
+street's queues where it stands, ahead of whoever is still coming
+(`join_run`). A car turns in when nobody is moving toward it from the
+other way (`clear_to_turn_in`) and holds its turn until it is parked; a
+kerb bay's turn holds every street node of the stretch it crosses, and
+a dock's the yard's door (`Trip::stretches`), and only the car at the head of its queue into the
+lot may take it. A car standing in a queue short of the node lets one
+out, as drivers do. Every hold lapses after `PATIENCE` standing still
+(§9). The holds cost the town about a sixth of its speed
+(`how_fast_a_town_runs`).
 
-Given a lot and a visit `[eta, leave]`, in order:
+## 8. Where the kerb runs out
 
-1. A spot with no window overlapping the visit, near the building's
-   door but not strictly: each free spot's distance to the door is
-   stretched by up to a few spots' worth, drawn per visit. The cars of
-   one building bunch in front of it, so a shared lot still says who is
-   visiting whom, without filling like a queue. Spot choice is the
-   server's; the client draws what it is told.
-2. Otherwise, the earliest `t > eta` at which some spot is clear for
-   `[t, t + (leave - eta)]`, over all spots. That is a merge over sorted
-   windows, tens of entries, done once per option scored.
+Direction, 2026-09-28, not built. **Car parks and garages are placed
+buildings**: a surface car park, later a multi-storey, for the flats
+that outrun their kerb and the shop whose visitors do. Laid as aisles,
+not a ring (a ring one tile deep turns at 0.2, and a car turns no
+tighter than 0.45): one-way aisles with bays at 60° both sides, in at
+one end and out at the other, about seven cars a tile; drawn at the
+game's scale in `sketches/car-park*` at `53a9ca6`. With it, a trip ends
+at the nearest free spot within reach of the door, the rest of the way
+time on the trip; a full kerb makes cars cruise, and the answer is a car
+park round the corner. Open: how far "within reach" is, whether a
+resident prefers the bay by their own door, and how cruising picks the
+next street.
 
-Case 2 is the throughput: the car does not need the lot to be empty now,
-only to have a gap starting when it would arrive, and windows a little
-into the future are exactly what the resident's own plan provides. The
-delay `t - eta` enters the option as wait, the same as waiting for a tap
-to open: `evaluate` takes `entry = max(opening, t)`, departure is set so
-as to arrive at `t`, and the resident waits at home. A full lot makes an
-option worse, not impossible, and a resident with a better option
-elsewhere takes it. That is the choice the mayor should see in the
-numbers: a lot too small shows as visits going elsewhere.
+## 9. Gridlock between drives
 
-### 5.3 Plans are plans
+**Found 2026-09-10, curbed 2026-09-11.** With the offices' cars on the
+street the season town's one street locked up on its third day and
+stayed locked. Two driveway junctions two tiles apart each held a car
+whose tail was still in the box because the car ahead stood at the other
+junction's stop line, a tile on; one waited to turn across the first
+box, the other was queued behind a car pulling out of a lot that
+conflicted with the second box's holder. Every car in a box had entered
+it without room to leave.
 
-A window is a claim on the future, and the future slips. The rules that
-keep it honest are few:
+What curbs it is what a driver does: **a claim held by a car that is
+not moving lapses after ten seconds** (`intersection::PATIENCE`), at the
+line or with its tail in the box, and the car queues again at the back;
+a car that has lost passage at a junction holds nothing beyond it, and a
+car that has left one holds nothing there. No claim can then outlive
+whatever is blocking it, so no cycle of claims can hold. The cost is
+honesty for a second at a time: a car turns through a box where
+another's tail still stands. The gauge is lapses, printed by `season`;
+a climb in it is the street model asking for the rest.
 
-- **Occupancy is truth.** The car in the spot has it, whatever the
-  windows say.
-- **Late arrival extends.** A car that arrives after `from` keeps its
-  spot until it actually leaves; its window's `to` is moved when the
-  resident's leave moves. The resident already re-decides on every wake,
-  and each decision that keeps them there restates `to`.
-- **A taken spot on arrival is reassigned.** A car whose booked spot is
-  occupied when it pulls in takes any spot free at that moment. If there
-  is none, it is squeezed to the door, unseen, and the lot counts it:
-  `squeezed` on `/debug/lot/{id}`. It should be rare, since it needs a
-  plan to slip by more than the slack, and the count says when it is not.
-
-No window survives a save. Occupancy is derived from where cars stand,
-and every resident re-plans on load.
-
-### 5.4 Spots are slots
-
-A tap's slots are the lot's spots (§3.3), so a window on a spot is also a
-place at the tap: booking the one books the other, and a full lot and a
-full shop are the same fact.
-
-### 5.5 Trucks
-
-A call-out's truck books a bay the same way: a call is answered with a
-trip, and the trip's destination is a bay whose window starts at the
-free-flow ETA. A depot with every bay booked answers later, which is the
-dispatch time slipping, which is what a mayor who under-built the depot
-should see.
-
-## 6. What the player sees
-
-- Cars stand in spots, facing the way the table says, so who is home and
-  how busy a shop is reads from the lot (`game.md`).
-- A full lot: the counter of visits turned away or delayed, on the
-  inspect panel when it exists, and before that on `/debug/lot/{id}`.
-- Cars queuing in an aisle for a spot: rare, and the sign that plans are
-  slipping, which means traffic.
-- Trucks swinging into bays.
-
-Lots are part of the blueprint. Whether a lot can be enlarged, or a
-separate lot placed as a service, is a later question; the design does
-not care where the spot table came from.
-
-## 7. The test lot
-
-There was one: a three-wide pavilion that was all lot, selling fuel
-and the best time off in town so that cars would come, placed by hand
-to watch the ring and the booking windows on something real. Every
-visited kind has a lot now, so it was deleted (2026-09-07).
-`/debug/lot/{id}` stays: it reads any building's lot.
-
-## 8. Build order
-
-1. **Lot nodes and trips to spots.** Lot nodes on the world; routes
-   extended into the lot; `park_car` at a spot; the client draws cars from
-   trips and poses. First-come spot choice, no windows. *Built* with one
-   generic lot for every row: two spots on the driveway lanes, a car
-   driving in past the driveway node and turning to come out nose first.
-   A lot that is full swallows the car: parked, with no pose, unseen.
-   Then lot tiles on the rows, the ring generator on both sides, the slab
-   drawn and slots from spots, all built by 2026-09-07; the runs that fuse
-   went with §3.2. *Playable:* cars in spots everywhere.
-2. **Giving way by length, and reverse.** The claim held until the tail
-   clears; lot speed; reverse gear with priority; the client flips the
-   heading. Warehouse bays. *Playable:* a truck backs into a bay while a
-   car waits.
-3. **Windows.** Booking at departure, the merge in `evaluate`, release
-   and reassignment. *Playable:* a busy shop whose visitors wait at home
-   for a spot instead of circling, and the numbers to show it.
-4. **The test lot** (since deleted) and the trailer drawing.
-
-Steps 5 and 6 were §3.7 and §3.8; both are history (see the sections).
-7. **Side lots** for two-deep buildings, and the ring with a lane
-   through the middle.
-
-Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
-
-## 9. Open
-
-- **Gridlock between driveways (2026-09-10), curbed 2026-09-11.** With
-  the offices' cars on the street (`economy.md` §12.5) the season town's
-  one street locked up on its third day and stayed locked. Two driveway
-  junctions two tiles apart each held a car whose tail was still in the
-  box because the car ahead stood at the other junction's stop line, a
-  tile on; one waited to turn across the first box, the other was queued
-  behind a car pulling out of a lot that conflicted with the second
-  box's holder. Every car in a box had entered it without room to leave.
-  What curbs it is what a driver does: **a claim held by a car that is
-  not moving lapses after ten seconds** (`intersection::PATIENCE`), at
-  the line or with its tail in the box, and the car queues again at the
-  back; a car that has lost passage at a junction holds nothing beyond
-  it, and a car that has left one holds nothing there. No claim can then
-  outlive whatever is blocking it, so no cycle of claims can hold. The
-  cost is honesty for a second at a time: a car turns through a box
-  where another's tail still stands. The gauge is lapses a day, printed
-  by `season`: seventeen in a whole season of the full town, and about
-  thirty-five a day in the bedroom town and the job centre, whose every
-  resident uses one street. A climb in that number is the street model
-  asking for the rest.
-- **The rest.** The rule with a referent is the box junction — no entry
-  without a clear exit — and as a grant-time check of room on the road
-  beyond it cleared the cycle above; but it needs the edge queues to be
-  in physical order, and a re-planned trip, a car pulling out of a spot
-  into a lane, and the order cars happen to wake all put a car behind
-  one that registered later, which the reservation then turns into a new
-  deadlock. So: queues ordered by position, or §4.2's giving way by
-  length, then the box rule. And driveways as give-way lines rather than
-  junctions — through traffic never claims one, a car turning in or out
-  yields to what is coming — which would also let runs span whole
-  streets for the search and for `stretch_end`. The season guard
-  (`game_loop`, `season`: nobody a day late) judges all of it.
-  Built 2026-10-06 of this: a lot's way out is a give-way line, and a
-  car joins a queue where it stands (top of this document). A car
-  turning *in* does not yet give way to oncoming traffic; it only stops
-  for one pulling out.
+The rest is the box junction, no entry without a clear exit. As a
+grant-time check of room on the road beyond, it cleared the cycle above,
+but it needs the edge queues in physical order, and a re-planned trip, a
+car pulling out into a lane and the order cars happen to wake all put a
+car behind one that registered later, which the reservation turns into
+a new deadlock. So: queues ordered by position first, then the box rule.
+Of that, the give-way lines and joining a queue where a car stands are
+built (§7).

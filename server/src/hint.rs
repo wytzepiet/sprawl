@@ -1,6 +1,6 @@
 //! Where the hand may go, as the game sees it: what the brush shows before
 //! it acts (`Ask`), answered by the same rules that refuse it
-//! (`game::may_step`, `draw::plan`, `World::fit`), so the dots and the
+//! (`hand::may_step`, `draw::plan`, `World::fit`), so the dots and the
 //! world never part. The client asks as the view moves, as a drag goes on,
 //! and as a building is held; it waits for the answer.
 
@@ -42,7 +42,7 @@ fn starts_at(world: &World, hand: Holding, at: GridCoord) -> bool {
         Holding::Tool { tool: Tool::Light, .. } => world.nodes_on(at).into_iter().any(|(_, id)| world.is_intersection(id)),
         // What a tap takes, or a drag cuts.
         Holding::Tool { tool: Tool::Demolish, .. } => {
-            let tap = |h: u8, side| crate::game::may_step(world, Build { tool: Tool::Demolish, from: at, to: at, up: Some([h, h]), sides: Some([side, side]), road: false });
+            let tap = |h: u8, side| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to: at, up: Some([h, h]), sides: Some([side, side]), road: false });
             tap(0, crate::world::decks::MIDDLE)
                 || world.nodes_on(at).into_iter().any(|(h, id)| {
                     let stand = Stand { h, side: world.side_of(id) };
@@ -74,7 +74,7 @@ fn erase_from(world: &World, at: GridCoord, stand: Stand) -> Vec<Option<Stand>> 
                 .into_iter()
                 .filter(|&(_, id)| world.edges.contains_key(&(here, id)) || world.edges.contains_key(&(id, here)))
                 .map(|(h, id)| Stand { h, side: world.side_of(id) })
-                .filter(|s| crate::game::may_step(world, Build { tool: Tool::Demolish, from: at, to, up: Some([stand.h, s.h]), sides: Some([stand.side, s.side]), road: false }))
+                .filter(|s| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to, up: Some([stand.h, s.h]), sides: Some([stand.side, s.side]), road: false }))
                 .min_by_key(|s| s.h.abs_diff(stand.h))
         })
         .collect()
@@ -91,14 +91,7 @@ mod tests {
 
     /// Grass, and a street along y = 0.
     fn street() -> World {
-        let mut world = World::new();
-        for y in -6..6 {
-            for x in -6..20 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(-6..20).map(|x| at(x, 0)).collect::<Vec<_>>());
-        world
+        World::meadow(-6..20, -6..6).street(-6..20)
     }
 
     fn area(x0: i32, y0: i32, x1: i32, y1: i32) -> Area {
@@ -188,12 +181,7 @@ mod bench {
     #[test]
     #[ignore]
     fn starts_over_a_view() {
-        let mut world = World::new();
-        for y in -40..40 {
-            for x in -60..60 {
-                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
-            }
-        }
+        let mut world = World::meadow(-60..60, -40..40);
         for k in -5..5 {
             world.place_road_path(&(-60..60).map(|x| GridCoord { x, y: k * 8 }).collect::<Vec<_>>());
             world.place_road_path(&(-40..40).map(|y| GridCoord { x: k * 12, y }).collect::<Vec<_>>());

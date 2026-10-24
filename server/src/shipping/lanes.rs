@@ -336,14 +336,9 @@ impl Lanes {
         self.junctions.get(&self.index(x, y)?).copied()
     }
 
-    /// Tiles with a lane: one-way, and junctions.
-    pub fn tiles(&self) -> (usize, usize) {
-        let lanes = self.marks.iter().filter(|&&m| m != 0).count();
-        (lanes - self.junctions.len(), self.junctions.len())
-    }
-
     /// The narrow water, tiles shared one way at a time, and how close
     /// each is to land.
+    #[cfg(test)]
     pub fn two_way(&self, water: &Water) -> Vec<(i32, i32, u8)> {
         (0..self.marks.len())
             .filter(|&i| Self::kind(self.marks[i]) == Some(Kind::TwoWay))
@@ -387,10 +382,6 @@ mod tests {
     use crate::protocol::GridCoord;
     use crate::shipping::water::{Berth, End};
 
-    pub fn water(rows: &[String]) -> Water {
-        Water::new(0, 0, rows[0].len() as i32, rows.len() as i32, |x, y| rows[y as usize].as_bytes()[x as usize] != b'.')
-    }
-
     fn rows(spec: &[(&str, usize)]) -> Vec<String> {
         spec.iter().flat_map(|&(r, n)| std::iter::repeat_n(r.to_string(), n)).collect()
     }
@@ -400,7 +391,7 @@ mod tests {
     /// approach is shared.
     #[test]
     fn the_way_back_is_its_own_lane() {
-        let w = water(&rows(&[(&".".repeat(60), 3), (&"~".repeat(60), 50)]));
+        let w = Water::from_rows(&rows(&[(&".".repeat(60), 3), (&"~".repeat(60), 50)]));
         let mut lanes = Lanes::new(&w);
         let berth = Berth { quay: GridCoord { x: 30, y: 3 }, out: (0, 1) };
         // Out over the south edge, which is far: the west is nearer.
@@ -437,7 +428,7 @@ mod tests {
     /// are their own.
     #[test]
     fn a_strait_is_two_way() {
-        let w = water(&rows(&[(&".".repeat(41), 3), (&"~".repeat(41), 18), (&format!("{}~{}", ".".repeat(20), ".".repeat(20)), 6), (&"~".repeat(41), 18), (&".".repeat(41), 1)]));
+        let w = Water::from_rows(&rows(&[(&".".repeat(41), 3), (&"~".repeat(41), 18), (&format!("{}~{}", ".".repeat(20), ".".repeat(20)), 6), (&"~".repeat(41), 18), (&".".repeat(41), 1)]));
         let mut lanes = Lanes::new(&w);
         let (a, b) = (Berth { quay: GridCoord { x: 20, y: 3 }, out: (0, 1) }, Berth { quay: GridCoord { x: 20, y: 44 }, out: (0, -1) });
         let out = w.route(&lanes, &a, End::Berth(b), false).unwrap();
@@ -458,7 +449,7 @@ mod tests {
     /// conflict and ships going the same way do not.
     #[test]
     fn lanes_cross() {
-        let w = water(&rows(&[(&"~".repeat(41), 41)]));
+        let w = Water::from_rows(&rows(&[(&"~".repeat(41), 41)]));
         let mut lanes = Lanes::new(&w);
         lanes.lay(&w, &[[0.0, 20.5], [41.0, 20.5]], [false, false]);
         lanes.lay(&w, &[[20.5, 0.0], [20.5, 41.0]], [false, false]);

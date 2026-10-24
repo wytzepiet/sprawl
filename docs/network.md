@@ -1,6 +1,10 @@
 # The network: what vehicles touch, built from a few primitives
 
-Status: design, 2026-10-02. Nothing built. Argued from the ferry port of
+Status: design, 2026-10-02. Built since by other roads: links with lanes
+each way, one-way, priority and levels, through the interchange
+(`plan-interchange.md` §Built), and drives and yards as road
+(`world/lots.rs`). Not built: the check, and facilities as templates.
+Argued from the ferry port of
 the same day, which looked wrong and could not work: its yard was drawn
 cars in drawn lanes, and the back rows had no way in or out. A road never
 fails that way, because a road is not drawn: it is a link, and the
@@ -100,7 +104,7 @@ boxes, never parts.
 
 ## The check
 
-Every network the sandbox shows is checked, and what fails is red:
+Every network drawn is checked, and what fails is red:
 
 - **Every stop can be reached from the town's streets and left again**,
   lanes and one-ways obeyed.
@@ -144,8 +148,8 @@ props. Sketches, to be argued:
   tapers merges. The rest of a junction's shape is as today.
 - **Simulation**: a link with lanes is that many queues; a car keeps its
   lane and changes only at a node, by the wiring rule. Kerb parking and
-  stops are `parking.md` step 1 and §5.
-- **Order**: the network type and the check in the sandbox; the car park,
+  stops are `parking.md` §4 and §5.
+- **Order**: the network type and the check; the car park,
   the depot's docks and the supermarket's loading bay re-made as
   templates, deleting their hand-drawn strips in `dressing.ts` (if they
   come out both nicer and correct, the primitives are right); then the

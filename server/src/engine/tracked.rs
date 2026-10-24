@@ -1,16 +1,23 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use crate::fixed::{HashMap, HashSet};
 
-use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
+use crate::protocol::{BuildingKind, EntityId, GameObjectEntry, GameObject, GridCoord};
 
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,
     /// The ids, by id, in two piles: the road nodes, and everything else.
-    /// A played world is mostly road the survey laid ahead of the frontier,
-    /// and what looks for a depot, a van or a resident has no business
-    /// walking it.
+    /// A big town is mostly road, and what looks for a depot, a van or a
+    /// resident has no business walking it.
     roads: BTreeSet<EntityId>,
     things: BTreeSet<EntityId>,
+    /// Each owner's cars, by id: a facility's fleet, a household's car.
+    /// A car's owner is its own from `Car::new` to its scrapping, so the
+    /// two places a car is filed and taken out keep this.
+    fleets: HashMap<EntityId, BTreeSet<EntityId>>,
+    /// The buildings of each kind, by id: what looks for a depot or a
+    /// harbour walks those, not the town. A building's kind is its own for
+    /// good, as a car's owner is.
+    kinds: BTreeMap<BuildingKind, BTreeSet<EntityId>>,
     dirty: HashSet<EntityId>,
     removed: Vec<EntityId>,
     persist_dirty: HashSet<EntityId>,
@@ -24,6 +31,8 @@ impl Tracked {
             data: HashMap::default(),
             roads: BTreeSet::new(),
             things: BTreeSet::new(),
+            fleets: HashMap::default(),
+            kinds: BTreeMap::new(),
             dirty: HashSet::default(),
             removed: Vec::new(),
             persist_dirty: HashSet::default(),
@@ -43,6 +52,15 @@ impl Tracked {
     fn file(&mut self, entry: GameObjectEntry) {
         let pile = if matches!(entry.object, GameObject::RoadNode(_)) { &mut self.roads } else { &mut self.things };
         pile.insert(entry.id);
+        match entry.object {
+            GameObject::Car(ref c) => {
+                self.fleets.entry(c.owner).or_default().insert(entry.id);
+            }
+            GameObject::Building(ref b) => {
+                self.kinds.entry(b.kind).or_default().insert(entry.id);
+            }
+            _ => {}
+        }
         self.data.insert(entry.id, entry);
     }
 
@@ -88,7 +106,23 @@ impl Tracked {
     }
 
     pub fn remove(&mut self, id: EntityId) {
-        if self.data.remove(&id).is_some() {
+        if let Some(entry) = self.data.remove(&id) {
+            match entry.object {
+                GameObject::Car(ref c) => {
+                    if let Some(fleet) = self.fleets.get_mut(&c.owner) {
+                        fleet.remove(&id);
+                        if fleet.is_empty() {
+                            self.fleets.remove(&c.owner);
+                        }
+                    }
+                }
+                GameObject::Building(ref b) => {
+                    if let Some(kind) = self.kinds.get_mut(&b.kind) {
+                        kind.remove(&id);
+                    }
+                }
+                _ => {}
+            }
             self.roads.remove(&id);
             self.things.remove(&id);
             self.dirty.remove(&id);
@@ -114,14 +148,23 @@ impl Tracked {
 
     /// Everything but the road, by id.
     ///
-    /// The order is load-bearing rather than tidy. A hash map hands its
-    /// values back in an order seeded afresh for every process, so anything
-    /// built by walking it came out arranged differently each run: different
-    /// tie-breaks between equally good routes, different traffic, and two
-    /// runs of the same seed that disagree, which makes any before-and-after
-    /// measurement meaningless.
+    /// The order is load-bearing rather than tidy: what the game decides
+    /// by walking it must not change with how a hasher spreads the ids
+    /// (`fixed.rs`), or a new hasher is a different game. `get` stays a
+    /// hash map's, the hottest call there is: two ordered maps alone cost
+    /// the town two thirds more instructions.
     pub fn iter(&self) -> impl Iterator<Item = &GameObjectEntry> {
         self.things.iter().map(|id| &self.data[id])
+    }
+
+    /// The cars an owner has, by id.
+    pub fn fleet(&self, owner: EntityId) -> impl Iterator<Item = EntityId> + '_ {
+        self.fleets.get(&owner).into_iter().flatten().copied()
+    }
+
+    /// The buildings of a kind, by id.
+    pub fn of_kind(&self, kind: BuildingKind) -> impl Iterator<Item = EntityId> + '_ {
+        self.kinds.get(&kind).into_iter().flatten().copied()
     }
 
     /// The road nodes, by id.

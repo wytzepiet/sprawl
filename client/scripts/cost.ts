@@ -16,28 +16,16 @@
  * the frame lost is its cost. Prints a table and writes it, with the numbers,
  * to `.dev/cost/`. Desktop Chrome's WebGPU, at the size the benchmark uses.
  */
-import { launch } from "./browser";
+import { args, CLIENT, flag, launch, ROOT, word } from "./lib";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { CostReport } from "../src/engine/cost";
 
-const ROOT = resolve(import.meta.dir, "../..");
 const OUT = `${ROOT}/.dev/cost`;
-const CLIENT = `http://localhost:${process.env.SPRAWL_CLIENT_PORT ?? 4800}`;
 
-const args = process.argv.slice(2);
-const flag = (name: string, or: number) => {
-  const i = args.indexOf(name);
-  return i < 0 ? or : Number(args.splice(i, 2)[1]);
-};
 const t = flag("--t", 0.5);
 const rounds = flag("--rounds", 5);
-const text = (name: string) => {
-  const i = args.indexOf(name);
-  return i < 0 ? "" : args.splice(i, 2)[1];
-};
-const only = text("--only");
-const q = text("--q");
+const only = word("--only") ?? "";
+const q = word("--q");
 const views = (args.length ? args : ["0,0"]).map((a) => a.split(",").map(Number)).map(([x, y, half = 15]) => ({ x, y, half }));
 
 const browser = await launch();

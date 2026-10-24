@@ -5,7 +5,7 @@
  * cell, thickest along a border's middle and thinning to nothing: so as
  * the water reads it against a rising line, the holes open first, then
  * the strands thin and part, then the last of it is islands, and gone. On
- * its own, for a worker to bake (`laceWorker.ts`).
+ * its own, for the bake worker (`bakeWorker.ts`).
  */
 export const LACE_SIDE = 256;
 export const LACE_TILES = 1.4;

@@ -18,8 +18,7 @@ import type { Trip } from "./Trip";
 export type Car = { 
 /**
  * Who it belongs to: the resident driving it, whose `at` points back
- * at this car while they are aboard; or the facility it works for; or,
- * come from beyond the edge, the building that called it.
+ * at this car while they are aboard; or the facility it works for.
  */
 owner: number, trip: Trip | null, role: CarRole, 
 /**

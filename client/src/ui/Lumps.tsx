@@ -2,7 +2,7 @@
 import { createSignal, For, Show } from "solid-js";
 import { getEntity, recentLumps } from "../state/gameObjects";
 import { GOODS, middle } from "../blueprints";
-import { elapsed, keys, onMap } from "./kit";
+import { BAD, elapsed, GDP, GOOD, keys, onMap } from "./kit";
 import type { Building, Lump } from "../generated";
 
 /**
@@ -32,7 +32,7 @@ function Rise(props: { lump: Lump }) {
   // A box pops: up past its size and back, in its first fifth of a second.
   const pop = () => (big ? keys(t(), [[0, 0.3], [0.084, 1.18], [0.19, 1]]) : 1);
   const [size, setSize] = createSignal([0, 0]);
-  const ink = big ? GOODS[l.good!].color : l.gdp > 0 ? "#7B77E0" : l.coins < 0 ? "#D9483B" : "#57A773";
+  const ink = big ? GOODS[l.good!].color : l.gdp > 0 ? GDP : l.coins < 0 ? BAD : GOOD;
   return (
     <Show when={at()}>
       {(p) => (

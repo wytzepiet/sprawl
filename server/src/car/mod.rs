@@ -1,4 +1,5 @@
 pub mod physics;
+pub mod reroute;
 pub mod simulation;
 pub mod spawn;
 
@@ -97,4 +98,16 @@ pub enum Obstacle {
     Halt {
         distance: f64,
     },
+}
+
+impl crate::protocol::Trip {
+    /// How far along its route it is now, and how fast it goes.
+    pub fn at(&self, now: crate::engine::GameTime) -> (f64, f64) {
+        physics::catch_up(self.progress, self.speed, self.acceleration, (now - self.updated_at) as f64 / 1000.0)
+    }
+
+    /// How far along its route an edge of it starts.
+    pub fn start_of(&self, edge: crate::protocol::EdgeKey) -> Option<f64> {
+        (1..self.route.len()).find(|&i| (self.route[i - 1], self.route[i]) == edge).map(|i| self.along[i - 1])
+    }
 }

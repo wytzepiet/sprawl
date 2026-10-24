@@ -149,17 +149,14 @@ The order for the sessions after this one:
 
 0. **Tools to see and touch the game**, first, because everything after
    leans on them. What exists reads snapshots: `/health`, `/town`,
-   `/inspect/{id}`, the `/debug/…` routes, `bun run shots` of the
+   the `/debug/…` routes, `bun run shots` of the
    fixtures, the town and season tests. Missing:
    - **Acting**: built 2026-10-02, `bun run act` (`CLAUDE.md`): roads,
      buildings, demolition, the speed and the clock, on the running game,
      each answered with what changed.
    - **Looking anywhere**: the plan of any place in the running game is
-     built (`bun run plan --live`). Missing: one photograph command for
-     the game and the sandbox that takes a place, a zoom, a time of day
-     and a crop, and scripted brush strokes for the sandbox. (Written by
-     hand all through 2026-09-28 to 10-02 and lost with each container:
-     commit them.)
+     built (`bun run plan --live`), and so is a photograph of the game
+     round a place (`bun run look`, `CLAUDE.md`).
    - **Seeing motion**: paths built 2026-10-02 (`bun run act watch`,
      `plan --paths`), with the first physics check, the tightest turn.
      Its first reading, a seed-7 morning: every street corner about 0.35
@@ -179,7 +176,7 @@ The order for the sessions after this one:
 2. **A project skill for new things** (`.claude/skills/`): research,
    design in primitives, check, look at it (two zooms, noon and golden
    hour), fix, and only then show, with the references beside it.
-3. **The network primitives** (`network.md`), in the sandbox: links with
+3. **The network primitives** (`network.md`): links with
    lanes, stops, the reachability check; the car park, docks and service
    lane re-made on them.
 4. **Cars that turn and park naturally**, with the physics check. Begun

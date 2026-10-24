@@ -179,8 +179,8 @@ pub struct RoadNode {
     #[serde(default)]
     #[ts(type = "Array<number>")]
     pub road: Vec<EntityId>,
-    /// Laid by the mayor, so it counts against the build's road tiles. The
-    /// survey's own roads, and driveways, are free.
+    /// Laid by the mayor, so it was paid for. A fixture's or a level's
+    /// roads, and driveways, are free.
     #[serde(default)]
     pub laid: bool,
     /// How high it stands, in half-levels: 0 the ground, 2 a level up, 4
@@ -270,15 +270,9 @@ pub struct Building {
     /// is, the tile it is known by.
     #[serde(default)]
     pub tiles: Vec<GridCoord>,
-    /// A save's plot from before a building was its tiles, read once at
-    /// load into `tiles` (`World::rebuild_occupied`) and never written.
-    #[serde(default, skip_serializing)]
-    #[ts(skip)]
-    pub size: Option<(u8, u8)>,
     /// Which side of the building the lot and the street are on; see
     /// `blueprint::FACINGS`. The client lays the building and the lot out
     /// within the footprint from this.
-    #[serde(default = "south")]
     pub facing: u8,
     /// Its stocks, by good: the shelf of what it serves or keeps — meals,
     /// tanks, a farm's crates — drawn down by visits and loads and filled
@@ -407,7 +401,6 @@ impl Building {
         Building {
             kind,
             tiles,
-            size: None,
             facing,
             stocks: Default::default(),
             site: (!materials.is_empty()).then(|| materials.iter().map(|&(g, n)| (g, crate::needs::Stock { level: 0.0, cap: n as f64 })).collect()),
@@ -421,10 +414,6 @@ impl Building {
     }
 }
 
-fn south() -> u8 {
-    2
-}
-
 /// What a car is for, which is who drives it and what it looks like.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -432,8 +421,8 @@ pub enum CarRole {
     /// A resident's own, driven by them.
     #[default]
     Private,
-    /// An articulated lorry: a depot's, fetching from beyond the edge, or
-    /// from beyond the edge itself where the city has no depot.
+    /// An articulated lorry: a depot's, hauling boxes between the
+    /// harbour's trailer park and its yard.
     Truck,
     /// A depot's van, on the last mile to a shop.
     Van,
@@ -456,17 +445,12 @@ pub enum CarRole {
 #[ts(export)]
 pub struct Car {
     /// Who it belongs to: the resident driving it, whose `at` points back
-    /// at this car while they are aboard; or the facility it works for; or,
-    /// come from beyond the edge, the building that called it.
+    /// at this car while they are aboard; or the facility it works for.
     #[ts(type = "number")]
     pub owner: EntityId,
     pub trip: Option<Trip>,
     #[serde(default)]
     pub role: CarRole,
-    /// Beyond the edge of the map until this time; zero when on it.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub away: u64,
     /// Where it stands while parked, if the lot had room: the spot's centre
     /// and the way its nose points, in radians. `None` is parked out of
     /// sight.
@@ -516,7 +500,7 @@ pub struct Car {
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, load: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
+        Car { owner, trip: None, role, spot: None, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, load: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
     }
 }
 
@@ -559,7 +543,7 @@ impl Good {
 /// A box: a trailer off the ferry, the world's, which the town's lorries
 /// haul. Never an entity: a value that stands in one place at a time, on
 /// a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
-/// (`World::booked`). A box is only ever full: the world makes it loaded
+/// (`Car::booked`, a ferry's). A box is only ever full: the world makes it loaded
 /// for an import, a depot or a maker when an export is ready, and it is
 /// gone once unloaded into a depot's stock or carried off by the ferry.
 /// docs/shipping.md §Boxes and lorries.
@@ -642,7 +626,8 @@ pub enum Leg {
     Parked,
     /// On a lorry's hitch, or a tug's.
     Hauled,
-    /// In a depot's yard, waiting to be unloaded.
+    /// On a lorry standing in its depot's yard: home, to be unloaded
+    /// or taken out again.
     Yard,
 }
 
@@ -796,20 +781,33 @@ pub struct Trip {
     #[ts(type = "number")]
     pub updated_at: u64,
     /// Current segment (1-based). The car is between route[ri-1] and route[ri].
-    pub route_index: usize,
-    /// Fraction (0–1) of the current segment the car has traveled.
-    pub seg_fraction: f64,
-    /// Arc length of the current segment (for extrapolation).
-    pub seg_length: f64,
-    /// Cumulative distance to start of current segment.
-    #[serde(skip)]
     #[ts(skip)]
-    pub seg_start_dist: f64,
+    pub route_index: usize,
     /// Precomputed arc length of each segment. segment_lengths[i] = length from
     /// route[i-1] to route[i]. Index 0 is unused (always 0.0).
     #[serde(skip)]
     #[ts(skip)]
     pub segment_lengths: Vec<f64>,
+    /// How far along the route each node is: `along[k]` is
+    /// `segment_lengths[1..=k]` summed (`car::spawn::along`).
+    #[serde(skip)]
+    #[ts(skip)]
+    pub along: Vec<f64>,
+    /// Where it joined the run of road it is on, which way it set off, and
+    /// when: the direction names the run, since two runs can share both
+    /// ends (`RoadNetwork::observe_passage`).
+    #[serde(skip)]
+    #[ts(skip)]
+    pub joined: Option<(EntityId, EntityId, u64)>,
+    /// Standing where its gear changes, until when.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub standing: Option<u64>,
+    /// What it last slowed or stopped for, and how hard (`car::Cause`):
+    /// for a replay to read, never the game.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub why: Option<(crate::car::Cause, f64)>,
     /// The street nodes either side of the stretch a kerb bay is turned
     /// across, at the trip's start and its end: the street waits at both
     /// while the car turns (`car::simulation`).
@@ -823,6 +821,7 @@ pub struct Trip {
     /// The lane it waits to get into, with no room there yet: whoever
     /// comes along behind in it may drop back and let it in.
     #[serde(default)]
+    #[ts(skip)]
     pub signal: Option<u8>,
 }
 
@@ -971,12 +970,6 @@ pub struct GameObjectEntry {
     pub position: Option<GridCoord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct ErrorMessage {
-    pub message: String,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ChunkBounds {
@@ -1011,8 +1004,6 @@ pub enum ClientMessage {
     Raze { #[ts(type = "number")] building: EntityId },
     /// The player's last action taken back (`undo.rs`).
     Undo,
-    /// Spend a point on a node of the tree.
-    Take(crate::tree::Cell),
     DespawnAllCars,
     /// Boxes of a good bought from the market or sold to it (`market::trade`).
     Trade { good: Good, boxes: u32, out: bool },
@@ -1023,11 +1014,12 @@ pub enum ClientMessage {
     Cancel { #[ts(type = "number")] order: u64 },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
+    /// The card of one thing on the map, asked for again while it is open.
+    Card(#[ts(type = "number")] EntityId),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
     SetChunks(ChunkBounds),
-    Ping,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -1048,6 +1040,8 @@ pub enum Operation {
 /// sprawling city at four, which is what earns a highway. At two minutes, the
 /// length this was, that same crossing took two days.
 pub const DAY_MS: u32 = 1_200_000;
+/// An hour of the clock.
+pub const HOUR: u32 = DAY_MS / 24;
 
 /// The simulation's clock, as the client needs to see it.
 ///
@@ -1084,10 +1078,6 @@ pub struct Growth {
     /// over it is days of imports left.
     pub income: f64,
     pub imports: f64,
-    /// The build: the nodes of the tree taken.
-    pub taken: Vec<crate::tree::Cell>,
-    /// Tiles of road the mayor may still lay.
-    pub road_tiles_left: u32,
     /// Every standing depot's shelves added up, wherever the camera is:
     /// none, no depot yet.
     pub held: std::collections::BTreeMap<Good, crate::needs::Stock>,
@@ -1132,8 +1122,6 @@ pub struct StateUpdate {
     /// The mayors of the towns beyond the edge, and how they stand.
     #[serde(default)]
     pub neighbours: Vec<crate::orders::Neighbour>,
-    #[ts(type = "number")]
-    pub terrain_seed: u32,
     /// The island's map, which the client keeps its camera inside.
     pub island: ChunkBounds,
 }
@@ -1147,10 +1135,8 @@ pub enum ServerMessage {
     Update(StateUpdate),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
-    Error(ErrorMessage),
-    Pong(#[ts(type = "number")] u64),
     /// What the town did with the mayor's coins of its own accord, or more
-    /// than it was asked: a box a rule bought, stone bought express. And
+    /// than it was asked: stone bought express. And
     /// what the hand did, to its player alone: an undo, a building refused.
     News(Vec<News>),
     /// The answer to an `Ask`.
@@ -1158,6 +1144,8 @@ pub enum ServerMessage {
     /// The market's prices, its week and the orders waiting: on joining,
     /// and whenever they change.
     Market(crate::market::Prices),
+    /// The answer to a `Card`.
+    Card(crate::card::Card),
 }
 
 /// A line of news, and the building a tap on it goes to.

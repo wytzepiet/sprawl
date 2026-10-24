@@ -1,6 +1,6 @@
-import { createTexture2DFromPixels, updateTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
 import { townMaterial, type TownMaterial } from "./material";
-import { drop, meshOf, show } from "./geometry";
+import { drop, meshOf } from "./geometry";
 import { WHITE, type Rgb } from "./rgb";
 import type { Culler } from "./cull";
 import { Atlas } from "./atlas";
@@ -8,9 +8,9 @@ import { FAR, kerbDistances } from "./kerbLines";
 import { CALM, slate } from "./peaks";
 import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
-import { RIPPLE_SIDE, RIPPLE_TILES } from "./ripples";
-import recipe from "./ripples.ts?raw";
-import { baked } from "./bakeCache";
+import { RIPPLE_SIDE, RIPPLE_TILES } from "./sand";
+import recipe from "./sand.ts?raw";
+import { bakedTexture } from "./bakeCache";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
@@ -71,7 +71,7 @@ const TUFT = 8;
 const GLINTS = 0.25;
 const GLINT_TILT = 0.35;
 const GLINT = 4;
-/** And it lies in ripples, as the wind leaves them (`ripples.ts`, baked),
+/** And it lies in ripples, as the wind leaves them (`sand.ts`, baked),
  *  tilting the sand this much; flat where the waves wet it, which wash them
  *  out, back as the sand dries (its darkening's own band). */
 const RIPPLE_TILT = 0.35;
@@ -141,24 +141,14 @@ export function grain(engine: EngineContext): Texture2D {
 
 /** The sand's ripples, an engine's: level until the worker has baked them,
  *  or read back from the last bake (`bakeCache.ts`). */
-const SANDS = new WeakMap<EngineContext, Texture2D>();
-function sand(engine: EngineContext): Texture2D {
-  let texture = SANDS.get(engine);
-  if (!texture) {
-    const level = new Uint8Array(RIPPLE_SIDE * RIPPLE_SIDE * 4);
-    for (let k = 0; k < level.length; k += 4) level.set([128, 128, 128, 255], k);
-    const made = createTexture2DFromPixels(engine, level, RIPPLE_SIDE, RIPPLE_SIDE, {
-      mipmaps: true,
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "repeat",
-      addressModeV: "repeat",
-    });
-    SANDS.set(engine, (texture = made));
-    void baked("ripples", recipe, () => new Worker(new URL("./rippleWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
-  }
-  return texture;
-}
+const sand = (engine: EngineContext): Texture2D =>
+  bakedTexture(engine, "sand", recipe, [RIPPLE_SIDE, RIPPLE_SIDE, () => new Uint8Array(RIPPLE_SIDE * RIPPLE_SIDE * 4).map((_, k) => (k % 4 < 3 ? 128 : 255))], {
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+    addressModeU: "repeat",
+    addressModeV: "repeat",
+  });
 
 /** A tile's share of a layer (`TileShape`'s key), baked: how far inside
  *  its outline, and how far inside its edges onto lower ground. */
@@ -211,7 +201,7 @@ const n = (x: number) => x.toFixed(4);
 // warmer: more red and green, less blue, darker ones the other way.
 const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fray, fraySpan, tuftSpan] = [n(FRAY), n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
-const [slateSpan, calm, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(CALM), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
+const [slateSpan, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
 // How far up a beach the water runs, at most (`swashFn`); and wet sand,
 // this much darker.
 const [swash, wet] = [n(SWASH), n(0.18)];
@@ -269,7 +259,7 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
 let groundGrainUv = input.worldPos.xy / ${span};
 let groundGlint = vec3f(textureSample(groundGrain, groundGrainSampler, groundGrainUv).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other1})).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other2})).r);
 let groundGlinting = input.vGroundSlot.w * step(${glints}, groundGlint.x);
-// The sand's ripples (ripples.ts), their slope read at the size they are drawn.
+// The sand's ripples (sand.ts), their slope read at the size they are drawn.
 let groundRipple = (textureSample(sandRipples, sandRipplesSampler, input.worldPos.xy / ${n(RIPPLE_TILES)}).rg * 2. - 1.) * ${n(RIPPLE_TILT)} * input.vGroundSlot.w
   * smoothstep(0.15, 0.35, textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${n(RIPPLE_PATCH * SIDE)} + vec2f(0.37, 0.71)).r);
 let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${specks}).r - 0.5;
@@ -336,8 +326,6 @@ export class GroundTiles {
     private scene: SceneContext,
     beforeRender: (fn: () => void) => () => void,
     private cull: Culler,
-    /** Turned half round about the origin, as the sandbox draws a fixture. */
-    private turned = false,
   ) {
     // Its chunks bound to the atlas's texture anew whenever that grows.
     this.atlas = new Atlas(engine, SLOT, () => {
@@ -350,6 +338,7 @@ export class GroundTiles {
       markMaterialUboDirty(this.material);
       // A chunk drawn anew is built a frame or two after it is shown: its
       // old ground stays until then, or the land under it flashes through.
+      if (!this.replaced.length) return;
       const drawn = new Set((scene as unknown as { _renderables: { mesh: Mesh }[] })._renderables.map((r) => r.mesh));
       this.replaced = this.replaced.filter(({ old, by }) => {
         if (drawn.has(by) || !this.scene.meshes.includes(by)) return this.cull.forget(old), drop(this.scene, old), false;
@@ -390,9 +379,8 @@ export class GroundTiles {
     setMeshAttribute(this.engine, mesh, "ground", data);
     // Baked before it is shown, so the atlas holds its shapes when it is bound.
     this.atlas.upload();
-    if (this.turned) mesh.scaling.set(-1, -1, 1);
-    this.cull.keep(mesh, this.turned ? [-ox - CHUNK_SIZE, -oy - CHUNK_SIZE, -ox, -oy] : [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
-    show(this.scene, mesh);
+    this.cull.keep(mesh, [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
+    addToScene(this.scene, mesh);
     this.chunks.set(key, mesh);
     if (old) this.replaced.push({ old, by: mesh });
   }

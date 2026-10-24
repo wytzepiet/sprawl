@@ -50,7 +50,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 
 - **Package manager:** bun
 - **Dev stack:** `bun run dev` — runs client and server together in a TUI. The
-  server rebuilds and restarts on save, so it cannot fall behind its source.
+  server rebuilds and restarts on save, so it cannot fall behind its source:
+  its `src/` and `host/src/`, that is; it neither watches `web/` nor builds
+  the wasm, which the client builds once on start (`bun run wasm`).
   `./dev.sh --headless` runs the same processes without a TUI, `--stop` stops
   them. Both write to `.dev/<name>.log`.
 - **Is it current?** `curl localhost:4801/health` → `built_ago_s` is the age of
@@ -65,7 +67,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   life and asserts how often residents wake (a storm is ten times the
   budget) and prints simulated days per second, to see whether it drifted;
   and it times a house, a shop, their demolition and a road in a town and
-  in one twice the size, and asserts the bigger town costs about the same.
+  in one twice the size, and asserts the bigger town costs at most a third as
+  much again;
+  and it runs the server's own loop over every fixture for six hours and
+  prints what a settle step costs against the steps between.
   A build costs what it changed: `World::settle` reads only the buildings
   marked `unsettled`, and `resettle`, the whole world, runs at startup.
 - **Does the town still keep?** `cargo test season -- --ignored
@@ -92,29 +97,19 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Does it still hold?** `cd server && cargo test && cargo check`, then
   `cd client && bunx tsc --noEmit -p . && bun test` (`bun run wasm` first
   after changing the server: `pen.test.ts` plays drags against it). Nothing runs these but you, so run
-  them before you push. The suite takes about ten seconds: the test profile
+  them before you push. The suite takes about eight seconds: the test profile
   is optimised (`[profile.test]` in `Cargo.toml`, assertions and overflow
   checks still on) and the town tests skip the ticks nothing is due at. A
   rebuild after an edit costs a few seconds more than a debug one; a day of
   town at opt-level 0 cost a minute. `cargo check` is not redundant: `cargo test` compiles
   the crate with `cfg(test)` on, so a stray `#[cfg(test)]` above something the
   game needs passes the suite and leaves a server that will not build.
-- **Does every seed still start?** After touching `terrain.rs` or
-  `road_gen.rs`, `cargo test every_seed -- --ignored` checks the first
+- **Does every seed still start?** After touching `terrain.rs`, `cargo
+  test every_seed -- --ignored` checks the first
   twenty seeds are islands in one ocean and seats their starting towns;
   `DRAW=1` draws the ones that fail. It also finds ships' ways from the
   home coast to the edge and to every island, and times them (50 ms
   budget).
-- **Does the sea work?** `cargo test scenario -- --nocapture` runs the
-  scenarios in `server/scenarios/*.txt` (a map in text, harbours, demand,
-  `expect` lines; the key is at the top of `server/src/shipping/sim.rs`)
-  headless for days in under a second each, with the game's own routing,
-  timetable and company rule (`server/src/shipping/`), and prints a page
-  a day and a row of metrics: delivered, transit, lateness against the
-  quoted ETA, transfers, missed, berth waits, coins, a hash.
-  `SCENARIO=two` runs one; `SVG=1` draws each into `.dev/scenarios/`.
-  Change the network's rules here first, against the numbers
-  (docs/plan-sea.md §The harness comes first).
 - **Does it still look right?** `bun run shots` builds the test towns in
   `server/fixtures/*.txt` (a map in text; the key is in
   `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
@@ -127,7 +122,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   loads, so a mesh added and dropped every frame keeps it skipped. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **The plan:** `bun run plan [fixture…]` draws the town grid flat as SVG
-  in `.dev/plan/`, from the sandbox's own code, in well under a second a
+  in `.dev/plan/`, from the town grid's own code (`client/src/engine/town/`,
+  `docs/look.md`), in well under a second a
   fixture: no light, no 3D, no browser. `--png` adds pictures and a sheet,
   `--crop c0,r0,c1,r1` a part (`PX=80` for a closer look), `--at <ref>`
   the same drawn from the code at another commit beside today's,
@@ -164,6 +160,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
   vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
   first after a change to what moves; `look` is for light and material.
+  `bun run jolt 6,80,12 20` samples every vehicle round a tile as the
+  client places it, fifty times a second for twenty, and counts each
+  jump, snap, flip and lurch, with the clock and the place.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.
@@ -176,11 +175,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   map, then the shadow map and the other lights as a whole, and prints what
   each saved a frame, with its meshes, instances, triangles and draw calls,
   in `.dev/cost/`. Under a minute; agrees with itself to a tenth of a ms.
-  The frame is the GPU's when it is well over the CPU's.
-- **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
-  fixture with no server, through the town grid (`client/src/engine/town/`,
-  `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the
-  sheet from it, in seconds.
+  The frame is the GPU's when it is well over the CPU's. `bun run pan
+  6,80,8` drives its own Chrome round a tile, still, panning, then
+  zooming, and prints each phase's frames, CPU and GPU time and where the
+  JavaScript went, from the reports a tab it names sends
+  (`PerfReport.tsx`, `.dev/perf.jsonl`); no other tab sends any.
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main
@@ -205,9 +204,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `cd client && bun run wasm` after changing the server (`bun run dev`
   does it on start). A level is `server/levels/<name>.txt` (the format at
   the top of `server/src/level.rs`); `cargo test level` runs every
-  level's own solve and asserts it scores 100. A new level file needs
+  level's own solve and asserts it flows as its `@flow` says, which is
+  what scores 100; when cars change, it says what to write instead. A new level file needs
   Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
-  is what it is and what is built.
+  is what it is and what is built. `bun client/scripts/level-look.ts
+  <level> [steps.json]` photographs one as it plays, its steps laid, and
+  its verdict, in `.dev/look/`.
 - **A replay of what went wrong:** in a level, F flags the moment and the
   tile under the pointer, and "Copy replay" puts everything played since
   the level opened on the clipboard (`server/src/replay.rs`): the
@@ -219,18 +221,24 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   whether it still plays as it was played, what went wrong on the way (a
   car through another, one standing for good, one on a priority road
   made to wait for a minor one: `Watch`), and every car
-  there, how fast and what it slows or stops for (`World::why`). `cargo
-  test replay` plays every kept one on today's game and asserts nothing
+  there, how fast and what it slows or stops for (`why`, in
+  `bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.
-- **Generated types:** `cd client && bun run generate`
-- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
+- **Generated types:** a full `cargo test` in `server/` writes them into
+  `client/src/generated` (`server/.cargo/config.toml`), and beside them
+  `rows.ts`, the blueprints' game columns the client reads; `cd client && bun
+  run generate` also clears the ones whose type went and lists the rest
+  in its `index.ts`.
+- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`; a save
+  is its build's, so after a change to what is saved, `rm server/sprawl.db`
+  is the migration (the server says so if it cannot read one). Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is
-  forty tiles in from its island's coast. `SPRAWL_ALL=1` opens
-  the whole tree and a bottomless treasury. Any fixed seed gives
-  the same map back, so a change in behaviour is a change in the code.
-  `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole
-  map, sixteen tiles to a character.
+  forty tiles in from its island's coast. `SPRAWL_ALL=1` gives a
+  bottomless treasury. Any fixed seed gives the same map back, so a
+  change in behaviour is a change in the code. `SPRAWL_SEED=7 cargo test
+  draw_the_land -- --ignored --nocapture` prints the whole map, sixteen
+  tiles to a character.
 
 ## Solid 1.x
 

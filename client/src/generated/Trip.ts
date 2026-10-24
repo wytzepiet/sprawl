@@ -58,24 +58,7 @@ progress: number, speed: number, acceleration: number,
  */
 total_route_length: number, updated_at: number, 
 /**
- * Current segment (1-based). The car is between route[ri-1] and route[ri].
- */
-route_index: number, 
-/**
- * Fraction (0–1) of the current segment the car has traveled.
- */
-seg_fraction: number, 
-/**
- * Arc length of the current segment (for extrapolation).
- */
-seg_length: number, 
-/**
  * Its last change of lanes along a road of two (`car::simulation`):
  * for the client to slide it across while it lasts.
  */
-shift: Shift | null, 
-/**
- * The lane it waits to get into, with no room there yet: whoever
- * comes along behind in it may drop back and let it in.
- */
-signal: number | null, };
+shift: Shift | null, };

@@ -1,14 +1,12 @@
-import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
+import { createPickingRay, getCameraPosition, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
+import type { Area } from "../generated";
 
 /**
- * Everything that needs to know how the world lands on the screen.
- *
- * The projection used to be assumed rather than asked about: half a dozen
- * places reached into the camera's orthographic extents and did their own
- * arithmetic on them, which meant the projection was not really the camera's
- * to choose. Nothing here knows which projection is in use — a ray is cast to
- * go from pixels to ground, the camera's own matrix goes the other way, and the
- * size of the view is measured by asking where two pixels land.
+ * Everything that needs to know how the world lands on the screen. Pixels go
+ * to ground by a ray, and ground to pixels by the camera's own matrix. How
+ * much ground is in view is arithmetic on the flat camera's frustum, which
+ * looks straight down; only while it leans or flies (F8, F9) is it measured,
+ * by asking where pixels land.
  */
 
 /** Where the canvas is on the page, read once and again only when it is
@@ -53,38 +51,35 @@ export function screenToWorld(
 }
 
 /**
- * The ground the view covers, as a circle: where the middle of the screen
- * lands, and how far from there the farthest corner does. Looking straight
- * down that is half the diagonal; leaning back, the far corners run away and
- * the circle grows toward them.
+ * The ground the view covers: where the middle of the screen lands, half the
+ * ground either way to the screen's edges (`halfW`, `halfH`), and as a circle
+ * round the middle, out to the farthest corner. Looking straight down that
+ * is half the diagonal; leaning back, the far corners run away and the
+ * circle grows toward them.
  */
-export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; radius: number } {
+export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; halfW: number; halfH: number; radius: number } {
+  const camera = scene.camera!;
   const { width, height } = rectOf(canvas);
-  const mid = groundAt(scene, width, height, width / 2, height / 2);
-  let radius = 0;
-  for (const [x, y] of [[0, 0], [width, 0], [0, height], [width, height]]) {
-    const c = groundAt(scene, width, height, x, y);
-    radius = Math.max(radius, Math.hypot(c.wx - mid.wx, c.wy - mid.wy));
+  if (camera.ortho) {
+    const { x, y } = getCameraPosition(camera);
+    const halfH = camera.ortho.halfHeight;
+    const halfW = (halfH * width) / height;
+    return { cx: x, cy: y, halfW, halfH, radius: Math.hypot(halfW, halfH) };
   }
-  return { cx: mid.wx, cy: mid.wy, radius };
+  const mid = groundAt(scene, width, height, width / 2, height / 2);
+  const from = (x: number, y: number) => {
+    const c = groundAt(scene, width, height, x, y);
+    return Math.hypot(c.wx - mid.wx, c.wy - mid.wy);
+  };
+  const radius = Math.max(from(0, 0), from(width, 0), from(0, height), from(width, height));
+  return { cx: mid.wx, cy: mid.wy, halfW: from(0, height / 2), halfH: from(width / 2, 0), radius };
 }
 
-/**
- * Half the ground the view covers, vertically and horizontally, in tiles.
- *
- * Measured rather than derived: where the middle of the screen lands, against
- * where its edges land. Under perspective those distances depend on how high
- * the camera is and how wide its lens; measuring gets the answer either way.
- */
-export function viewExtent(scene: SceneContext, canvas: HTMLCanvasElement): { halfW: number; halfH: number } {
-  const { width, height } = rectOf(canvas);
-  const mid = groundAt(scene, width, height, width / 2, height / 2);
-  const top = groundAt(scene, width, height, width / 2, 0);
-  const side = groundAt(scene, width, height, 0, height / 2);
-  return {
-    halfW: Math.hypot(side.wx - mid.wx, side.wy - mid.wy),
-    halfH: Math.hypot(top.wx - mid.wx, top.wy - mid.wy),
-  };
+/** The tiles the view covers, a square round its middle. */
+export function viewArea(scene: SceneContext, canvas: HTMLCanvasElement): Area {
+  const { cx, cy, halfW, halfH } = groundCover(scene, canvas);
+  const half = Math.max(halfW, halfH);
+  return { x0: Math.floor(cx - half), y0: Math.floor(cy - half), x1: Math.ceil(cx + half), y1: Math.ceil(cy + half) };
 }
 
 /**

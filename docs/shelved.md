@@ -7,7 +7,7 @@ has to stay in the tree to be remembered.
 
 ## The price economy (2026-10-10)
 
-**What.** `economy.md` as built through §12.10: every building posting a
+**What.** `archive/economy.md` as built through §12.10: every building posting a
 price for what it fills and nudging it by its stock, never below unit
 cost; a buyer taking the cheapest delivered seller; money entering the
 score as hours of the mover's wage (Becker); households posting an ask
@@ -21,7 +21,7 @@ the `season` test asserting the band, no ringing, no harm and tenure.
 **Why shelved.** It held together and was not a game. Its own rule 8,
 ignoring prices never hurts, said that a player did not need it, and a
 player who could not predict what placing a building would do to the
-reserve read the result as weather. Most of `economy.md` §13 was the
+reserve read the result as weather. Most of `archive/economy.md` §13 was the
 calibration of a system the player was designed not to need. The
 decisions moved to the border, where the player can make them
 (`trade.md`): inside a town a buyer takes the nearest seller with stock,
@@ -30,7 +30,7 @@ and a shipment that can be followed.
 
 **To bring back.** Only if a town grows owners the player is not, so
 that a price inside it decides something the player could not. The
-mechanisms are in `economy.md` §4 to §8 and §12, each with its referent.
+mechanisms are in `archive/economy.md` §4 to §8 and §12, each with its referent.
 The code last lived at `7364679`, the commit before milestone 0's cut
 of it.
 
@@ -68,7 +68,7 @@ rate for the client to run the dials forward between updates. Placing
 cost hours of need served, discounted by the build.
 
 **Why shelved.** Money became its own quantity, in purses, moved by sales
-(`economy.md`). Level is still hours served, but banked in lumps as each
+(`archive/economy.md`). Level is still hours served, but banked in lumps as each
 visit ends, like everything else; and a dial that steps is an event that
 happened on the map, where a dial that glides is a rate.
 
@@ -78,7 +78,7 @@ change of `at` or `selected`. Last lived at `0954125`.
 
 ## Purses, floats, the sweep and rent
 
-**What.** `economy.md` §8.2 as first built: every resident had a wallet
+**What.** `archive/economy.md` §8.2 as first built: every resident had a wallet
 and every building a balance, in hours of the edge's wage. A visit's
 price left the wallet and landed on the building as a lump; a shift left
 the building and landed in the wallet. Every purse kept a float — a
@@ -102,7 +102,7 @@ is their wage, a building's is its books.
 not — a firm that moved in by itself, a landlord — so that a transfer
 between purses changes who has what. Then `wallet` and `balance` on the
 structs, `sale` moving money instead of writing lines, and §8.2 as it
-was. Last lived at the commit before `economy.md` step 4.
+was. Last lived at the commit before `archive/economy.md` step 4.
 
 ## Zoning
 
@@ -163,6 +163,28 @@ draw's odds. One thing the price table lost with it: an offer got dearer
 as the city filled out (`EARN_PER_BUILDING`), which is what kept growth
 from running away with itself — fixed prices need money to do that job.
 Last lived at `8f86867`.
+
+## The skill tree (2026-09-05 to 2026-10-20)
+
+**What.** The build as a town plan: a small map whose roads were the
+edges and whose buildings were the nodes, in four avenues (homes,
+commerce, industry, roads), drawn by the client from the server's map
+(`SkillTree.tsx`, `/tree`). Points came from the level; a node could be
+taken when a neighbour was; each node unlocked a kind or a road kind, or
+took a discount off a class's price. The build was the one door every
+question went through: what may be placed, which roads drawn, how much
+road (`archive/services.md` §4 and §8).
+
+**Why shelved.** Switched off on 2026-10-10, when its avenues named kinds
+that were gone or going and it read and played poorly; then dropped on
+2026-10-20 for good (`plan-market.md` §No tree): what a building is built
+from is the gate, and a chain's cost is what specialising costs.
+Missions and the build menu give the guidance it gave.
+
+**To bring back.** `server/src/tree.rs` with its `MAP` and `LEGEND`,
+`client/src/ui/SkillTree.tsx` and `client/src/state/tree.ts`, and the
+growth update's taken nodes. Last lived at `bdd32a5`; `tree.rs` is a
+stub with everything open since.
 
 ## Build mode: drafts, commit, discard
 
@@ -243,7 +265,8 @@ round it (`facts.ts`): tiles beside a street in one run from its quiet
 end (a depot's docks) or its busy one (a supermarket's car park, three
 cars to a tile of shop), until it held enough; and a supermarket two
 tiles each way took deliveries in a lorry-sized corner cut from it, the
-corner picked by which side had a street (`sketches/loading-bay.svg`).
+corner picked by which side had a street (`sketches/loading-bay.svg`, last
+lived at `53a9ca6`).
 
 **Why shelved.** The server lays a building's lot out by its own rule,
 by the way it faces, and the two disagreed: a street laid beside a
@@ -255,9 +278,20 @@ diagonal walls the playtest found. A yard is now the server's, drawn
 where its lot is (`look.md` §Facts), and a supermarket is a box.
 
 **To bring back.** A car park as the server's own lot, laid out as
-aisles for both (`parking.md` §3.9, `look.md` §Into the game step 5);
+aisles for both (`parking.md` §8, `look.md` §Into the game step 5);
 a loading bay as a stop of `network.md`. Never the look's guess again.
 The code last lived at `a501124`.
+
+## The sandbox (to 2026-10-21)
+
+**What.** `/sandbox?f=<fixture>`: a fixture drawn with no server, by a
+town renderer of its own, with a brush to paint buildings a tile at a
+time and `bun run shots --sandbox` to photograph them all. **Why
+shelved.** It had drifted from the game's drawing (its own roads,
+terrain and parked cars, no lane lines or props) and keeping it level
+cost more than it showed; `bun run plan` answers layout, `shots` and
+`look` photograph the game itself. **To bring back.** Feed a fixture
+to `TownLayer`, not a second renderer. Last lived at `d7f5dd5`.
 
 ## Pedestrians, transit, walkability
 
@@ -332,7 +366,7 @@ runs between them with an acute-angle rule, a ring laid past the frontier
 so arriving from off the map was a long haul, and the starting town's
 streets laid the same way. The `Edge` building stood where a road left the
 survey, with every tap and the world's prices; everything the town lacked
-was served there (`economy.md` §8.1).
+was served there (`archive/economy.md` §8.1).
 
 **Why shelved.** Decided 2026-09-23. The first road is the player's, from
 the ramp, and a road born with the map was a road the player did not
@@ -346,7 +380,7 @@ Last lived at `df49b81`.
 
 ## Services as a good
 
-**What.** `economy.md` §12.5: services as a need drawn by the day by every
+**What.** `archive/economy.md` §12.5: services as a need drawn by the day by every
 household and a fifth of every firm's labour, made by the office at its
 row's rate, delivered by a consultant's car from an office in town or from
 beyond the edge, with the office as the town's export base before there
@@ -366,7 +400,7 @@ on homes and firms, `economy::draw`, `services()`, the fifth on
 
 ## Wear, parts and the workshop
 
-**What.** `economy.md` §12.6: a second per-tile stock on every car, put
+**What.** `archive/economy.md` §12.6: a second per-tile stock on every car, put
 right at a workshop that bought parts from beyond the edge or the
 warehouse, priced as a service every two and a half tanks.
 
@@ -396,7 +430,7 @@ costs, and both are trucks on the road.
 
 ## The port's own ship
 
-**What.** `economy.md` §12.10 as built: the port a depot whose lorry is a
+**What.** `archive/economy.md` §12.10 as built: the port a depot whose lorry is a
 ship, sailing from the quay to the map's edge when a shelf ran low and
 landing every shelf's worth at the sea's crossing. `CarRole::Ship`,
 `World::{set_sail, sail_home, ship_step, moor}`, `calls::dispatch`'s
@@ -415,6 +449,30 @@ the quay by `calls::stable`, and its fetch sent from there. Last lived at
 sails in, lands the shelves and sails away, still on call until the
 ferry's timetable (milestone 1).
 
+## The sea's network and its harness (2026-10-10 to 2026-10-21)
+
+**What.** `plan-sea.md` stage 1, and the instrument for stages 3, 4 and
+6: a discrete-event harness (`shipping/sim.rs`, test only) that sailed
+scenarios in text (`server/scenarios/*.txt`: a map, harbours, demand,
+`expect` lines) for days in a second and printed delivered, transit,
+lateness, transfers, missed, berth waits and coins. With it, in
+`lines.rs`, the company's rule (a new harbour linked to the player's
+nearest by sea, sailings sized by forecast, a backlog adding a sailing,
+new sailings slotted clear of other lines' berth windows) and a box's
+way by a Connection Scan over the timetable, changing ship at a hub.
+
+**Why shelved.** `plan-market.md`: the world stays the shipping company
+and freight leaves the game, so there are no lines between the
+player's harbours for it to measure. The game sails one line a harbour,
+out to the world and back; its routing, lanes and junctions stay, with
+their own tests.
+
+**To bring back.** When cargo ships between players' harbours are
+designed, start from it: `git show 675ca33:server/src/shipping/sim.rs`
+and `lines.rs`, `git checkout 675ca33 -- server/scenarios`, and
+`plan-sea.md` §The harness comes first and stages 3 and 4. Last lived at
+`675ca33`.
+
 ## The construction firm
 
 **What.** `game.md` as of 2026-09-09: construction as a delivery by a
@@ -431,7 +489,7 @@ materials, which is a warehouse.
 
 ## Haulers
 
-**What.** `economy.md` §3 and §5.3, filed from the start: a company whose
+**What.** `archive/economy.md` §3 and §5.3, filed from the start: a company whose
 vehicles carry for others at a posted price a load a tile, its stock idle
 capacity. Argued again 2026-09-23 for exports by ship and for the site's
 deliveries.
@@ -547,6 +605,7 @@ them made here.
 
 **To bring back.** A mayor carries a plain description (features, mood)
 and one function draws it; missions and orders never know how. Start
-with the Nintendo way, or VRM if Lite loads it. The seam is built
-(2026-10-12): `Neighbour.looks` is the description, and
-`client/src/flat/crest.ts` the one function, drawing a crest for now.
+with the Nintendo way, or VRM if Lite loads it. The seam is
+`client/src/flat/crest.ts`, the one function, drawing a crest for now;
+the description (`Neighbour.looks`, sent and read by nothing, went
+2026-10-21) comes back with the faces.
