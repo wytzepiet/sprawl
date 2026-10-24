@@ -1,9 +1,10 @@
 # Goods you can see, and what the game is
 
 Direction, 2026-10-24, from an evening's talk with Wytze about why the
-start feels slow and what the game is for. Nothing here is built. Where
-it meets `game.md`, `shipping.md` and `trade.md`, this is the newer word,
-and those change when the work starts.
+start feels slow and what the game is for. Goods you can see, pads and
+handling and the ferry's pallets are built (§Built, at the end); the
+rest is direction. Where it meets `game.md`, `shipping.md` and
+`trade.md`, this is the newer word.
 
 ## What the game is
 
@@ -177,3 +178,52 @@ stands decides where the heavy traffic ends.
 - Each building's problem: what makes it needed and what it makes
   needed in turn, written as a table over the roster, before building
   out more kinds.
+
+## Built
+
+2026-10-25, in three steps, and what was decided on the way.
+
+1. **The server's model.** A package is the unit everything is carried,
+   counted and traded in (`Good::per_package`): a crate of food is 25
+   units, a pallet of drums 10, a bundle of timber 4, a pallet of stone
+   4. A lorry carries five on a flatbed that never comes off
+   (`haul::LOAD`), a van three. A depot's, a maker's and a buyer's pad
+   is its stock, delivered in whole packages and opened only where it is
+   used; the quay's is the packages standing on it (`Building::pad`, 48).
+   A lift is `HANDLE_MS` a package (`world/pads.rs`), and a vehicle
+   stands until its forklift is done (`Car::due`). The market's depth is
+   200 packages, and its prices, the letters and the deals count
+   packages.
+2. **The items.** Each good is an item of fixed height
+   (`engine/objects/goods.ts`): three logs high strapped, an open crate
+   of greens, two layers of blocks on a pallet, four red drums on a
+   pallet. They stand on pads laid out from the building's own tiles
+   (`pads.ts`): a depot's four bays in the open, where its hall stood
+   (no roof, no canopies); a maker's down the free side of its lane,
+   crates four high; a shop's, a gas station's and a site's along the
+   front. A lorry's and a van's packages are on their flatbeds. A
+   building's forklifts are drawn from its `lifts`: in to a package,
+   across, set down, back.
+3. **The ferry.** Its deck carries sixty pallets, four to a bay, and
+   settlers' cars in the bays with none. The harbour's three forklifts
+   lift what came for the town onto the quay's pad, beside the lane on
+   the side its docks are not, and what goes out back onto the deck,
+   only what is aboard before it sails. The tug, its trailers and the
+   trailer park are gone.
+
+Decided on the way, open to change:
+
+- **One forklift a building, the harbour's three** (`Blueprint::forklifts`):
+  a second lorry waits its turn. More forklifts are the upgrade.
+- **The server changes its counts as a run starts**, and the client
+  shows them moving one by one over the run (`progress` in `pads.ts`);
+  so a panel reads a package as arrived a little before the forklift
+  sets it down.
+- **The server says how many a run lifts, not which deck places**; the
+  client takes them from the land end's emptied places and the sea
+  end's filled ones, as `work_deck` does (`deckSeen` in `motion.ts`).
+- **A shop's or a site's forklift comes out only for a lift**; a yard's
+  stands in it.
+- **The road's stone is opened at the depot**, the one place a road
+  draws on.
+

@@ -82,7 +82,7 @@ describe("asphalt and pavement", () => {
     expect(docks.every((d) => [0.05, 0.6].every((out) => on([d.x + Math.cos(d.angle) * out, d.y + Math.sin(d.angle) * out])))).toBe(true);
   });
 
-  test("a harbour is asphalt through, its trailer park and apron, a quay of pavement at the water", () => {
+  test("a harbour is asphalt through, its docks, quay and apron, a quay of pavement at the water", () => {
     const t = town(["~~~~~", "~~~~~", ".PPP.", ".PPP.", ".PPP.", "====="]);
     const on = onAsphalt(t);
     for (const [x, y] of [[2.5, 2.5], [1.5, 3.5], [3.5, 4.5]]) expect(on([x, y])).toBe(true);

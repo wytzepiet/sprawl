@@ -256,20 +256,23 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
   const out: Dock[] = [], lines: P[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      const way = facts.yard(c, r) === "docks" ? town.door?.(c, r) : undefined;
+      // A harbour's docks are on one side of its lane, the quay's pad on
+      // the other (`Berth::park`).
+      const fill = facts.yard(c, r);
+      const way = fill === "docks" || fill === "park" ? town.door?.(c, r) : undefined;
       if (!way || (way[0] && way[1])) continue;
       // In toward the street (fx, fy), and across (px, py); the yard's
       // tiles of this building, counted in from the gate and across.
       const [fx, fy] = way, [px, py] = [-fy, fx];
       const id = town.tile(c, r).id;
-      const ours = (k: number, j: number) => facts.yard(c + fx * k + px * j, r + fy * k + py * j) === "docks" && town.tile(c + fx * k + px * j, r + fy * k + py * j).id === id;
+      const ours = (k: number, j: number) => facts.yard(c + fx * k + px * j, r + fy * k + py * j) === fill && town.tile(c + fx * k + px * j, r + fy * k + py * j).id === id;
       const run = (k: number, j: number, n = 0): number => (ours(k * (n + 1), j * (n + 1)) ? run(k, j, n + 1) : n);
       const deep = run(-1, 0) + 1;
       // The back of the yard, behind the lane's middle: `at(s, side)` is
       // `s` in from it and `side` across.
       const [ox, oy] = [c + 0.5 - fx * (deep - 0.5), r + 0.5 - fy * (deep - 0.5)];
       const at = (s: number, side: number): P => [ox + fx * s + px * side, oy + fy * s + py * side];
-      for (const side of [1, -1].filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
+      for (const side of (fill === "park" ? [1] : [1, -1]).filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
         const [nx, ny] = [px * side, py * side];
         for (const s of [...DOCK_ROWS.map((s) => s - 0.15), DOCK_ROWS[DOCK_ROWS.length - 1] + 0.15]) lines.push(strip(ox, oy, fx, fy, s - 0.008, s + 0.008, nx, ny, 0.45, TAIL));
         for (const s of DOCK_ROWS) {

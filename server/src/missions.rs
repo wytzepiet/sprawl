@@ -137,7 +137,7 @@ const ROWS: &[Row] = &[
             (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Take the harbour and drag it onto the coast. It stands half on the water, its back to the sea, and shows how it would stand, or, in red, why it cannot: the ferry needs open sea straight out behind it.\n\nLet go, and it stands at once, with a street of its own."),
             (Goal::Stands(BuildingKind::Depot), "Build a depot", "Where the town keeps what lands: drag it from the build menu beside the harbour's street, its yard to the street. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
             (Goal::Joined, "Join them with a street", "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
-            (Goal::Fetched, "Fetch the starter pack", "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. The depot's lorry fetches each box as it lands: tap it, and ride along."),
+            (Goal::Fetched, "Fetch the starter pack", "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the harbour's forklifts lift them onto the quay. The depot's lorry fetches them as they land: tap it, and ride along."),
             (Goal::Settled, "Build houses", "Drag them from the build menu onto a street, side by side: each is a site till a van brings its four timber, and beside it as you drag is what the depot has. Then the next ferry brings their people. Take one down while it is new and you get back what it cost."),
         ],
         reward: Reward::Coins(100.0),
@@ -153,7 +153,7 @@ const ROWS: &[Row] = &[
         key: Key::Sell,
         when: When::After(Key::Book),
         title: "Sell over the sea",
-        steps: &[(Goal::Sold, "Sell a box of crates", "Sell crates at the market, or send them to a mayor whose letter asks for them, at a better price. A depot's lorry takes a box to the park, and the coins land as the ferry casts off.")],
+        steps: &[(Goal::Sold, "Sell a crate of food", "Sell crates at the market, or send them to a mayor whose letter asks for them, at a better price. A depot's lorry takes it to the quay, and the coins land as the ferry casts off.")],
         reward: Reward::Coins(25.0),
     },
     Row {

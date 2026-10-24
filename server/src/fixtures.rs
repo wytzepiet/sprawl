@@ -29,7 +29,8 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 
-use crate::protocol::{BuildingKind, GameObject, GridCoord, TerrainType};
+use crate::blueprint::blueprint;
+use crate::protocol::{BuildingKind, GameObject, Good, GridCoord, Package, TerrainType};
 use crate::world::World;
 
 /// Grass left between one fixture and the next, and round them all.
@@ -266,6 +267,15 @@ fn stock_yards(world: &mut World) {
             for (k, s) in b.stocks.values_mut().enumerate() {
                 let share = (id.wrapping_mul(2_654_435_761).wrapping_add(k as u64 * 40_503) % 1000) as f64 / 1000.0;
                 s.level = (s.cap * (0.3 + 0.65 * share)).floor();
+            }
+        }
+        // A harbour's quay, a ferry's worth landed on it.
+        if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
+            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
+                for _ in 0..n {
+                    let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: crate::world::sea::GIFT, partner: None, price: 0.0 };
+                    world.building_mut(id).unwrap().pad.push(p);
+                }
             }
         }
     }

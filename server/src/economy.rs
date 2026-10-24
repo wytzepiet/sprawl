@@ -60,7 +60,7 @@ pub fn served_price(good: Good) -> f64 {
 }
 
 /// What an hour of work is worth where it makes no good to sell: an
-/// office, a factory until it has a product, the harbour's tug. Valued at
+/// office, a factory until it has a product, the harbour's forklifts. Valued at
 /// cost, as GDP counts government work. A meal out's worth an hour, so a
 /// desk adds about what a farm hand's crates do in a fifth of the time;
 /// it sets how much of GDP desks are until they make something.

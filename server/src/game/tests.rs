@@ -1073,8 +1073,8 @@ pub(crate) fn opening(game: &mut Game) -> Vec<bool> {
 }
 /// The opening, docs/game.md: a harbour, a depot, a street between
 /// them. The first ferry comes in on time with the starter pack and
-/// the tug lands it in the trailer park, for nothing; the depot's
-/// lorry fetches a box and unloads it onto the shelf, and a second
+/// the forklifts lift it onto the quay, for nothing; the depot's
+/// lorry fetches a load and its forklift unloads it into the yard, and a second
 /// lorry helps fetch the rest. A house is a site until a
 /// van brings its timber; then its settlers come on the next ferry and
 /// drive home. A box of crates sold goes out on the ferry, paid as it

@@ -11,7 +11,7 @@ import { keepField } from "./field";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
-import { carried, slotOn } from "./motion";
+import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
@@ -141,7 +141,7 @@ export function mountBuilding(
   // away; and its forklifts, at home, or across between the pad and a
   // vehicle with a package in their forks, one lift at a time.
   setLifts(entry.id, data.lifts);
-  const pad = BLUEPRINTS[data.kind].quay ? null : padOf(data);
+  const pad = padOf(data);
   const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
   const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
   const lay = (now: number) =>
@@ -184,7 +184,8 @@ export function mountBuilding(
     // taken, of what is seen there now.
     const onPad = placeIn(bay, packagesOf(data, l.good) + atPad(l, now))[0];
     const aboard = carried(car).length;
-    const onCar = slotOn(l.car, car, now, l.onto ? aboard - l.n + p.on : aboard + l.n - p.off)?.at;
+    const i = car.role === "Ferry" ? deckSeen(l.car, car, now).at.get(l) : l.onto ? aboard - l.n + p.on : aboard + l.n - p.off;
+    const onCar = i === undefined ? undefined : slotOn(l.car, car, now, i)?.at;
     if (!onCar) return null;
     const [from, to] = l.onto ? [onPad.at, onCar.at] : [onCar.at, onPad.at];
     const t = (now - l.start) / l.every % 1;

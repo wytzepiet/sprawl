@@ -54,6 +54,7 @@ function grid(f: ReturnType<typeof frame>, across: number, out: number, cols: nu
  *  part-made one not yet a package; anything else's, a package opened
  *  still standing. */
 export function packagesOf(b: Building, good: Good): number {
+  if (BLUEPRINTS[b.kind].quay) return b.pad.filter((p) => p.good === good).length;
   const s = (b.site ?? b.stocks)[good];
   if (!s) return 0;
   const n = s.level / GOODS[good].per;
@@ -64,8 +65,8 @@ const most = (b: Building, good: Good) => Math.ceil((b.site ?? b.stocks)[good]!.
 
 /** A building's pad: its bays, where its forklifts stand when they are
  *  not lifting, and whether it is on a yard's asphalt or the pavement.
- *  None for a harbour: its quay's pad is laid with its berth
- *  (`BuildingObject.tsx`). */
+ *  A harbour's is its quay's, beside its lane on the side its docks are
+ *  not (`Berth::park`). */
 export interface Pad {
   bays: Bay[];
   homes: Pose[];
@@ -86,6 +87,14 @@ export function padOf(b: Building): Pad {
       return { good, slots, stack: 1 };
     });
     return { bays, homes: forklifts(() => f.pose(f.at, 0, f.d / 2 + 0.05)), yard: false };
+  }
+  if (kind.quay) {
+    // Out from the ramp, a bay of each good two by two, as many high as
+    // the quay takes; its forklifts between them and the lane.
+    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
+    const back = -f.d / 2;
+    const bays = order.map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.55 + (k < 2 ? 0 : 0.66), 4, 6), stack: 2 }));
+    return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.4)), yard: true };
   }
   const goods = Object.keys(b.stocks) as Good[];
   if (b.kind === "Depot") {

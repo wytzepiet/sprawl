@@ -130,9 +130,21 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
   const bedLength = car.role === "Van" ? VAN_BED : TRAILER.l;
   const bed = first.m.bed ? placeShape(pool, car.role === "Van" ? vanBed(VAN_BED) : LORRY_BED, first.m.bed, GROUND + first.lift) : null;
-  const deck = (first.m.deck ?? []).map(({ at, good, settler }) =>
-    good ? placeShape(pool, itemOf(good, moving), at, DECK_Z) : place(pool, [{ key: carBucket(pool, settler!, false) }], at, DECK_Z + CAR.h / 2),
-  );
+  // What stands on its deck, each what and where it is: at the berth the
+  // harbour's forklifts change it (`deckSeen`).
+  const deck: { key: string; it: ReturnType<typeof place> }[] = [];
+  const stow = (m: Moment) => {
+    const want = (m.deck ?? []).map((d) => ({ ...d, key: `${d.good ?? d.settler}@${d.at.at[0].toFixed(3)},${d.at.at[1].toFixed(3)}` }));
+    if (moving && want.length === deck.length) return want.forEach((d, k) => deck[k].it.move(d.at));
+    const keep = new Map(deck.splice(0).map((d) => [d.key, d.it]));
+    for (const d of want) {
+      const it = keep.get(d.key) ?? (d.good ? placeShape(pool, itemOf(d.good, moving), d.at, DECK_Z) : place(pool, [{ key: carBucket(pool, d.settler!, false) }], d.at, DECK_Z + CAR.h / 2));
+      keep.delete(d.key);
+      deck.push({ key: d.key, it });
+    }
+    for (const it of keep.values()) it.remove();
+  };
+  stow(first.m);
   // What stands on its flatbed: its cargo, less what a forklift has yet
   // to set on it, and more what it has yet to take off (`pads.ts`).
   const goodsAt = (t: number) => {
@@ -165,17 +177,17 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     const { m, lift } = now();
     if (!m) return;
     load(m, lift, simNow());
+    stow(m);
     if (!moving) return;
     body.move(m.body, lift);
     if (bed && m.bed) bed.move(m.bed, lift);
-    m.deck?.forEach((d, k) => deck[k].move(d.at));
     carPoses.set(id, m.body.at);
     if (look.light !== undefined) beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
   }) : () => {};
   return () => {
     stop();
     unbeam(id);
-    for (const it of [body, bed, ...deck, ...aboard.map((a) => a.it)]) it?.remove();
+    for (const it of [body, bed, ...deck.map((d) => d.it), ...aboard.map((a) => a.it)]) it?.remove();
     if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
     carPoses.delete(id);
     parts.delete(id);

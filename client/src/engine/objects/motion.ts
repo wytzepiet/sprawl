@@ -2,10 +2,11 @@ import { drawnPath } from "./drawnPath";
 import { ahead, CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Rig } from "./driver";
 import { BED_TOP, CAB_BLOCK, DECK_Z, deckPose, sailing } from "./sea";
 import { ITEM } from "./goods";
+import { liftsOf, progress } from "./pads";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
-import type { Car, Good, Pose, RoadNode, Run, Sail, Trip } from "../../generated";
+import type { Car, Good, Lift, Pose, RoadNode, Run, Sail, Trip } from "../../generated";
 import { GOODS } from "../../blueprints";
 import { getObjectsAt } from "../../state/gameObjects";
 
@@ -151,12 +152,34 @@ const voyage = (s: Sail) => sails.get(s) ?? sails.set(s, sailing(s)).get(s)!;
  *  settlers' cars in the bays with none, from the sea end, two to a bay,
  *  so the first to roll off is at the land end (`seats`). */
 const [PER_BAY, BAYS] = [4, 15];
-function aboard(car: Car, ship: Pose): { at: Pose; good?: Good; settler?: number }[] {
-  const empty = [...Array(BAYS).keys()].filter((k) => car.deck.slice(k * PER_BAY, (k + 1) * PER_BAY).every((p) => !p)).reverse();
+function aboard(id: number, car: Car, ship: Pose, now: number): { at: Pose; good?: Good; settler?: number }[] {
+  const { goods } = deckSeen(id, car, now);
+  const empty = [...Array(BAYS).keys()].filter((k) => goods.slice(k * PER_BAY, (k + 1) * PER_BAY).every((g) => !g)).reverse();
   return [
-    ...car.deck.flatMap((p, i) => (p ? [{ at: deckPlace(ship, i), good: p.good }] : [])),
+    ...goods.flatMap((good, i) => (good ? [{ at: deckPlace(ship, i), good }] : [])),
     ...[...car.passengers].reverse().flatMap((settler, j) => (empty[j >> 1] === undefined ? [] : [{ at: ahead(deckPose(ship, empty[j >> 1]), j & 1 ? 0.15 : -0.15), settler }])),
   ];
+}
+/** A ferry's deck as it is seen at `now`, place by place: the server's,
+ *  with what the harbour's forklifts have yet to take off still on it and
+ *  what they have yet to set down not yet; and the place each run's
+ *  package is lifted from or to now. The server says how many a run
+ *  lifts, not which places: off from the land end's places it emptied,
+ *  on to the sea end's it filled, as `work_deck` does. */
+export function deckSeen(id: number, car: Car, now: number): { goods: (Good | null)[]; at: Map<Lift, number> } {
+  const goods = Array.from({ length: BAYS * PER_BAY }, (_, i) => car.deck[i]?.good ?? null);
+  const out = goods.map((_, i) => !!car.deck[i]?.outbound);
+  const at = new Map<Lift, number>();
+  const taken = new Set<number>();
+  for (const l of liftsOf(id).sort((a, b) => a.start - b.start)) {
+    const p = progress(l, now);
+    const free = goods.map((_, i) => i).filter((i) => !taken.has(i));
+    const places = l.onto ? free.filter((i) => out[i] && goods[i] === l.good).reverse().slice(0, l.n) : free.filter((i) => !goods[i]).slice(0, l.n);
+    for (const i of places.slice(l.onto ? p.on : p.off)) goods[i] = l.onto ? null : l.good;
+    for (const i of places) taken.add(i);
+    if (places.length) at.set(l, places[Math.min(places.length - 1, Math.max(0, Math.floor((now - l.start) / l.every)))]);
+  }
+  return { goods, at };
 }
 /** A pallet's place `i` on a ferry's deck: its bay, `i` over four, and
  *  in it two by two, the land end's pair first (`DECK` in `sea.rs`). */
@@ -202,7 +225,7 @@ export interface Moment {
 export function moment(id: number, car: Car, now: number, along?: number): Moment | null {
   if (car.role === "Ferry") {
     const body = car.sail ? voyage(car.sail)(now) : car.spot;
-    return body && { body, deck: aboard(car, body) };
+    return body && { body, deck: aboard(id, car, body, now) };
   }
   if (car.run) {
     const body = running(car.run)?.(now);

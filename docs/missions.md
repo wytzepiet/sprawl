@@ -92,7 +92,7 @@ partner for a slot going out, at the letter's price: the letter is a
 card in the feed, the boxes it wants, and a tap on its envelope
 books them all. The box carries
 the order's number as its shipment's, is loaded by a depot's lorry,
-drives to the park, shows its town's crest there, and sails with the
+waits on the quay, shows its town's crest there, and sails with the
 ferry to the edge. As the ferry casts off, the mayor pays for it, a
 lump of coins at the harbour as any export lands (`orders::sailed`); the
 last box ticks the step, and standing rises.
@@ -121,7 +121,7 @@ standing falls, and boxes still marked for it sail for the world.
 function draws them (`client/src/flat/crest.ts`): for now the town's
 crest, its initials on a disc of its colour, on the panel, on the pin
 at the edge of the minimap and the flat view in its direction, and on
-a box in the park marked for it. A portrait replaces it there
+a package on the quay marked for it. A portrait replaces it there
 (`shelved.md` §Faces).
 
 The panel shows the town's own missions first, then the orders by
@@ -136,7 +136,7 @@ in `game_loop`; the season fills them by hand at each midnight
 
 Drawn at midnight from templates, the same rows as the situation
 missions but with a `When::Daily` and goals that can be done again
-("sell two boxes of timber", "fetch every box in the park before the
+("sell two boxes of timber", "fetch every package on the quay before the
 ferry sails"). Rules:
 
 - At most three wait at once; a midnight with three waiting draws none.

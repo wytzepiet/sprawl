@@ -61,7 +61,7 @@ describe("facts and dressing", () => {
   });
 
 
-  test("a harbour is open ground all through: a trailer park, no building", () => {
+  test("a harbour is open ground all through: docks and a quay, no building", () => {
     const t = town(["~~~~~", "~~~~~", ".PPP.", ".PPP.", ".PPP.", "====="]);
     const f = facts(t);
     for (let r = 2; r <= 4; r++) for (let c = 1; c <= 3; c++) expect(f.yard(c, r)).toBe("park");

@@ -10,7 +10,7 @@ import type { P } from "../geometry";
  * The town's ground is two surfaces. Pavement is the base: every road,
  * building and yard stands on paved ground. Asphalt is cut into it
  * wherever a vehicle goes, a kerb's step down: the roads, a house's
- * drive, a yard's gate and the yard itself, the trailer park and apron
+ * drive, a yard's gate and the yard itself, the docks, quay and apron
  * of a harbour, and the bays at the kerb where the game parks. A vehicle
  * never stands on pavement.
  *

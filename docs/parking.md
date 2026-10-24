@@ -45,7 +45,7 @@ stands (`reverse`); it leaves forward, up the lane to the gate. A lorry
 takes a dock, its own depot's included, and anything else at a yard stops
 at the door; with every dock taken, the lorry's trip waits and tries
 again. One moving from dock to dock drives the lane (`World::redock`),
-never out to the street. A harbour's trailer park is its docks.
+never out to the street. A harbour's docks are on one side of its lane, its quay's pad on the other.
 
 ## 4. Kerb bays
 

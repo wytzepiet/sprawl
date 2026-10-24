@@ -56,14 +56,15 @@ first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a
-ramp and a trailer park, the way small islands are supplied. The world's
+ramp and a quay, the way small islands are supplied. The world's
 shipping company's ferry calls on a timetable: the settlers drive their
-cars off the ramp into town, and the world's trailers are towed off into
-the trailer park, where they wait for the town's own lorries to fetch
-them to a depot. No outside vehicle drives the town's roads; the boxes
-are the world's and the lorries the town's, and a box is only ever full:
-it is gone once unloaded at a depot, and the lorry drives off bobtail.
-What the town sells leaves the same way, in a box loaded at the depot. The ferry's deck is the door's size, and the
+cars off the ramp into town, and the harbour's forklifts lift the
+world's pallets off the deck onto the quay's pad, where they wait for
+the town's own lorries to fetch them to a depot. No outside vehicle
+drives the town's roads. Goods move and are traded as packages, a
+bundle of timber, a crate, a pallet of stone, a pallet of drums, each
+opened only where it is used (`plan-goods.md`). What the town sells
+leaves the same way, lifted from the quay onto the deck. The ferry's deck is the door's size, and the
 door grows: more sailings, a bigger ferry, then the container port, a
 building of its own with cranes and container ships and the trade board
 (the Exchange), then berths for tankers and bulkers that land fuel or
@@ -316,7 +317,7 @@ beyond the map's edge, each a person with a voice, a direction and
 the goods they want, ask for boxes of what the town makes, and every
 third time for something a building it has not built would make. A
 box sold while one is open is marked for that town, rides the lorry
-to the park with the town's crest on it, and sails with the ferry to
+to the quay with the town's crest on it, and sails with the ferry to
 the edge, and the mayor's coins land at the harbour as it casts off,
 over what the world pays. Filling them raises the mayor's standing,
 and so their orders and prices; and Port Aldra, the big city, writes

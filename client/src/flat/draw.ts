@@ -194,7 +194,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     }
   }
 
-  // Boxes in a park marked for a town beyond the edge: its crest on them.
+  // Packages on a quay marked for a town beyond the edge: its crest on them.
   const crested: [Stand, Neighbour][] = [];
   // Buildings: their tiles in their kind's colour, outlined; a site an
   // outline, filled from the bottom as its timber comes; the drive from
@@ -224,10 +224,18 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     g.globalAlpha = 1;
     outline(g, b.tiles, colour, 0.06, b.site ? [0.15, 0.1] : []);
     // Its pad: each package in its slot, a stack drawn once.
-    if (b.kind === "Harbour") continue;
-    for (const bay of padOf(b).bays) {
+    const bays = padOf(b).bays;
+    for (const bay of bays) {
       const n = packagesOf(b, bay.good);
       for (let i = 0; i < n; i += bay.stack) item(g, placeIn(bay, i)[0], bay.good);
+    }
+    const seen = new Map<Good, number>();
+    for (const p of b.pad) {
+      const i = seen.get(p.good) ?? 0;
+      seen.set(p.good, i + 1);
+      const n = p.outbound ? world.marked?.(p.order) : undefined;
+      const bay = bays.find((y) => y.good === p.good);
+      if (n && bay) crested.push([placeIn(bay, i)[0], n]);
     }
   }
 
