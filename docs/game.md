@@ -5,6 +5,10 @@ rewritten 2026-10-10 around trade (`trade.md`). Older documents hold the
 detail; this one is the shape. What each version set aside, and why, is
 in `shelved.md` under its date.
 
+`plan-goods.md` (2026-10-24) is newer where they meet: what the game is,
+problems that come to the player, goods as items you can see, the ferry
+with pallets on its deck, and containers through depots.
+
 ## The rule
 
 **Everything that happens in the city is a vehicle you can watch.** People
