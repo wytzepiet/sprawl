@@ -1,6 +1,6 @@
 import { addToScene, type Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
-import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
+import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf } from "./geometry";
@@ -27,16 +27,13 @@ import { groundCover } from "./view";
 export { CHUNK_SIZE };
 
 /** Sun frustum half-extent beyond which per-chunk detail is dropped. */
-const DETAIL_MAX_ORTHO = 30;
+const DETAIL_MAX_HALF = 30;
 
-/** A chunk's meshes, as last drawn: its water; its cliffs' walls, flat; the
- *  plane under the land's edge its cliff is painted on; its mountains; the
- *  walls under their layers, in the shadow map alone. None where it has none.
- *  And its trees, kept as it is drawn again; what goes with its materials;
- *  and its water's clock. */
+/** A chunk's meshes, as last drawn: its water; its land's cliff; its
+ *  mountains. None where it has none. And its trees, kept as it is drawn
+ *  again; what goes with its materials; and its water's clock. */
 interface ChunkMeshes {
   meshes: Mesh[];
-  cliffs: Mesh | null;
   trees: Record<Kind, Grove>;
   dispose: (() => void)[];
   tick: (() => void) | null;
@@ -74,13 +71,6 @@ export class TerrainChunks {
   private builder = Comlink.wrap<TerrainApi>(this.worker);
 
   private ground: GroundTiles;
-  /** The cliffs' walls and the mountains', cast only. The mountains'
-   *  walls cast only from the side away from the sun; the faces turned to
-   *  it, whose shadow falls on the layer they hold up, are culled. Which
-   *  side that is, wound as `layWalls` winds them and seen from the sun, was
-   *  found by the shadow a lee side throws on the ground. */
-  private cliffMat: TownMaterial;
-  private wallMat: TownMaterial;
   private stop: () => void;
   private detailVisible = true;
 
@@ -90,16 +80,6 @@ export class TerrainChunks {
     private isBuilt: (x: number, y: number) => boolean,
     private isQuay: (x: number, y: number) => boolean,
   ) {
-    // The one material that genuinely wants both sides. Cliff walls exist only
-    // to cast shadows, and the sun swings through 360 degrees while a wall's
-    // facing is fixed -- culled, a wall pointing away from the sun writes no
-    // depth into the shadow map and its cliff stops casting for half the day.
-    // They are edge-on to the camera, so the second side costs no fill.
-    // Cast only: they stand out at the cliff's foot, in the water.
-    this.cliffMat = townMaterial([CAST_ONLY]);
-    this.cliffMat.doubleSided = true;
-    this.wallMat = townMaterial([CAST_ONLY]);
-
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
     // Each layer of the land its colour, bottom up (`LAYERS`).
     this.ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
@@ -254,7 +234,7 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? { broad: grove(`chunk_${key}`, [ox, oy]), conifer: grove(`chunk_${key}`, [ox, oy], "conifer") }, dispose: [], tick: null };
+    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove(`chunk_${key}`, [ox, oy]), conifer: grove(`chunk_${key}`, [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     this.ground.set(key, [ox, oy], geometry.layers);
@@ -279,20 +259,17 @@ export class TerrainChunks {
     chunk.dispose.push(water.dispose);
     chunk.tick = water.tick;
     add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true });
-    chunk.cliffs = add("cliffs", geometry.cliffs, this.cliffMat, [ox, oy], { cast: true, receive: false });
     if (geometry.cliffField) {
       const cliff = cliffMaterial(engine, geometry.cliffField, geometry.shore);
       chunk.dispose.push(cliff.dispose);
       chunk.tick = () => (water.tick(), cliff.tick());
-      add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: false, receive: true });
-      add("lip", geometry.cliff, cliff.caster, [ox, oy], { cast: true, receive: false });
+      add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: true, receive: true });
     }
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights);
       chunk.dispose.push(peaks.dispose);
       add("peaks", geometry.peaks, peaks.material, [0, 0], { cast: true, receive: true });
     }
-    add("walls", geometry.peakWalls, this.wallMat, [0, 0], { cast: true, receive: false });
     this.chunks.set(key, chunk);
     this.applyDetail(chunk);
 
@@ -333,10 +310,10 @@ export class TerrainChunks {
     this.chunks.delete(key);
   }
 
-  /** Cliffs and trees are illegible when zoomed far out — skip them entirely. */
+  /** Trees are illegible when zoomed far out — skip them entirely. */
   private updateDetail(): void {
     if (!this.ctx.scene.camera) return;
-    const visible = groundCover(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_ORTHO;
+    const visible = groundCover(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_HALF;
     if (visible === this.detailVisible) return;
     this.detailVisible = visible;
     for (const chunk of this.chunks.values()) this.applyDetail(chunk);
@@ -344,7 +321,6 @@ export class TerrainChunks {
 
   private applyDetail(chunk: ChunkMeshes): void {
     const { cull } = this.ctx;
-    if (chunk.cliffs) cull.want(chunk.cliffs, this.detailVisible);
     for (const kind of ["broad", "conifer"] as const) {
       for (const mesh of chunk.trees[kind].meshes) cull.want(mesh, this.detailVisible);
     }

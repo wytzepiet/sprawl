@@ -2,6 +2,7 @@ import type { TerrainType } from "../../generated";
 import type { MeshGeometry } from "../geometry";
 import type { Rgb } from "../rgb";
 import { fillTriangles } from "../raster";
+import { slateHeight } from "../slate";
 
 // This module has no runtime imports, and must keep it that way: it is the
 // unit of work handed to the terrain worker, where Babylon and the DOM do not
@@ -40,17 +41,14 @@ export interface ChunkGeometry {
    *  byte each, 0 at the shore to 255 at SHORE_REACH or more, SHORE_DENSITY
    *  to a tile, rows up from its low corner. */
   shore: Uint8Array | null;
-  cliffs: MeshBuffers;
   /** The land's cliff: the plane under its edge it is painted on, and how
    *  far out from the edge each point is (`cliffField`), if it has one. */
   cliff: MeshBuffers;
   cliffField: Uint8Array | null;
-  /** The mountains: a square a tile a layer (`layPeaks`); their heights,
-   *  half floats, for the shader to cut and light them by; and the walls
-   *  under their layers, for their shadows alone (`layWalls`). */
+  /** The mountains, terraced (`layPeaks`); their heights and where their
+   *  layers break, half floats in pairs, for the shader to light them by. */
   peaks: MeshBuffers;
   peakHeights: Uint16Array | null;
-  peakWalls: MeshBuffers;
 }
 
 /** The shore field's texels to a tile, and how far from land it reaches. */
@@ -59,13 +57,13 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs, g.cliff, g.peaks, g.peakWalls].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliff, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
   return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined, g.cliffField ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
 /** The land stands on a cliff this high over the water; a beach lies
  *  down it, this high, at the water's edge. */
-const WATER_Z = -0.7;
+export const WATER_Z = -0.7;
 const BEACH_Z = -0.66;
 
 const ELEVATION: Record<TerrainType, number> = {
@@ -419,49 +417,24 @@ const EDGE_ENDPOINTS: [[number, number], [number, number]][] = [
     [0, 0],
   ], // left
 ];
-// Cliff walls are unlit and edge-on to the camera, so their normals only
-// steer the shadow pass's normal bias, which slides every
-// caster along its normal. Walls on the same ridge used to face opposite ways
-// depending on which tile drew them, and the bias pushed neighbours apart:
-// one ridge, cast as panels in and out of line. Up, for all of them.
-const UP4 = [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
 
-/** The cliff the land stands on, its lip and face, seen from above,
- *  painted on one plane round the land's edge, between its rock and its
- *  grass, as a mountain's are (`peaks.ts`): the face reaching this far out
- *  from the edge. */
+/** The cliff the land stands on: its lip painted on a plane round the
+ *  land's edge, between its rock and its grass, as a mountain layer's is
+ *  (`peaks.ts`), and its wall from the lip down into the water, its foot
+ *  this far out. */
 export const CLIFF_RUN = 0.32;
 /** The land stands out past its tiles this far, on its cliff, on the
  *  whole: its edge there, wandering either way along the slate; its tiles'
  *  grass whole to their edge, room for what is built on them. */
 export const CLIFF_OUT = 0.3;
 /** And its edge wanders along the slate, as a mountain step's does, this
- *  far either way at most, in tiles. Read alike wherever the edge is
- *  wanted (`peaks.ts`, `water.ts`), at one size. */
+ *  far either way at most, in tiles: baked into the cliff's field
+ *  (`cliffField`), which all read the edge by. */
 export const CLIFF_WANDER = 0.2;
 /** How far either side of the land's edge its cliff's field reaches, in
  *  tiles, and where its plane lies: over the land's rock, under its grass. */
 export const CLIFF_REACH = 2;
-const CLIFF_Z = 0.0012;
-
-/** The wall under a stretch of the land's edge, from a to b, `inward` the
- *  way onto the land, `height` high, for its shadow, as a mountain step's
- *  stands under its edge: its top under the cliff's lip (`CLIFF_OUT`)
- *  where it wanders furthest in (`CLIFF_WANDER`), so the lip's outline,
- *  cast by the plane it is drawn on (`peaks.ts`), is the shadow's; sloping
- *  out this share of the way to the cliff's foot (`CLIFF_RUN` past the
- *  lip), as its face is drawn; each end lengthened this much, so where
- *  stretches meet at an angle no light shows between them. */
-const WALL_FOOT = 0.4;
-const WALL_JOIN = 0.1;
-function underLip(a: number[], b: number[], inward: number[], height: number): MeshGeometry {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  const [ux, uy] = [((b[0] - a[0]) / len) * WALL_JOIN, ((b[1] - a[1]) / len) * WALL_JOIN];
-  const out = (p: number[], d: number, along: number) => [p[0] - inward[0] * d + ux * along, p[1] - inward[1] * d + uy * along];
-  const [top, foot] = [CLIFF_OUT - CLIFF_WANDER, CLIFF_OUT + CLIFF_RUN * WALL_FOOT];
-  const [fa, fb, ta, tb] = [out(a, foot, -1), out(b, foot, 1), out(a, top, -1), out(b, top, 1)];
-  return { positions: [fa[0], fa[1], 0, fb[0], fb[1], 0, tb[0], tb[1], height, ta[0], ta[1], height], normals: UP4, indices: [0, 1, 2, 0, 2, 3] };
-}
+export const CLIFF_Z = 0.0012;
 
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
@@ -706,14 +679,8 @@ class ChunkSink {
   water = new TerrainBuffers(true);
   /** The land as drawn, for the water to know how far it lies from it. */
   land = new TerrainBuffers(false);
-  /**
-   * Cliffs only ever cast shadows. The camera looks straight down, so cliff
-   * walls are edge-on and never rasterised — only the shadow pass reads them,
-   * and that reads depth alone.
-   */
-  cliffs = new TerrainBuffers(false);
-  /** The land at its own height, as drawn; and the plane its cliff is
-   *  painted on, under its edge. */
+  /** The land at its own height, as drawn; and its cliff: the plane under
+   *  its edge its lip is painted on, and its wall. */
   landTop = new TerrainBuffers(false);
   cliffPlane = new TerrainBuffers(false);
 
@@ -721,7 +688,6 @@ class ChunkSink {
     for (const layer of this.layers) [layer.at.length, layer.shapes.length] = [0, 0];
     this.water.reset();
     this.land.reset();
-    this.cliffs.reset();
     this.landTop.reset();
     this.cliffPlane.reset();
   }
@@ -932,11 +898,6 @@ const isIn = (type: TerrainType | null | undefined) => type === "Beach" || type 
 /** A tile's eight neighbours. */
 const AROUND = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
 
-/** Where each layer stands a wall along its edge onto lower ground, down
- *  to what height, for its shadow: the land, into the water. A beach runs
- *  flat into it. */
-const WALLS: [number, number][] = [[1, WATER_Z]];
-
 /**
  * One tile's share of each layer of the land, top down, none of a layer
  * hidden whole under one above it. Each layer is rounded from its own map
@@ -981,10 +942,6 @@ function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, 
     // What lies under it is hidden only a tile in from its edge, where the
     // edge's fraying (`ground.ts`) cannot reach.
     hidden = shape.base === "+" && shape.corners.every((c) => !c || c.lies === "+") && AROUND.every(([dx, dy]) => isIn(map.typeAt(x + dx, y + dy)));
-    for (const [w, foot] of WALLS) {
-      if (w !== l) continue;
-      for (const { a, b, inward, lies } of outlineOf(key)) if (lies === "-") append(sink.cliffs, underLip(a, b, inward, LAYERS[l].z - foot), lx, ly, foot, NO_COLOUR);
-    }
     // The land at its own height, for its cliff to know how far it lies.
     if (l === 1) append(sink.landTop, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);
     // The land as drawn, beaches and all, for the water to know how far it
@@ -1087,15 +1044,53 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
 
 const isLandTop = (t: TerrainType) => t === "Grass" || t === "Forest" || t === "Mountain";
 
-/** How far each point of a chunk lies out from the land's edge at its own
- *  height, `SHORE_DENSITY` to a tile, inside negative, `CLIFF_REACH` either
- *  way from half-way; for its cliff to be painted by (`peaks.ts`). */
-function cliffField(sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
-  const mask = landMask(SINK.landTop, sampler, originX, originY, CLIFF_REACH, isLandTop);
-  const side = (CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY;
+/** How far each point of a chunk lies out from the land's lip, its edge
+ *  at its own height wandering along the slate, `SHORE_DENSITY` to a tile,
+ *  inside negative, `CLIFF_REACH` either way from half-way; for its cliff
+ *  to be painted by (`peaks.ts`) and the sea to break on (`water.ts`). And
+ *  the cliff's wall under the lip, laid on its plane's mesh: from the lip
+ *  down into the water, its foot `CLIFF_RUN` out, facing out to sea. */
+function cliffField(sink: ChunkSink, sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
+  const d = SHORE_DENSITY;
+  const mask = landMask(sink.landTop, sampler, originX, originY, CLIFF_REACH, isLandTop);
+  const side = (CHUNK_SIZE + 2 * CLIFF_REACH) * d;
   const out = distances(mask, side);
   const into = distances(mask.map((v) => 1 - v), side);
-  return inner((k) => 0.5 + (out[k] - into[k]) / (2 * CLIFF_REACH * SHORE_DENSITY), CLIFF_REACH);
+  // A texel's middle, from the chunk's corner; and its byte, as the shader
+  // reads it, so the wall stands where the lip is cut.
+  const place = (i: number, j: number): Point => [(i + 0.5) / d - CLIFF_REACH, (j + 0.5) / d - CLIFF_REACH];
+  const bytes = new Uint8Array(side * side);
+  for (let j = 0; j < side; j++) {
+    for (let i = 0; i < side; i++) {
+      const k = j * side + i;
+      const edge = (out[k] - into[k]) / d - CLIFF_OUT;
+      // Past where the field reaches, whatever the slate.
+      const far = Math.abs(edge) > CLIFF_REACH + CLIFF_WANDER ? edge : edge - slateHeight(originX + (i + 0.5) / d - CLIFF_REACH, originY + (j + 0.5) / d - CLIFF_REACH) * CLIFF_WANDER;
+      bytes[k] = Math.max(0, Math.min(255, Math.round((0.5 + far / (2 * CLIFF_REACH)) * 255)));
+    }
+  }
+  const decoded = new Float32Array(bytes.length);
+  for (let k = 0; k < bytes.length; k++) decoded[k] = (bytes[k] / 255 - 0.5) * 2 * CLIFF_REACH;
+  const far = (i: number, j: number) => decoded[j * side + i];
+  // Out to sea at a point: the field's climb, blended between the texels
+  // round it, alike from either cell a point is shared by.
+  const seaward = ([x, y]: Point): Point => {
+    const [tx, ty] = [(x + CLIFF_REACH) * d - 0.5, (y + CLIFF_REACH) * d - 0.5];
+    const [i, j] = [Math.max(1, Math.min(side - 3, Math.floor(tx))), Math.max(1, Math.min(side - 3, Math.floor(ty)))];
+    const [u, v] = [tx - i, ty - j];
+    const grad = (a: number, b: number): Point => [far(a + 1, b) - far(a - 1, b), far(a, b + 1) - far(a, b - 1)];
+    const [g00, g10, g01, g11] = [grad(i, j), grad(i + 1, j), grad(i, j + 1), grad(i + 1, j + 1)];
+    const g = [0, 1].map((n) => (g00[n] * (1 - u) + g10[n] * u) * (1 - v) + (g01[n] * (1 - u) + g11[n] * u) * v);
+    const len = Math.hypot(g[0], g[1]) || 1;
+    return [(g[0] / len) * CLIFF_RUN, (g[1] / len) * CLIFF_RUN];
+  };
+  const walls = new Builder();
+  const m = CLIFF_REACH * d;
+  // Rows wholly inland: nothing crosses them.
+  const rows = highest(decoded, side);
+  contour(far, place, [m, m, m + CHUNK_SIZE * d, m + CHUNK_SIZE * d], 0, (p, q) => walls.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]), undefined, Infinity, rows);
+  append(sink.cliffPlane, walls, 0, 0, 0, NO_COLOUR);
+  return inner((k) => bytes[k] / 255, CLIFF_REACH);
 }
 
 /** The plane the land's cliff is painted on: a square under every tile
@@ -1119,12 +1114,16 @@ function layCliffPlane(sink: ChunkSink, sampler: TerrainSampler, originX: number
  * The mountains, a ground of their own: a surface on the ground at the
  * rock's edge, under the grass there, which stops at it as at the sand,
  * its fray showing the rock's foot; rising over the range as the server
- * eroded it (`mountains.rs`), which sends its heights with the chunk,
- * in layers: a square a tile for each layer that could show there, the
- * shader cutting each layer's edge and lighting it from the heights, sent
- * on as a texture (`peaks.ts`), as a tree's crown is cut from its square.
- * Unlike the rest of a chunk, laid where it is on the map, not from the
- * chunk's corner, for the shader to find the chunk and its heights by.
+ * eroded it (`mountains.rs`), which sends its heights with the chunk, in
+ * terraces: each layer a flat top where the rock reaches it, on a wall
+ * standing on the layer below. The edge is where the rock's height, the
+ * slate's added (`slateHeight`), crosses where the layer begins, so it
+ * breaks along the slate's plates, a plate standing proud jutting out and a
+ * missing one biting in; on a steep range as far as on a gentle one. The
+ * heights go on as a texture, for the shader to light the rock by
+ * (`peaks.ts`). Unlike the rest of a chunk, laid where it is on the map,
+ * not from the chunk's corner, for the shader to find the chunk and its
+ * heights by.
  */
 /** As the server sends them (`mountains.rs`): points to a tile's side, a
  *  tile's height, and how far past the chunk they reach, in tiles. */
@@ -1137,81 +1136,139 @@ export const PEAK_SIDE = (CHUNK_SIZE + PEAK_APRON * 2) * PEAK_SAMPLES + 1;
  *  rest, so the grass's fray shows whichever is nearer. */
 const FOOT_Z = 0.001;
 const FOOT = 0.5;
-/** The rock is laid in layers this many tiles high, each a flat plane;
- *  the first standing where the heights reach this far above the ground,
- *  so its foot follows them round, not the grid they are on. A plane
- *  reaches this far past its edge, in height, down the slope, for the
- *  shader to cut its edge anywhere in that (`peaks.ts`), and on up under
- *  every plane above it: drawn, the shader drops what is under the next;
- *  in the shadow map it is kept, so the stack casts a solid's shadow, not
- *  one plate's outline after another with the sun showing between. */
+/** The rock is laid in layers this many tiles high, the first standing
+ *  where the heights reach this far above the ground, so its foot follows
+ *  them round, not the grid they are on. */
 export const LAYER = 0.9;
 export const EDGE = 0.05;
-export const REACH = 0.45;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
-const begins = (k: number) => EDGE + (k - 1) * LAYER;
+export const begins = (k: number) => EDGE + (k - 1) * LAYER;
+/** How far, in tiles, a layer's edge wanders with the slate, the slate's
+ *  height added scaled by how steep the rock is, the steepness counted at
+ *  most this, never more than this far either way; fading out over this
+ *  much height at the foot, so the rock keeps to its own ground. */
+const WANDER = 0.4;
+const STEEPEST = 4;
+const WANDERS = 0.4;
+const JAG_FOOT = 0.25;
 
-/** A layer's wall is traced on cells of the heights this many points to a
- *  side: half a tile. */
-const WALL_CELL = 4;
+type Point = [number, number];
 
 /**
- * The walls under the mountains' layers, for their shadows alone: the
- * planes have none, and a stack of plates casts one plate's outline after
- * another. Each layer's edge traced where the rock's height crosses where
- * the layer begins (marching squares), a strip standing on it from the
- * layer below to this one, facing down the slope. It follows the height,
- * not the slate's breaks, which only the shader knows. Laid where it is on
- * the map, as the planes are.
+ * Where a field on a grid of points reaches `level`, cell by cell (marching
+ * squares), over the cells from (i0, j0) to before (i1, j1). `edge(p, q)`
+ * for each stretch of the level's line, the field higher on its left; and,
+ * given `fill`, the ground at or over the level, a convex polygon at a time
+ * (a run of whole cells along a row as one), but for cells wholly at or
+ * over `hidden`. Given each row's highest, rows wholly under it are passed
+ * over.
  */
-function layWalls(heights: Uint8Array, originX: number, originY: number): MeshBuffers {
-  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
-  if (!heights.length) return { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint32Array() };
-  const at = (i: number, j: number) => (heights[2 * (j * PEAK_SIDE + i)] | (heights[2 * (j * PEAK_SIDE + i) + 1] << 8)) / PEAK_UNIT;
-  const place = (i: number, j: number): [number, number] => [originX - PEAK_APRON + i / PEAK_SAMPLES, originY - PEAK_APRON + j / PEAK_SAMPLES];
-  const wall = ([px, py]: [number, number], [qx, qy]: [number, number], k: number, [gx, gy]: [number, number]) => {
-    // Facing down the slope: from p to q, the low side on the right.
-    let [nx, ny] = [qy - py, px - qx];
-    if (nx * gx + ny * gy > 0) {
-      [px, py, qx, qy] = [qx, qy, px, py];
-      [nx, ny] = [-nx, -ny];
-    }
-    const len = Math.hypot(nx, ny);
-    if (len < 1e-6) return;
-    const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
-    const base = positions.length / 3;
-    positions.push(px, py, lo, qx, qy, lo, qx, qy, hi, px, py, hi);
-    for (let n = 0; n < 4; n++) normals.push(nx / len, ny / len, 0);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  };
-  const [i0, j0] = [PEAK_APRON * PEAK_SAMPLES, PEAK_APRON * PEAK_SAMPLES];
-  const end = (PEAK_APRON + CHUNK_SIZE) * PEAK_SAMPLES;
-  for (let j = j0; j < end; j += WALL_CELL) {
-    for (let i = i0; i < end; i += WALL_CELL) {
-      // The cell's corners, round it: a, b along, c, d back.
-      const corners: [number, number][] = [[i, j], [i + WALL_CELL, j], [i + WALL_CELL, j + WALL_CELL], [i, j + WALL_CELL]];
-      const h = corners.map(([ci, cj]) => at(ci, cj));
-      const [lo, hi] = [Math.min(...h), Math.max(...h)];
-      if (hi <= 0) continue;
-      // Uphill, across the cell.
-      const g: [number, number] = [h[1] + h[2] - h[0] - h[3], h[2] + h[3] - h[0] - h[1]];
-      for (let k = Math.max(1, Math.ceil((lo - EDGE) / LAYER) + 1); begins(k) <= hi; k++) {
-        const v = begins(k);
-        if (v <= lo) continue;
-        // Where the level crosses the cell's sides, in order round it.
-        const cross: [number, number][] = [];
-        for (let e = 0; e < 4; e++) {
-          const [a, b] = [e, (e + 1) % 4];
-          if ((h[a] < v) === (h[b] < v)) continue;
-          const t = (v - h[a]) / (h[b] - h[a]);
-          const [pa, pb] = [place(...corners[a]), place(...corners[b])];
-          cross.push([pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]);
-        }
-        for (let n = 0; n + 1 < cross.length; n += 2) wall(cross[n], cross[n + 1], k, g);
+function contour(
+  at: (i: number, j: number) => number,
+  place: (i: number, j: number) => Point,
+  [i0, j0, i1, j1]: [number, number, number, number],
+  level: number,
+  edge: (p: Point, q: Point) => void,
+  fill?: (polygon: Point[]) => void,
+  hidden = Infinity,
+  rows?: Float32Array,
+) {
+  for (let j = j0; j < j1; j++) {
+    if (rows && Math.max(rows[j], rows[j + 1]) < level) continue;
+    let run = -1;
+    const flush = (i: number) => {
+      if (run >= 0 && fill) fill([place(run, j), place(i, j), place(i, j + 1), place(run, j + 1)]);
+      run = -1;
+    };
+    for (let i = i0; i < i1; i++) {
+      // Round the cell, as x and y run: its corners' heights, and the
+      // corners, if the level crosses it.
+      const [h0, h1, h2, h3] = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)];
+      const lo = Math.min(h0, h1, h2, h3);
+      if (lo >= level) {
+        if (lo >= hidden) flush(i);
+        else if (run < 0) run = i;
+        continue;
       }
+      flush(i);
+      if (Math.max(h0, h1, h2, h3) < level) continue;
+      const h = [h0, h1, h2, h3];
+      const c: Point[] = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
+      const over = h.map((v) => v >= level);
+      const n = over.filter(Boolean).length;
+      // Where the level crosses the side from corner a to b: worked out
+      // from the side's lower corner, so the cell beside finds the same.
+      const cross = (a: number, b: number): Point => {
+        if (a === 3 || (a === 2 && b === 3)) [a, b] = [b, a];
+        const t = (level - h[a]) / (h[b] - h[a]);
+        const [p, q] = [place(...c[a]), place(...c[b])];
+        return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+      };
+      const next = (k: number) => (k + 1) % 4;
+      const prev = (k: number) => (k + 3) % 4;
+      // A saddle whose middle is under the level: its two high corners apart.
+      if (n === 2 && over[0] === over[2] && (h[0] + h[1] + h[2] + h[3]) / 4 < level) {
+        for (let k = 0; k < 4; k++) {
+          if (!over[k]) continue;
+          const [out, back] = [cross(k, next(k)), cross(prev(k), k)];
+          edge(out, back);
+          fill?.([place(...c[k]), out, back]);
+        }
+        continue;
+      }
+      // Otherwise round the cell, the high corners and the crossings
+      // between: one polygon; each crossing out followed by one back in.
+      const polygon: Point[] = [];
+      for (let k = 0; k < 4; k++) {
+        if (over[k]) polygon.push(place(...c[k]));
+        if (over[k] !== over[next(k)]) polygon.push(cross(k, next(k)));
+      }
+      for (let k = 0; k < 4; k++) {
+        if (!over[k] || over[next(k)]) continue;
+        // Out across side k; back in across the first side after it.
+        let m = next(k);
+        while (!over[next(m)]) m = next(m);
+        edge(cross(k, next(k)), cross(m, next(m)));
+      }
+      fill?.(polygon);
     }
+    flush(i1);
   }
-  return { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices) };
+}
+
+/** The highest of each row of a square grid `side` across. */
+function highest(grid: Float32Array, side: number): Float32Array {
+  const rows = new Float32Array(side).fill(-Infinity);
+  for (let j = 0; j < side; j++) for (let k = j * side; k < (j + 1) * side; k++) if (grid[k] > rows[j]) rows[j] = grid[k];
+  return rows;
+}
+
+/** A mesh's buffers, as they are built: a convex polygon, or a wall. */
+class Builder {
+  positions: number[] = [];
+  normals: number[] = [];
+  indices: number[] = [];
+  polygon(points: Point[], z: number) {
+    const base = this.positions.length / 3;
+    for (const [x, y] of points) this.positions.push(x, y, z), this.normals.push(0, 0, 1);
+    for (let k = 1; k + 1 < points.length; k++) this.indices.push(base, base + k, base + k + 1);
+  }
+  /** From p to q, facing to the right of that, from `lo` up to `hi`; its
+   *  foot out from p and q along `out`, if given. */
+  wall(p: Point, q: Point, lo: number, hi: number, out?: [Point, Point]) {
+    const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return;
+    const [nx, ny] = [dy / len, -dx / len];
+    const [fp, fq] = out ? [[p[0] + out[0][0], p[1] + out[0][1]], [q[0] + out[1][0], q[1] + out[1][1]]] : [p, q];
+    const base = this.positions.length / 3;
+    this.positions.push(fp[0], fp[1], lo, fq[0], fq[1], lo, q[0], q[1], hi, p[0], p[1], hi);
+    for (let k = 0; k < 4; k++) this.normals.push(nx, ny, 0);
+    this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  take(): MeshBuffers {
+    return { positions: new Float32Array(this.positions), normals: new Float32Array(this.normals), indices: new Uint32Array(this.indices) };
+  }
 }
 
 /** A number as a half float's bits, for a texture of them. */
@@ -1229,54 +1286,49 @@ function half(v: number): number {
 
 function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number, originY: number): { mesh: MeshBuffers; heights: Uint16Array | null } {
   const rock = (x: number, y: number) => sampler.typeAt(x, y) === "Mountain";
-  // The height at a point of the heights' grid, in tiles.
-  const at = (i: number, j: number) => (heights[2 * (j * PEAK_SIDE + i)] | (heights[2 * (j * PEAK_SIDE + i) + 1] << 8)) / PEAK_UNIT;
-  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
-  // A tile's square of layer k, its corners shared with its neighbours'.
-  const corners = new Map<number, number>();
-  const corner = (x: number, y: number, k: number) => {
-    const key = ((k * (CHUNK_SIZE + 1) + (y - originY)) * (CHUNK_SIZE + 1) + (x - originX));
-    let v = corners.get(key);
-    if (v === undefined) {
-      v = positions.length / 3;
-      positions.push(x, y, FOOT_Z + k * LAYER), normals.push(0, 0, 1);
-      corners.set(key, v);
-    }
-    return v;
-  };
-  const square = (x: number, y: number, k: number) => {
-    const [a, b, c, d] = [corner(x, y, k), corner(x + 1, y, k), corner(x + 1, y + 1, k), corner(x, y + 1, k)];
-    indices.push(a, c, b, a, d, c);
-  };
-  if (heights.length) {
-    for (let y = originY; y < originY + CHUNK_SIZE; y++) {
-      for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-        // The rock's tiles and those beside them: its heights come down to
-        // the ground in a curve across the tiles, not along their edges.
-        if (![-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => rock(x + dx, y + dy)))) continue;
-        // On the rock's own tiles its ground is laid too; beside them, it
-        // is the grass's.
-        if (rock(x, y)) square(x, y, 0);
-        // Every layer the tile's heights could show, at their highest.
-        const [i0, j0] = [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES];
-        let top = 0;
-        for (let j = j0; j <= j0 + PEAK_SAMPLES; j++) for (let i = i0; i <= i0 + PEAK_SAMPLES; i++) top = Math.max(top, at(i, j));
-        if (top <= 0) continue;
-        for (let k = 1; begins(k) - REACH <= top; k++) square(x, y, k);
+  const out = new Builder();
+  const place = (i: number, j: number): Point => [originX - PEAK_APRON + i / PEAK_SAMPLES, originY - PEAK_APRON + j / PEAK_SAMPLES];
+  // The rock's height at a point of the heights' grid, in tiles; and where
+  // its layers break, the slate's added.
+  const raw = new Float32Array(heights.length / 2);
+  for (let k = 0; k < raw.length; k++) raw[k] = (heights[2 * k] | (heights[2 * k + 1] << 8)) / PEAK_UNIT;
+  const h = (i: number, j: number) => raw[Math.min(PEAK_SIDE - 1, Math.max(0, j)) * PEAK_SIDE + Math.min(PEAK_SIDE - 1, Math.max(0, i))];
+  const broken = new Float32Array(raw.length);
+  let top = 0;
+  for (let j = 0; j < PEAK_SIDE && raw.length; j++) {
+    for (let i = 0; i < PEAK_SIDE; i++) {
+      const own = raw[j * PEAK_SIDE + i];
+      if (own <= 0) {
+        broken[j * PEAK_SIDE + i] = own;
+        continue;
       }
+      const steep = Math.max(Math.hypot(h(i + 1, j) - h(i - 1, j), h(i, j + 1) - h(i, j - 1)) * (PEAK_SAMPLES / 2), 0.05);
+      const s = own + Math.max(-WANDERS, Math.min(WANDERS, WANDER * Math.min(steep, STEEPEST) * slateHeight(...place(i, j), true) * 0.5 * Math.min(1, own / JAG_FOOT)));
+      broken[j * PEAK_SIDE + i] = s;
+      top = Math.max(top, s);
     }
   }
-  // Its foot under the grass beside it: half a tile out along a side of
-  // rock, a quarter-tile triangle into a corner it only touches across.
-  const flat = (...points: [number, number][]) => {
-    const base = positions.length / 3;
-    for (const [cx, cy] of points) positions.push(cx, cy, FOOT_Z), normals.push(0, 0, 1);
-    for (let k = 1; k + 1 < points.length; k++) indices.push(base, base + k, base + k + 1);
-  };
+  // Each layer's top where the rock reaches it, but where the layer above
+  // hides it whole; and its wall, from the layer below up to it.
+  const cells: [number, number, number, number] = [PEAK_APRON * PEAK_SAMPLES, PEAK_APRON * PEAK_SAMPLES, (PEAK_APRON + CHUNK_SIZE) * PEAK_SAMPLES, (PEAK_APRON + CHUNK_SIZE) * PEAK_SAMPLES];
+  const at = (i: number, j: number) => broken[j * PEAK_SIDE + i];
+  const rows = highest(broken, PEAK_SIDE);
+  for (let k = 1; begins(k) <= top; k++) {
+    const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
+    contour(at, place, cells, begins(k), (p, q) => out.wall(p, q, lo, hi), (polygon) => out.polygon(polygon, hi), begins(k + 1), rows);
+  }
+  // The rock's own ground, on its tiles; its foot under the grass beside
+  // them: half a tile out along a side of rock, a quarter-tile triangle
+  // into a corner it only touches across.
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      if (rock(x, y)) {
+        out.polygon([[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]], FOOT_Z);
+        continue;
+      }
       const t = sampler.typeAt(x, y);
       if (t !== "Grass" && t !== "Forest") continue;
+      const flat = (...points: Point[]) => out.polygon(points, FOOT_Z);
       if (rock(x - 1, y)) flat([x, y], [x + FOOT, y], [x + FOOT, y + 1], [x, y + 1]);
       if (rock(x + 1, y)) flat([x + 1 - FOOT, y], [x + 1, y], [x + 1, y + 1], [x + 1 - FOOT, y + 1]);
       if (rock(x, y - 1)) flat([x, y], [x + 1, y], [x + 1, y + FOOT], [x, y + FOOT]);
@@ -1288,10 +1340,11 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
       }
     }
   }
-  // And the heights, for the shader to cut and light the layers by.
-  const out = heights.length ? new Uint16Array(PEAK_SIDE * PEAK_SIDE) : null;
-  if (out) for (let k = 0; k < out.length; k++) out[k] = half((heights[2 * k] | (heights[2 * k + 1] << 8)) / PEAK_UNIT);
-  return { mesh: { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices) }, heights: out };
+  // And the heights, the rock's and where it breaks, for the shader to
+  // light it by.
+  const texels = raw.length ? new Uint16Array(PEAK_SIDE * PEAK_SIDE * 2) : null;
+  if (texels) for (let k = 0; k < raw.length; k++) (texels[2 * k] = half(raw[k])), (texels[2 * k + 1] = half(broken[k]));
+  return { mesh: out.take(), heights: texels };
 }
 
 /** Scratch, reused across builds — see TerrainBuffers. */
@@ -1349,16 +1402,15 @@ export function buildChunk(
   }
   if (tileCount === 0) return null;
   const cliffed = layCliffPlane(SINK, sampler, originX, originY);
+  const field = cliffed ? cliffField(SINK, sampler, originX, originY) : null;
 
   return {
     layers: SINK.layers.map((l) => ({ at: Float32Array.from(l.at), shapes: [...l.shapes] })),
     water: SINK.water.take(),
     shore: SINK.water.vertices ? shoreField(SINK.land, sampler, originX, originY) : null,
-    cliffs: SINK.cliffs.take(),
     cliff: SINK.cliffPlane.take(),
-    cliffField: cliffed ? cliffField(sampler, originX, originY) : null,
+    cliffField: field,
     ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),
-    peakWalls: layWalls(heights, originX, originY),
   };
 }
 

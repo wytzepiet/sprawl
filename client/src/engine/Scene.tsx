@@ -1,5 +1,5 @@
 import Canvas, { Registered } from "./Canvas";
-import { OrthoCamera } from "./OrthoCamera";
+import { Camera } from "./Camera";
 import DayNightLights, { DayNightProvider } from "./DayNightCycle";
 import { InstancePoolProvider } from "./InstancePool";
 import { Picker } from "./Picker";
@@ -17,7 +17,7 @@ function SceneInner() {
   return (
     <DayNightProvider>
       <Canvas>
-        <OrthoCamera />
+        <Camera />
         {/* Only while `bun run pan` measures: it names its tab. */}
         {import.meta.env.DEV && new URLSearchParams(location.search).has("tab") && <PerfReport />}
         <DayNightLights>

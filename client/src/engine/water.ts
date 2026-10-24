@@ -1,7 +1,7 @@
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
 import { CALM, slate } from "./peaks";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { LACE_SIDE, LACE_TILES } from "./lace";
@@ -24,8 +24,8 @@ import { bakedTexture } from "./bakeCache";
  * water's own deeper colour. Along the shore lies a band of foam, its edge
  * ragged with the same ripple and lapping in and out, and crests of it
  * running in, one each `WAVE_PERIOD`, to break on it; under a cliff, along
- * its foot, as its face is painted (`peaks.ts`), the same field and slate
- * telling where. All of it is lit as
+ * its wall's foot (`peaks.ts`), the same field telling where. All of it is
+ * lit as
  * any ground is, so it dims and takes the light's colour by night.
  */
 
@@ -187,7 +187,8 @@ const water = () => {
     const g = i === 0 ? "ripple.rg" : `${read("waterRipple", drift(l))}.rg`;
     return `vec2f(${g}.x * ${f(c)} + ${g}.y * ${f(s)}, ${g}.y * ${f(c)} - ${g}.x * ${f(s)}) * ${f(l[4])}`;
   }).join(" + ");
-  // The slate at the pixel, as the cliff's shader reads it for its edge.
+  // The slate at the pixel, as the cliff's lip wanders along it, for the
+  // waves to keep time by its smooth outline.
   const slateTop = `textureSampleBias(waterSlate, waterSlateSampler, ${at} / ${f(SLATE_SPAN)}, ${f(CALM)})`;
   // The ripple's height, for the waves' timing: broad, read whole, as
   // each wave reads it afresh, a jump the sampler would take for a blur.
@@ -204,9 +205,10 @@ const water = () => {
     `let swell = ripple.b;`,
     `let foamEdge = ${f(FOAM)} * (0.5 + 0.5 * swell) * (0.85 + 0.15 * sin(1.3 * ${time}));`,
     `let cliffField = fields.g;`,
-    // As far as the field reaches is no cliff near at all, whatever the slate.
     `let slate = ${slateTop};`,
-    `let cliffFoot = (cliffField - 0.5) * ${f(2 * CLIFF_REACH)} - (slate.b * 2. - 1.) * ${f(CLIFF_WANDER)} - ${f(CLIFF_OUT + CLIFF_RUN)} + step(0.995, cliffField) * 9.;`,
+    // How far out from the cliff's foot, its lip wandering along the slate
+    // (`cliffField`); as far as the field reaches is no cliff near at all.
+    `let cliffFoot = (cliffField - 0.5) * ${f(2 * CLIFF_REACH)} - ${f(CLIFF_RUN)} + step(0.995, cliffField) * 9.;`,
     `let ashore = min(shore, max(cliffFoot, 0.));`,
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
