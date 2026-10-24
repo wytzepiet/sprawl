@@ -1,10 +1,7 @@
 import { createMemo, createRoot, createSignal } from "solid-js";
 import { now, sea } from "./sea";
 import { missions } from "./missions";
-import type { Good, Letter, Shipment } from "../generated";
-import type { Mayor } from "../generated/Mayor";
-
-export const GOOD_ORDER: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
+import type { Good, Letter, Shipment, Mayor } from "../generated";
 
 /** The steps a box takes, in from the world and out to it: what a
  *  deal's bar is cut into. */
@@ -52,7 +49,7 @@ export interface Deal {
 const keyOf = (out: boolean, partner: Mayor | null, good: Good) => `${out ? "out" : "in"}:${partner ?? "world"}:${good}`;
 
 /** Where a box is on its way, and when it moves on. */
-function boxOf(s: Shipment): Box {
+export function boxOf(s: Shipment): Box {
   const sailing = sea.sailings.find((x) => x.ferry === s.carrier) ?? sea.sailings[0];
   const box = (step: number, eta: number | null, words = (s.outbound ? OUT_STEPS : IN_STEPS)[step]): Box => ({ trailer: s.trailer, step, words, eta, seen: step > 0 });
   if (s.outbound) {

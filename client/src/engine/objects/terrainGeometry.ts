@@ -1,5 +1,6 @@
 import type { TerrainType } from "../../generated";
 import type { MeshGeometry } from "../geometry";
+import type { Rgb } from "../rgb";
 import { fillTriangles } from "../raster";
 
 // This module has no runtime imports, and must keep it that way: it is the
@@ -11,13 +12,7 @@ export const CHUNK_SIZE = 32;
 export const CHUNK_SKIRT = 2;
 export const CHUNK_STRIDE = CHUNK_SIZE + CHUNK_SKIRT * 2;
 
-export interface RGB {
-  r: number;
-  g: number;
-  b: number;
-}
-
-export type TerrainPalette = Record<TerrainType, RGB>;
+export type TerrainPalette = Record<TerrainType, Rgb>;
 
 /** One mesh's vertex data. All transferable. */
 export interface MeshBuffers {
@@ -670,7 +665,7 @@ const baseGeoCache = new Map<string, MeshGeometry>();
  * Copy a unit-space geometry into a chunk buffer, translated to (ox, oy, oz).
  * Colour goes into the vertex buffer so a whole chunk shares one material.
  */
-function append(buf: TerrainBuffers, geo: MeshGeometry, ox: number, oy: number, oz: number, color: RGB): void {
+function append(buf: TerrainBuffers, geo: MeshGeometry, ox: number, oy: number, oz: number, color: Rgb): void {
   const p = geo.positions;
   const vertexCount = p.length / 3;
   buf.reserve(vertexCount, geo.indices.length);
@@ -997,7 +992,7 @@ function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, 
     if (l <= 1) append(sink.land, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);
   }
 }
-const NO_COLOUR: RGB = { r: 0, g: 0, b: 0 };
+const NO_COLOUR: Rgb = { r: 0, g: 0, b: 0 };
 
 /** The water: a square under every tile with water at or beside it, the
  *  land's own outline drawn over it (`LAYERS`), the sea's a shade deeper. */
@@ -1421,7 +1416,7 @@ export function buildTrees(
   chunkX: number,
   chunkY: number,
   isBuilt: (x: number, y: number) => boolean,
-  palette: { crowns: RGB[]; conifers: RGB[] },
+  palette: { crowns: Rgb[]; conifers: Rgb[] },
 ): Record<Kind, { matrices: Float32Array; colors: Float32Array }> {
   const originX = chunkX * CHUNK_SIZE;
   const originY = chunkY * CHUNK_SIZE;

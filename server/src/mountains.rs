@@ -362,16 +362,4 @@ mod tests {
         assert_eq!(at(-10.0, -10.0), 0.0, "ground outside");
         assert_eq!(at(-8.0, -3.0), 0.0, "ground at the foot");
     }
-
-    /// How long a real map's mountains take, and how high they stand.
-    #[test]
-    #[ignore]
-    fn how_long() {
-        let terrain = crate::terrain::generate(7);
-        let rock = terrain.values().filter(|t| **t == TerrainType::Mountain).count();
-        let started = std::time::Instant::now();
-        let peaks = Peaks::new(&terrain, 7);
-        let highest = peaks.chunks.values().flat_map(|g| g.iter()).max().copied().unwrap_or(0) as f32 / UNIT;
-        println!("{rock} tiles of rock, {} chunks, highest {highest:.2} tiles, in {:?}", peaks.chunks.len(), started.elapsed());
-    }
 }

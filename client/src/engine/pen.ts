@@ -1,4 +1,4 @@
-import { MIDDLE, spot, STEPS, TOP, type Side } from "./tiles";
+import { MIDDLE, snap, spot, STEPS, TOP, type Side } from "./tiles";
 import type { Area, Build, ClientMessage, GridCoord, Hint, Stand, Stroke, Tool } from "../generated";
 
 /**
@@ -62,12 +62,19 @@ export class Pen {
   private ways: (Stand | null)[] | null = null;
   /** What the starts were last asked of. */
   private asked = "";
+  /** Where the pointer was, last in a drag; the way it last went, of
+   *  `STEPS`; and how far it has gone since that was settled. */
+  private pointer: { x: number; y: number } | null = null;
+  private heading = 0;
+  private moved = [0, 0];
 
   constructor(private d: Desk) {}
 
   /** A drag pressed on a tile, at this point of it. */
   press(t: GridCoord, wx: number, wy: number) {
     this.current = this.pressed = t;
+    this.pointer = { x: wx, y: wy };
+    this.moved = [0, 0];
     this.place = this.startAt(t, wx, wy);
     const tool = this.d.tool();
     const on = this.d.roads(t).length > 0;
@@ -113,8 +120,34 @@ export class Pen {
     return went;
   }
 
+  /** The pointer moved, in a drag: once it has gone a tenth of a tile,
+   *  the way it went, straight or diagonal, is the way on, and the drag
+   *  pulled toward it. The tiles it stepped onto. */
+  drag(wx: number, wy: number): GridCoord[] {
+    if (!this.current || !this.pointer) return [];
+    const [dx, dy] = [this.moved[0] + wx - this.pointer.x, this.moved[1] + wy - this.pointer.y];
+    this.pointer = { x: wx, y: wy };
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 0.1) return (this.moved = [dx, dy]), [];
+    this.heading = snap(dx, dy);
+    this.moved = [0, 0];
+    return this.pull(wx, wy, this.heading);
+  }
+
+  /** The drag on toward where the pointer last was, as far as it may go
+   *  now: when the game has said where it may. */
+  onward(): GridCoord[] {
+    return this.pointer ? this.pull(this.pointer.x, this.pointer.y, this.heading) : [];
+  }
+
+  /** The tiles the drag may step onto from where it stands. */
+  nexts(): [number, number][] {
+    const c = this.current;
+    return c ? STEPS.flatMap(([dx, dy], i) => (this.allowed(i) ? [[c.x + dx, c.y + dy] as [number, number]] : [])) : [];
+  }
+
   /** Let go: a tap's eraser or lights where it was pressed. */
   release() {
+    this.pointer = null;
     const [t, p, place] = [this.d.tool(), this.pressed, this.place];
     if (p && this.current === p && (t === "Demolish" || t === "Light")) this.send({ tool: t, from: p, to: p, road: false, ...placed(place, place) });
     if (this.stroke && (this.stroke.tool === "Demolish" || this.stroke.tiles.length < 2)) this.stroke = null;

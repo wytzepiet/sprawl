@@ -6,7 +6,6 @@ use crate::protocol::EntityId;
 /// stands in both for as long as it takes (`car::simulation`'s shifts), so
 /// whoever follows in either sees it.
 pub struct EdgeSegment {
-    pub length: f64,
     /// How many lanes it has, its way: one, or two (`RoadNode::wide`).
     pub lanes: u8,
     /// Each lane's cars, ordered by entry time. Front = closest to exit.
@@ -14,8 +13,8 @@ pub struct EdgeSegment {
 }
 
 impl EdgeSegment {
-    pub fn new(length: f64, lanes: u8) -> Self {
-        Self { length, lanes: lanes.clamp(1, 2), queues: [VecDeque::new(), VecDeque::new()] }
+    pub fn new(lanes: u8) -> Self {
+        Self { lanes: lanes.clamp(1, 2), queues: [VecDeque::new(), VecDeque::new()] }
     }
 
     /// Which lane a car is in, and where in it (0 = front/lead).
@@ -28,6 +27,7 @@ impl EdgeSegment {
         self.find(car_id).map(|(_, i)| i)
     }
 
+    #[cfg(test)]
     pub fn lane_of(&self, car_id: EntityId) -> Option<usize> {
         self.find(car_id).map(|(lane, _)| lane)
     }
@@ -84,10 +84,6 @@ impl EdgeSegment {
     /// Every car on it, lane by lane.
     pub fn all(&self) -> impl Iterator<Item = EntityId> + '_ {
         self.queues.iter().flatten().copied()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.queues.iter().all(|q| q.is_empty())
     }
 
     pub fn push_back(&mut self, car_id: EntityId, lane: usize) {

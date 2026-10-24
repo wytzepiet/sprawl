@@ -2,6 +2,12 @@ use crate::protocol::EntityId;
 use crate::world::World;
 use crate::world::bezier;
 
+/// The lane a route is measured on: not `bezier::LANE_OFFSET`, the lane
+/// it is driven and drawn on, but the old lanes' 0.15. On the true one the
+/// junctions time their gaps otherwise, and the season's street gridlocks
+/// on its ninth day and `04-merge` falls to 0.487.
+const MEASURED_LANE: f64 = 0.15;
+
 impl World {
     /// Compute the cosine of the turn angle at route[node_index].
     /// Returns 1.0 (straight) for route endpoints (first/last node).
@@ -57,7 +63,7 @@ impl World {
         let mut lengths = vec![0.0]; // index 0 unused
         if n == route.len() {
             for (i, j) in crate::car::spawn::parts(backing, n) {
-                let mut positions = bezier::offset_positions(&centers[i..=j], bezier::LANE_OFFSET);
+                let mut positions = bezier::offset_positions(&centers[i..=j], MEASURED_LANE);
                 for k in i..=j {
                     if k < from_lot || k >= n - to_lot || (k == i && i > 0) || (k == j && j + 1 < n) {
                         positions[k - i] = centers[k];

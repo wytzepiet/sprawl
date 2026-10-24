@@ -1,13 +1,13 @@
 import earcut from "earcut";
-import type { MeshGeometry } from "../geometry";
+import type { MeshGeometry, P } from "../geometry";
+import { rgb, type Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
 import { dress, type Dressing } from "./dressing";
-import { asphalt, pavement } from "./surface";
+import { pavement } from "./surface";
 import { facts } from "./facts";
-import { area, type Polygon, type Pt } from "./footprint";
-import type { Tile, Town } from "./grid";
-import type { RGB } from "./mass";
+import { area, type Polygon } from "./footprint";
+import type { Town } from "./grid";
 import { townMesh, type Paint, type Prop } from "./roof";
 
 /** A piece of the town to draw: one mesh, one material. */
@@ -15,24 +15,21 @@ export interface Piece {
   name: string;
   geo: MeshGeometry & { colors?: number[] };
   /** The material's colour; white where the vertices carry theirs. */
-  colour: Colour | null;
+  colour: Rgb | null;
 }
-
-/** A colour as plain numbers: a theme's, or one of the town's own. */
-export type Colour = { r: number; g: number; b: number };
 
 /** A depot's canopy: a sheet-metal roof, pale, on posts a shade under it;
  *  its underside over a box's roof (`TRAILER.h`) and under the hall's
  *  eaves, and a fascia's depth thick. */
-const CANOPY: Colour = { r: 0.78, g: 0.78, b: 0.77 };
-const POST: Colour = { r: 0.5, g: 0.5, b: 0.5 };
+const CANOPY = rgb(0.78, 0.78, 0.77);
+const POST = rgb(0.5, 0.5, 0.5);
 const CANOPY_Z = 0.3;
 const FASCIA = 0.035;
 const POST_W = 0.03;
 /** A quay's wall, stone a shade under the paving, and its capping, a
  *  shade over it. */
-const QUAY: Colour = { r: 0.6, g: 0.58, b: 0.54 };
-const CAP: Colour = { r: 0.88, g: 0.86, b: 0.81 };
+const QUAY = rgb(0.6, 0.58, 0.54);
+const CAP = rgb(0.88, 0.86, 0.81);
 /** How far down a quay's wall stands, past the water's surface; and how
  *  broad its capping is, along the edge. */
 const QUAY_FOOT = -0.78;
@@ -52,38 +49,21 @@ export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
 export const LAYER_ORDER = { mass: 80, pavement: 85, road: 90, field: 95, ground: 120 };
 /** The lines painted on a yard's asphalt, just over it: a worn white. */
 const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
-const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };
-
-/**
- * The town grid's roads, drawn: the asphalt of the streets and the drives
- * that lead off them, and the through roads over them. Geometry alone, in
- * the fixture's frame turned into the world's (+x to the screen's left, +y
- * up, as `townMesh` lays it); whoever shows it places it. Each tile's road
- * is its own piece, so this is cheap over a whole map.
- */
-export function drawRoads(town: Town, theme: Theme): Piece[] {
-  const { street, through } = asphalt(town);
-  return [
-    { name: "street", geo: flatPolygons(street, ROAD_Z + PAVED_Z), colour: theme.road },
-    // Over the streets that meet it: a street's end runs on under it.
-    { name: "through", geo: flatPolygons(through, ROAD_Z + PAVED_Z + 0.001), colour: theme.road },
-  ].filter((p) => p.geo.indices.length);
-}
+const LINE = rgb(0.82, 0.81, 0.77);
 
 /**
  * The town grid's town, drawn: the pavement, the
- * buildings, and a canopy over a depot's docks; the roads are `drawRoads`.
+ * buildings, and a canopy over a depot's docks; the roads are the game's
+ * (`roads.ts`).
  * Geometry alone, in the same frame, and the lines painted on the yards'
  * asphalt: the docks', and the game's own `marks`, a harbour's trailer
  * park's slots. The trees the dressing plants are the caller's to plant
  * (`treeInstances`), and what stands on its roofs and its street lamps the
- * props' (`props.ts`), as is what stands on it that moves, the
- * cars, lorries and ferries the dressing would put there: the game draws
- * its own, the sandbox the dressing's.
+ * props' (`props.ts`); what moves on it the game draws itself.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: Pt[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: P[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
-  const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
+  const add = (name: string, geo: Piece["geo"], c: Rgb | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
   const paved = pavement(town);
@@ -145,9 +125,9 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
 
 /** A block over a quad on the plan, from z0 up to z1: its top and its
  *  four sides; its bottom is the shade under it. */
-function cuboid(g: MeshGeometry, quad: Pt[], z0: number, z1: number) {
+function cuboid(g: MeshGeometry, quad: P[], z0: number, z1: number) {
   // The map's frame is the plan's turned half round.
-  const p = ([x, y]: Pt, z: number) => [-x, -y, z];
+  const p = ([x, y]: P, z: number) => [-x, -y, z];
   face(g, quad.map((q) => p(q, z1)), [0, 0, 1]);
   const [cx, cy] = [quad.reduce((s, q) => s + q[0], 0) / 4, quad.reduce((s, q) => s + q[1], 0) / 4];
   quad.forEach((a, i) => {
@@ -207,7 +187,7 @@ export const RIM = 0.03;
 
 /** An edge the sheet runs on past: a point just outside it is still
  *  covered, as where one tile's road overlaps the next. */
-export function runsOn(g: MeshGeometry) {
+export function covers(g: MeshGeometry) {
   const p = g.positions;
   // Triangles filed by the rows of a tenth of a tile they cross: a point
   // asks only those crossing its row, and of those only the ones whose
@@ -232,15 +212,4 @@ export function runsOn(g: MeshGeometry) {
     return false;
   };
   return (a: number[], b: number[], out: number[]) => inside((a[0] + b[0]) / 2 + out[0] * 1e-3, (a[1] + b[1]) / 2 + out[1] * 1e-3);
-}
-
-/** Flat squares on some tiles, a little over the ground. */
-export function quadsAt(cells: [number, number][], z: number): MeshGeometry {
-  const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const [c, r] of cells) {
-    const b = g.positions.length / 3;
-    for (const [dx, dy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) g.positions.push(-(c + dx), -(r + dy), z), g.normals.push(0, 0, 1);
-    g.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
-  }
-  return g;
 }

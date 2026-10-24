@@ -1,19 +1,23 @@
 import {
   createContext,
   useContext,
+  createEffect,
   createSignal,
+  on,
   onCleanup,
   type ParentProps,
 } from "solid-js";
 import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
-import { syncClock, syncFromClock } from "../network/clock";
+import { syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
 import { hearMarket, hearStocks } from "./market";
 import { hearMissions } from "./missions";
+import { selected } from "./selection";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
 import type { Building,
+  Card,
   GameObjectEntry,
   GridCoord,
   Hint,
@@ -37,24 +41,17 @@ const entities = new Map<string, GameObjectEntry>();
 const spatial = new Map<string, number[]>();
 
 /**
- * Who the server says we are. Module-level rather than owned by the provider
- * because the ops pass reads it, and that runs outside any component.
- */
-const [me, setMe] = createSignal(0);
-export { me };
-
-/**
- * What carries a pin: every building. Kept as ops arrive, with a version the
- * pin layer re-reads on; the entities map itself is deliberately not
- * reactive, and pins are the one view that wants a list. The version also
+ * What carries a sign: every building. Kept as ops arrive, with a version the
+ * sign layer re-reads on; the entities map itself is deliberately not
+ * reactive, and signs are the one view that wants a list. The version also
  * moves when a road lands on or leaves a building's tile, since whether a
- * building is reached is part of how its pin is drawn.
+ * building is reached is part of how its sign is drawn.
  */
-const pinnedEntries = new Map<number, GameObjectEntry>();
-const [pinsVersion, setPinsVersion] = createSignal(0);
-export function pinned(): GameObjectEntry[] {
-  pinsVersion();
-  return [...pinnedEntries.values()];
+const signedEntries = new Map<number, GameObjectEntry>();
+const [signsVersion, setSignsVersion] = createSignal(0);
+export function signed(): GameObjectEntry[] {
+  signsVersion();
+  return [...signedEntries.values()];
 }
 /**
  * Coins, GDP and goods that landed on buildings in view, for a moment:
@@ -73,32 +70,31 @@ function land(lumps: Lump[]) {
   setLumps((l) => [...l.filter((s) => since - s.since < LUMP_MS), ...lumps.map((s) => ({ ...s, key: lumpKey++, since }))]);
   setTimeout(() => setLumps((l) => l.filter((s) => performance.now() - s.since < LUMP_MS)), LUMP_MS + 50);
 }
-export { LUMP_MS };
 
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
-function trackPin(entry: GameObjectEntry | undefined, id: number) {
-  const was = pinnedEntries.has(id);
-  const before = pinnedEntries.get(id);
+function trackSign(entry: GameObjectEntry | undefined, id: number) {
+  const was = signedEntries.has(id);
+  const before = signedEntries.get(id);
   if (before?.position && before.object.kind === "Building") {
     for (const t of keys(before.object.data as Building)) occupiedBy.delete(t);
   }
   if (entry && entry.object.kind === "Building" && entry.position) {
-    pinnedEntries.set(id, entry);
+    signedEntries.set(id, entry);
     for (const t of keys(entry.object.data as Building)) occupiedBy.set(t, id);
   } else {
-    pinnedEntries.delete(id);
+    signedEntries.delete(id);
   }
-  if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
+  if (was || signedEntries.has(id)) setSignsVersion((v) => v + 1);
 }
 const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
 /**
  * Does this building's door open onto a street joined to the world? A door
- * onto an island is no way in. Reactive on the pins' version, which moves
+ * onto an island is no way in. Reactive on the signs' version, which moves
  * when a road lands, leaves or changes.
  */
 export function reached(entry: GameObjectEntry): boolean {
-  pinsVersion();
+  signsVersion();
   if (entry.object.kind !== "Building") return false;
   const b = entry.object.data as Building;
   const door = b.door;
@@ -146,6 +142,11 @@ export function listenHints(fn: HintListener): () => void {
   return () => void hintListeners.delete(fn);
 }
 
+// --- The card of whatever is selected (`card.rs`) ---
+
+const [card, setCard] = createSignal<Card | null>(null);
+export { card };
+
 // --- Ops listener for ECS ---
 
 type OpsListener = (ops: Operation[]) => void;
@@ -155,12 +156,12 @@ export function setOpsListener(fn: OpsListener | null) {
 }
 
 /** The ground of every chunk heard of, kept after it is out of view, since
- *  it never changes: the minimap draws the island as far as it was seen. */
+ *  it never changes: the feed reads the island as far as it was seen. */
 const ground = new Map<string, Uint8Array>();
 export const groundOf = (cx: number, cy: number) => ground.get(`${cx},${cy}`);
 
 /** Terrain arrives per chunk rather than as entities, so it bypasses ops. */
-export interface TerrainListener {
+interface TerrainListener {
   setChunk(chunk: TerrainChunk): void;
   unloadChunk(coord: ChunkCoord): void;
 }
@@ -216,8 +217,8 @@ function applyOps(ops: Operation[]) {
           else if (!ids.includes(op.data.id)) ids.push(op.data.id);
         }
         entities.set(key, op.data);
-        trackPin(op.data, op.data.id);
-        if (op.data.object.kind === "RoadNode") setPinsVersion((v) => v + 1);
+        trackSign(op.data, op.data.id);
+        if (op.data.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
         break;
       }
       case "Delete": {
@@ -234,9 +235,9 @@ function applyOps(ops: Operation[]) {
             }
           }
           entities.delete(key);
-          if (existing.object.kind === "RoadNode") setPinsVersion((v) => v + 1);
+          if (existing.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
         }
-        trackPin(undefined, Number(key));
+        trackSign(undefined, Number(key));
         break;
       }
     }
@@ -258,15 +259,13 @@ function* applying(ops: Operation[], lumps: Lump[]) {
 // --- Context (thin — just what UI needs) ---
 
 interface GameContext {
-  /** Who this client is. */
-  me(): number;
-  terrainSeed(): number;
+  /** How many times the server has welcomed this client: once a socket. */
+  welcomed(): number;
   /** The island's map, in chunks: the camera stays over it. */
   island(): ChunkBounds;
   /** The two dials: the city's level, and what the mayor has to spend. */
   growth(): Growth;
   send(msg: ClientMessage): boolean;
-  getObjectsAt(x: number, y: number): GameObjectEntry[];
 }
 
 const Ctx = createContext<GameContext>();
@@ -275,32 +274,19 @@ const Ctx = createContext<GameContext>();
  *  a level in the browser. Told where to send what the game says. */
 export type Connect = (onMessage: (msg: ServerMessage) => void) => Connection;
 
+/** What the dials and the camera have before the game first says. */
+const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, held: {} };
+const NO_ISLAND: ChunkBounds = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
+
 export function GameProvider(props: ParentProps & { connect: Connect }) {
-  const [terrainSeed, setTerrainSeed] = createSignal(0);
-  const [growth, setGrowth] = createSignal<Growth>({
-    level: 0,
-    toward: 0,
-    needed: 0,
-    gdp: 0,
-    treasury: 0,
-    income: 0,
-    imports: 0,
-    taken: [],
-    road_tiles_left: 0,
-    held: {},
-  });
-  const [island, setIsland] = createSignal<ChunkBounds>({
-    min_cx: 0,
-    min_cy: 0,
-    max_cx: -1,
-    max_cy: -1,
-  });
+  const [welcomed, setWelcomed] = createSignal(0);
+  const [growth, setGrowth] = createSignal<Growth>(NO_GROWTH);
+  const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
   const { send, close } = props.connect((msg) => {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
-        if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
         hearStocks(msg.data.growth.held);
@@ -308,9 +294,6 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         hearMissions(msg.data.missions, msg.data.neighbours);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
-        break;
-      case "Error":
-        console.error("[ws] server error:", msg.data.message);
         break;
       case "TerrainChunk":
         ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
@@ -320,13 +303,19 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         terrainListener?.unloadChunk(msg.data);
         break;
       case "Welcome":
-        setMe(msg.data);
+        // A server new to this client, or come back after a restart, that
+        // knows nothing of what it held: let it all go, and the camera asks
+        // for its view again.
+        applyOps([...entities.values()].map((e) => ({ op: "Delete", data: e.id })));
+        for (const key of ground.keys()) {
+          const [cx, cy] = key.split(",").map(Number);
+          terrainListener?.unloadChunk({ cx, cy });
+        }
+        ground.clear();
+        setWelcomed((n) => n + 1);
         break;
       case "News":
         for (const n of msg.data) tell(n.text, n.sub, n.at, true);
-        break;
-      case "Pong":
-        syncClock(msg.data);
         break;
       case "Hint":
         for (const f of hintListeners) f(msg.data);
@@ -334,25 +323,29 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
       case "Market":
         hearMarket(msg.data);
         break;
+      case "Card":
+        // An answer still on its way for what was selected before is not
+        // this one's.
+        if (msg.data.id === selected()) setCard(msg.data);
+        break;
     }
   });
+
+  // The selected thing's card, asked for now and every second after. The
+  // card before stays until the next comes, so the sheet does not sink and
+  // rise again between them.
+  createEffect(on(selected, (id) => {
+    if (id === null) return setCard(null);
+    const ask = () => send({ type: "Card", data: id });
+    ask();
+    const timer = setInterval(ask, 1000);
+    onCleanup(() => clearInterval(timer));
+  }));
 
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ me, terrainSeed, island, growth, send, getObjectsAt }}>
-      {props.children}
-    </Ctx.Provider>
-  );
-}
-
-/** No server behind it: the sandbox, whose camera still asks what it may
- *  see and has no one to tell. */
-export function OfflineGame(props: ParentProps) {
-  const none = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
-  const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0, held: {} };
-  return (
-    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
+    <Ctx.Provider value={{ welcomed, island, growth, send }}>
       {props.children}
     </Ctx.Provider>
   );

@@ -11,7 +11,7 @@
 //!
 //! ```text
 //! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
-//! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
+//! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm
@@ -214,6 +214,7 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
 
 /// One fixture from its text alone, standing as written: a world for
 /// whatever has no files to read.
+#[cfg(test)]
 pub fn build_text(world: &mut World, text: &str) {
     lay(world, text, 0, "fixture");
     finish_sites(world);
@@ -281,7 +282,8 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
                 },
                 (Some(GameObject::RoadNode(n)), _) => if n.road.is_empty() { '=' } else { '#' },
                 _ => match world.terrain.get(&(tx, ty)) {
-                    Some(TerrainType::Sea | TerrainType::Water) => '~',
+                    Some(TerrainType::Water) => '~',
+                    Some(TerrainType::Sea) => '≈',
                     Some(TerrainType::Forest) => 'T',
                     Some(TerrainType::Beach) => '_',
                     Some(TerrainType::Mountain) => '^',
@@ -299,14 +301,16 @@ mod tests {
     use super::*;
 
     /// Every fixture builds as it is written: each letter a tile of the
-    /// building it names, and `/map` gives the letters back where they
-    /// were, so what the sandbox paints is what the server stands up.
+    /// building it names, and `/map` gives the letters and the ground back
+    /// where they were, so what `bun run plan` draws is what the server
+    /// stands up, and a fixture made from the game builds as it stood.
     #[test]
     fn every_fixture_builds_letter_for_letter() {
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures"));
         let mut world = World::new();
-        build(&mut world, Path::new("fixtures"));
+        build(&mut world, dir);
         let mut wrong = Vec::new();
-        for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir("fixtures").unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {
+        for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {
             let text = std::fs::read_to_string(&path).unwrap();
             let rows: Vec<Vec<char>> = text.lines().filter(|l| !l.starts_with('#')).map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
             for (row, line) in rows.iter().enumerate() {
@@ -318,6 +322,10 @@ mod tests {
                     });
                     if building(c).map(|_| c) != built {
                         wrong.push(format!("{} col {col} row {row}: {c} built {built:?}", p.name));
+                    }
+                    let drawn = draw(&world, at.x, at.y, 0).lines().last().and_then(|l| l.chars().next());
+                    if "~≈T_^".contains(c) && drawn != Some(c) {
+                        wrong.push(format!("{} col {col} row {row}: {c} drawn {drawn:?}", p.name));
                     }
                 }
             }

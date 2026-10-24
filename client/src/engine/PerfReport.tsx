@@ -24,13 +24,36 @@ interface Profiler {
 }
 declare const Profiler: { new (options: { sampleInterval: number; maxBufferSize: number }): Profiler } | undefined;
 
+/** A tab's report, a line of `.dev/perf.jsonl`, as `scripts/pan.ts` reads it. */
+export interface Report {
+  at: string;
+  tab: string | null;
+  seconds: number;
+  frames: number;
+  fps: number;
+  gap: { p50: number; p90: number; p99: number; max: number; over20: number; over34: number };
+  cpuMs: { mean: number; max: number };
+  gpuMs: number | null;
+  canvas: [number, number];
+  dpr: number;
+  visible: DocumentVisibilityState;
+  camera: { x: number; y: number; half: number };
+  meshes: { total: number };
+  draws: number;
+  long: { ms: number; scripts: { ms: number; what: string }[] }[];
+  counts: Record<string, number>;
+  profile: { busyMs: number; own: [string, number][]; all: [string, number][] } | "unavailable";
+  agent: string;
+}
+
 /**
- * Development only: what this tab spends drawing, sent to the dev server
- * (`vite.config.ts`), which appends it to `.dev/perf.jsonl`, so how the game
- * runs in a player's own browser can be read from outside it. Every few
- * seconds: the frames' spread, worst gaps and all; the CPU's time on a frame
- * and the GPU's; the long animation frames and what ran in them; and a
- * sample of where the JavaScript went, by function.
+ * Development only, and only on a tab named `?tab=` (`bun run pan`): what
+ * the tab spends drawing, sent to the dev server (`vite.config.ts`), which
+ * appends it to `.dev/perf.jsonl`, so how the game runs in a browser can be
+ * read from outside it. Every few seconds: the frames' spread, worst gaps
+ * and all; the CPU's time on a frame and the GPU's; the long animation
+ * frames and what ran in them; and a sample of where the JavaScript went,
+ * by function.
  */
 export default function PerfReport() {
   const { engine, scene, canvas, beforeRender, afterRender } = useEngine();
@@ -108,7 +131,7 @@ export default function PerfReport() {
     const sorted = [...gaps].sort((a, b) => a - b);
     const at = (q: number) => (sorted.length ? +sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))].toFixed(1) : 0);
     const mean = (a: number[]) => (a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(2) : 0);
-    const body = {
+    const body: Report = {
       at: new Date().toISOString(),
       // Which tab: a test's own reports are told from a player's by it (`scripts/pan.ts`).
       tab: new URLSearchParams(location.search).get("tab"),

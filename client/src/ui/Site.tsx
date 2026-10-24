@@ -1,32 +1,14 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
+import { clockAt, plural, sea, until } from "../state/sea";
+import { boxOf } from "../state/deals";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { quoteOf, total } from "../state/market";
-import { Btn, coins, GoodDot, Section, StepBar, type Link } from "./kit";
+import { BAD, Btn, coins, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
-import type { Building, BuildingKind, Good, Stock } from "../generated";
-
-/** A depot as a site's card lists it (`card.rs`). */
-export interface DepotLine {
-  depot: Link;
-  tiles: number;
-  joined: boolean;
-  stocks: Partial<Record<Good, number>>;
-}
-
-/** A maker of one of a site's materials, as its card lists it (`card.rs`). */
-export interface MakerLine {
-  maker: Link;
-  kind: BuildingKind;
-  good: Good;
-  level: number;
-  tiles: number;
-}
-
-type Call = { good: Good; answered_by: Link | null };
+import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../generated";
 
 /**
  * A site's card: each material it waits on, and where that is — on the
@@ -35,7 +17,7 @@ type Call = { good: Good; answered_by: Link | null };
  * bought at the market, on the next ferry.
  * docs/game.md §Buildings.
  */
-export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
+export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
   const materials = () => (Object.entries(props.site) as [Good, Stock][]).filter(([, s]) => s);
   const short = (s: Stock) => Math.max(0, Math.ceil(s.cap - s.level));
   const waiting = () => materials().filter(([, s]) => short(s) > 0);
@@ -69,7 +51,7 @@ export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: 
 }
 
 /** Where a material a site waits on is, and the fix where it is stuck. */
-function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
+function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
   const { send, growth } = useGame();
   const g = () => props.good;
   const label = () => GOODS[g()].label;
@@ -79,7 +61,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   const stocked = () => props.depots.find((d) => (d.stocks[g()] ?? 0) >= 1) ?? null;
   const maker = () => props.makers.find((m) => m.good === g() && m.level >= 1) ?? null;
   /** Its boxes in from the world, the furthest along first. */
-  const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound && s.units > 0).sort((a, b) => LEGS.indexOf(b.leg) - LEGS.indexOf(a.leg));
+  const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound && s.units > 0).sort((a, b) => boxOf(b).step - boxOf(a).step);
   /** A box in a trailer park, and the depot whose lorry would fetch it. */
   const parked = () => {
     const s = inbound().find((s) => s.leg === "Parked");
@@ -101,25 +83,25 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
     <box pad={{ left: 36 }}>
       <>{() => {
         const v = van();
-        if (v) return <Line dot="#57A773" text="On the van, on its way" act={<Btn onTap={() => setFollowing(v.id)}>follow</Btn>} />;
+        if (v) return <Line dot={GOOD} text="On the van, on its way" act={<Btn onTap={() => setFollowing(v.id)}>follow</Btn>} />;
         const d = stocked();
-        if (d) return <Line dot="#57A773" text={`In stock at the depot: ${Math.floor(d.stocks[g()] ?? 0)}`} sub="its van brings it" />;
+        if (d) return <Line dot={GOOD} text={`In stock at the depot: ${Math.floor(d.stocks[g()] ?? 0)}`} sub="its van brings it" />;
         const m = maker();
-        if (m) return <Line dot="#57A773" text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
+        if (m) return <Line dot={GOOD} text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
         const p = parked();
-        if (p) return <Line dot={p.d.joined ? "#2B6CA3" : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
+        if (p) return <Line dot={p.d.joined ? SEA : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
         const s = coming();
         if (s) {
-          const w = legWords(s);
-          return <Line dot="#2B6CA3" text={`${Math.round(s.units)} ${label()} ${w.words}`} sub={w.eta ? `in ${until(w.eta)}` : undefined} />;
+          const b = boxOf(s);
+          return <Line dot={SEA} text={`${Math.round(s.units)} ${label()} ${b.words}`} sub={b.eta ? `in ${until(b.eta)}` : undefined} />;
         }
-        if (!nearest()) return <Line dot="#D9483B" text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
+        if (!nearest()) return <Line dot={BAD} text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
         const x = sailing();
         return (
           <Line
-            dot="#D9483B"
-            text={ordered() ? `Booked: lands ${x ? clockAt(landsAt(x)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
-            sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(landsAt(x))}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
+            dot={BAD}
+            text={ordered() ? `Booked: lands ${x ? clockAt(x.lands) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
+            sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(x.lands)}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={
               <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !quote() || growth().treasury < cost()}>
                 {ordered() ? "Booked ✓" : `Book ${label()}`}

@@ -296,27 +296,22 @@ mod tests {
 
     use super::*;
 
-    /// Not an assertion: the share of the map each type covers, for
-    /// whoever runs this with --nocapture and a `SPRAWL_SEED`.
+    /// Not an assertion: a picture, for whoever runs this with --ignored
+    /// --nocapture. The whole map of `SPRAWL_SEED` (or 7), sixteen tiles
+    /// to a character, with `+` at the origin; the sea `~`, a lake `:`;
+    /// and the share of it each type covers.
     #[test]
-    fn count_the_land() {
+    #[ignore]
+    fn draw_the_land() {
         let seed = std::env::var("SPRAWL_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(7);
         let land = generate(seed);
         let n = land.len() as f64;
         let share = |t: TerrainType| 100.0 * land.values().filter(|&&v| v == t).count() as f64 / n;
         eprintln!(
-            "seed {seed}: sea {:.1}%  lake {:.1}%  beach {:.1}%  grass {:.1}%  forest {:.1}%  mountain {:.1}%",
-            share(TerrainType::Sea), share(TerrainType::Water), share(TerrainType::Beach), share(TerrainType::Grass), share(TerrainType::Forest), share(TerrainType::Mountain)
+            "seed {seed}: sea {:.1}%  lake {:.1}%  beach {:.1}%  grass {:.1}%  forest {:.1}%  mountain {:.1}%\n{}",
+            share(TerrainType::Sea), share(TerrainType::Water), share(TerrainType::Beach), share(TerrainType::Grass), share(TerrainType::Forest), share(TerrainType::Mountain),
+            draw(&land)
         );
-    }
-
-    /// Not an assertion: a picture, for whoever runs this with --nocapture.
-    /// The whole map of `SPRAWL_SEED` (or 7), sixteen tiles to a character,
-    /// with `+` at the origin; the sea `~`, a lake `:`.
-    #[test]
-    fn draw_the_land() {
-        let seed = std::env::var("SPRAWL_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(7);
-        eprintln!("seed {seed}\n{}", draw(&generate(seed)));
     }
 
     fn draw(land: &HashMap<(i32, i32), TerrainType>) -> String {

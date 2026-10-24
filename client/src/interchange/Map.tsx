@@ -13,6 +13,12 @@ export const isOpen = (l: LevelText) => l === LEVELS[0] || neighbours(l).some((n
 /** A card's size and the room between, in pixels. */
 const CARD: [number, number] = [230, 170];
 const GAP = 46;
+const INK = "#2f3d38";
+const SOFT = "#2f3d38b8";
+const SERIF = "Fraunces, Georgia, serif";
+/** A card rises under the pointer and gives under the finger. */
+const lift = (to: string) => (e: PointerEvent) => ((e.currentTarget as HTMLElement).style.transform = to);
+const RISEN = "translateY(-2px) scale(1.08)";
 
 export default function Map(props: { go: (name: string) => void }) {
   const cols = Math.max(...LEVELS.map((l) => l.at[0])) + 1;
@@ -21,19 +27,19 @@ export default function Map(props: { go: (name: string) => void }) {
   const links = LEVELS.flatMap((l) => neighbours(l).filter((n) => n.name > l.name).map((n) => [l, n] as const));
   const solved = () => LEVELS.filter((l) => best(l.name) !== null).length;
   return (
-    <div class="min-h-screen w-full overflow-auto" style={{ background: "radial-gradient(circle at 30% 20%, #e4ecd9, #c5d8c4)" }}>
-      <div class="mx-auto px-6 py-12" style={{ width: `${cols * (CARD[0] + GAP) + 48}px` }}>
-        <div class="flex items-end justify-between">
+    <div style={{ height: "100vh", overflow: "auto", background: "radial-gradient(circle at 30% 20%, #e4ecd9, #c5d8c4)" }}>
+      <div style={{ margin: "0 auto", padding: "48px 24px", width: `${cols * (CARD[0] + GAP) + 48}px` }}>
+        <div style={{ display: "flex", "align-items": "flex-end", "justify-content": "space-between" }}>
           <div>
-            <h1 class="serif text-5xl font-light" style={{ color: "#2f3d38" }}>Interchange</h1>
-            <p class="mt-3 max-w-xl text-[15px]" style={{ color: "#2f3d38b8" }}>
+            <h1 style={{ margin: 0, "font-family": SERIF, "font-size": "48px", "font-weight": 400, "line-height": 1, color: INK }}>Interchange</h1>
+            <p style={{ margin: "12px 0 0", "max-width": "576px", "font-size": "15px", color: SOFT }}>
               Roads come in at the edges of each map, and their traffic wants to get across. Join them, with as little asphalt as you can, and keep it moving. Solving a map opens the ones beside it.
             </p>
           </div>
-          <span class="text-[13px] font-semibold tabular-nums" style={{ color: "#2f3d38b8" }}>{solved()} / {LEVELS.length} solved</span>
+          <span style={{ "font-size": "13px", "font-weight": 600, "font-variant-numeric": "tabular-nums", color: SOFT }}>{solved()} / {LEVELS.length} solved</span>
         </div>
-        <div class="relative mt-10" style={{ width: `${cols * (CARD[0] + GAP) - GAP}px`, height: `${rows * (CARD[1] + GAP) - GAP}px` }}>
-          <svg class="absolute inset-0 overflow-visible" style={{ "z-index": 0 }} width="100%" height="100%">
+        <div style={{ position: "relative", "margin-top": "40px", width: `${cols * (CARD[0] + GAP) - GAP}px`, height: `${rows * (CARD[1] + GAP) - GAP}px` }}>
+          <svg style={{ position: "absolute", inset: 0, overflow: "visible" }} width="100%" height="100%">
             <For each={links}>
               {([a, b]) => {
                 const [[ax, ay], [bx, by]] = [px(...a.at), px(...b.at)];
@@ -54,14 +60,21 @@ export default function Map(props: { go: (name: string) => void }) {
                 <button
                   disabled={!isOpen(l)}
                   onClick={() => props.go(l.name)}
-                  class="press absolute flex flex-col overflow-hidden rounded-2xl text-left shadow-md disabled:cursor-not-allowed"
-                  style={{ left: `${x}px`, top: `${y}px`, width: `${CARD[0]}px`, height: `${CARD[1]}px`, color: "#2f3d38", cursor: isOpen(l) ? "pointer" : undefined, "z-index": 1, background: "#fbfcf8" }}
+                  onPointerEnter={lift(RISEN)}
+                  onPointerLeave={lift("")}
+                  onPointerDown={lift("scale(0.9)")}
+                  onPointerUp={lift(RISEN)}
+                  style={{
+                    position: "absolute", left: `${x}px`, top: `${y}px`, width: `${CARD[0]}px`, height: `${CARD[1]}px`, display: "flex", "flex-direction": "column", overflow: "hidden",
+                    padding: 0, border: "none", "border-radius": "16px", "box-shadow": "0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a", font: "inherit", "text-align": "left",
+                    color: INK, background: "#fbfcf8", cursor: isOpen(l) ? "pointer" : "not-allowed", transition: "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                  }}
                 >
                   <Thumbnail level={l} open={isOpen(l)} />
-                  <div class="flex items-center justify-between px-3 py-2">
-                    <span class="serif truncate text-[17px]">{l.title}</span>
-                    <Show when={best(l.name)} fallback={<span class="text-[11px] font-semibold opacity-50">{isOpen(l) ? "open" : "locked"}</span>}>
-                      {(b) => <span class="text-[14px] font-semibold tabular-nums">{b().toFixed(1)}%</span>}
+                  <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", "align-self": "stretch", padding: "8px 12px" }}>
+                    <span style={{ "font-family": SERIF, "font-size": "17px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{l.title}</span>
+                    <Show when={best(l.name)} fallback={<span style={{ "font-size": "11px", "font-weight": 600, opacity: 0.5 }}>{isOpen(l) ? "open" : "locked"}</span>}>
+                      {(b) => <span style={{ "font-size": "14px", "font-weight": 600, "font-variant-numeric": "tabular-nums" }}>{b().toFixed(1)}%</span>}
                     </Show>
                   </div>
                 </button>
@@ -117,5 +130,5 @@ function Thumbnail(props: { level: LevelText; open: boolean }) {
       g.fillRect(0, 0, cw, ch);
     }
   });
-  return <canvas ref={canvas} class="block w-full" style={{ height: `${CARD[1] - 38}px` }} />;
+  return <canvas ref={canvas} style={{ width: "100%", height: `${CARD[1] - 38}px` }} />;
 }

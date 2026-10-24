@@ -5,7 +5,6 @@ import type { Shipment } from "../generated";
 
 /** The box the camera is after, wherever it is: on the ferry, the tug, the lorry. */
 const [tracked, setTracked] = createSignal<number | null>(null);
-export { tracked };
 /** What the camera was last set to follow for it, to tell a pan from a hand-over. */
 let leading: number | null = null;
 /** A lorry sent for a box in the park, which the camera rides with until it has it. */
@@ -33,7 +32,7 @@ export function track(trailer: number, lorry: number | null = null) {
 /**
  * The camera after the box tracked, handed from carrier to carrier: from
  * ferry to tug to lorry, until the mayor pans or it lands. What is on its
- * way is drawn where it is (`Pins.tsx`).
+ * way is drawn where it is (`Cargo.tsx`).
  */
 export default function Shipments() {
   createEffect(() => {

@@ -1,4 +1,4 @@
-import { addToScene, createMeshFromData, disposeMeshGpu, releaseTexture, removeFromScene, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { createMeshFromData, disposeMeshGpu, releaseTexture, removeFromScene, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
 
 /** A shape as the town's code builds it, before it is a mesh. */
 export interface MeshGeometry {
@@ -53,11 +53,6 @@ export function meshOf(engine: EngineContext, name: string, geo: { positions: Nu
     undefined,
     geo.colors ? new Float32Array(geo.colors) : undefined,
   );
-}
-
-/** A mesh shown. */
-export function show(scene: SceneContext, mesh: Mesh) {
-  addToScene(scene, mesh);
 }
 
 /** A mesh gone, and what it held on the GPU with it once no frame in

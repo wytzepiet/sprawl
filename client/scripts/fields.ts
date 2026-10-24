@@ -5,11 +5,10 @@
  * harvesting. `bun run fields [name]` draws only the fields whose name has
  * that in it.
  */
-import { launch } from "./browser";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { launch, ROOT, sheet } from "./lib";
 
-const ROOT = resolve(import.meta.dir, "../..");
 const DIR = resolve(ROOT, ".dev/fields");
 const only = process.argv[2];
 
@@ -21,10 +20,7 @@ if (test.exitCode !== 0) process.stdout.write(test.stderr.toString().split("\n")
 const svgs = readdirSync(DIR).filter((f) => f.endsWith(".svg") && (!only || f.includes(only))).sort();
 const fields = [...new Set(svgs.map((f) => f.replace(/-(plough|harvest)\.svg$/, "")))];
 const cell = (f: string) => `<figure><figcaption>${f.replace(".svg", "")}</figcaption>${readFileSync(resolve(DIR, f), "utf8")}</figure>`;
-const html = `<body style="margin:0;font:12px sans-serif;background:#fff"><div style="display:grid;grid-template-columns:auto auto;gap:8px;padding:8px">${fields.map((f) => cell(`${f}-plough.svg`) + cell(`${f}-harvest.svg`)).join("")}</div></body>`;
 const browser = await launch();
-const page = await browser.newPage();
-await page.setContent(html);
-await page.screenshot({ path: resolve(DIR, "sheet.png"), fullPage: true });
+await sheet(await browser.newPage(), fields.flatMap((f) => [cell(`${f}-plough.svg`), cell(`${f}-harvest.svg`)]), 2, resolve(DIR, "sheet.png"));
 await browser.close();
 console.log(`sheet → ${resolve(DIR, "sheet.png")}`);

@@ -1,19 +1,16 @@
 import { BLUEPRINTS, GOODS, middle } from "../blueprints";
-import { themes, type Theme } from "../engine/theme";
+import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
-import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX, vanParts } from "../engine/objects/motion";
+import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
-import type { Pose as Stand } from "../generated/Pose";
-import type { Compass } from "../generated/Compass";
-import type { Neighbour } from "../generated/Neighbour";
+import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Pose as Stand, Compass, Neighbour } from "../generated";
 import { crest } from "./crest";
 
 /**
- * The game drawn flat, on a 2D canvas: the browser's (the minimap) or
- * `@napi-rs/canvas`'s in a script (`bun run flat`), from the same state the
+ * The game drawn flat, on a 2D canvas, `@napi-rs/canvas`'s in a script
+ * (`bun run flat`), from the same state the
  * 3D view draws, its vehicles placed by the same code (`motion.ts`). For
  * reading, not for looking at: every kind of thing its own plain shape and
  * colour, boxes by their good, and, close enough, ids beside things.
@@ -40,7 +37,7 @@ export interface World {
 
 /** Where the view is: its middle in tiles, pixels to a tile, its size in
  *  pixels. */
-export interface View {
+interface View {
   x: number;
   y: number;
   px: number;
@@ -49,7 +46,7 @@ export interface View {
 }
 
 /** A canvas to cache a chunk's ground in, as the caller's world makes one. */
-export type Sheet = (w: number, h: number) => { getContext(kind: "2d"): CanvasRenderingContext2D | null };
+type Sheet = (w: number, h: number) => { getContext(kind: "2d"): CanvasRenderingContext2D | null };
 
 const ground = new WeakMap<Uint8Array, unknown>();
 
@@ -57,23 +54,20 @@ const css = (c: Rgb, a = 1) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g *
 const INK = "#1d2330";
 const RED = "#d23c32";
 
-function terrainColour(t: Theme): Record<TerrainType, Rgb> {
-  return { Sea: t.water, Water: t.water, Beach: t.beach, Grass: t.land, Forest: t.forest, Mountain: t.rock };
-}
+const TERRAIN: Record<TerrainType, Rgb> = { Sea: theme.water, Water: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.rock };
 
 /** A chunk's ground, a pixel a tile, made once for its tiles. */
-function chunkImage(tiles: Uint8Array, sheet: Sheet, theme: Theme): unknown {
+function chunkImage(tiles: Uint8Array, sheet: Sheet): unknown {
   let image = ground.get(tiles);
   if (image) return image;
   const canvas = sheet(CHUNK_SIZE, CHUNK_SIZE);
   const g = canvas.getContext("2d")!;
   const data = g.createImageData(CHUNK_SIZE, CHUNK_SIZE);
-  const colours = terrainColour(theme);
   for (let iy = 0; iy < CHUNK_SIZE; iy++)
     for (let ix = 0; ix < CHUNK_SIZE; ix++) {
       const kind = TYPE_BY_BYTE[tiles[(iy + CHUNK_SKIRT) * CHUNK_STRIDE + ix + CHUNK_SKIRT]];
       if (!kind) continue;
-      const c = colours[kind], k = (iy * CHUNK_SIZE + ix) * 4;
+      const c = TERRAIN[kind], k = (iy * CHUNK_SIZE + ix) * 4;
       [data.data[k], data.data[k + 1], data.data[k + 2], data.data[k + 3]] = [c.r * 255, c.g * 255, c.b * 255, 255];
     }
   g.putImageData(data, 0, 0);
@@ -121,10 +115,10 @@ function drawLane(g: CanvasRenderingContext2D, lane: Lane, S: number) {
 }
 
 /**
- * Draw the world into `g`, `view.w` by `view.h` pixels. `labels` adds ids
- * and a legend; without, it is the minimap's picture.
+ * Draw the world into `g`, `view.w` by `view.h` pixels, with ids and a
+ * legend.
  */
-export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, sheet: Sheet, { labels = true, theme = themes.light } = {}) {
+export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, sheet: Sheet) {
   const S = view.px;
   const [x0, x1] = [view.x - view.w / 2 / S, view.x + view.w / 2 / S];
   const [y0, y1] = [view.y - view.h / 2 / S, view.y + view.h / 2 / S];
@@ -142,7 +136,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
   for (let cy = Math.floor(y0 / CHUNK_SIZE); cy <= Math.floor(y1 / CHUNK_SIZE); cy++)
     for (let cx = Math.floor(x0 / CHUNK_SIZE); cx <= Math.floor(x1 / CHUNK_SIZE); cx++) {
       const tiles = world.ground(cx, cy);
-      if (tiles) g.drawImage(chunkImage(tiles, sheet, theme) as CanvasImageSource, cx * CHUNK_SIZE, cy * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
+      if (tiles) g.drawImage(chunkImage(tiles, sheet) as CanvasImageSource, cx * CHUNK_SIZE, cy * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
     }
   for (const lane of world.lanes ?? []) drawLane(g, lane, S);
 
@@ -258,7 +252,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
 
   // Upright, in pixels: the crests on marked boxes; and, over everything,
   // each town beyond the edge a pin on the view's edge its way, as the map
-  // lies, north up and east to the right, named when labelled.
+  // lies, north up and east to the right, named.
   g.setTransform(1, 0, 0, 1, 0, 0);
   for (const [p, n] of crested) crest(g, n, ...screen(p.at[0], p.at[1]), Math.max(4, S * 0.16));
   const pins = (bottom = view.h) => {
@@ -272,7 +266,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     for (const n of world.neighbours ?? []) {
       const [px, py, align, dx, dy] = edge[n.toward];
       crest(g, n, px, py, r);
-      if (labels) text(`${n.town}${n.writes ? "" : " (silent)"}`, px + dx, py + dy, 11, INK, align);
+      text(`${n.town}${n.writes ? "" : " (silent)"}`, px + dx, py + dy, 11, INK, align);
     }
   };
   const text = (s: string, x: number, y: number, size: number, colour = INK, align: CanvasTextAlign = "center") => {
@@ -285,7 +279,6 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     g.fillStyle = colour;
     g.fillText(s, x, y);
   };
-  if (!labels) return pins();
 
   // Labels, upright, in pixels: buildings' kinds and ids; vehicles' ids,
   // close enough to read; what each ferry has aboard.
@@ -387,6 +380,8 @@ function dock(g: CanvasRenderingContext2D, p: Stand, colour = "rgba(255,255,255,
 
 /** A vehicle by its role, at its moment, with what it carries. */
 function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
+  const load = carried(car);
+  if (m.box && load) box(g, m.box, load, car.role === "Van" ? VAN_BOX : 1);
   switch (car.role) {
     case "Ferry": {
       // Its hull, the same at both ends; the bridge amidships; the deck's
@@ -409,18 +404,11 @@ function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
       return;
     }
     case "Tug":
-      if (m.box && car.hitched) box(g, m.box, car.hitched);
       return body(g, m.body, 0.25, 0.16, css(TUG));
+    // A van, a small rigid lorry: its cab, and its load in a short box behind.
     case "Truck":
-      if (m.box && car.hitched) box(g, m.box, car.hitched);
+    case "Van":
       return body(g, m.body, CAB.l, CAB.w, css(LIVERY.cab));
-    case "Van": {
-      // A small rigid lorry: its cab, and its load in a short box behind.
-      const p = vanParts(m.body);
-      const load = carried(car);
-      if (load) box(g, p.box, load, VAN_BOX);
-      return body(g, p.body, CAB.l, CAB.w, css(LIVERY.cab));
-    }
     case "Tractor":
       return body(g, m.body, VAN.l, VAN.w, css(LIVERY.tractor));
     default:

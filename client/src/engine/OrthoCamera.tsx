@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
-import { viewExtent, rectOf } from "./view";
+import { groundCover, rectOf } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
 
 
@@ -47,7 +47,8 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
 }
 
 /** Where the camera looks and how much ground it sees either way, as of
- *  the last frame; and a way to send it somewhere, for the minimap. How
+ *  the last frame; and a way to send it somewhere, for the feed's
+ *  news. How
  *  much of the screen's foot the dock's sheet covers, in CSS pixels: what
  *  the camera follows sits in the middle of the rest. */
 export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, below: 0, go(_x: number, _y: number) {} };
@@ -67,7 +68,7 @@ export interface Bounds {
  */
 export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
   const { scene, canvas, beforeRender, afterRender } = useEngine();
-  const { send, island } = useGame();
+  const { send, island, welcomed } = useGame();
 
   const camera = createFreeCamera({ x: 0, y: 0, z: 10 }, { x: 0, y: 0, z: 0 });
   camera.nearPlane = 1;
@@ -87,15 +88,8 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
   let targetCamX = camera.position.x;
   let targetCamY = camera.position.y;
   let debugMode = false;
-  let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
+  let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN, lastWelcome = 0;
 
-  /**
-   * Hold the camera at the height that puts `viewHalf` tiles between the middle
-   * of the screen and its top edge. A narrow lens far away looks very nearly
-   * like a flat projection — but only very nearly, and the difference is the
-   * point: a tall building leans away from the middle of the view and shows a
-   * little of its side, which is what makes its height readable.
-   */
   /**
    * How much ground one pixel covers.
    *
@@ -106,7 +100,7 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
    * camera just as it did under a flat one.
    */
   function groundScale(rect: DOMRect) {
-    const { halfW, halfH } = viewExtent(scene, canvas);
+    const { halfW, halfH } = groundCover(scene, canvas);
     return { worldPerPxX: (halfW * 2) / rect.width, worldPerPxY: (halfH * 2) / rect.height };
   }
 
@@ -230,13 +224,15 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
     const minCy = chunk(camera.position.y - viewHalf) - PAD;
     const maxCy = chunk(camera.position.y + viewHalf) + PAD;
 
-    if (minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
+    // A server that welcomed us since knows nothing of what we asked for.
+    const welcome = welcomed();
+    if (welcome === lastWelcome && minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
 
     // Only remember bounds the server actually heard. The socket is still
     // opening on the first frames, and caching a dropped send would leave the
     // client subscribed to nothing until it happened to pan across a chunk.
     if (!send({ type: "SetChunks", data: { min_cx: minCx, min_cy: minCy, max_cx: maxCx, max_cy: maxCy } })) return;
-    lastMinCx = minCx; lastMinCy = minCy; lastMaxCx = maxCx; lastMaxCy = maxCy;
+    lastMinCx = minCx; lastMinCy = minCy; lastMaxCx = maxCx; lastMaxCy = maxCy; lastWelcome = welcome;
   }
 
   // Smooth zoom animation

@@ -6,7 +6,7 @@ import type { Mayor } from "./Mayor";
  * A box: a trailer off the ferry, the world's, which the town's lorries
  * haul. Never an entity: a value that stands in one place at a time, on
  * a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
- * (`World::booked`). A box is only ever full: the world makes it loaded
+ * (`Car::booked`, a ferry's). A box is only ever full: the world makes it loaded
  * for an import, a depot or a maker when an export is ready, and it is
  * gone once unloaded into a depot's stock or carried off by the ferry.
  * docs/shipping.md §Boxes and lorries.

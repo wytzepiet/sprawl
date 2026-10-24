@@ -1,5 +1,5 @@
 import { windowOf, type Town } from "./grid";
-import { formOf, yardFill, type Yard } from "./mass";
+import { yardFill, type Yard } from "./mass";
 import { defaultJoins } from "./footprint";
 
 /**

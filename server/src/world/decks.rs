@@ -142,12 +142,6 @@ impl World {
             }
             self.roads.insert((at.x, at.y), id);
         }
-        for (a, b) in self.edges_involving(id) {
-            let len = self.segment_length(a, b);
-            if let Some(seg) = self.edges.get_mut(&(a, b)) {
-                seg.length = len;
-            }
-        }
     }
 
     /// A road on a side goes back to the middle of its tile where it
@@ -161,24 +155,30 @@ impl World {
     }
 
     /// Lay a road node on a tile at a height and side, or find the one
-    /// there; a one-way in the middle there moves over to the other side.
-    /// The mayor's.
-    pub(super) fn place_node_of(&mut self, coord: GridCoord, height: u8, side: Side) -> EntityId {
-        if height == 0 && side == MIDDLE {
-            return self.place_ground(coord);
-        }
+    /// there; above the ground or on a side, a one-way in the middle there
+    /// moves over to the other side. `laid` is the mayor's own hand,
+    /// counted to be paid for; a fixture's or a level's roads and
+    /// driveways are streets, laid by nobody, and free.
+    pub(super) fn place_node(&mut self, coord: GridCoord, height: u8, side: Side, laid: bool) -> EntityId {
         if let Some(id) = self.node_in(coord, height, side) {
             return id;
         }
-        for (id, side) in self.moving_over(coord, height, side) {
-            self.move_to(id, side);
+        let ground = height == 0 && side == MIDDLE;
+        if !ground {
+            for (id, side) in self.moving_over(coord, height, side) {
+                self.move_to(id, side);
+            }
         }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road: vec![], laid: true, height, light: None, wide: vec![], side }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road: vec![], laid, height, light: None, wide: vec![], side }),
             Some(coord),
         );
-        self.decks.entry((coord.x, coord.y)).or_default().push(id);
-        self.laid += 1;
+        if ground {
+            self.roads.insert((coord.x, coord.y), id);
+        } else {
+            self.decks.entry((coord.x, coord.y)).or_default().push(id);
+        }
+        self.laid += laid as u32;
         self.unsettle_round(coord);
         id
     }
@@ -186,6 +186,7 @@ impl World {
     /// May a road be laid from one tile at one height and side to the next
     /// at another: the ground's rule (`may_lay`) where both ends are in the
     /// ground's middles.
+    #[cfg(test)]
     pub fn may_lay_at(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool) -> bool {
         self.may_lay_at_on(from, hf, sf, to, ht, st, if one_way { Tool::OneWay } else { Tool::Street }, None, None)
     }
@@ -295,35 +296,27 @@ impl World {
     }
 
     /// Lay a road from one tile at one height and side to the next at
-    /// another, its edges with it. Unchecked: `may_lay_at` says whether it
-    /// may be.
+    /// another, its edges with it: the mayor's. Into a building is its
+    /// door, moved here: the street it runs from is laid, and nothing on
+    /// the building's tile. Unchecked: `may_lay_at` says whether it may be.
     #[allow(clippy::too_many_arguments)]
     pub fn place_road_at(&mut self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool, road: bool) {
-        let a = self.place_node_of(from, hf, sf);
-        let b = self.place_node_of(to, ht, st);
-        if road {
-            self.set_priority(a, b, true);
-        }
-        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(a).map(|e| &mut e.object)
-            && !n.outgoing.contains(&b)
+        if ht == 0 && st == MIDDLE
+            && let Some(id) = self.claimed_plot_at(to)
         {
-            n.outgoing.push(b);
+            self.place_node(from, hf, sf, true);
+            self.door_through(id, from, to);
+            // Reached, as by any street: a depot's fleet and a farm's
+            // land come with the door, not with the first call.
+            self.orient(id);
+            return;
         }
-        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(b).map(|e| &mut e.object) {
-            if one_way {
-                if !n.incoming.contains(&a) {
-                    n.incoming.push(a);
-                }
-            } else if !n.outgoing.contains(&a) {
-                n.outgoing.push(a);
-            }
-        }
-        if !self.edges.contains_key(&(a, b)) {
-            self.insert_edge(a, b);
-        }
-        if !one_way && !self.edges.contains_key(&(b, a)) {
-            self.insert_edge(b, a);
-        }
+        let a = self.place_node(from, hf, sf, true);
+        let b = self.place_node(to, ht, st, true);
+        self.join(a, b, one_way, road);
+        // A new arm on a door's street may make its drive a hairpin.
+        self.unsettle_round(from);
+        self.unsettle_round(to);
     }
 
     /// The road joining two tiles at these heights and sides, if any: its
@@ -339,13 +332,7 @@ mod tests {
     use super::*;
 
     fn grass() -> World {
-        let mut world = World::new();
-        for y in -4..6 {
-            for x in -2..14 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world
+        World::meadow(-2..14, -4..6)
     }
 
     const fn at(x: i32, y: i32) -> GridCoord {

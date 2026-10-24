@@ -1,8 +1,8 @@
 /** @jsxImportSource ~ui */
-import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createEffect, createSignal, on } from "solid-js";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { Header, Pane } from "./Card";
-import { view, wide } from "./kit";
+import { BAD, poll, view, wide } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { BuildingKind, Good } from "../generated";
 
@@ -22,10 +22,8 @@ interface Town {
 }
 
 const [open, setOpen] = createSignal(false);
-export { open as boardOpen, setOpen as setBoardOpen };
+export { setOpen as setBoardOpen };
 
-/** How often the open board asks again. */
-const REFRESH_MS = 1000;
 const COL = 48;
 
 const sum = (m: object) => (Object.values(m) as number[]).reduce((a, b) => a + b, 0);
@@ -45,23 +43,8 @@ export default function Board() {
   createEffect(on(open, (o) => {
     setTown(null);
     if (!o) return;
-    let live = true;
-    const fetchTown = async () => {
-      const r = await fetch("/town");
-      if (!live) return;
-      setTown((await r.json()) as Town);
-    };
-    fetchTown();
-    const timer = setInterval(fetchTown, REFRESH_MS);
-    onCleanup(() => {
-      live = false;
-      clearInterval(timer);
-    });
+    poll("/town", 1000, setTown);
   }));
-
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-  window.addEventListener("keydown", onKey);
-  onCleanup(() => window.removeEventListener("keydown", onKey));
 
   /** Every line on any page, in the order the first page names them. */
   const keys = <K extends string>(t: Town, of: (p: TownPage) => Partial<Record<K, number>>) => [...new Set([t.today, ...t.season].flatMap((p) => Object.keys(of(p))))] as K[];
@@ -109,7 +92,7 @@ function Line(props: { label: string; today: number; season?: number; bold?: boo
   return (
     <box dir="row" align="center" minH={20}>
       <text grow={1} size={13} soft lines={1}>{props.label}</text>
-      <text w={COL} serif size={13} align="end" weight={props.bold ? 600 : undefined} ink={props.today < 0 ? "#DC2626" : undefined}>{num(props.today)}</text>
+      <text w={COL} serif size={13} align="end" weight={props.bold ? 600 : undefined} ink={props.today < 0 ? BAD : undefined}>{num(props.today)}</text>
       <text w={COL} serif size={13} align="end" soft>{props.season === undefined ? "" : num(props.season)}</text>
     </box>
   );

@@ -20,7 +20,7 @@ use crate::engine::GameTime;
 
 use crate::protocol::{
     CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId,
-    GameObject, TILE_ABSENT, TerrainChunk, TerrainType,
+    Building, BuildingKind, Car, GameObject, Resident, TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
 use crate::world::network::RoadNetwork;
@@ -44,25 +44,15 @@ pub struct World {
     /// committed road graph passes through, so nothing that lays or pulls up a
     /// road has to know this index exists.
     pub network: RoadNetwork,
-    /// Where each moving car joined the run of road it is on, which way it set
-    /// off, and when. The direction is what names the run: two runs can share
-    /// both ends, so the junction alone would not say which one is being
-    /// driven. Disposable — a car with no entry here simply does not report
-    /// its first stretch, and the next junction starts it off.
-    pub car_segment: HashMap<EntityId, (EntityId, EntityId, crate::engine::GameTime)>,
-    /// Maps node_id → set of car_ids whose route passes through that node.
-    pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
+    /// Maps node_id → set of car_ids whose route passes through that node,
+    /// in id order: a road taken up reroutes them in it.
+    pub node_cars: HashMap<EntityId, BTreeSet<EntityId>>,
     /// The car turning between the street and a lot at each street node,
     /// and when it was last seen moving: pulling out, from the moment it
     /// found a gap until its tail is clear of the node; turning in, from
     /// leaving the street there until it is parked. The street waits for it
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
     pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
-    /// Vehicles standing where their gear changes, and until when.
-    pub cusps: HashMap<EntityId, crate::engine::GameTime>,
-    /// What each car last slowed or stopped for, and how hard
-    /// (`car::Cause`): for a replay to read, never the game.
-    pub why: HashMap<EntityId, (crate::car::Cause, f64)>,
     pub terrain_seed: u32,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
@@ -81,10 +71,7 @@ pub struct World {
     /// What the town bought of its own accord since the last flush, said
     /// to every player.
     pub news: Vec<crate::protocol::News>,
-    /// The nodes of the tree the player has taken: the gate for everything
-    /// the city may do. See `tree.rs`.
-    pub build: crate::tree::Build,
-    /// Tiles of road the mayor has laid, against the build's allowance.
+    /// Tiles of road the mayor has laid, which `hand::lay` counts to price.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
     /// A level's map, corner to corner: no road is laid off it, and the
@@ -106,6 +93,9 @@ pub struct World {
     /// a ship saved at sea comes back moored.
     pub lanes: Option<crate::shipping::lanes::Lanes>,
     pub junctions: crate::intersection::IntersectionRegistry,
+    /// Who goes first at each road junction and crossing: its cars'
+    /// claims, keyed by node or crossing. Never saved: trips are not.
+    pub streets: crate::intersection::IntersectionRegistry,
     pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
@@ -142,8 +132,17 @@ pub struct World {
     /// Buildings placed, reached, cut off or taken away since the last
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
+    /// Every line that may have a desk free: each one settled, and each
+    /// that lost a worker. Some are full; `settle` sees which, by id.
+    pub vacancies: BTreeSet<EntityId>,
+    /// Every building settled as a site, standing or not since: those
+    /// still waiting call for their timber (`game::settle_and_wake`).
+    pub sites: BTreeSet<EntityId>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
+    /// The buildings placed lately, for razing to give back (`undo::raze`).
+    /// Not saved.
+    pub placed: Vec<crate::undo::Placed>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
     /// The market's prices and the orders waiting on them (`market.rs`). Saved.
@@ -160,6 +159,74 @@ pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
 }
 
 impl World {
+    pub fn building(&self, id: EntityId) -> Option<&Building> {
+        match self.objects.get(id)?.object {
+            GameObject::Building(ref b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn building_mut(&mut self, id: EntityId) -> Option<&mut Building> {
+        match self.objects.get_mut(id)?.object {
+            GameObject::Building(ref mut b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn car(&self, id: EntityId) -> Option<&Car> {
+        match self.objects.get(id)?.object {
+            GameObject::Car(ref c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn car_mut(&mut self, id: EntityId) -> Option<&mut Car> {
+        match self.objects.get_mut(id)?.object {
+            GameObject::Car(ref mut c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn resident(&self, id: EntityId) -> Option<&Resident> {
+        match self.objects.get(id)?.object {
+            GameObject::Resident(ref r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn resident_mut(&mut self, id: EntityId) -> Option<&mut Resident> {
+        match self.objects.get_mut(id)?.object {
+            GameObject::Resident(ref mut r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// The buildings of these kinds, by id.
+    pub fn of_kinds(&self, keep: impl Fn(BuildingKind) -> bool) -> Vec<(EntityId, &Building)> {
+        let mut ids: Vec<EntityId> = BuildingKind::ALL.into_iter().filter(|&k| keep(k)).flat_map(|k| self.objects.of_kind(k)).collect();
+        ids.sort_unstable();
+        ids.into_iter().filter_map(|id| Some((id, self.building(id)?))).collect()
+    }
+
+    /// The standing depots, by id.
+    pub fn depots(&self) -> Vec<(EntityId, &Building)> {
+        self.of_kinds(crate::economy::depot).into_iter().filter(|(_, b)| b.site.is_none()).collect()
+    }
+
+    /// These, nearest a tile first, as the crow walks the grid: with how
+    /// many tiles off each is.
+    pub fn nearest(&self, at: GridCoord, among: impl IntoIterator<Item = EntityId>) -> Vec<(i32, EntityId)> {
+        let mut v: Vec<(i32, EntityId)> = among
+            .into_iter()
+            .filter_map(|id| {
+                let p = self.objects.get(id)?.position?;
+                Some(((p.x - at.x).abs() + (p.y - at.y).abs(), id))
+            })
+            .collect();
+        v.sort_unstable();
+        v
+    }
+
     pub fn unindex(&mut self, id: EntityId, coord: GridCoord) {
         if let Some(ids) = self.spatial.get_mut(&chunk_of(coord)) {
             ids.remove(&id);
@@ -174,11 +241,8 @@ impl World {
             lot_nodes: HashMap::default(),
             claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::default(),
             node_cars: HashMap::default(),
             manoeuvres: HashMap::default(),
-            cusps: HashMap::default(),
-            why: HashMap::default(),
             terrain_seed: 0,
             books: HashMap::default(),
             town: Default::default(),
@@ -186,7 +250,6 @@ impl World {
             treasury: crate::economy::STAKE,
             lumps: Vec::new(),
             news: Vec::new(),
-            build: Default::default(),
             laid: 0,
             frame: None,
             terrain: HashMap::default(),
@@ -195,6 +258,7 @@ impl World {
             lines: Default::default(),
             lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
+            streets: crate::intersection::IntersectionRegistry::new(),
             voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::default(),
@@ -206,57 +270,17 @@ impl World {
             aims: HashMap::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
+            vacancies: BTreeSet::new(),
+            sites: BTreeSet::new(),
             undo: HashMap::default(),
+            placed: Vec::new(),
             missions: Default::default(),
             market: Default::default(),
         }
     }
 
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
-        let mut world = Self {
-            spatial: HashMap::default(),
-            edges: HashMap::default(),
-            lots: HashMap::default(),
-            lot_nodes: HashMap::default(),
-            claims: HashMap::default(),
-            network: RoadNetwork::default(),
-            car_segment: HashMap::default(),
-            node_cars: HashMap::default(),
-            manoeuvres: HashMap::default(),
-            cusps: HashMap::default(),
-            why: HashMap::default(),
-            terrain_seed,
-            books: HashMap::default(),
-            town: Default::default(),
-            gdp: 0.0,
-            treasury: 0.0,
-            lumps: Vec::new(),
-            news: Vec::new(),
-            build: Default::default(),
-            laid: 0,
-            frame: None,
-            terrain: HashMap::default(),
-            peaks: Default::default(),
-            water: Default::default(),
-            lines: Default::default(),
-            lanes: None,
-            junctions: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::default(),
-            chunk_crossings: Vec::new(),
-            built: HashSet::default(),
-            occupied: HashMap::default(),
-            roads: HashMap::default(),
-            decks: HashMap::default(),
-            calls: Vec::new(),
-            harbours: Default::default(),
-            aims: HashMap::default(),
-            people: HashMap::default(),
-            unsettled: BTreeSet::new(),
-            undo: HashMap::default(),
-            missions: Default::default(),
-            market: Default::default(),
-            objects,
-        };
+        let mut world = Self { objects, terrain_seed, treasury: 0.0, ..Self::new() };
         // Rebuild the spatial index and the road index from loaded objects.
         for entry in world.objects.iter().chain(world.objects.roads()) {
             if let Some(pos) = entry.position {
@@ -273,6 +297,17 @@ impl World {
             }
         }
         world
+    }
+
+    /// What a save does not keep, rebuilt from what it does, as the game
+    /// opens it: after the terrain, which a door's drive is read against.
+    pub fn restore(&mut self) {
+        self.rebuild_edges();
+        self.rebuild_node_cars();
+        self.rebuild_occupied();
+        self.restore_spots();
+        self.rebuild_laid();
+        self.doors_from_drives();
     }
 
     /// Rebuild edges from the road graph. Only needed when loading saved state.
@@ -292,7 +327,7 @@ impl World {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
                 let lanes = if self.is_wide(*id, *neighbor) { 2 } else { 1 };
-                self.edges.insert((*id, *neighbor), EdgeSegment::new(len, lanes));
+                self.edges.insert((*id, *neighbor), EdgeSegment::new(lanes));
                 self.network.link(*id, *neighbor, len);
             }
         }
@@ -317,10 +352,18 @@ impl World {
         }
     }
 
+    /// What a car on its way last slowed or stopped for, and how hard
+    /// (`Trip::why`).
+    pub fn why(&self, car_id: EntityId) -> Option<(crate::car::Cause, f64)> {
+        match self.objects.get(car_id)?.object {
+            GameObject::Car(ref c) => c.trip.as_ref()?.why,
+            _ => None,
+        }
+    }
+
     /// Remove a car from the world entirely — scrap, not parking.
     pub fn despawn_car(&mut self, car_id: EntityId) {
         self.release_spot(car_id);
-        self.car_segment.remove(&car_id);
         self.remove_car_from_edges(car_id);
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position
@@ -374,12 +417,7 @@ impl World {
     /// Derived from the buildings rather than remembered: running this
     /// twice changes nothing.
     pub fn mark_harbours(&mut self, now: GameTime) {
-        let standing: Vec<EntityId> = self
-            .objects
-            .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == crate::protocol::BuildingKind::Harbour && b.site.is_none()))
-            .map(|e| e.id)
-            .collect();
+        let standing: Vec<EntityId> = self.of_kinds(|k| k == BuildingKind::Harbour).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id).collect();
         let was = std::mem::take(&mut self.harbours);
         for (h, node) in &was {
             if let Some(node) = node
@@ -432,13 +470,13 @@ impl World {
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
         let len = self.segment_length(from, to);
         let lanes = if self.is_wide(from, to) { 2 } else { 1 };
-        self.edges.insert((from, to), EdgeSegment::new(len, lanes));
+        self.edges.insert((from, to), EdgeSegment::new(lanes));
         let turning = self.network.link(from, to, len);
         self.mark_joined(turning.into_iter().chain([from, to]));
     }
 
     /// Keep nodes' marks in step with their network: joined to the world
-    /// beyond the survey, or an island. Only the nodes named are touched, and
+    /// by a way out, or an island. Only the nodes named are touched, and
     /// only those whose mark actually changed are sent.
     fn mark_joined(&mut self, ids: impl IntoIterator<Item = EntityId>) {
         for id in ids {
@@ -468,14 +506,6 @@ impl World {
             let turning = self.network.unlink(from, to);
             self.mark_joined(turning.into_iter().chain([from, to]));
         }
-    }
-
-    /// Collect all edge keys involving a node (as from or to).
-    pub fn edges_involving(&self, node_id: EntityId) -> Vec<EdgeKey> {
-        self.edges.keys()
-            .filter(|&&(from, to)| from == node_id || to == node_id)
-            .copied()
-            .collect()
     }
 
     pub fn register_car_route(&mut self, car_id: EntityId, route: &[EntityId]) {

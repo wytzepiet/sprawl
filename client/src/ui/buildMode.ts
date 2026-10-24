@@ -33,10 +33,6 @@ export const turn = (by: number) => {
  *  pointer to it. */
 export const inHand = () => tool() !== null || held() !== null;
 
-/** The tools that lay road. */
-export const ROADS = ["Street", "OneWay", "Wide"] as const;
-export const isRoad = (t: Tool | null) => (ROADS as readonly unknown[]).includes(t);
-
 /** Where the building in hand would be placed if let go now, which way
  *  it would face, and why it may not, if it may not, as the game says
  *  (`World::placing`). The brush sets it; the town draws it, and the hand's label
@@ -49,19 +45,6 @@ export { aim, setAim };
  *  as they do under one in hand. */
 const [placed, setPlaced] = createSignal<Placing | null>(null);
 export { placed, setPlaced };
-
-/** How high the hand draws road, in levels: 0 the ground, up to 3. The
- *  decks above it are seen through (`decks.ts`). */
-const [pen, setPen] = createSignal(0);
-export { pen, setPen };
-
-/** The hand's height changed a level up or down (↑ ↓), or null where it
- *  may not be: the road brush sets these, turning the end of the road it
- *  last laid into the slope to the new level (`interchange/RoadBrush`).
- *  With no brush, the pen alone. */
-const free = (by: number) => () => setPen(Math.max(0, Math.min(3, pen() + by)));
-const [climb, setClimb] = createSignal<{ up: (() => void) | null; down: (() => void) | null }>({ up: free(1), down: free(-1) });
-export { climb, setClimb, free };
 
 /** Whether the road the hand lays has priority (`Build.road`): whoever
  *  joins or crosses it gives way. Drawn along a road, it gives it that, or

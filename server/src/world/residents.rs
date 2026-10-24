@@ -71,10 +71,13 @@ impl World {
         }
         changed.append(&mut self.unsettled);
         for b in changed {
-            let kind = match self.objects.get(b).map(|e| &e.object) {
-                Some(GameObject::Building(b)) => Some(b.kind),
-                _ => None,
+            let (kind, site) = match self.objects.get(b).map(|e| &e.object) {
+                Some(GameObject::Building(b)) => (Some(b.kind), b.site.is_some()),
+                _ => (None, false),
             };
+            if site {
+                self.sites.insert(b);
+            }
             // Built but not reached, still a site, or not built at all:
             // nobody lives or works where no road goes, or in scaffolding. Losing your job is not losing your
             // home; losing your home is leaving, and the desk you held is
@@ -101,6 +104,7 @@ impl World {
             }
             if bp.jobs > 0 {
                 lines.insert(b);
+                self.vacancies.insert(b);
             }
         }
         // A line that loses a worker to a nearer one takes its turn after.
@@ -111,8 +115,9 @@ impl World {
         // in town: every line with one takes its turn too, once.
         let jobless = touched.iter().any(|&id| matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.work.is_none()));
         if jobless {
-            let vacant: Vec<EntityId> = self.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).filter(|&b| self.vacant(b)).collect();
-            lines.extend(vacant);
+            let vacant: BTreeSet<EntityId> = self.vacancies.iter().copied().filter(|&b| self.vacant(b)).collect();
+            lines.extend(&vacant);
+            self.vacancies = vacant;
             while let Some(line) = lines.pop_first() {
                 self.hire(line, &mut lines, &mut touched);
             }
@@ -142,9 +147,8 @@ impl World {
         let jobs = blueprint(b.kind).jobs as usize;
         // (the drive to this line, who)
         let mut offers: Vec<(f64, EntityId)> = self.staff(line).into_iter().filter_map(|id| Some((self.commute(id, line)?, id))).collect();
-        let rings = self.rings_from(crate::world::chunk_of(at));
         let mut seen = HashSet::default();
-        for (k, ring) in rings.into_iter().enumerate() {
+        for (k, ring) in self.rings_from(crate::world::chunk_of(at)).enumerate() {
             // The nearest a home in this ring stands, and so the shortest
             // drive anyone there could have.
             let floor = tiles_h((k as i32 - 1).max(0) * CHUNK_SIZE);
@@ -206,18 +210,17 @@ impl World {
     }
 
     /// Chunks around one, a ring at a time, nearest first, as far as
-    /// anything has been built: nothing stands beyond it.
-    fn rings_from(&self, c: ChunkCoord) -> Vec<Vec<ChunkCoord>> {
+    /// anything has been built: nothing stands beyond it. Each ring is
+    /// walked only when asked for: a search that stops early never goes
+    /// round the far ones.
+    fn rings_from(&self, c: ChunkCoord) -> impl Iterator<Item = impl Iterator<Item = ChunkCoord>> {
         let far = self.built.iter().map(|b| (b.cx - c.cx).abs().max((b.cy - c.cy).abs())).max().unwrap_or(0);
-        (0..=far)
-            .map(|k| {
-                (-k..=k)
-                    .flat_map(|dx| (-k..=k).map(move |dy| (dx, dy)))
-                    .filter(|&(dx, dy)| dx.abs().max(dy.abs()) == k)
-                    .map(|(dx, dy)| ChunkCoord { cx: c.cx + dx, cy: c.cy + dy })
-                    .collect()
-            })
-            .collect()
+        (0..=far).map(move |k| {
+            // Its top and bottom rows, then the columns between them.
+            let rows = (-k..=k).flat_map(move |dx| [(dx, -k), (dx, k)].into_iter().take(if k == 0 { 1 } else { 2 }));
+            let sides = (1 - k..k).flat_map(move |dy| [(-k, dy), (k, dy)]);
+            rows.chain(sides).map(move |(dx, dy)| ChunkCoord { cx: c.cx + dx, cy: c.cy + dy })
+        })
     }
 
     /// Open to people: reached by a road, and standing, not a site.
@@ -258,6 +261,7 @@ impl World {
         self.untie(id, home);
         if let Some(w) = work {
             self.untie(id, w);
+            self.vacancies.insert(w);
         }
         self.objects.remove(id);
         if matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none()) {
@@ -276,6 +280,7 @@ impl World {
         let was = std::mem::replace(&mut r.work, work);
         if let Some(w) = was {
             self.untie(id, w);
+            self.vacancies.insert(w);
         }
         if let Some(w) = work {
             self.tie(id, w);
@@ -346,19 +351,11 @@ fn tiles_h(tiles: i32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, TerrainType};
+    use crate::protocol::BuildingKind;
 
     /// Grass, one long street, and whatever gets built beside it.
     fn town() -> World {
-        let mut world = World::new();
-        for y in -4..4 {
-            for x in -4..40 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
-        world.place_road_path(&street);
-        world
+        World::meadow(-4..40, -4..4).street(-2..40)
     }
 
     fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {

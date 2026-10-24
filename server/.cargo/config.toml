@@ -1,0 +1,4 @@
+# ts-rs writes each #[ts(export)] type where the client reads it, on every
+# full `cargo test`; `bun run generate` also clears the ones that went.
+[env]
+TS_RS_EXPORT_DIR = { value = "../client/src/generated", relative = true }

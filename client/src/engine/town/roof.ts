@@ -1,9 +1,10 @@
 import earcut from "earcut";
-import type { MeshGeometry } from "../geometry";
+import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { BAND, PARAPET_H, PARAPET_W, RECESS, eaves, mansard, planted, slope, type RGB } from "./mass";
+import { BAND, PARAPET_H, PARAPET_W, RECESS, eaves, mansard, planted, slope } from "./mass";
+import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
-import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
+import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
 
 /**
  * The buildings of a town as one mesh: every plan (`footprint.ts`) walled
@@ -61,13 +62,10 @@ export function* plans({ town }: Facts) {
 
 /** How a building's surface is painted, given its tile and the shade it
  *  takes of the building's colour: that colour × a + b, a channel at a
- *  time. The sandbox paints the colour itself (`shaded`); the game paints
- *  the shade and which building, and finds the colour as it draws, so a
- *  building's colour changes without its mesh (`tints.ts`). */
+ *  time. The game paints the shade and which building, and finds the
+ *  colour as it draws, so a building's colour changes without its mesh
+ *  (`tints.ts`). */
 export type Paint = (t: Tile, a: number, b: number) => RGB;
-
-/** Each tile its colour, shaded. */
-export const shaded = (colour: (t: Tile) => RGB): Paint => (t, a, b) => colour(t).map((v) => v * a + b) as RGB;
 
 /** What stands on a roof and is drawn as a prop of its own (`props.ts`),
  *  not as the building: an AC unit, a vent; where in the world's frame,
@@ -91,7 +89,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   const props: Prop[] = [];
   /** A prop at a point of the plan, in the world's frame as the triangles are. */
-  const prop = (kind: PropKind, [x, y]: Pt, z: number, size: number, high: number, [tx, ty]: Pt = [x, y]) => props.push({ kind, x: -x, y: -y, z, size, high, tx: -tx, ty: -ty });
+  const prop = (kind: PropKind, [x, y]: P, z: number, size: number, high: number, [tx, ty]: P = [x, y]) => props.push({ kind, x: -x, y: -y, z, size, high, tx: -tx, ty: -ty });
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
   const tri = (p: V, q: V, s: V, n: V, rgb: RGB) => {
@@ -105,7 +103,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     indices.push(base, base + 1, base + 2);
   };
   /** A flat polygon, triangulated, each point lifted by `z`. */
-  const fill = (polygon: Polygon, z: (p: Pt) => number, rgb: RGB) => {
+  const fill = (polygon: Polygon, z: (p: P) => number, rgb: RGB) => {
     const flat = polygon.flat();
     const holes: number[] = [];
     let at = 0;
@@ -133,16 +131,16 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     const tint = (part: (typeof mass.parts)[number], dim = 1): RGB =>
       dim < 1 ? paint(part.tile, dim, 0) : paint(part.tile, 2 - dim, dim - 1);
     /** A region, coloured by the parts it lies in. */
-    const cover = (region: Polygon[], z: (p: Pt) => number, dim = 1) => {
+    const cover = (region: Polygon[], z: (p: P) => number, dim = 1) => {
       for (const part of mass.parts) {
         const rgb = tint(part, dim);
         for (const piece of mass.parts.length === 1 ? region : intersect(region, part.polygons)) fill(piece, z, rgb);
       }
     };
-    const colourAt = (p: Pt): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
+    const colourAt = (p: P): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
     /** Walls round a region from z0 up to its top at z1, coloured as the
      *  building is, and the top, a shade darker or lighter by `dim`. */
-    const sides = (region: Polygon[], z0: number, z1: (p: Pt) => number) => {
+    const sides = (region: Polygon[], z0: number, z1: (p: P) => number) => {
       for (const ring of region.flat()) {
         ring.forEach((p, i) => {
           const q = ring[(i + 1) % ring.length];
@@ -155,7 +153,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
         });
       }
     };
-    const prism = (region: Polygon[], z0: number, z1: (p: Pt) => number, dim = 1) => {
+    const prism = (region: Polygon[], z0: number, z1: (p: P) => number, dim = 1) => {
       sides(region, z0, z1);
       cover(region, z1, dim);
     };
@@ -185,11 +183,11 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       const [length, width] = long ? [x1 - x0, y1 - y0] : [y1 - y0, x1 - x0];
       const flip = Math.abs(Math.sin(x0 * 12.9898 + y0 * 78.233) * 43758.5453) % 1 > 0.5;
       /** A point `a` along the roof's length from one end, `b` across. */
-      const at = (a: number, b: number): Pt => {
+      const at = (a: number, b: number): P => {
         const along = flip ? length - a : a;
         return long ? [x0 + along, y0 + b] : [x0 + b, y0 + along];
       };
-      const box = ([cx, cy]: Pt, a: number, b: number): Polygon[] => {
+      const box = ([cx, cy]: P, a: number, b: number): Polygon[] => {
         const [w, h] = long ? [a, b] : [b, a];
         return [[[[cx - w / 2, cy - h / 2], [cx + w / 2, cy - h / 2], [cx + w / 2, cy + h / 2], [cx - w / 2, cy + h / 2]]]];
       };
@@ -213,7 +211,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       const [x1, y1] = [Math.max(...all.map((p) => p[0])), Math.max(...all.map((p) => p[1]))];
       const first = Math.floor((Math.abs(Math.sin(x0 * 12.9898 + y0 * 78.233) * 43758.5453) % 1) * 4);
       /** Corner k (bit 1 the far x, bit 2 the far y), a thing this broad tucked into it. */
-      const corner = (k: number, size: number): Pt => {
+      const corner = (k: number, size: number): P => {
         const reach = KIT.margin + size / 2;
         return [k & 1 ? x1 - reach : x0 + reach, k & 2 ? y1 - reach : y0 + reach];
       };
@@ -230,8 +228,8 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
 
     // The roof over a point of the plan: as high as it is far in from
     // the nearest wall, to its reach.
-    const walls = polygon.flatMap((ring) => ring.map((p, i): [Pt, Pt] => [p, ring[(i + 1) % ring.length]]));
-    const roofAt = (p: Pt) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
+    const walls = polygon.flatMap((ring) => ring.map((p, i): [P, P] => [p, ring[(i + 1) % ring.length]]));
+    const roofAt = (p: P) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
     // Walls: every edge of every ring, from the ground to the roof; the
     // roof's faces and its flat are what cover them.
     sides(outline, 0, roofAt);
@@ -278,13 +276,13 @@ export function roofFaces(polygon: Polygon, reach: number): { line: Line; region
     Math.max(...all.map((p) => p[0])) + 1, Math.max(...all.map((p) => p[1])) + 1,
   ];
   // Every wall: its line, and the walls before and after it.
-  interface Wall { line: Line; dir: Pt }
+  interface Wall { line: Line; dir: P }
   const walls: { wall: Wall; prev: Wall; next: Wall }[] = [];
   for (const ring of polygon) {
     const ws: Wall[] = ring.map((p, i) => {
       const q = ring[(i + 1) % ring.length];
       const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-      const dir: Pt = [(q[0] - p[0]) / len, (q[1] - p[1]) / len];
+      const dir: P = [(q[0] - p[0]) / len, (q[1] - p[1]) / len];
       // The building is on the left.
       const [a, b] = [-dir[1], dir[0]];
       return { line: [a, b, -(a * p[0] + b * p[1])], dir };
@@ -293,7 +291,7 @@ export function roofFaces(polygon: Polygon, reach: number): { line: Line; region
   }
   /** Where `e` is no further in than `g`. */
   const nearer = (e: Line, g: Line): Half => [e[0] - g[0], e[1] - g[1], g[2] - e[2]];
-  const turn = (a: Pt, b: Pt) => a[0] * b[1] - a[1] * b[0];
+  const turn = (a: P, b: P) => a[0] * b[1] - a[1] * b[0];
   // Where each wall's face could be: within reach, on the building's side,
   // and on its side of the line halfway to each neighbour. At an outside
   // corner that side is the one nearer this wall; at an inside corner, the
@@ -332,14 +330,14 @@ export function roofFaces(polygon: Polygon, reach: number): { line: Line; region
 }
 
 /** How far a point is from a segment. */
-function toSegment([x, y]: Pt, [ax, ay]: Pt, [bx, by]: Pt) {
+function toSegment([x, y]: P, [ax, ay]: P, [bx, by]: P) {
   const [dx, dy] = [bx - ax, by - ay];
   const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
   return Math.hypot(x - ax - t * dx, y - ay - t * dy);
 }
 
-function inPolygon(p: Pt, polygon: Polygon) {
-  const inRing = ([x, y]: Pt, ring: Pt[]) => {
+function inPolygon(p: P, polygon: Polygon) {
+  const inRing = ([x, y]: P, ring: P[]) => {
     let hit = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const [xi, yi] = ring[i], [xj, yj] = ring[j];
