@@ -1,10 +1,11 @@
 //! The harbour, the ferry and the tug: the door everything comes in and
 //! goes out by (docs/shipping.md §Harbours).
 //!
-//! A harbour stands with its back to the sea. The tile of sea behind the
-//! middle of its back face is the quay; the ferry berths at it with its
-//! ramp on the quay edge, lying straight out to sea, so a harbour needs
-//! `BERTH` tiles of sea in a line behind it. On the street side is the
+//! A harbour stands half on the water, with its back to the sea: the
+//! middle of its back row is over the sea, its quay built out on it, and
+//! the tile of sea behind that is the berth's; the ferry berths there with
+//! its ramp on the quay edge, lying straight out to sea, so a harbour
+//! needs `BERTH` tiles of sea in a line behind it. On the street side is the
 //! trailer park, which is the yard's docks (`lots.rs`): a box stands in a
 //! dock where a lorry backed in would have its trailer, and a lorry backs
 //! into a free dock to drop one or under one to hook it.
@@ -145,8 +146,9 @@ impl Berth {
 impl World {
     /// The berth a kind's plot would have here this way round: the tile of
     /// the sea behind the middle of its back, in line with its lane, with
-    /// `BERTH` tiles of sea straight out from it. None where that is
-    /// land, a lake, or water too narrow for the ferry.
+    /// `BERTH` tiles of sea straight out from it, and the middle of its
+    /// back row on the sea too, the quay built out over it. None where
+    /// that is land, a lake, or water too narrow for the ferry.
     pub fn berth_at(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<Berth> {
         let (dx, dy) = FACINGS[facing as usize % 4];
         let gate = World::gate_of(tiles, kind, facing)?;
@@ -154,7 +156,7 @@ impl World {
         let (_, (w, h)) = World::bounds(tiles);
         let deep = if dx == 0 { h } else { w } as i32;
         let b = Berth { quay: GridCoord { x: gate.x - dx * deep, y: gate.y - dy * deep }, out: (-dx, -dy) };
-        (0..BERTH).all(|n| self.terrain.get(&(b.tile(n).x, b.tile(n).y)) == Some(&TerrainType::Sea)).then_some(b)
+        (-1..BERTH).all(|n| self.terrain.get(&(b.tile(n).x, b.tile(n).y)) == Some(&TerrainType::Sea)).then_some(b)
     }
 
     /// A standing harbour's berth.
@@ -762,7 +764,7 @@ mod tests {
         let mut world = World::new();
         for y in -8..41 {
             for x in -60..100 {
-                world.terrain.insert((x, y), if y >= 3 { TerrainType::Sea } else { TerrainType::Grass });
+                world.terrain.insert((x, y), if y >= 2 { TerrainType::Sea } else { TerrainType::Grass });
             }
         }
         world.place_road_path(&(-4..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
@@ -815,6 +817,21 @@ mod tests {
             assert!((x - lane).abs() - hx >= 0.5, "a box in the lane at {:?}", slot.pose.at);
         }
         assert!((berth.rest().at[0] - lane).abs() >= 0.5, "the tug waits in the lane");
+    }
+
+    /// On a coast running on the diagonal, the shore crosses the plot:
+    /// its gate on the land, its quay out over the sea.
+    #[test]
+    fn a_harbour_fits_a_diagonal_coast() {
+        let mut world = World::new();
+        for y in -10..40 {
+            for x in -10..40 {
+                world.terrain.insert((x, y), if x + y >= 14 { TerrainType::Sea } else { TerrainType::Grass });
+            }
+        }
+        let tiles = world.fit(BuildingKind::Harbour, GridCoord { x: 10, y: 4 }, 0).expect("the diagonal coast takes a harbour");
+        let wet = tiles.iter().filter(|t| world.terrain[&(t.x, t.y)] == TerrainType::Sea).count();
+        assert_eq!(wet, 3, "it stands half on the water: {tiles:?}");
     }
 
     #[test]

@@ -18,7 +18,8 @@
 //! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
-//! A building's letters are its tiles: a kind bigger than a tile is one
+//! A building's letters are its tiles, on grass, but a harbour's beside
+//! the sea, which stand on it: a kind bigger than a tile is one
 //! building as far as its letter runs, of whatever shape, which the hand
 //! cannot place but the look must draw; a house is a house a tile. Lines starting with `#` are the fixture's
 //! description; the first is its title.
@@ -120,10 +121,15 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
     let at = |col: i32, row: i32| GridCoord { x: x0 + w - 1 - col, y: -row };
     let char_at = |col: i32, row: i32| rows.get(row as usize).and_then(|r| r.get(col as usize)).copied().unwrap_or('.');
 
+    // A harbour stands half on the water: its tiles beside the sea are
+    // built out over it.
+    let sea = |col: i32, row: i32| [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dc, dr)| char_at(col + dc, row + dr) == '≈');
     for row in -GAP..h + GAP {
         for col in -GAP..w + GAP {
             let p = at(col, row);
-            world.terrain.insert((p.x, p.y), ground(char_at(col, row)));
+            let c = char_at(col, row);
+            let g = if building(c) == Some(BuildingKind::Harbour) && sea(col, row) { TerrainType::Sea } else { ground(c) };
+            world.terrain.insert((p.x, p.y), g);
         }
     }
 
@@ -174,10 +180,6 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
                 i += 1;
             }
             let tiles: Vec<GridCoord> = run.iter().map(|&(c, r)| at(c, r)).collect();
-            if !tiles.iter().all(|&t| world.may_stand(t)) {
-                println!("fixtures: {name}: no room for {kind:?} at column {col}, row {row}");
-                continue;
-            }
             let quay = crate::blueprint::blueprint(kind).quay;
             // Its yard where its small letters are, as `/map` writes
             // a game's; else toward the first street it has.
@@ -188,6 +190,10 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
                 .find(|&f| !marked.is_empty() && yard(f).as_ref() == Some(&marked))
                 .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())))
                 .unwrap_or(2);
+            if !world.may_stand_on(&tiles, kind, facing) {
+                println!("fixtures: {name}: no room for {kind:?} at column {col}, row {row}");
+                continue;
+            }
             world.raise(kind, tiles, facing);
         }
     }

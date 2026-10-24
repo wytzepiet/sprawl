@@ -233,7 +233,10 @@ What runs, as of 2026-10-10 (`world/sea.rs`, `haul.rs`), and where it
 parted from the direction above.
 
 - **The harbour** is a kind like any other, all yard, 3 along the quay
-  and 2 in, with its back to the sea and six tiles of open sea straight
+  and 2 in, standing half on the water (2026-10-24): its gate on the
+  land, the middle of its back row out over the sea, the rest of it
+  either, so it fits a coast however it runs, straight or on the
+  diagonal (`World::pier`). Its back is to the sea, with six tiles of open sea straight
   out behind the middle of it, which is the berth. Down its middle a
   lane runs from its gate, the one way in, to the ramp, and nothing
   stands in it: what comes off the ferry drives straight up it to the
@@ -243,14 +246,15 @@ parted from the direction above.
   street is the town's way out: a road that reaches a harbour is joined,
   and one that reaches none is drawn red. The edge, its lorries and the
   port's call-driven ship are gone.
-- **The quay is any paving at the water.** A built tile at the water's
-  edge is drawn as water under it: the beach, cliff and foam step back,
+- **The quay is the harbour's alone** (2026-10-24: a street or a house
+  by the water keeps its shore, the land's cliff past its paving). A
+  harbour's tile at the water's edge is drawn as water under it: the beach, cliff and foam step back,
   and the paving's edge is a stone wall straight down, capped
   (`town/draw.ts`, `TerrainChunks.ts`). The berth is a link span from the
   quay onto the ferry's land end under a gantry, two dolphins it lies
   between, a walkway out to them and bollards along the quay
-  (`BuildingObject.tsx`). The rest of the shore stays rock and sand: only
-  what the town paves becomes quay.
+  (`BuildingObject.tsx`). The rest of the shore stays rock and sand, paved
+  or not.
 - **The ferry is double-ended**, as small island ferries are: it sails in
   one end first, lands its ramp on the quay, and sails out the other end
   first, so it never turns in the harbour and needs no room to. The

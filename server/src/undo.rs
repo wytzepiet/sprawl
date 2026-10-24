@@ -334,7 +334,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     let refused = match &done.act {
         Act::Laid { links, .. } => rests_on(world, links, done.after),
         Act::Placed { laid, .. } => rests_on(world, laid, done.after),
-        Act::Razed(_, b) => (!b.tiles.iter().all(|&t| world.may_stand(t))).then_some("Something stands where it stood"),
+        Act::Razed(_, b) => (!world.may_stand_on(&b.tiles, b.kind, b.facing)).then_some("Something stands where it stood"),
         Act::Cut(links) => links.iter().any(|l| world.occupied.contains_key(&(l.to.x, l.to.y)) || world.occupied.contains_key(&(l.from.x, l.from.y))).then_some("Something stands where it ran"),
         Act::Drawn { steps, .. } => rests_on(world, &steps.iter().filter(|s| s.fresh).map(|s| s.link).collect::<Vec<_>>(), done.after),
     };

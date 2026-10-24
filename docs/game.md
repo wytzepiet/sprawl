@@ -154,7 +154,7 @@ fingers twisting turn it by hand; the town is drawn as it would be with
 it standing, its drive joined and its pavement laid, the building in
 blue (`TownLayer.hold`); and beside it are what it takes against what
 the depots hold, and, where it may not go, why ("No street before its
-yard", "No berth: its back is not on the sea"). Let go where it fits
+yard", "No quay: it stands half on the sea, its back on the water"). Let go where it fits
 and it is placed at once, a site; anywhere else, nothing happens. The
 rule of where it fits is the server's (`World::fit`), and the hand
 asks it (`World::placing`). It is taken down whole, with one tap of the

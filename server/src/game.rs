@@ -1114,7 +1114,7 @@ mod tests {
         let mut world = World::new();
         for y in -10..60 {
             for x in -4..300 {
-                let sea = x >= HARBOUR_X - 2 && y >= 3;
+                let sea = x >= HARBOUR_X - 2 && y >= 2;
                 if sea || y < 14 {
                     world.terrain.insert((x, y), if sea { TerrainType::Sea } else { TerrainType::Grass });
                 }
@@ -1310,7 +1310,7 @@ mod tests {
         let mut world = World::new();
         for y in -30..41 {
             for x in -60..100 {
-                world.terrain.insert((x, y), if y >= 3 { TerrainType::Sea } else { TerrainType::Grass });
+                world.terrain.insert((x, y), if y >= 2 { TerrainType::Sea } else { TerrainType::Grass });
             }
         }
         world
@@ -2510,7 +2510,7 @@ mod tests {
         let mut world = World::new();
         world.terrain = crate::terrain::generate(7);
         world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 32 }).collect::<Vec<_>>());
-        let harbour = world.place_on_street(GridCoord { x: 1, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
+        let harbour = world.place_on_street(GridCoord { x: -2, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
