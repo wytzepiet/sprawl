@@ -365,6 +365,7 @@ impl World {
     pub fn despawn_car(&mut self, car_id: EntityId) {
         self.release_spot(car_id);
         self.remove_car_from_edges(car_id);
+        self.aims.remove(&car_id);
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position
         {

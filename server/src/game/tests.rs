@@ -1250,3 +1250,31 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
     assert_eq!(home(&game.world), 6, "{} boxes home in eight hours", home(&game.world));
     eprintln!("six boxes home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }
+
+/// A lorry on its way to the park is scrapped, as one is when the road
+/// under it is taken up and no way home is left: the box it was after
+/// is the next lorry's. Its claim on the box once outlived it, and the
+/// depot's other lorries, finding the park's first box taken, stood at
+/// home for good.
+#[test]
+fn a_lorry_scrapped_on_its_way_leaves_its_box() {
+    let mut world = street();
+    let harbour = harbour_of(&world);
+    let x = HARBOUR_X - 12;
+    let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
+    let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
+    world.orient(depot);
+    let mut game = game(world);
+    crate::haul::buy_lorry(&mut game.world, &mut game.events, depot, 0);
+    let ferry = game.world.ferry_of(harbour).unwrap();
+    let day = DAY_MS as u64;
+    while car_of(&game.world, ferry).spot.is_none() && game.step_to(day) {}
+    while car_of(&game.world, ferry).spot.is_some() && game.step_to(day) {}
+    let going = |w: &World| lorries_of(w, depot).into_iter().find(|&l| car_of(w, l).trip.as_ref().is_some_and(|t| t.destination == harbour));
+    while going(&game.world).is_none() && game.step_to(day) {}
+    let scrapped = going(&game.world).expect("a lorry went for the starter pack");
+    game.world.despawn_car(scrapped);
+    let until = game.now + DAY_MS as u64 / 24;
+    while going(&game.world).is_none() && game.step_to(until) {}
+    assert!(going(&game.world).is_some(), "no lorry went for the boxes after one was scrapped");
+}
