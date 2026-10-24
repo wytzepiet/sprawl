@@ -66,7 +66,7 @@ pub(crate) fn street() -> World {
     let mut world = World::new();
     for y in -10..60 {
         for x in -4..300 {
-            let sea = x >= HARBOUR_X - 2 && y >= 3;
+            let sea = x >= HARBOUR_X - 2 && y >= 2;
             if sea || y < 14 {
                 world.terrain.insert((x, y), if sea { TerrainType::Sea } else { TerrainType::Grass });
             }
@@ -1042,7 +1042,7 @@ fn a_real_coast_is_called_at_as_often_as_ever() {
     let mut world = World::new();
     world.terrain = crate::terrain::generate(7);
     world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 32 }).collect::<Vec<_>>());
-    let harbour = world.place_on_street(GridCoord { x: 1, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
+    let harbour = world.place_on_street(GridCoord { x: -2, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
     let mut game = game(world);
     let ferries = game.world.ferries_of(harbour);
     assert_eq!(ferries.len(), 2, "the world's line, {} ms round, runs {} ferries", game.world.lines[&harbour].cycle(), ferries.len());

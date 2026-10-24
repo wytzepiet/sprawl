@@ -62,6 +62,9 @@ export default function World(props: { brush?: () => JSX.Element }) {
    * and a road landing on its far side would not be seen to reach it.
    */
   const builtTiles = new Map<string, number>();
+  /** The harbours' tiles: the only paving at the water that is a quay,
+   *  the coast stepping back under it (`TerrainChunks`). */
+  const quays = new Set<string>();
   /** The tiles of the building in hand, or of the one let go until the
    *  server's word on it comes back (`placed`). */
   let inHand = new Set<string>();
@@ -75,6 +78,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
     const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
+      if (b.kind === "Harbour") quays.add(key);
       terrain.markTile(t.x, t.y);
       return key;
     });
@@ -84,12 +88,13 @@ export default function World(props: { brush?: () => JSX.Element }) {
   function uncover(keys: string[] | undefined) {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
+      quays.delete(key);
       const [x, y] = key.split(",").map(Number);
       terrain.markTile(x, y);
     }
   }
 
-  const terrain = new TerrainChunks(ctx, casters()!, isBuilt);
+  const terrain = new TerrainChunks(ctx, casters()!, isBuilt, (x, y) => quays.has(`${x},${y}`));
   // Red where no joined road reaches it; grey where any stock is bare.
   const lookOf = (entry: GameObjectEntry) =>
     !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY;

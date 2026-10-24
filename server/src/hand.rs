@@ -365,7 +365,7 @@ mod tests {
         let mut world = World::new();
         for y in -30..41 {
             for x in -60..100 {
-                world.terrain.insert((x, y), if y >= 3 { TerrainType::Sea } else { TerrainType::Grass });
+                world.terrain.insert((x, y), if y >= 2 { TerrainType::Sea } else { TerrainType::Grass });
             }
         }
         world

@@ -759,7 +759,7 @@ export const VERGE_KERB = 0.02;
  * of it a kerb round a junction, else nothing; and
  * every building and yard's ground: its tiles, square; by the water, the
  * buildings' own rule (the terrain's corners, a diagonal as far out as a
- * straight edge) at full size, so a quay keeps to the shore. Where a
+ * straight edge) at full size, so it keeps to the shore. Where a
  * building stands beside a road, the ground between them is paved too,
  * straight from its front to the kerb, so a shop is paved to its kerb and
  * a town centre shop to shop; elsewhere the sidewalk is a border, the grass
@@ -775,7 +775,7 @@ export function pavement(town: Town): Polygon[] {
   const kin = defaultJoins(plain);
   const on = (c: number, r: number) => plain.tile(c, r) === PAVING;
   // A tile's ground a square; by the water, the buildings' own rule, the
-  // terrain's corners, so a quay keeps to the shore the terrain draws.
+  // terrain's corners, so paving keeps to the shore the terrain draws.
   const wet = (c: number, r: number) => [-1, 0, 1].some((dr) => [-1, 0, 1].some((dc) => town.tile(c + dc, r + dr).kind === "water"));
   const squares: Polygon[] = [], shore: Polygon[] = [];
   for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (on(c, r)) (wet(c, r) ? shore : squares).push([[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]);

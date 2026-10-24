@@ -88,6 +88,7 @@ export class TerrainChunks {
     private ctx: EngineContext,
     private casters: Casters,
     private isBuilt: (x: number, y: number) => boolean,
+    private isQuay: (x: number, y: number) => boolean,
   ) {
     // The one material that genuinely wants both sides. Cliff walls exist only
     // to cast shadows, and the sun swings through 360 degrees while a wall's
@@ -151,8 +152,8 @@ export class TerrainChunks {
 
   /** Something built appearing or vanishing, a road or a building, moves
    *  the trees there; and in a wood, the ground under it too, the wood's
-   *  floor cleared to grass, and on the shore, the coast, a quay or not
-   *  (`requestBuild`): for every chunk whose tiles, skirt and all, take it
+   *  floor cleared to grass, and on the shore, a harbour's, the coast, a
+   *  quay or not (`requestBuild`): for every chunk whose tiles, skirt and all, take it
    *  in. Nothing else of the land. */
   markTile(x: number, y: number): void {
     this.markTrees(x, y);
@@ -215,10 +216,11 @@ export class TerrainChunks {
     try {
       // tiles is cloned, not transferred — we keep it for tree rebuilds. A
       // wood's tile built on is drawn as grass, its floor cleared with its
-      // trees; and a tile built on at the water's edge, as water: the coast
-      // steps back under its paving, which runs on to the water as a quay
-      // (`town/draw.ts`), its wall straight down where the shore was, and
-      // the shore's beach, cliff and foam hid under it.
+      // trees; and a harbour's tile at the water's edge, as water: the
+      // coast steps back under its paving, which runs on to the water as a
+      // quay (`town/draw.ts`), its wall straight down where the shore was,
+      // and the shore's beach, cliff and foam hid under it. Anything else
+      // built by the water keeps its shore, the land's cliff past its edge.
       const [forest, grass, sea] = [TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass"), TYPE_BY_BYTE.indexOf("Sea")];
       const [ox, oy] = [cx * CHUNK_SIZE - CHUNK_SKIRT, cy * CHUNK_SIZE - CHUNK_SKIRT];
       const own = (x: number, y: number) => {
@@ -228,7 +230,7 @@ export class TerrainChunks {
       const cleared = tiles.map((b, k) => {
         const [x, y] = [ox + (k % CHUNK_STRIDE), oy + Math.floor(k / CHUNK_STRIDE)];
         if (!this.isBuilt(x, y)) return b;
-        return this.ashore(x, y, own) ? sea : b === forest ? grass : b;
+        return this.isQuay(x, y) && this.ashore(x, y, own) ? sea : b === forest ? grass : b;
       });
       geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy);
     } catch (e) {

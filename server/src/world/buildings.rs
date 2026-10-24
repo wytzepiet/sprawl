@@ -303,9 +303,8 @@ impl World {
     #[cfg(test)]
     pub fn place_building(&mut self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<EntityId> {
         let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
-        let open = tiles.iter().all(|&t| self.may_stand(t));
         let quay = crate::blueprint::blueprint(kind).quay;
-        (open && (!quay || self.berth_at(&tiles, kind, facing).is_some())).then(|| self.raise(kind, tiles, facing))
+        (self.may_stand_on(&tiles, kind, facing) && (!quay || self.berth_at(&tiles, kind, facing).is_some())).then(|| self.raise(kind, tiles, facing))
     }
 
     /// The building on this tile, if any.
@@ -398,7 +397,7 @@ impl World {
     pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<u8> {
         (0..4).find(|&f| {
             let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, f).size).collect();
-            tiles.iter().all(|&t| self.may_stand(t))
+            self.may_stand_on(&tiles, kind, f)
                 && (!crate::blueprint::blueprint(kind).quay || self.berth_at(&tiles, kind, f).is_some())
                 && self.driveway_for(&tiles, kind, f).is_some()
         })
@@ -440,10 +439,11 @@ impl World {
 
     /// May a kind be placed round `at` facing this way, and if not, why,
     /// in the words the hand's preview says it in (`World::placing`): open
-    /// land under the whole plot, or a road's dead end it stands over;
-    /// a street before its front, its yard's if it keeps one, or all along
-    /// one side for one that parks at the kerb; and a harbour's back on
-    /// open sea, which brings its own street.
+    /// land under the whole plot, or a road's dead end it stands over, or
+    /// for a harbour the sea (`pier`); a street before its front, its
+    /// yard's if it keeps one, or all along one side for one that parks at
+    /// the kerb; and a harbour's quay on open sea, which brings its own
+    /// street.
     pub fn fit(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
         let tiles = Self::plot_at(kind, at, facing);
         for &t in &tiles {
@@ -455,6 +455,8 @@ impl World {
             }
             match self.terrain.get(&(t.x, t.y)) {
                 Some(TerrainType::Grass | TerrainType::Forest) => {}
+                Some(TerrainType::Sea) if Self::pier(&tiles, kind, facing, t) => {}
+                Some(TerrainType::Water) if Self::pier(&tiles, kind, facing, t) => return Err("A lake: the ferry comes only by sea"),
                 Some(TerrainType::Sea | TerrainType::Water) => return Err("Its plot runs into the water"),
                 Some(TerrainType::Beach) => return Err("On the beach: it stands on grass or forest"),
                 _ => return Err("Not on open land"),
@@ -465,7 +467,7 @@ impl World {
                 Behind::Berth => Ok(tiles),
                 Behind::Sea => Err("The water behind is too narrow: the ferry needs 6 tiles of open sea straight out"),
                 Behind::Lake => Err("A lake: the ferry comes only by sea"),
-                Behind::Land => Err("No berth: its back is not on the sea"),
+                Behind::Land => Err("No quay: it stands half on the sea, its back on the water"),
             };
         }
         // A building that parks at the kerb needs a street all along one
@@ -483,6 +485,24 @@ impl World {
     /// it takes over as its door.
     pub fn may_stand(&self, t: GridCoord) -> bool {
         self.is_buildable(t) || self.is_driveway_stub(t)
+    }
+
+    /// May a kind's plot stand on these tiles this way round: each on
+    /// ground it may stand on, or a harbour's on the sea (`pier`).
+    pub fn may_stand_on(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> bool {
+        tiles.iter().all(|&t| {
+            self.may_stand(t)
+                || (Self::pier(tiles, kind, facing, t) && !self.occupied.contains_key(&(t.x, t.y)) && self.terrain.get(&(t.x, t.y)) == Some(&TerrainType::Sea))
+        })
+    }
+
+    /// May this tile of a plot be over the sea: a harbour's, all but its
+    /// gate. A harbour stands half on the water, its quay built out over
+    /// it, so it fits a coast however the coast runs: straight, its back
+    /// row on the sea, or on the diagonal, the shore across it
+    /// (`berth_at`).
+    fn pier(tiles: &[GridCoord], kind: BuildingKind, facing: u8, t: GridCoord) -> bool {
+        crate::blueprint::blueprint(kind).quay && Self::gate_of(tiles, kind, facing) != Some(t)
     }
 
     /// The street a harbour placed on these tiles brings with it, from the
@@ -560,7 +580,7 @@ impl World {
         let Some(gate) = World::gate_of(tiles, kind, facing) else { return Behind::Land };
         let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
         let (_, (w, h)) = World::bounds(tiles);
-        let deep = if dx == 0 { h } else { w } as i32;
+        let deep = if dx == 0 { h } else { w } as i32 - 1;
         match self.terrain.get(&(gate.x - dx * deep, gate.y - dy * deep)) {
             Some(TerrainType::Sea) => Behind::Sea,
             Some(TerrainType::Water) => Behind::Lake,

@@ -158,7 +158,7 @@ mod tests {
             let mut world = World::new();
             for y in -10..20 {
                 for x in -5..25 {
-                    world.terrain.insert((x, y), if y >= 3 { water } else { TerrainType::Grass });
+                    world.terrain.insert((x, y), if y >= 2 { water } else { TerrainType::Grass });
                 }
             }
             world
@@ -166,7 +166,7 @@ mod tests {
         let sea = coast(TerrainType::Sea);
         let p = sea.placing(BuildingKind::Harbour, at(9, 3), None);
         assert_eq!((p.at, p.facing, p.why), (at(9, 2), 0, None));
-        assert_eq!(sea.placing(BuildingKind::Harbour, at(9, 2), Some(2)).why.as_deref(), Some("No berth: its back is not on the sea"));
+        assert_eq!(sea.placing(BuildingKind::Harbour, at(9, 1), Some(2)).why.as_deref(), Some("No quay: it stands half on the sea, its back on the water"));
         let lake = coast(TerrainType::Water);
         assert_eq!(lake.placing(BuildingKind::Harbour, at(9, 2), None).why.as_deref(), Some("A lake: the ferry comes only by sea"));
     }

@@ -151,7 +151,9 @@ The code is `client/src/engine/town/`:
   yard and building's ground: its tiles, square (2026-10-16); by the
   water, the buildings' own rule run on it at full size (the terrain's
   corners in straight lines, a diagonal as far out as a straight edge), so
-  a quay keeps to the shore the terrain draws. Where a building stands beside a road, the
+  the paving keeps to the shore the terrain draws: a harbour's as a
+  quay, its wall straight down (`draw.ts`), anything else's on the land,
+  the shore's cliff past it. Where a building stands beside a road, the
   ground between them is paved too, straight from its front to the kerb
   (the half of the road's tile toward it): a shop is
   paved to its kerb, a town centre shop to shop; elsewhere the sidewalk is
