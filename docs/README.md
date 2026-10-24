@@ -16,6 +16,7 @@ each, and since when, is in its own header, and only there.
 | `architecture.md` | How the code is shaped: the discrete event simulation, the tracked state, the wire, persistence, the client, deployment. |
 | `residents.md` | How a resident decides what to do: needs as stocks of time, taps, the utility search, alarms. |
 | `plan-sea.md` | The build plan for the sea: ships on routed water, lanes and blocks (built); the harness, your own second harbour, company lines and the container port (superseded by `plan-market.md`); what is cut and why. |
+| `plan-goods.md` | What the game is (an industry tycoon whose puzzle is the roads), problems that come to the player, the opening sketched, one camera, goods as items you can see, pads and handling time, packed then bulk or boxed, the ferry with pallets on deck, containers through depots, two networks. |
 | `plan-market.md` | The market: world prices that move with a graph, freight as the moat between islands, a mayor as a nation, the harbour growing into a hub, the computer's mayors as the market until there are players. |
 | `plan-interchange.md` | A Freeways-like puzzle mode run in the browser on the sim compiled to wasm: levels, gates and demands, Build and Test, an efficiency percentage; a road brush; and the roads it needs: one-way, cross-sections, markings, merging, priority, levels, lanes, lights. |
 | `multiplayer.md` | Many towns, one sea: coastal spawns, trade between players by sea and optional roads, influence from traffic as the claim. |
