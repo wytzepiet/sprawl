@@ -15,6 +15,7 @@
  *                                       cuts
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
+ *   bun run act lorry 79                another lorry for depot #79
  *   bun run act undo                    the hand's last action taken back
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act buy Timber 2            two boxes of timber from the market, on
@@ -252,6 +253,9 @@ for (const line of lines) {
       else report.push(`nothing stands at ${x},${y}`);
       break;
     }
+    case "lorry":
+      send("BuyLorry", { depot: Number(args[0]) });
+      break;
     case "undo":
       send("Undo");
       break;

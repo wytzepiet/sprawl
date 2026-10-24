@@ -693,7 +693,7 @@ fn try_reroute(
         world.update_position(car_id, pos);
     }
 
-    let arriving = world.kerb_stretch(car_id);
+    let arriving = world.stretch(car_id);
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut car) = entry.object
         && let Some(ref mut t) = car.trip
@@ -3011,5 +3011,33 @@ mod tests {
         }
         assert_eq!(home(&world), 6, "{} boxes home in eight hours", home(&world));
         eprintln!("six boxes home in {:.2} hours", (now - sailed) as f64 / hour as f64);
+    }
+
+    /// Two lorries, and the starter pack landed: both go for it at once,
+    /// each for its own box. Each once went only for the first box in the
+    /// park, and the second lorry, finding that one taken, stood at home.
+    #[test]
+    fn two_lorries_fetch_two_boxes_at_once() {
+        let mut world = street();
+        let harbour = harbour_of(&world);
+        let x = HARBOUR_X - 12;
+        let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
+        let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
+        world.orient(depot);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        crate::haul::buy_lorry(&mut world, &mut events, depot, 0);
+        let lorries = crate::haul::lorries_of(&world, depot);
+        let ferry = world.ferry_of(harbour).unwrap();
+        let (day, mut now) = (DAY_MS as u64, 0);
+        while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+        while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+        let both = |w: &World| lorries.iter().all(|&l| car_of(w, l).trip.as_ref().is_some_and(|t| t.destination == harbour));
+        let parked = |w: &World| building_of(w, harbour).park.iter().filter(|s| s.trailer.is_some()).count();
+        let landed = parked(&world);
+        assert!(landed >= 2, "{landed} boxes landed");
+        while !both(&world) && parked(&world) == landed && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+        assert!(both(&world), "only one lorry went for the boxes in the park");
     }
 }

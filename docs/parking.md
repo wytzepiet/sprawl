@@ -74,6 +74,18 @@ still coming, not behind everyone on the run (`join_run`). Before, a car
 backed out blind, queued behind cars that were still behind it, and
 cars drove through each other at drives.
 
+Yards, 2026-10-24. A lorry no longer pulls up in the lane's middle
+and backs in square: it swings across the lane, away from its dock, as
+it pulls up (`SWING`, from short of the dock's mouth), and backs in from
+that angle round a wide arc, as a driver sets up a lorry to back; to a
+dock across the lane it pulls out and on, deeper, first. And a yard is
+one lorry moving at a time: one turning in or pulling out holds the
+yard's door with its street node (`World::stretch`), so one coming waits
+at the gate and one leaving waits in its dock, and two never meet in
+the lane head on or drive through one backing. A depot's lorries also
+went for the park's first box only, so a second lorry stood at home
+while boxes waited; each now takes the first box nobody else is after.
+
 Kerb bays, 2026-10-06. Everything but a house (its drive) and a depot,
 farm or port (its yard) parks at the kerb before it: on a street, not a
 through road, running straight past one of its tiles and straight on to

@@ -108,10 +108,10 @@ fn waiting_for(world: &World, depot: EntityId, lorry: EntityId) -> Option<(Entit
             // One the depot has room for, whole: a lorry does not fetch a
             // box to stand in the yard on its hitch.
             let room = |g: Good, units: f64| building(world, depot).and_then(|d| d.stocks.get(&g)).is_some_and(|s| s.short() >= units);
-            let i = b.park.iter().position(|s| {
-                s.trailer.is_some_and(|t| !t.outbound && room(t.good, t.units) && (t.to == Some(depot) || t.to.is_none_or(|d| world.objects.get(d).is_none())))
-            });
-            let i = i.filter(|&i| !taken.contains(&(h, i)))?;
+            let i = (0..b.park.len()).find(|&i| {
+                !taken.contains(&(h, i))
+                    && b.park[i].trailer.is_some_and(|t| !t.outbound && room(t.good, t.units) && (t.to == Some(depot) || t.to.is_none_or(|d| world.objects.get(d).is_none())))
+            })?;
             Some(((p.x - at.x).abs() + (p.y - at.y).abs(), h, i))
         })
         .min()

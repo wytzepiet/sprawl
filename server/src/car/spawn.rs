@@ -49,7 +49,7 @@ pub fn depart(
         _ => return false,
     };
     let backs_out = world.backs_out(car_id);
-    let leaving = world.kerb_stretch(car_id);
+    let leaving = world.stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
@@ -71,7 +71,7 @@ pub fn depart(
     let backs_in = world.reverse_tail(car_id);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
-    let stretches = [leaving, world.kerb_stretch(car_id)];
+    let stretches = [leaving, world.stretch(car_id)];
     launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, leaves, now);
     true
 }
@@ -240,8 +240,10 @@ pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, b
         Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n => c.owner,
         _ => return false,
     };
-    // Lot nodes all: the first two its way out, the rest its way in.
-    launch(world, events, car_id, owner, building, route, 2, n - 2, vec![[n - 1 - backs, n - 1]], [Vec::new(), Vec::new()], leaves, now);
+    // Lot nodes all: the first two its way out, the rest its way in; it
+    // waits for the yard's lane, and holds it, as one in from the street.
+    let lane = world.stretch(car_id);
+    launch(world, events, car_id, owner, building, route, 2, n - 2, vec![[n - 1 - backs, n - 1]], [lane.clone(), lane], leaves, now);
     true
 }
 

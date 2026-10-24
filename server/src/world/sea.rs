@@ -137,7 +137,7 @@ impl Berth {
     /// ramp: the lane from the gate down to the ramp, and the trailer park
     /// either side of it. Nothing stands in the lane: what comes off the
     /// ferry drives up it to the gate.
-    pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, usize)>) {
+    pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, [f64; 2])>) {
         crate::world::lots::park(|s, side| self.at(s, side), &[1.0, -1.0])
     }
 }
