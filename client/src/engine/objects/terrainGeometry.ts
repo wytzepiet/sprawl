@@ -1174,6 +1174,9 @@ const FOOT = 0.5;
  *  and not on the grass. */
 export const LAYER = 0.9;
 export const EDGE = 0.3;
+/** The rock's heights eased up from nothing at its edge over this many
+ *  tiles: within the skirt a chunk has of its neighbours' tiles. */
+const FOOT_EASE = 0.75;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
 export const begins = (k: number) => EDGE + (k - 1) * LAYER;
 /** How far, in tiles, a layer's edge wanders with the slate, the slate's
@@ -1343,6 +1346,29 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   // its layers break, the slate's added.
   const raw = new Float32Array(heights.length / 2);
   for (let k = 0; k < raw.length; k++) raw[k] = (heights[2 * k] | (heights[2 * k + 1] << 8)) / PEAK_UNIT;
+  // Eased in from the rock's edge, which is the tiles' edge, a line: there
+  // the heights jump, and the first layer's wall would stand on that line,
+  // straight down the grid; eased, it stands in on the rock where the slate
+  // breaks it as it breaks the walls above.
+  const reach = Math.ceil(FOOT_EASE);
+  const [tx0, ty0] = [originX - PEAK_APRON - reach, originY - PEAK_APRON - reach];
+  const span = CHUNK_SIZE + 2 * (PEAK_APRON + reach) + 1;
+  const open = Uint8Array.from({ length: span * span }, (_, k) => (rock(tx0 + (k % span), ty0 + Math.floor(k / span)) ? 0 : 1));
+  for (let j = 0; j < PEAK_SIDE && raw.length; j++) {
+    for (let i = 0; i < PEAK_SIDE; i++) {
+      if (raw[j * PEAK_SIDE + i] <= 0) continue;
+      const [x, y] = place(i, j);
+      let d = FOOT_EASE;
+      for (let ty = Math.floor(y) - reach; ty <= Math.floor(y) + reach; ty++) {
+        for (let tx = Math.floor(x) - reach; tx <= Math.floor(x) + reach; tx++) {
+          if (!open[(ty - ty0) * span + tx - tx0]) continue;
+          d = Math.min(d, Math.hypot(Math.max(tx - x, 0, x - tx - 1), Math.max(ty - y, 0, y - ty - 1)));
+        }
+      }
+      const t = d / FOOT_EASE;
+      raw[j * PEAK_SIDE + i] *= t * t * (3 - 2 * t);
+    }
+  }
   const h = (i: number, j: number) => raw[Math.min(PEAK_SIDE - 1, Math.max(0, j)) * PEAK_SIDE + Math.min(PEAK_SIDE - 1, Math.max(0, i))];
   const broken = new Float32Array(raw.length);
   let top = 0;
