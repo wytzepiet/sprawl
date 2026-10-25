@@ -74,14 +74,33 @@ car that stands for good (`Watch`, in replays). A mission that says
 "lorries wait at this junction", with the tile and a follow, turns
 traffic into a problem that arrives on its own.
 
+## Shortages are pins
+
+Every shortage speaks the same way (Wytze, 2026-10-25), in two places:
+
+- **Where it bites, a pin with a ring that fills.** Whatever lacks
+  something grows a pin with the icon of what it lacks: a worker over a
+  sawmill short of hands, a crate over an empty shop, a drum over a dry
+  gas station, a bundle over a waiting site, a factory short of its
+  input, a car with an empty tank. The ring round it fills while the
+  lack lasts, so it starts as a hint and ends urgent, and how full it is
+  says how long it has waited. A tap opens the card with its fix. A car
+  pins only once it is stranded, not every time it runs low, or the map
+  fills with them.
+- **In one place, a few meters along the top**: workers (jobs against
+  residents, so many short or spare), and a bar for each good the town
+  uses up, in hours of stock left. Only goods the town consumes get one,
+  so early on there are two or three.
+
+The pin says where, the meter how much, and a mission speaks only when a
+ring fills. This replaces the map's other warnings (`game.md`
+§Legibility) with one language. Houses stay the player's to place: the
+sawmill's worker pin and the workers meter make the shortage plain;
+streets the town fills with houses by itself can come later, if placing
+them feels like bookkeeping.
+
 ## What to decide
 
-- **Houses: placed by the game or by the player?** Mini Motorways
-  places homes and you connect them. Here, when a producer wants
-  workers, the game could put down a few house sites waiting for a
-  road, or open a mission asking the player to place them. The first is
-  less initiative and more like the problem arriving; the second keeps
-  every building the player's.
 - **Pressure that grows by itself** (letters and demand rising over
   time) or only when the player builds. `plan-goods.md` leans to the
   first, gently.
