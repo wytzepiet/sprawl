@@ -49,8 +49,9 @@ const KIT = {
   rooflight: 0.075, rooflightHigh: 0.025,
 } as const;
 /** A sawtooth shed's stack and a mill's cyclone, in tiles: how far in
- *  from the back corner each stands, which is its breadth, and how high. */
-const MILL = { stack: 0.09, stackHigh: 0.62, cyclone: 0.2, cycloneHigh: 0.42 } as const;
+ *  from the back corner each stands, which is its breadth, and how high;
+ *  and how broad the stack's puffs of smoke grow. */
+const MILL = { stack: 0.09, stackHigh: 0.62, cyclone: 0.2, cycloneHigh: 0.42, puff: 0.15 } as const;
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
@@ -82,7 +83,7 @@ export interface Prop {
   ty: number;
 }
 /** The props there are, in the order their codes cross from the worker. */
-export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp", "cyclone"] as const;
+export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp", "cyclone", "smoke"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 
 export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {
@@ -275,6 +276,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       const [u0, u1] = [Math.min(...all.map(u)), Math.max(...all.map(u))];
       const on = (a: number, b: number): P => [a * fx - b * fy, a * fy + b * fx];
       prop("stack", on(back + MILL.stack, u1 - MILL.stack), z, MILL.stack, MILL.stackHigh);
+      prop("smoke", on(back + MILL.stack, u1 - MILL.stack), z + MILL.stackHigh, MILL.puff, 0);
       if (mass.tile.kind === "Sawmill") prop("cyclone", on(back + MILL.cyclone, u0 + MILL.cyclone), z, MILL.cyclone, MILL.cycloneHigh);
     };
     /** Windows and doors on every wall, by rule: a row of windows to a
