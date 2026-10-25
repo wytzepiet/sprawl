@@ -2,7 +2,9 @@ import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { screenToWorld } from "./view";
 import { inHand } from "../ui/buildMode";
-import { buildingAt } from "../state/gameObjects";
+import { buildingAt, useGame } from "../state/gameObjects";
+import { carrying, mayorsLorry, packageAt, setCarrying } from "../state/haul";
+import { LOAD } from "../generated/rows";
 import { carNear, select, setHovered } from "../state/selection";
 
 /** How far a pointer may travel and still be a tap rather than a pan. */
@@ -16,9 +18,14 @@ const CAR_REACH = 0.45;
  * and sit on plots, then the building whose plot the tile belongs to. A tap on
  * nothing closes the card. Only in select mode; the tools own the pointer
  * otherwise.
+ *
+ * While you have a lorry, a tap on a package picks it up for it, and so
+ * does a tap on the lorry with a load aboard; the next tap on a building
+ * sends it there (`haul::send`), and a tap on anything else puts it down.
  */
 export function Picker() {
   const { scene, canvas } = useEngine();
+  const { send } = useGame();
   let down: { x: number; y: number; t: number } | null = null;
 
   /** What is under a pointer: a car first, then the plot the tile belongs to. */
@@ -38,7 +45,21 @@ export function Picker() {
     const held = performance.now() - down.t;
     down = null;
     if (moved > TAP_PX || held > TAP_MS) return;
-    select(under(e));
+    const w = screenToWorld(scene, canvas, e);
+    const lorry = mayorsLorry();
+    const c = carrying();
+    if (c) {
+      setCarrying(null);
+      const to = buildingAt(Math.floor(w.wx), Math.floor(w.wy))?.id;
+      if (to !== undefined && to !== c.from) send({ type: "Haul", data: { from: c.from, good: c.good, packages: LOAD, to } });
+      return;
+    }
+    const picked = lorry && packageAt(w.wx, w.wy);
+    if (picked) return setCarrying(picked);
+    const id = under(e);
+    const aboard = lorry && id === lorry.id ? lorry.car.cargo[0] : undefined;
+    if (lorry && aboard) return setCarrying({ from: lorry.id, good: aboard.good, at: [w.wx, w.wy] });
+    select(id);
   };
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointerup", onPointerUp);

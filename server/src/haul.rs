@@ -390,26 +390,29 @@ fn to_be_had(world: &World, at: EntityId, good: Good) -> u32 {
     b.stocks.get(&good).map_or(0, |s| whole(s.level, good))
 }
 
-/// Does this building take a good from the mayor's lorry: a site short
-/// of it, the harbour (sold, to the world), a depot with room.
-fn takes(world: &World, to: EntityId, good: Good) -> bool {
-    let Some(b) = world.building(to) else { return false };
+/// Packages of a good this building takes from the mayor's lorry: what
+/// a site is short of, the last one opened; a lorry's, at the harbour
+/// (sold, to the world); what a depot has room for.
+fn takes(world: &World, to: EntityId, good: Good) -> u32 {
+    let Some(b) = world.building(to) else { return 0 };
     match &b.site {
-        Some(site) => site.get(&good).is_some_and(|s| s.short() > 1e-9),
-        None => world.harbours.contains_key(&to) || (crate::economy::depot(b.kind) && room(world, to, good, &[]) > 0),
+        Some(site) => site.get(&good).map_or(0, |s| (s.short() / good.per_package() - 1e-9).ceil().max(0.0) as u32),
+        None if world.harbours.contains_key(&to) => LOAD,
+        None if crate::economy::depot(b.kind) => room(world, to, good, &[]),
+        None => 0,
     }
 }
 
 /// The hand sends the mayor's lorry: so many packages of a good from a
-/// pad to a building that takes them, as many as a lorry carries and the
-/// pad has. Its errand before is dropped, unless it has a load aboard of
+/// pad to a building that takes them, as many as a lorry carries, the
+/// pad has and the building takes. Its errand before is dropped, unless it has a load aboard of
 /// something else. Whether it set out.
 pub fn send(world: &mut World, events: &mut EventQueue, from: EntityId, good: Good, packages: u32, to: EntityId) -> bool {
     let Some(lorry) = mayors(world) else { return false };
     let aboard = world.car(lorry).map_or(Vec::new(), |c| c.cargo.clone());
     let from = if from == lorry || aboard.iter().any(|t| t.good == good) { lorry } else { from };
-    let n = packages.min(LOAD).min(to_be_had(world, from, good));
-    if n == 0 || !takes(world, to, good) || (from != lorry && !aboard.is_empty()) {
+    let n = packages.min(LOAD).min(to_be_had(world, from, good)).min(takes(world, to, good));
+    if n == 0 || (from != lorry && !aboard.is_empty()) {
         return false;
     }
     let doing = if from == lorry { Doing::Carry } else { Doing::Fetch };
