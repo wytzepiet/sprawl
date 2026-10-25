@@ -1174,12 +1174,16 @@ const FOOT = 0.5;
  *  and not on the grass. */
 export const LAYER = 0.9;
 export const EDGE = 0.3;
-/** The rock's heights eased up from nothing over this many tiles, from a
- *  line up to this far in from its edge, wandering with the slate: so its
- *  first wall breaks as the walls above do, not along the grid. The two
- *  together within the skirt a chunk has of its neighbours' tiles. */
+/** The rock's heights eased up over this many tiles from a line up to
+ *  this far in from its edge, wandering with the slate, so its first wall
+ *  breaks as the walls above do, not along the grid; the two together
+ *  within the skirt a chunk has of its neighbours' tiles. Through that line
+ *  and out under the grass they rise this steeply, in tiles a tile, so the
+ *  ground rolls up into the first wall as a layer's top rolls into the
+ *  wall above it (`peaks.ts`). */
 const FOOT_EASE = 0.5;
 const FOOT_JAG = 0.5;
+const FOOT_RISE = 1.5;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
 export const begins = (k: number) => EDGE + (k - 1) * LAYER;
 /** How far, in tiles, a layer's edge wanders with the slate, the slate's
@@ -1349,27 +1353,29 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   // its layers break, the slate's added.
   const raw = new Float32Array(heights.length / 2);
   for (let k = 0; k < raw.length; k++) raw[k] = (heights[2 * k] | (heights[2 * k + 1] << 8)) / PEAK_UNIT;
-  // Eased in from the rock's edge, which is the tiles' edge, a line: there
-  // the heights jump, and the first layer's wall would stand on that line,
-  // straight down the grid; eased, it stands in on the rock where the slate
-  // breaks it as it breaks the walls above.
+  // Eased in from a line in from the rock's edge, which is the tiles'
+  // edge: there the heights jump, and the first wall would stand straight
+  // down the grid. And on out past it, under the grass, below nothing.
   const reach = Math.ceil(FOOT_EASE + FOOT_JAG);
   const [tx0, ty0] = [originX - PEAK_APRON - reach, originY - PEAK_APRON - reach];
   const span = CHUNK_SIZE + 2 * (PEAK_APRON + reach) + 1;
   const open = Uint8Array.from({ length: span * span }, (_, k) => (rock(tx0 + (k % span), ty0 + Math.floor(k / span)) ? 0 : 1));
   for (let j = 0; j < PEAK_SIDE && raw.length; j++) {
     for (let i = 0; i < PEAK_SIDE; i++) {
-      if (raw[j * PEAK_SIDE + i] <= 0) continue;
       const [x, y] = place(i, j);
-      let d = FOOT_EASE + FOOT_JAG;
+      const inside = !open[(Math.floor(y) - ty0) * span + Math.floor(x) - tx0];
+      let d = reach;
       for (let ty = Math.floor(y) - reach; ty <= Math.floor(y) + reach; ty++) {
         for (let tx = Math.floor(x) - reach; tx <= Math.floor(x) + reach; tx++) {
-          if (!open[(ty - ty0) * span + tx - tx0]) continue;
+          if (open[(ty - ty0) * span + tx - tx0] !== (inside ? 1 : 0)) continue;
           d = Math.min(d, Math.hypot(Math.max(tx - x, 0, x - tx - 1), Math.max(ty - y, 0, y - ty - 1)));
         }
       }
-      const t = Math.min(1, Math.max(0, (d - FOOT_JAG * (0.2 + 0.8 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))))) / FOOT_EASE));
-      raw[j * PEAK_SIDE + i] *= t * t * (3 - 2 * t);
+      const u = (inside ? d : -d) - FOOT_JAG * (0.2 + 0.8 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))));
+      const t = Math.min(1, Math.max(0, u / FOOT_EASE));
+      const e = t * t * (3 - 2 * t);
+      const own = raw[j * PEAK_SIDE + i];
+      raw[j * PEAK_SIDE + i] = u < 0 ? FOOT_RISE * u : own * e + Math.min(own, FOOT_RISE * u) * (1 - e);
     }
   }
   const h = (i: number, j: number) => raw[Math.min(PEAK_SIDE - 1, Math.max(0, j)) * PEAK_SIDE + Math.min(PEAK_SIDE - 1, Math.max(0, i))];
