@@ -1281,3 +1281,109 @@ fn a_lorry_scrapped_on_its_way_leaves_its_load() {
     while going(&game.world).is_none() && game.step_to(until) {}
     assert!(going(&game.world).is_some(), "no lorry went for the starter pack after one was scrapped");
 }
+
+/// The first half hour of play, as the beats `docs/plan-opening.md`
+/// asks of it, timed in real minutes (a day is twenty). The hand plays
+/// the opening as a quick player would, ten seconds' thought before each
+/// move, and does what each mission asks the moment it opens if the
+/// trunk asks it; what the town's situation asks it only notes. Prints
+/// when each beat came against when it should; asserts nothing yet, the
+/// numbers are what it is for.
+#[test]
+#[ignore]
+fn first_half_hour() {
+    use crate::missions::Key;
+    let think = 10_000;
+    let half_hour = 30 * 60_000;
+    let mut game = game(street());
+    let harbour = harbour_of(&game.world);
+    let mut beats: Vec<(GameTime, String)> = vec![];
+    let mut beat = |beats: &mut Vec<(GameTime, String)>, at: GameTime, what: &str| {
+        if !beats.iter().any(|(_, w)| w == what) {
+            beats.push((at, what.to_string()));
+        }
+    };
+    let mut depot = None;
+    let mut houses = 0;
+    let mut acted: Vec<Key> = vec![];
+    let mut seen: Vec<Key> = vec![];
+    while game.now < half_hour {
+        let now = game.now;
+        // The depot, the opening's first move: the street is the fixture's.
+        if depot.is_none() && now >= think {
+            let x = HARBOUR_X - 12;
+            let world = &mut game.world;
+            let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
+            let d = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
+            world.orient(d);
+            depot = Some(d);
+            beat(&mut beats, game.now, "depot placed, joined by the fixture's street");
+        }
+        if !building_of(&game.world, harbour).pad.is_empty() {
+            beat(&mut beats, now, "goods on the quay");
+        }
+        if let Some(d) = depot {
+            if building_of(&game.world, d).stocks.values().any(|s| s.level > 0.0) {
+                beat(&mut beats, now, "goods in the depot");
+            }
+        }
+        if game.world.lumps.iter().any(|l| l.coins > 0.0) {
+            beat(&mut beats, now, "first coins in");
+        }
+        for m in game.world.missions.list.clone() {
+            if !seen.contains(&m.key) {
+                seen.push(m.key);
+                let what = match m.key {
+                    Key::Opening | Key::Book | Key::Sell => format!("mission: {}", m.title),
+                    Key::Order(_) => "first letter".to_string(),
+                    _ => format!("problem: {}", m.title),
+                };
+                if !matches!(m.key, Key::Order(_)) || !beats.iter().any(|(_, w)| w == "first letter") {
+                    beat(&mut beats, m.opened, &what);
+                }
+            }
+            if let Some(f) = m.finished {
+                if !matches!(m.key, Key::Order(_)) {
+                    beat(&mut beats, f, &format!("done: {}", m.title));
+                }
+            }
+            // The trunk's asks, done after a moment's thought.
+            if m.finished.is_none() && now >= m.opened + think && !acted.contains(&m.key) {
+                match m.key {
+                    Key::Book => game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: false }),
+                    Key::Sell => game.command(PLAYER, ClientMessage::Trade { good: Good::Crates, packages: 1, out: true }),
+                    _ => continue,
+                }
+                acted.push(m.key);
+            }
+        }
+        // Houses once the starter pack is home: four, side by side, west of the depot.
+        let steps = |w: &World| w.missions.list.iter().find(|m| m.key == Key::Opening).map(|m| m.steps.iter().map(|s| s.done).collect::<Vec<_>>()).unwrap_or_default();
+        if houses == 0 && steps(&game.world).get(3) == Some(&true) {
+            for i in 0..12 {
+                let at = GridCoord { x: HARBOUR_X - 40 - 3 * i, y: 1 };
+                if houses < 4 && !game.world.occupied.contains_key(&(at.x, at.y)) {
+                    if let Some(facing) = game.world.site_for(at, BuildingKind::House) {
+                        if let Some(h) = game.world.place_building(at, BuildingKind::House, facing) {
+                            game.world.orient(h);
+                            houses += 1;
+                        }
+                    }
+                }
+            }
+            beat(&mut beats, game.now, &format!("{houses} houses placed"));
+        }
+        if steps(&game.world).get(4) == Some(&true) {
+            beat(&mut beats, now, "first settlers home");
+        }
+        game.step_to(now + 1_000);
+    }
+    beats.sort_by_key(|(t, _)| *t);
+    let clock = |t: GameTime| format!("{:>2}:{:02}", t / 60_000, (t / 1_000) % 60);
+    eprintln!("\nthe first half hour, in real minutes (a day is twenty)\n");
+    for (t, what) in &beats {
+        eprintln!("  {}  {what}", clock(*t));
+    }
+    eprintln!("\nplan-opening.md asks: a road by 0:30, goods on a pad by 1:00, coins by 3:00,");
+    eprintln!("a problem the player did not ask for by 5:00, a new kind every 3 to 5 minutes.");
+}

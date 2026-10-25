@@ -28,6 +28,24 @@ It prints each beat's time, so a change to the ferry, a building or a
 mission shows what it did to the start. Today's opening, measured the
 same way, is the baseline.
 
+**The baseline, 2026-10-25** (`cargo test first_half_hour -- --ignored
+--nocapture`, on the test street, whose harbour and street stand already):
+
+| | Today |
+|---|---|
+| Depot placed and joined | 0:10 |
+| Goods on the quay | 0:25 |
+| Goods in the depot, houses placed | 1:32 |
+| First coins: the opening's reward, settlers home | 3:11 |
+| The market: a box bought | 3:21 |
+| First letter | 5:58 |
+| First coins earned by a sale | 9:47 |
+| Anything after that | nothing, to 30:00 |
+
+The first three minutes are close to the beats; the first sale is at
+ten, and from then on nothing arrives: no situation opens in the half
+hour, since the starter pack keeps every shelf stocked.
+
 ## The opening, cut
 
 What the start asks today: build a harbour, build a depot, join them,
