@@ -36,9 +36,10 @@ fetch the starter pack, build houses, then buy and sell at the market
 
 The new one:
 
-1. **The harbour stands.** A new town is seated with its harbour on the
-   coast and the camera on it. Placing the harbour was the hardest step
-   in the 2026-10-10 playtest and teaches nothing the game is about.
+1. **Place the harbour.** The player chooses where on the coast, and so
+   where the town begins: ownership, and no bad luck from a seat the game
+   picked. Its hand must say plainly where it fits and why not (the
+   2026-10-10 playtest stalled here), and the camera opens on the coast.
 2. **Pick a starter**: a sawmill, a farm or a quarry, each where the
    island offers it near the harbour. The dots show where.
 3. **Draw the road** from it to the harbour's quay. Its packages start
@@ -111,7 +112,7 @@ them feels like bookkeeping.
 ## The order to build it
 
 1. `first_half_hour`, on today's opening, as the baseline.
-2. The harbour seated with the town, and the starter pick.
+2. The harbour's placing made plain, and the starter pick.
 3. The quay as a pad and the tapped truck, on the goods work.
 4. The new problems, one `When` at a time, each with a test that it
    opens once at the right moment (`a_site_short_of_stone_asks_for_a_quarry_once`

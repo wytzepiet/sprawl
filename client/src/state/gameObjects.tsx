@@ -43,9 +43,7 @@ const spatial = new Map<string, number[]>();
 /**
  * What carries a sign: every building. Kept as ops arrive, with a version the
  * sign layer re-reads on; the entities map itself is deliberately not
- * reactive, and signs are the one view that wants a list. The version also
- * moves when a road lands on or leaves a building's tile, since whether a
- * building is reached is part of how its sign is drawn.
+ * reactive, and signs are the one view that wants a list.
  */
 const signedEntries = new Map<number, GameObjectEntry>();
 const [signsVersion, setSignsVersion] = createSignal(0);
@@ -218,7 +216,6 @@ function applyOps(ops: Operation[]) {
         }
         entities.set(key, op.data);
         trackSign(op.data, op.data.id);
-        if (op.data.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
         break;
       }
       case "Delete": {
@@ -235,7 +232,6 @@ function applyOps(ops: Operation[]) {
             }
           }
           entities.delete(key);
-          if (existing.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
         }
         trackSign(undefined, Number(key));
         break;
