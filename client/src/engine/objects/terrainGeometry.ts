@@ -1172,6 +1172,10 @@ const FOOT = 0.5;
  *  them round, not the grid they are on. */
 export const LAYER = 0.9;
 export const EDGE = 0.05;
+/** A layer's wall leans out at most this far at its foot, in tiles: a
+ *  cliff, even where the rock is gentle, so the ground at a mountain's foot
+ *  stays level up to its first wall, not a ramp. */
+export const PEAK_RUN = 0.15;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
 export const begins = (k: number) => EDGE + (k - 1) * LAYER;
 /** How far, in tiles, a layer's edge wanders with the slate, the slate's
@@ -1366,7 +1370,7 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   // rock, never past half way to the next layer's edge: down the rock's own
   // heights, not the slate's, which would turn each foot its own way and
   // fold the wall over itself in teeth.
-  const outward = downhill(h, PEAK_SIDE, ([x, y]) => [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES], (steep) => Math.min(LEAN * LAYER, (0.5 * LAYER) / Math.max(steep * PEAK_SAMPLES, 1e-3)));
+  const outward = downhill(h, PEAK_SIDE, ([x, y]) => [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES], (steep) => Math.min(PEAK_RUN, (0.5 * LAYER) / Math.max(steep * PEAK_SAMPLES, 1e-3)));
   for (let k = 1; begins(k) <= top; k++) {
     const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
     contour(at, place, cells, begins(k), (p, q) => out.wall(p, q, lo, hi, [outward(p), outward(q)]), (polygon) => out.polygon(polygon, hi), begins(k + 1), rows);
