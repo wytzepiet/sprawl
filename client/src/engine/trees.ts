@@ -66,7 +66,7 @@ const layered = (heights: number[], reach: number[]) => ({
   normals: reach.flatMap((_, l) => [l, 0, 1, l, 0, 1, l, 0, 1, l, 0, 1]),
   indices: reach.flatMap((_, l) => [0, 2, 1, 0, 3, 2].map((i) => i + l * 4)),
 });
-const BROAD_TOP = layered([1, 0.88], [UPPER_REACH, 1]);
+const BROAD_TOP = layered([1, 0.72], [UPPER_REACH, 1]);
 /** A conifer's top: a square a layer, from these heights down, each below the one over it in proportion to how wide that one is, of the crown's,
  *  the topmost under the tip of its shadow's card (`SIDE_HIGH`), and as wide
  *  as its arms reach. They cast no shadow (the card does), so they may

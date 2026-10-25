@@ -109,7 +109,7 @@ const UPPER_MIDDLE = 0.55;
 export const UPPER_REACH = 0.9;
 const UPPER = 0.6;
 const UPPER_BODY = 0.42;
-const UPPER_SHADE = 0.7;
+const UPPER_SHADE = 0.5;
 
 /** A broadleaf's texel at (x, y), of its radius, into out at k, in its
  *  upper layer or its whole: the clump nearest, the outline pulled in away
