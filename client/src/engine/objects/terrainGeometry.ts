@@ -1504,7 +1504,7 @@ type Kind = "broad" | "conifer";
 /** The room each kind's trees keep, of their two crowns' reach: conifers
  *  closer, broadleaves sprawling. */
 const SPACING: Record<Kind, { room: number; wide: number; salt: number }> = {
-  broad: { room: 0.55, wide: 1, salt: 0x27d4eb2d },
+  broad: { room: 0.64, wide: 1, salt: 0x27d4eb2d },
   conifer: { room: 0.6, wide: CONIFER_WIDE, salt: 0x5bd1e995 },
 };
 
