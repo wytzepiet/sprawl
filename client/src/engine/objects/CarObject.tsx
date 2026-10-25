@@ -85,8 +85,9 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
 }
 
 /** A shape with colours of its own (`sea.ts`, `goods.ts`) standing at a
- *  pose, its base at `z`. It is the world's: no building's look is on it. */
-export const placeShape = (pool: InstancePool, { key, geo }: { key: string; geo: MeshGeometry }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE) }], p, z);
+ *  pose, its base at `z`, in its own finish or a vehicle's paint. It is
+ *  the world's: no building's look is on it. */
+export const placeShape = (pool: InstancePool, { key, geo, coat }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs

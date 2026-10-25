@@ -38,16 +38,16 @@ export function solids<T>(build: () => T): T {
 
 /** A solid as the town draws it: every triangle its own three vertices,
  *  faced flat, as the bevel wants (`slab`), wound the town's way round,
- *  clockwise seen from outside. */
-export function mesh(solid: Manifold): MeshGeometry {
+ *  clockwise seen from outside; mapped by `uv`, if given. */
+export function mesh(solid: Manifold, uv?: (p: number[]) => number[]): MeshGeometry {
   const { vertProperties: v, triVerts, numProp } = solid.getMesh();
-  const positions: number[] = [], normals: number[] = [];
+  const positions: number[] = [], normals: number[] = [], uvs: number[] = [];
   for (let i = 0; i < triVerts.length; i += 3) {
     const [a, b, c] = [0, 1, 2].map((k) => [0, 1, 2].map((j) => v[triVerts[i + k] * numProp + j]));
     const [u, w] = [b.map((x, j) => x - a[j]), c.map((x, j) => x - a[j])];
     const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
     const len = Math.hypot(...n) || 1;
-    for (const p of [a, c, b]) positions.push(...p), normals.push(n[0] / len, n[1] / len, n[2] / len);
+    for (const p of [a, c, b]) positions.push(...p), normals.push(n[0] / len, n[1] / len, n[2] / len), uv && uvs.push(...uv(p));
   }
-  return { positions, normals, indices: Array.from({ length: positions.length / 3 }, (_, i) => i) };
+  return { positions, normals, ...(uv ? { uvs } : {}), indices: Array.from({ length: positions.length / 3 }, (_, i) => i) };
 }

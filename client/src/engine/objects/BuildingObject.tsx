@@ -11,7 +11,7 @@ import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, HUT, itemOf, ITEMS } from "./goods";
-import { BARN_DOOR, SAWMILLS } from "./sawmill";
+import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
@@ -124,7 +124,7 @@ export function mountBuilding(
         const side = !data.door || (data.door.tile.x + 0.5 - at[0]) * dy - (data.door.tile.y + 0.5 - at[1]) * dx >= 0 ? 1 : -1;
         const [x, y] = [BARN_DOOR[0] * side, BARN_DOOR[1]];
         return {
-          model: placeShape(pool, side > 0 ? SAWMILLS.right : SAWMILLS.left, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012),
+          model: sawmill(ctx.engine, side).map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012)),
           // Out of its barn door, toward the street.
           door: { at: [at[0] + dx * y + dy * x, at[1] + dy * y - dx * x], heading: Math.atan2(dy, dx) } as Pose,
         };
@@ -304,7 +304,7 @@ export function mountBuilding(
     stop();
     lunch();
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const it of [...stood.flat(), ...(mill ? [mill.model] : []), ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    for (const it of [...stood.flat(), ...(mill?.model ?? []), ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
   };
 }
