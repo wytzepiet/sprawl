@@ -130,6 +130,21 @@ townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
 N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * mix(${f(ROLL)}, ${f(CLIFF_TILT)}, smoothstep(0., ${f(STEEPEN)}, peakBelow))) + peakGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
+/** A wall is drawn into the sun's shadow map set back into the rock this
+ *  far, in tiles, so it cannot shadow its own face where the sun skims
+ *  along it, in dashes the map is too coarse to keep apart; its shadow on
+ *  the land the less by as much. The shadow map is the one view drawn
+ *  square on, its projection's w never the depth. */
+const SET_BACK = 0.06;
+const SET_BACK_WGSL = `if (abs(normal.z) < 0.5 && scene.viewProjection[2][3] == 0.) { finalWorld[3] = finalWorld[3] - vec4f((finalWorld * vec4f(normal, 0.)).xy * ${f(SET_BACK)}, 0., 0.); }`;
+
+/** The rock's material, painted by `plugin`. */
+function rock(plugin: MaterialPlugin) {
+  const material = lacquer(townMaterial([plugin]), "rock");
+  material.doubleSided = true;
+  return material;
+}
+
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
  *  land stands on break along it too (`ground.ts`). */
 export const slate = (engine: EngineContext): Texture2D =>
@@ -162,15 +177,14 @@ export function peakMaterial(engine: EngineContext, heights: Uint16Array, corner
     writeUbo: (data, offsets) => data.set([corner[0], corner[1], 0, 0], offsets.get("peakCorner")! / 4),
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_MAIN_END: "out.vPeakAt = position;" }
+        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: "out.vPeakAt = position;" }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
 ${HEIGHT_AT}`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: PEAK_LOOK,
           },
   };
-  const material = lacquer(townMaterial([plugin]), "rock");
-  material.doubleSided = true;
+  const material = rock(plugin);
   return { material, dispose: () => retire(texture) };
 }
 
@@ -234,7 +248,7 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: U
     writeUbo: (data, offsets) => void (data[offsets.get("cliffTime")! / 4] = (performance.now() / 1000) % 3600),
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
+        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
 ${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}`,
@@ -248,7 +262,6 @@ if (cliffSea < ${f(ROCK_SWASH)} * cliffWash(material.cliffTime, input.worldPos.x
 baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));`,
           },
   };
-  const material = lacquer(townMaterial([plugin]), "rock");
-  material.doubleSided = true;
+  const material = rock(plugin);
   return { material, tick: () => markMaterialUboDirty(material), dispose: () => (retire(texture), retire(shores)) };
 }
