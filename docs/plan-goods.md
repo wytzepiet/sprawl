@@ -187,15 +187,20 @@ Talked through with Wytze, 2026-10-25; direction, nothing built.
   timber, then stone (later concrete), then steel, perhaps machinery. A
   quarry is not built of stone, nor a rig of oil; a rig waits on a
   steelworks. Imports at the market are the way round, at a price.
-- **A lab makes blueprints, in time.** It is a building with hands, the
-  office with a purpose; a blueprint takes so many researcher-hours, so
-  more researchers make it sooner, and what they cost is the town that
-  houses and feeds them while they are not at the sawmill. It offers only
-  what the town has grown into (the bigger rig once a small one has run a
-  while). A blueprint is owned and can be sold to a named partner. A
-  university is the lab grown: more at once, and students to house. Not
-  a skill tree: materials still decide what can be built. After the
-  opening and the first chains.
+- **A lab researches unlocks, in time.** It is a building with hands, the
+  office with a purpose. Simple buildings (houses, shops, the depot, the
+  sawmill, the quarry, the farm, the lab) are known to every town; what
+  lies beyond them, roughly anything built of steel and a grown
+  building's bigger steps, is researched once, for so many
+  researcher-hours: more researchers, sooner. What they cost is the town
+  that houses and feeds them while they are not at the sawmill. Later
+  unlocks can take very many hours: the long goal. A university is the
+  lab grown. Research is the town's own and is not traded (Wytze,
+  2026-10-25), so a town may stay big and plain, many small makers and
+  their traffic, or spend people and time to unlock more: the bigger
+  steps are better per hand and per tile, never required. Not a skill
+  tree: materials still decide what can be built. After the opening and
+  the first chains.
 
 ## Open
 
