@@ -78,7 +78,7 @@ export const AWNING = { at: 0.5, out: 0.1, drop: 0.045, span: 0.7, stripe: 0.05 
  *  ridges across it, each a slope up from the back to a glazed face
  *  toward its door, TOOTH high and about SPAN deep (`roof.ts`). */
 export const sawtooth = (t: Tile) => SAWTOOTH.has(t.kind as BuildingKind);
-const SAWTOOTH = new Set<BuildingKind>(["Sawmill", "Factory"]);
+const SAWTOOTH = new Set<BuildingKind>(["Factory"]);
 export const TOOTH = 0.14, SPAN = 0.55;
 
 /** An office tower's flat roof carries its plant, as a real one does: a
