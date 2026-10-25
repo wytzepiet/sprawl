@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { bakedTexture } from "./bakeCache";
@@ -53,6 +53,11 @@ const TURN = 1.5;
  *  a cliff facing down the slope this steeply, turned by the slate as a
  *  lip is: the old painted cliff, laid over the wall from above. */
 const CLIFF_TILT = 1.8;
+/** Its plates are read from above, stretched down a wall as the old
+ *  painted cliffs were; its grain over them is read as if the wall were
+ *  laid back on the ground in front of it, so it is as fine up the wall
+ *  as across: a tile down the wall this much further out than it leans. */
+const UNROLL = Math.hypot(1, LEAN) - LEAN;
 
 const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
@@ -115,9 +120,11 @@ let peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
 let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5);
 let peakCliff = 1. - smoothstep(peakRun * 0.8, peakRun, peakBelow);
 let peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
+let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, abs(input.worldNormal.z) < 0.5);
+let peakGrain = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * ${f(UNROLL)});
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
-N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
+N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * ${f(CLIFF_TILT)}) + peakGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
@@ -192,11 +199,13 @@ if (!cliffWall && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) { discard; }
 const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
+let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffSlate = slateRead(input.worldPos.xy);
-let cliffOut = normalize(normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6) + cliffSlate.xy * ${f(TURN)});
+let cliffGrain = slateRead(input.worldPos.xy + cliffFace * select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall) * ${f(UNROLL)});
+let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
 let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(CLIFF_TILT)}, cliffFar > 0.);
 baseColor = vec3f(${rgb(STONE)});
-N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
+N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), the
