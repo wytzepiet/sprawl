@@ -15,6 +15,7 @@
  *                                       cuts
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
+ *   bun run act lorry 79                another lorry for depot #79
  *   bun run act undo                    the hand's last road laid or taken up,
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
@@ -239,6 +240,9 @@ for (const line of lines) {
       else report.push(`nothing stands at ${x},${y}`);
       break;
     }
+    case "lorry":
+      send({ type: "BuyLorry", data: { depot: Number(args[0]) } });
+      break;
     case "undo":
       send({ type: "Undo" });
       break;
