@@ -142,11 +142,11 @@ function broad(out: Uint8Array, k: number, x: number, y: number, s0: number, s1:
  *  tilted up to this far; and a tier lies darker under those above it, by
  *  this much at the lowest. */
 export const CONIFERS = 4;
-const TIERS = 8;
+const TIERS = 12;
 /** A conifer is drawn in this many layers, a band of its tiers each, the
  *  top first (`trees.ts` stacks them), so its upper arms stand over its
  *  lower and shade them. */
-export const CONIFER_LAYERS = 3;
+export const CONIFER_LAYERS = 6;
 const bandOf = (layer: number) => [Math.floor((layer * TIERS) / CONIFER_LAYERS), Math.floor(((layer + 1) * TIERS) / CONIFER_LAYERS)];
 const ARMS = [12, 18];
 const ARM_REACH = 0.3;

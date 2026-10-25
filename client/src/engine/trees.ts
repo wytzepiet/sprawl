@@ -34,6 +34,11 @@ const CROWN_ROUND = 0.45;
 /** And the whole crown leans away from its middle, this much at its edge,
  *  steeply near the top and less further out: a peak, not a cushion. */
 const CROWN_PEAK = 0.5;
+/** Seen from the side the camera leans from, a crown's near edge is its
+ *  side and underside: turned down this far at its rim, from this far
+ *  out, so it darkens as a crown's underside does. */
+const UNDERSIDE = 0.9;
+const UNDERSIDE_FROM = 0.55;
 /** A broadleaf's shadow is its side (`broadSolid`): a trunk this wide, of
  *  the card's height, flaring this much more at its foot and ending inside
  *  the crown; a canopy of this many clumps, one in the middle of an oval
@@ -62,11 +67,11 @@ const layered = (heights: number[], reach: number[]) => ({
   indices: reach.flatMap((_, l) => [0, 2, 1, 0, 3, 2].map((i) => i + l * 4)),
 });
 const BROAD_TOP = layered([1], [1]);
-/** A conifer's top: a square a layer, at these heights, of the crown's,
+/** A conifer's top: a square a layer, evenly from these heights down, of the crown's,
  *  the topmost under the tip of its shadow's card (`SIDE_HIGH`), and as wide
  *  as its arms reach. They cast no shadow (the card does), so they may
  *  stand where they read best. */
-const LAYER_HEIGHTS = [1.15, 0.82, 0.48];
+const LAYER_HEIGHTS = LAYER_REACH.map((_, l) => 1.15 - (l * 0.67) / (LAYER_REACH.length - 1));
 const CONIFER_TOP = layered(LAYER_HEIGHTS, LAYER_REACH);
 /** The body's card: x across it, -1 to 1, and z its foot (0) or head (1),
  *  which the shader turns to the sun and cuts to a trunk, facing along y,
@@ -107,16 +112,18 @@ const SIDE_TAPER = 0.75;
 
 export type Kind = "broad" | "conifer";
 /** Each kind's crowns (`crowns.ts`), the first and how many; how far in its
- *  top rolls over, and leans from its middle; how dark between its clumps
+ *  top rolls over, and leans from its middle; how far its near edge turns
+ *  under; how dark between its clumps
  *  or branches; and its shadow's card, how wide, and what of it is cut
  *  away (`cardOut`). */
-const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: number; hollow: number; wide: number; high: number; cut: string }> = {
+const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: number; hollow: number; underside: number; wide: number; high: number; cut: string }> = {
   broad: {
     first: 0,
     count: CROWNS,
     round: CROWN_ROUND,
     peak: CROWN_PEAK,
     hollow: 0.92,
+    underside: UNDERSIDE,
     wide: 1,
     high: CARD_HEIGHT,
     cut: `let cardOut = !broadSolid(input.vCard.x * input.vCardAspect, input.vCard.y, input.vCardAspect, input.vCardSeed);`,
@@ -127,6 +134,7 @@ const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: n
     round: 0,
     peak: 0.8,
     hollow: 0.85,
+    underside: 0,
     wide: SIDE_WIDE,
     high: SIDE_HIGH,
     cut: `let cardX = abs(input.vCard.x);
@@ -159,7 +167,7 @@ export const crownsBaked = (engine: LiteEngine): Promise<void> => whenBaked(engi
  *  once a corner. Then its crown, turned the tree's way, read:
  *  cut to its outline, and its facing rolled over the dome, over the clump,
  *  and turned by the leaf. */
-function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow }: (typeof LOOKS)[Kind]): MaterialPlugin {
+function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow, underside }: (typeof LOOKS)[Kind]): MaterialPlugin {
   const rolled = round > 0 ? `mix(vec3f(0., 0., 1.), vec3f(crownOut, 1.) * 0.70710678, clamp((crownR - ${f(1 - round)}) / ${f(round)}, 0., 1.))` : "vec3f(0., 0., 1.)";
   return {
     name: "Crown",
@@ -192,7 +200,8 @@ if (crownR > 1. || dot(input.vCrown, input.vCrown) > 1.) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let crownOut = input.vCrown / max(length(input.vCrown), 1e-4);
 let crownLean = crownTex.gb * 2. - 1.;
 let crownTilt = vec2f(crownTurn.x * crownLean.x - crownTurn.y * crownLean.y, crownTurn.y * crownLean.x + crownTurn.x * crownLean.y);
-N = normalize(${rolled} + vec3f(crownTilt + crownOut * sqrt(length(input.vCrown)) * ${f(peak)}, 0.));
+let crownNear = max(dot(crownOut, normalize(scene.vEyePosition.xy - input.worldPos.xy + 1e-4)), 0.) * smoothstep(${f(UNDERSIDE_FROM)}, 1., length(input.vCrown)) * ${f(underside)};
+N = normalize(${rolled} + vec3f(crownTilt + crownOut * sqrt(length(input.vCrown)) * ${f(peak)}, 0.) - vec3f(0., 0., crownNear));
 baseColor = mix(baseColor * mix(${f(hollow)}, 1., min(crownTex.a / ${f(LIT)}, 1.)), vec3f(${BARK.map(f).join(", ")}), smoothstep(${f(LIT)}, 1., crownTex.a) * ${f(BARK_SHOWS)});`,
           },
   };
