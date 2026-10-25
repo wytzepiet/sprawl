@@ -10,7 +10,7 @@ import { storeysOf } from "../town/grid";
 import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
-import { FORKLIFT, FORKS, HUT, itemOf, ITEMS, LOG_PILE } from "./goods";
+import { CONVEYOR, FORKLIFT, FORKS, HUT, itemOf, ITEMS, LOG_PILE, PLANK_SHED, WATER_TOWER } from "./goods";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
@@ -120,6 +120,24 @@ export function mountBuilding(
           const a = k * (wide / 2 - 0.3);
           return placeShape(pool, LOG_PILE, { at: [mx + dx * o + ax * a, my + dy * o + ay * a], heading: Math.atan2(ay, ax) }, KERB_Z);
         });
+      })()
+    : [];
+
+  // A sawmill is an L (`town/roof.ts`): in its open front corner, the
+  // side by its id, a plank shed sloping down to the yard and its water
+  // tower behind; before the hall's other front, the belt its logs go in by.
+  const mill = data.kind === "Sawmill" && !data.site
+    ? (() => {
+        const [ax, ay] = [-dy, dx];
+        const side = entry.id % 2 ? 1 : -1;
+        /** A point `out` toward the street from the hall's middle and `across` it. */
+        const at = (out: number, across: number): [number, number] => [mx + dx * out + ax * across * side, my + dy * out + ay * across * side];
+        const [half, front] = [(dx === 0 ? bh : bw) / 2 - INSET, Math.atan2(dy, dx)];
+        return [
+          placeShape(pool, PLANK_SHED, { at: at(half - 0.29, half / 2), heading: front }, KERB_Z),
+          placeShape(pool, WATER_TOWER, { at: at(0.14, half - 0.13), heading: front }, KERB_Z),
+          placeShape(pool, CONVEYOR, { at: at(half + 0.5, -(half - 0.15)), heading: front + Math.PI }, KERB_Z),
+        ];
       })()
     : [];
 
@@ -280,7 +298,7 @@ export function mountBuilding(
     stop();
     lunch();
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const it of [...stood.flat(), ...piles, ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    for (const it of [...stood.flat(), ...piles, ...mill, ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
   };
 }

@@ -312,15 +312,6 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
         put(parts.dish.m, x, y, z + high, (dx / l) * size, (dy / l) * size, (-dy / l) * size, (dx / l) * size, 1);
         break;
       }
-      case "cyclone": {
-        // A drum over its hopper, up on four legs.
-        const legs = high * 0.45, hopper = high * 0.25;
-        for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) upright(parts.duct.m, x + a * size * 0.32, y + b * size * 0.32, z, 0.014, legs);
-        upright(parts.ventStem.m, x, y, z + legs, size * 0.45, hopper);
-        upright(parts.ventStem.m, x, y, z + legs + hopper, size, high - legs - hopper);
-        upright(parts.ventCap.m, x, y, z + high, size * 0.4, 1);
-        break;
-      }
       case "smoke":
         for (let k = 1; k <= PUFFS; k++) upright(parts.puff.m, x, y, z, size, k);
         break;

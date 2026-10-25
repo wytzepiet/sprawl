@@ -48,10 +48,10 @@ const KIT = {
   dish: 0.07, dishHigh: 0.04,
   rooflight: 0.075, rooflightHigh: 0.025,
 } as const;
-/** A sawtooth shed's stack and a mill's cyclone, in tiles: how far in
- *  from the back corner each stands, which is its breadth, and how high;
- *  and how broad the stack's puffs of smoke grow. */
-const MILL = { stack: 0.09, stackHigh: 0.62, cyclone: 0.2, cycloneHigh: 0.42, puff: 0.15 } as const;
+/** A sawtooth shed's stack, in tiles: how far in from the back corner it
+ *  stands, which is its breadth, and how high; and how broad its puffs of
+ *  smoke grow. */
+const MILL = { stack: 0.09, stackHigh: 0.62, puff: 0.15 } as const;
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
@@ -83,7 +83,7 @@ export interface Prop {
   ty: number;
 }
 /** The props there are, in the order their codes cross from the worker. */
-export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp", "cyclone", "smoke"] as const;
+export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp", "smoke"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 
 export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {
@@ -137,7 +137,13 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     }
     return t.id === undefined ? undefined : doors.get(t.id);
   };
-  for (const { mass, polygon, outline } of plans(known)) {
+  for (const plan of plans(known)) {
+    const { mass } = plan;
+    const f = doorOf(mass.tile);
+    // A sawmill is an L: one of its front corners left open for its plank
+    // shed, the other side by its id (`BuildingObject.tsx`).
+    const polygon = mass.tile.kind === "Sawmill" && f ? opened(plan.polygon, f, mass.tile.id! % 2 ? 1 : -1) : plan.polygon;
+    const outline = [polygon];
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
@@ -247,7 +253,9 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       const all = region.flat(2);
       const s = ([x, y]: P) => x * fx + y * fy;
       const back = Math.min(...all.map(s)), deep = Math.max(...all.map(s)) - back;
-      const n = Math.max(1, Math.round(deep / SPAN)), span = deep / n;
+      // An even count, so a ridge stands across the middle, where an L's
+      // open corner begins (`opened`).
+      const n = 2 * Math.max(1, Math.round(deep / (2 * SPAN))), span = deep / n;
       const box: [number, number, number, number] = [Math.min(...all.map((p) => p[0])) - 1, Math.min(...all.map((p) => p[1])) - 1, Math.max(...all.map((p) => p[0])) + 1, Math.max(...all.map((p) => p[1])) + 1];
       for (let k = 0; k < n; k++) {
         const [s0, s1] = [back + k * span, back + (k + 1) * span];
@@ -270,14 +278,12 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
           });
         }
       }
-      // At the back, its stack in one corner; a mill's sawdust cyclone,
-      // up on its legs, in the other.
+      // At the back, its stack in a corner.
       const u = ([x, y]: P) => -x * fy + y * fx;
-      const [u0, u1] = [Math.min(...all.map(u)), Math.max(...all.map(u))];
+      const u1 = Math.max(...all.map(u));
       const on = (a: number, b: number): P => [a * fx - b * fy, a * fy + b * fx];
       prop("stack", on(back + MILL.stack, u1 - MILL.stack), z, MILL.stack, MILL.stackHigh);
       prop("smoke", on(back + MILL.stack, u1 - MILL.stack), z + MILL.stackHigh, MILL.puff, 0);
-      if (mass.tile.kind === "Sawmill") prop("cyclone", on(back + MILL.cyclone, u0 + MILL.cyclone), z, MILL.cyclone, MILL.cycloneHigh);
     };
     /** Windows and doors on every wall, by rule: a row of windows to a
      *  storey, evenly along the wall within its ends, each glass in a
@@ -383,7 +389,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       cover(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
     }
     const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
-    if (sawtooth(mass.tile) && doorOf(mass.tile)) teeth(flat, top, doorOf(mass.tile)!);
+    if (sawtooth(mass.tile) && f) teeth(flat, top, f);
     else cover(flat, () => top + height);
     if (height === 0 && !sawtooth(mass.tile)) parapet(outline, top);
     if (mass.tile.kind === "Shop") {
@@ -393,6 +399,18 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     if (planted(mass.tile)) plant(polygon, top, mass.tile);
   }
   return { positions, normals, colors, indices, props };
+}
+
+/** A plan less its front corner on one side (`side` along the front, its
+ *  left looking out of the door `f`, or its right): the quarter in front
+ *  of its middle that way. */
+function opened(polygon: Polygon, [fx, fy]: P, side: number): Polygon {
+  const ring = polygon[0];
+  const along = ([x, y]: P) => x * fx + y * fy, across = ([x, y]: P) => -x * fy + y * fx;
+  const mid = (g: (p: P) => number) => (Math.min(...ring.map(g)) + Math.max(...ring.map(g))) / 2;
+  const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+  const corner = convex([[-fx, -fy, -mid(along)], [side * fy, -side * fx, -side * mid(across)]], [Math.min(...xs) - 1, Math.min(...ys) - 1, Math.max(...xs) + 1, Math.max(...ys) + 1]);
+  return subtract([polygon], [[corner]])[0] ?? polygon;
 }
 
 /** Each wall's face of a roof that climbs `reach` in from its walls: its
