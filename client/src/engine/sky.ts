@@ -35,7 +35,8 @@ export interface SkyLight {
   /** Along the horizon toward the sun, and away from it. */
   glow: Rgb;
   belt: Rgb;
-  /** The sun's own light, for what the land sends back. */
+  /** The sun's light as a level ground sends it back, before its colour:
+   *  for what the land below the horizon sends. */
   sun: Rgb;
   /** Level, toward where the sun is or last was: x and y, unit length. */
   sunward: readonly [number, number];

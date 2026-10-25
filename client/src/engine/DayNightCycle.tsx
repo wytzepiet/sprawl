@@ -435,7 +435,9 @@ export default function DayNightLights(props: ParentProps) {
       zenith: linearLight(mul(amb, SKY_LIGHT), SKY),
       glow: linearLight(ramp(glowStops, t, lerp3), SKY),
       belt: linearLight(ramp(beltStops, t, lerp3), SKY),
-      sun,
+      // What a level, matt ground sends back of the sun is its light on
+      // the ground, slanting, spread over the half of the sky above it.
+      sun: scale(sun, Math.max(0, -(isNight(t) ? moonDirection(t) : sunDirection(t))[2]) / Math.PI),
       sunward: [Math.cos(a) / level, NORTH / level],
     };
   };
