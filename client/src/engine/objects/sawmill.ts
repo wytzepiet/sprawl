@@ -41,8 +41,8 @@ const TRIM: RGB = [0.42, 0.27, 0.18];
 const ZINC: RGB = [0.72, 0.74, 0.77];
 const DOOR: RGB = [0.2, 0.24, 0.32];
 const BRICK: RGB = [0.62, 0.3, 0.22];
-const CHIPS: RGB = [0.68, 0.52, 0.34];
-const SAWDUST: RGB = [0.84, 0.65, 0.42];
+const CHIPS: RGB = [0.84, 0.65, 0.42];
+const SAWDUST: RGB = [0.68, 0.52, 0.34];
 const BARK: RGB = [0.56, 0.39, 0.24];
 const END: RGB = [0.89, 0.76, 0.56];
 const STEEL: RGB = [0.46, 0.48, 0.52];
@@ -189,7 +189,7 @@ const SAWMILL = solids(() => {
 
   // The ground: wood chips over the yard's left half, out to the lorries' lane.
   // Thick enough to show over the hall's paving, which stands a little higher.
-  chips.push([mesh(Solid.union(CHIP_YARDS.map(([x0, x1, y0, y1]) => box(x0, x1, y0, y1, 0, 0.016))), (p) => [p[0], p[1]]), [0, 0, 0], CHIPS]);
+  dust.push([mesh(Solid.union(CHIP_YARDS.map(([x0, x1, y0, y1]) => box(x0, x1, y0, y1, 0, 0.016))), (p) => [p[0], p[1]]), [0, 0, 0], SAWDUST]);
 
   // The hall, at the back.
   const [hx0, hx1, hy0, hy1, he, hr, hRidgeY] = [-0.78, 0.5, -1.86, -1.0, 0.2, 0.42, -1.62];
@@ -254,7 +254,7 @@ const SAWMILL = solids(() => {
   for (const y of [0.15, -0.2, -0.55]) logged(log([cx, y, rise(y) + 0.036], 0.02, cw - 0.025, "x"));
   // Sawdust heaped about its foot and by the canopy, on the chips.
   [[-0.34, -0.55, 0.15, 0.035], [0.05, -0.62, 0.12, 0.03], [-0.02, 1.05, 0.14, 0.035], [-0.3, 1.32, 0.09, 0.024]].forEach(([x, y, r, h], k) =>
-    dust.push([heap(x, y, r, h, 0.016, k + 1), [0, 0, 0], SAWDUST]));
+    chips.push([heap(x, y, r, h, 0.016, k + 1), [0, 0, 0], CHIPS]));
 
   // Three stacks of logs on the chips.
   for (const l of [...stack(-0.47, 0.18, "x", 0.42, 5), ...stack(-0.8, 1.2, "y", 0.5, 4), ...stack(-0.68, 1.6, "x", 0.44, 4)]) logged(l);
@@ -275,9 +275,15 @@ export const BARN_DOOR: [number, number] = [0.49, 0.1];
  *  the metal; how big the sawdust's lumps and its flecks, as the land's
  *  grain is read over them (`ground.ts`, 256 texels). */
 const [ZINC_TILT, ZINC_TROUGH, ZINC_ROUGH] = [0.55, 0.12, 0.35];
-const [DUST_LUMPS, DUST_FLECKS, CHIP_SPECKS] = [3.5, 1.6, 0.7];
-/** How far in from its edge the chips fray. */
-const CHIPS_FRAY = 0.05;
+const [DUST_LUMPS, DUST_FLECKS] = [3.5, 1.6];
+/** How far in from its edge the yard's dust frays, how far further in
+ *  its edge wanders, over bends how big, and how hard its grain turns the
+ *  light. */
+const [DUST_FRAY, DUST_WANDER, DUST_BENDS, DUST_TILT] = [0.05, 0.12, 14, 1.1];
+/** A chip, long and wide; how far each is tipped, and how far their
+ *  shades differ. */
+const CHIP = [0.02, 0.009];
+const [CHIP_TIP, CHIP_SHADES] = [1.4, 0.55];
 
 /** The sawmill's finishes, an engine's: matte timber and brick; zinc,
  *  metal, its waves across `PITCH` turning the light and shading their
@@ -296,14 +302,14 @@ let ${p}Du2 = dpdy(input.uv);
 let ${p}T = cross(${p}Dp2, N) * ${p}Du1.x + cross(N, ${p}Dp1) * ${p}Du2.x;
 let ${p}B = cross(${p}Dp2, N) * ${p}Du1.y + cross(N, ${p}Dp1) * ${p}Du2.y;
 let ${p}Inv = inverseSqrt(max(max(dot(${p}T, ${p}T), dot(${p}B, ${p}B)), 1e-14));`;
-const coat = (name: string, code: string, textures: (engine: EngineContext) => Record<string, Parameters<NonNullable<MaterialPlugin["bindTextures"]>>[0][number]["texture"]> = () => ({})) =>
+const coat = (name: string, code: string, textures: (engine: EngineContext) => Record<string, Parameters<NonNullable<MaterialPlugin["bindTextures"]>>[0][number]["texture"]> = () => ({}), definitions = "") =>
   (engine: EngineContext): MaterialPlugin => {
     const bound = Object.entries(textures(engine));
     return {
       name,
       priority: 900,
       ...(bound.length ? { getSamplers: () => bound.map(([t]) => ({ texture: t, sampler: `${t}Sampler` })), bindTextures: (out) => out.push(...bound.map(([, texture]) => ({ texture }))) } : {}),
-      getCustomCode: (stage) => (stage === "fragment" ? { CUSTOM_FRAGMENT_UPDATE_DIFFUSE: code } : null),
+      getCustomCode: (stage) => (stage === "fragment" ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: code } : null),
     };
   };
 const MAKE: Record<Finish, (engine: EngineContext) => MaterialPlugin> = {
@@ -321,22 +327,41 @@ let barkTilt = barkMap.rg * 2. - 1.;
 N = normalize(N + (barkT * barkTilt.x + barkB * barkTilt.y) * barkInv);
 baseColor = baseColor * barkMap.b;
 roughness = 0.95;`, (engine) => ({ millBark: bark(engine) })),
-  dust: loose("MillDust", `input.uv.x > 0.94 + ${f(SPILL - 0.94)} * looseLump * looseLump`, 0.86, 0.26),
-  // How far in from the yard's edge, the nearer of its two halves'.
-  chips: loose("MillChips", `max(${CHIP_YARDS.map(([x0, x1, y0, y1]) => `min(min(input.uv.x - ${f(x0)}, ${f(x1)} - input.uv.x), min(input.uv.y - ${f(y0)}, ${f(y1)} - input.uv.y))`).join(", ")}) < ${f(CHIPS_FRAY)} * looseLump * looseLump * 2.`, 0.86, 0.26),
+  // Its edge how far in from the yard's, the nearer of its two halves',
+  // wandering in and out.
+  dust: loose("MillDust", `max(${CHIP_YARDS.map(([x0, x1, y0, y1]) => `min(min(input.uv.x - ${f(x0)}, ${f(x1)} - input.uv.x), min(input.uv.y - ${f(y0)}, ${f(y1)} - input.uv.y))`).join(", ")})
+  < ${f(DUST_FRAY)} * looseLump * looseLump * 2. + ${f(DUST_WANDER)} * textureSample(millGrain, millGrainSampler, looseAt / ${f(DUST_BENDS)}).r`, `
+let dustBump = looseSlope(looseAt, ${f(DUST_FLECKS)}) + 0.6 * looseSlope(looseAt, ${f(DUST_LUMPS)});
+N = normalize(N - vec3f(dustBump * ${f(DUST_TILT)}, 0.));
+baseColor = baseColor * (0.95 + 0.1 * looseLump);`),
+  // Chips, each its own: cells in rows across a turn, every other row
+  // staggered, each tipped its own way and its own shade; let go where
+  // finer than the pixels.
+  chips: loose("MillChips", `input.uv.x > 0.94 + ${f(SPILL - 0.94)} * looseLump * looseLump`, `
+let chipQ = mat2x2f(0.8, 0.6, -0.6, 0.8) * looseAt / vec2f(${f(CHIP[0])}, ${f(CHIP[1])});
+let chipC = floor(vec2f(chipQ.x + 0.5 * floor(chipQ.y), chipQ.y));
+var chipK = bitcast<vec2u>(vec2i(chipC));
+var chipX = chipK.x * 1664525u + chipK.y * 1013904223u;
+chipX = (chipX ^ (chipX >> 16u)) * 0x7feb352du;
+chipX = (chipX ^ (chipX >> 15u)) * 0x846ca68bu;
+chipX = chipX ^ (chipX >> 16u);
+let chipH = vec3f(f32(chipX & 1023u), f32((chipX >> 10u) & 1023u), f32((chipX >> 20u) & 1023u)) / 1023.;
+let chipFine = 1. - smoothstep(0.35, 0.9, max(fwidth(chipQ.x), fwidth(chipQ.y)));
+N = normalize(N + vec3f((chipH.xy - 0.5) * ${f(CHIP_TIP)} * chipFine, 0.));
+baseColor = baseColor * mix(0.95 + 0.1 * looseLump, ${f(1 - CHIP_SHADES / 2)} + ${f(CHIP_SHADES)} * chipH.z, chipFine);`),
 };
-/** Something loose on the ground, sawdust or chips: lumpy, mottled
- *  between `dark` and `dark` + `spread` by the land's grain, and gone
- *  where `gone` says, its edge frayed by the same grain. */
-function loose(name: string, gone: string, dark: number, spread: number) {
+/** Something loose on the ground, sawdust or chips: lumpy by the land's
+ *  grain, gone where `gone` says, its edge frayed by the same grain, and
+ *  as `look` has it; `looseSlope` the grain's slope read at a size. */
+function loose(name: string, gone: string, look: string) {
+  const read = (at: string, span: string) => `textureSample(millGrain, millGrainSampler, (${at}) / ${span})`;
   return coat(name, `let looseAt = input.worldPos.xy;
-let looseLump = 0.6 * textureSample(millGrain, millGrainSampler, looseAt / ${f(DUST_LUMPS)}).r + 0.4 * textureSample(millGrain, millGrainSampler, looseAt / ${f(DUST_FLECKS)}).r;
-if (${gone}) { discard; }
-let looseBump = vec2f(textureSample(millGrain, millGrainSampler, (looseAt + vec2f(0.004, 0.)) / ${f(DUST_FLECKS)}).r - textureSample(millGrain, millGrainSampler, (looseAt - vec2f(0.004, 0.)) / ${f(DUST_FLECKS)}).r,
-  textureSample(millGrain, millGrainSampler, (looseAt + vec2f(0., 0.004)) / ${f(DUST_FLECKS)}).r - textureSample(millGrain, millGrainSampler, (looseAt - vec2f(0., 0.004)) / ${f(DUST_FLECKS)}).r);
-N = normalize(N - vec3f(looseBump * 0.5, 0.));
-baseColor = baseColor * (${f(dark)} + ${f(spread)} * textureSample(millGrain, millGrainSampler, looseAt / ${f(CHIP_SPECKS)}).r * looseLump * 2.);
-roughness = 1.;`, (engine) => ({ millGrain: grain(engine) }));
+let looseLump = 0.6 * ${read("looseAt", f(DUST_LUMPS))}.r + 0.4 * ${read("looseAt", f(DUST_FLECKS))}.r;
+if (${gone}) { discard; }${look}
+roughness = 1.;`, (engine) => ({ millGrain: grain(engine) }), `fn looseSlope(at: vec2f, span: f32) -> vec2f {
+  return vec2f(${read("at + vec2f(0.004, 0.)", "span")}.r - ${read("at - vec2f(0.004, 0.)", "span")}.r,
+    ${read("at + vec2f(0., 0.004)", "span")}.r - ${read("at - vec2f(0., 0.004)", "span")}.r);
+}`);
 }
 
 /** The logs' bark (`bark.ts`), an engine's: smooth until the worker has
