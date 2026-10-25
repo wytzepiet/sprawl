@@ -44,10 +44,19 @@ The new one:
    island offers it near the harbour. The dots show where.
 3. **Draw the road** from it to the harbour's quay. Its packages start
    piling on its pad.
-4. **Haul by hand.** The town's truck: tap the pile, tap the quay. The
-   forklift loads it, it drives your road, the packages wait on the quay,
-   and they are paid for as the ferry casts off at the world's price.
-   The first coins.
+4. **The first load, sent once.** Packages pile on the pad and the
+   town's truck pulses; one tap sends it. It drives your road, the
+   packages wait on the quay, and they are paid for as the ferry casts off
+   at the world's price: the first coins. From then on the truck runs by
+   itself, and says so on its card.
+
+**Automation is earned by outgrowing it, not by stopping tapping.** One
+truck cannot keep up for long: the pad fills, its pin's ring fills, and
+the fix is a second truck, then a depot nearer the coast, then bulk or
+boxes. Who supplies whom stays automatic, the nearest by road (Wytze,
+2026-10-25): traffic cannot be told where to go, so the player designs
+roads round where it goes. Hand-drawn links between buildings were
+weighed and left out.
 
 Goes from the opening: the depot step (the quay is a pad and holds what
 lands), the starter pack as a gift (the starter building is the gift),
@@ -113,7 +122,7 @@ them feels like bookkeeping.
 
 1. `first_half_hour`, on today's opening, as the baseline.
 2. The harbour's placing made plain, and the starter pick.
-3. The quay as a pad and the tapped truck, on the goods work.
+3. The quay as a pad and the first load sent, on the goods work.
 4. The new problems, one `When` at a time, each with a test that it
    opens once at the right moment (`a_site_short_of_stone_asks_for_a_quarry_once`
    is the pattern).
