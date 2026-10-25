@@ -440,6 +440,12 @@ export const CLIFF_Z = 0.0012;
 export const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
 /** How far in behind the cliff's wall its lip is laid on the wall's mesh. */
 const TUCK = 0.05;
+/** The ledge at the cliff's foot: this high, just over the beach; reaching
+ *  in under the wall this far, in tiles, from its lip, and out past its
+ *  foot this far at most, where the slate does not break it. */
+export const LEDGE_Z = BEACH_Z + 0.01;
+const LEDGE_UNDER = 0.2;
+export const LEDGE = 0.22;
 
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
@@ -1091,7 +1097,29 @@ function cliffField(sink: ChunkSink, sampler: TerrainSampler, originX: number, o
     const [x, y] = seaward(p);
     return [p[0] - (x / CLIFF_RUN) * TUCK, p[1] - (y / CLIFF_RUN) * TUCK];
   };
-  contour(far, place, [m, m, m + CHUNK_SIZE * d, m + CHUNK_SIZE * d], 0, (p, q) => (walls.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]), walls.polygon([p, q, back(q), back(p)], CLIFF_Z / 4)), undefined, Infinity, rows);
+  // And at its foot a ledge, from under the wall out past it, lit as the
+  // wall is and cut where the slate breaks it (`peaks.ts`), so the cliff
+  // meets the beach or the sea on a broken line, not where the wall goes
+  // under.
+  const ledge = (p: Point, t: number): Point => {
+    const [x, y] = seaward(p);
+    return [p[0] + x * t, p[1] + y * t];
+  };
+  const [under, past] = [LEDGE_UNDER / CLIFF_RUN, 1 + LEDGE / CLIFF_RUN];
+  contour(
+    far,
+    place,
+    [m, m, m + CHUNK_SIZE * d, m + CHUNK_SIZE * d],
+    0,
+    (p, q) => (
+      walls.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]),
+      walls.polygon([p, q, back(q), back(p)], CLIFF_Z / 4),
+      walls.polygon([ledge(p, under), ledge(q, under), ledge(q, past), ledge(p, past)], LEDGE_Z)
+    ),
+    undefined,
+    Infinity,
+    rows,
+  );
   append(sink.cliffPlane, walls, 0, 0, 0, NO_COLOUR);
   return inner((k) => bytes[k] / 255, CLIFF_REACH);
 }
