@@ -28,10 +28,10 @@ import type { RGB } from "../rgb";
  *   bundles on their pad beside it (`pads.ts`), and across it the one
  *   dock (`Blueprint::docks`).
  *
- * Four finishes, a bucket each: its timber and brick matte; the zinc
+ * Five finishes, a bucket each: its timber and brick matte; the zinc
  * golfplaat, corrugated metal, its waves in the light alone; the logs'
- * bark, baked (`bark.ts`); the sawdust, lumpy, frayed at its edge as the
- * grass is (`ground.ts`).
+ * bark, baked (`bark.ts`); the sawdust and the chips under it, lumpy,
+ * frayed at their edges as the grass is (`ground.ts`).
  */
 
 const ROOF: RGB = [0.5, 0.35, 0.25];
@@ -41,7 +41,7 @@ const TRIM: RGB = [0.42, 0.27, 0.18];
 const ZINC: RGB = [0.72, 0.74, 0.77];
 const DOOR: RGB = [0.2, 0.24, 0.32];
 const BRICK: RGB = [0.62, 0.3, 0.22];
-const CHIPS: RGB = [0.7, 0.52, 0.36];
+const CHIPS: RGB = [0.58, 0.42, 0.29];
 const SAWDUST: RGB = [0.84, 0.65, 0.42];
 const BARK: RGB = [0.56, 0.39, 0.24];
 const END: RGB = [0.89, 0.76, 0.56];
@@ -175,8 +175,13 @@ function smooth(g: MeshGeometry): MeshGeometry {
   return { ...g, normals: n };
 }
 
+/** The chips' two halves of the yard, either side of the lorries' dock,
+ *  x and y from and to; mapped by where they are, so the coat knows how
+ *  far in from their edge (`loose`). */
+const CHIP_YARDS = [[-0.97, 0.15, -1.0, 0.32], [-0.97, 0.15, 0.8, 1.92]];
+
 const SAWMILL = solids(() => {
-  const wood: Part[] = [], zinc: Part[] = [], bark: Part[] = [], dust: Part[] = [];
+  const wood: Part[] = [], zinc: Part[] = [], bark: Part[] = [], dust: Part[] = [], chips: Part[] = [];
   const put = (solid: Manifold, rgb: RGB) => wood.push([mesh(solid), [0, 0, 0], rgb]);
   const roof = ([s, r]: [Manifold, Manifold], a: RGB, b: RGB) => (put(s, a), put(r, b));
   const zinced = (geo: MeshGeometry) => zinc.push([geo, [0, 0, 0], ZINC]);
@@ -184,7 +189,7 @@ const SAWMILL = solids(() => {
 
   // The ground: wood chips over the yard's left half, out to the lorries' lane.
   // Thick enough to show over the hall's paving, which stands a little higher.
-  put(box(-0.97, 0.15, -1.0, 0.32, 0, 0.016).add(box(-0.97, 0.15, 0.8, 1.92, 0, 0.016)), CHIPS);
+  chips.push([mesh(Solid.union(CHIP_YARDS.map(([x0, x1, y0, y1]) => box(x0, x1, y0, y1, 0, 0.016))), (p) => [p[0], p[1]]), [0, 0, 0], CHIPS]);
 
   // The hall, at the back.
   const [hx0, hx1, hy0, hy1, he, hr, hRidgeY] = [-0.78, 0.5, -1.86, -1.0, 0.2, 0.42, -1.62];
@@ -260,7 +265,7 @@ const SAWMILL = solids(() => {
     ...Array.from({ length: 11 }, (_, k) => box(-0.995, -0.97, -0.72 + k * 0.26, -0.7 + k * 0.26, 0, 0.1)),
   ]), TRIM);
 
-  return { wood: shape(wood), zinc: shape(zinc), bark: shape(bark), dust: shape(dust) };
+  return { wood: shape(wood), zinc: shape(zinc), bark: shape(bark), dust: shape(dust), chips: shape(chips) };
 });
 
 /** Where its forklift comes out of the wing's door, to the gate's side. */
@@ -270,13 +275,15 @@ export const BARN_DOOR: [number, number] = [0.49, 0.1];
  *  the metal; how big the sawdust's lumps and its flecks, as the land's
  *  grain is read over them (`ground.ts`, 256 texels). */
 const [ZINC_TILT, ZINC_TROUGH, ZINC_ROUGH] = [0.55, 0.12, 0.35];
-const [DUST_LUMPS, DUST_FLECKS] = [3.5, 1.6];
+const [DUST_LUMPS, DUST_FLECKS, CHIP_SPECKS] = [3.5, 1.6, 0.7];
+/** How far in from its edge the chips fray. */
+const CHIPS_FRAY = 0.05;
 
 /** The sawmill's finishes, an engine's: matte timber and brick; zinc,
  *  metal, its waves across `PITCH` turning the light and shading their
  *  troughs, faded out where they are finer than the pixels; bark, its
- *  map's slopes turning the light and its furrows dark; sawdust, chalk,
- *  lumpy and mottled by the land's grain, its spill frayed away by it.
+ *  map's slopes turning the light and its furrows dark; sawdust and
+ *  chips, `loose`.
  *  The slopes are turned along the surface by the map's own run over it,
  *  read off the pixels beside (a cotangent frame). */
 const COATS = new WeakMap<EngineContext, Record<Finish, MaterialPlugin>>();
@@ -314,15 +321,24 @@ let barkTilt = barkMap.rg * 2. - 1.;
 N = normalize(N + (barkT * barkTilt.x + barkB * barkTilt.y) * barkInv);
 baseColor = baseColor * barkMap.b;
 roughness = 0.95;`, (engine) => ({ millBark: bark(engine) })),
-  dust: coat("MillDust", `let dustAt = input.worldPos.xy;
-let dustLump = 0.6 * textureSample(millGrain, millGrainSampler, dustAt / ${f(DUST_LUMPS)}).r + 0.4 * textureSample(millGrain, millGrainSampler, dustAt / ${f(DUST_FLECKS)}).r;
-if (input.uv.x > 0.94 + ${f(SPILL - 0.94)} * dustLump * dustLump) { discard; }
-let dustBump = vec2f(textureSample(millGrain, millGrainSampler, (dustAt + vec2f(0.004, 0.)) / ${f(DUST_FLECKS)}).r - textureSample(millGrain, millGrainSampler, (dustAt - vec2f(0.004, 0.)) / ${f(DUST_FLECKS)}).r,
-  textureSample(millGrain, millGrainSampler, (dustAt + vec2f(0., 0.004)) / ${f(DUST_FLECKS)}).r - textureSample(millGrain, millGrainSampler, (dustAt - vec2f(0., 0.004)) / ${f(DUST_FLECKS)}).r);
-N = normalize(N - vec3f(dustBump * 0.5, 0.));
-baseColor = baseColor * (0.86 + 0.26 * dustLump);
-roughness = 1.;`, (engine) => ({ millGrain: grain(engine) })),
+  dust: loose("MillDust", `input.uv.x > 0.94 + ${f(SPILL - 0.94)} * looseLump * looseLump`, 0.86, 0.26),
+  // How far in from the yard's edge, the nearer of its two halves'.
+  chips: loose("MillChips", `max(${CHIP_YARDS.map(([x0, x1, y0, y1]) => `min(min(input.uv.x - ${f(x0)}, ${f(x1)} - input.uv.x), min(input.uv.y - ${f(y0)}, ${f(y1)} - input.uv.y))`).join(", ")}) < ${f(CHIPS_FRAY)} * looseLump * looseLump * 2.`, 0.72, 0.5),
 };
+/** Something loose on the ground, sawdust or chips: lumpy, mottled
+ *  between `dark` and `dark` + `spread` by the land's grain, and gone
+ *  where `gone` says, its edge frayed by the same grain. */
+function loose(name: string, gone: string, dark: number, spread: number) {
+  return coat(name, `let looseAt = input.worldPos.xy;
+let looseLump = 0.6 * textureSample(millGrain, millGrainSampler, looseAt / ${f(DUST_LUMPS)}).r + 0.4 * textureSample(millGrain, millGrainSampler, looseAt / ${f(DUST_FLECKS)}).r;
+if (${gone}) { discard; }
+let looseBump = vec2f(textureSample(millGrain, millGrainSampler, (looseAt + vec2f(0.004, 0.)) / ${f(DUST_FLECKS)}).r - textureSample(millGrain, millGrainSampler, (looseAt - vec2f(0.004, 0.)) / ${f(DUST_FLECKS)}).r,
+  textureSample(millGrain, millGrainSampler, (looseAt + vec2f(0., 0.004)) / ${f(DUST_FLECKS)}).r - textureSample(millGrain, millGrainSampler, (looseAt - vec2f(0., 0.004)) / ${f(DUST_FLECKS)}).r);
+N = normalize(N - vec3f(looseBump * 0.5, 0.));
+baseColor = baseColor * (${f(dark)} + ${f(spread)} * textureSample(millGrain, millGrainSampler, looseAt / ${f(CHIP_SPECKS)}).r * looseLump * 2.);
+roughness = 1.;`, (engine) => ({ millGrain: grain(engine) }));
+}
+
 /** The logs' bark (`bark.ts`), an engine's: smooth until the worker has
  *  baked it, or read back from the last bake (`bakeCache.ts`). */
 const bark = (engine: EngineContext) =>
