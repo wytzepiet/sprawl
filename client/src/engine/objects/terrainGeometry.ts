@@ -1363,8 +1363,10 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   const at = (i: number, j: number) => broken[j * PEAK_SIDE + i];
   const rows = highest(broken, PEAK_SIDE);
   // A wall leans back as the land's cliff does, its foot out down the
-  // rock, never past half way to the next layer's edge.
-  const outward = downhill(at, PEAK_SIDE, ([x, y]) => [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES], (steep) => Math.min(LEAN * LAYER, (0.5 * LAYER) / Math.max(steep * PEAK_SAMPLES, 1e-3)));
+  // rock, never past half way to the next layer's edge: down the rock's own
+  // heights, not the slate's, which would turn each foot its own way and
+  // fold the wall over itself in teeth.
+  const outward = downhill(h, PEAK_SIDE, ([x, y]) => [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES], (steep) => Math.min(LEAN * LAYER, (0.5 * LAYER) / Math.max(steep * PEAK_SAMPLES, 1e-3)));
   for (let k = 1; begins(k) <= top; k++) {
     const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
     contour(at, place, cells, begins(k), (p, q) => out.wall(p, q, lo, hi, [outward(p), outward(q)]), (polygon) => out.polygon(polygon, hi), begins(k + 1), rows);

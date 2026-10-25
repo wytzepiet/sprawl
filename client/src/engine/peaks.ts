@@ -83,18 +83,25 @@ const SLATE_READ = (() => {
  *  where its layers break, from the texture of the chunk whose heights
  *  start at `corner`, and the height's slope: the four texels round it
  *  blended here, not by the sampler, whose blend steps in 256ths of a
- *  texel and makes the slope shimmer from one pixel to the next. */
+ *  texel and makes the slope shimmer from one pixel to the next; the slope
+ *  across a texel each way, so it runs on smoothly from texel to texel,
+ *  not in squares, as a blend's own slope would. */
 const HEIGHT_AT = (() => {
   const L = (c: string) => `textureLoad(peakHeights, ${c}, 0).rg`;
-  return `fn peakHeightAt(p: vec2f, corner: vec2f) -> vec4f {
-  let t = (p - corner) * ${f(PEAK_SAMPLES)};
+  return `fn peakBlend(t: vec2f) -> vec2f {
   let i = clamp(floor(t), vec2f(0.), vec2f(${f(PEAK_SIDE - 2)}));
   let u = t - i;
   let a = ${L("vec2i(i)")};
   let b = ${L("vec2i(i) + vec2i(1, 0)")};
   let c = ${L("vec2i(i) + vec2i(0, 1)")};
   let d = ${L("vec2i(i) + vec2i(1, 1)")};
-  return vec4f(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), vec2f(mix(b.x - a.x, d.x - c.x, u.y), mix(c.x - a.x, d.x - b.x, u.x)) * ${f(PEAK_SAMPLES)});
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+fn peakHeightAt(p: vec2f, corner: vec2f) -> vec4f {
+  let t = (p - corner) * ${f(PEAK_SAMPLES)};
+  let dx = peakBlend(t + vec2f(1., 0.)).x - peakBlend(t - vec2f(1., 0.)).x;
+  let dy = peakBlend(t + vec2f(0., 1.)).x - peakBlend(t - vec2f(0., 1.)).x;
+  return vec4f(peakBlend(t), vec2f(dx, dy) * ${f(PEAK_SAMPLES / 2)});
 }`;
 })();
 
