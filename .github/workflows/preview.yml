@@ -1,0 +1,107 @@
+# Every branch its own world: a push builds the game and starts it fresh at
+# https://<branch>.<preview domain>; deleting the branch takes it away, and
+# a push to main deletes every branch it has merged, world and all.
+# The box's half is preview/box.sh, set up once by preview/setup.sh.
+name: Preview
+
+on:
+  push:
+  delete:
+
+concurrency:
+  group: preview-${{ github.event_name == 'delete' && github.event.ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  BRANCH: ${{ github.event_name == 'delete' && github.event.ref || github.ref_name }}
+
+jobs:
+  # A branch whose last commit is in main holds nothing main lacks. Deleted
+  # by this job's token, it raises no delete event, so its world goes here.
+  tidy:
+    if: vars.PREVIEW_HOST != '' && github.event_name == 'push' && github.ref_name == 'main'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PREVIEW_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.PREVIEW_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Merged branches, gone
+        run: |
+          for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin); do
+            [ "$b" = main ] || [ "$b" = HEAD ] && continue
+            git merge-base --is-ancestor origin/$b origin/main || continue
+            git push origin --delete "$b"
+            slug=$(echo "$b" | tr A-Z a-z | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//' | cut -c1-40 | sed 's/-$//')
+            ssh root@${{ vars.PREVIEW_HOST }} down $slug | tee -a $GITHUB_STEP_SUMMARY
+          done
+
+  preview:
+    if: vars.PREVIEW_HOST != '' && (github.event_name == 'push' || github.event.ref_type == 'branch')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Slug
+        run: echo "SLUG=$(echo "$BRANCH" | tr A-Z a-z | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//' | cut -c1-40 | sed 's/-$//')" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          path: sprawl
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          repository: wytzepiet/Babylon-Lite
+          ref: sprawl
+          path: Babylon-Lite
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.event_name == 'push'
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        if: github.event_name == 'push'
+        with:
+          workspaces: sprawl/server
+      - name: wasm-bindgen, the version Cargo.lock asks for
+        if: github.event_name == 'push'
+        run: echo "BINDGEN=$(grep -A1 '^name = "wasm-bindgen"$' sprawl/server/Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')" >> $GITHUB_ENV
+      - uses: taiki-e/install-action@v2
+        if: github.event_name == 'push'
+        with:
+          tool: wasm-bindgen@${{ env.BINDGEN }}
+      - uses: pnpm/action-setup@v4
+        if: github.event_name == 'push'
+        with:
+          package_json_file: Babylon-Lite/package.json
+      - uses: oven-sh/setup-bun@v2
+        if: github.event_name == 'push'
+
+      - name: Build
+        if: github.event_name == 'push'
+        run: |
+          (cd Babylon-Lite && pnpm install --frozen-lockfile)
+          (cd sprawl/client && bun install --frozen-lockfile && bun run build)
+          (cd sprawl/server && cargo build --release -p sprawl-server)
+
+      - name: Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PREVIEW_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.PREVIEW_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Up
+        if: github.event_name == 'push'
+        run: |
+          tar -cz -C sprawl/server/target/release sprawl-server -C "$GITHUB_WORKSPACE/sprawl/client" dist |
+            ssh root@${{ vars.PREVIEW_HOST }} up $SLUG | tee -a $GITHUB_STEP_SUMMARY
+      - name: Down
+        if: github.event_name == 'delete'
+        run: ssh root@${{ vars.PREVIEW_HOST }} down $SLUG
