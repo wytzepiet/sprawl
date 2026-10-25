@@ -237,9 +237,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   until the next push; the summary of the run has the link. When you push
   something to be seen, wait for the run (a couple of minutes) and give
   the link with it.
-- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`; a save
-  is its build's, so after a change to what is saved, `rm server/sprawl.db`
-  is the migration (the server says so if it cannot read one). Seed 7 has
+- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. A change
+  that makes old saves wrong or unreadable pushes a step on `MIGRATIONS`
+  (`server/host/src/persistence.rs`): a function rewriting the old JSON to
+  keep saves, or `None` to start them over. A save is set aside as
+  `sprawl.db.v<N>.bak` before it is migrated, and when it cannot be, the
+  world starts over, saying so. Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is
   forty tiles in from its island's coast. `SPRAWL_ALL=1` gives a
