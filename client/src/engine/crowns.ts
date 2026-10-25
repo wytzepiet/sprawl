@@ -50,6 +50,8 @@ const LEAF_TILT = 0.9;
 const FOOT_LIGHT = 0.5;
 const SKIN = 10;
 const DEEP = 0.25;
+/** Seen from the side, its crown's foot this high, of its height. */
+const SIDE_FOOT = 0.45;
 
 /** Crowns are baked, not worked out pixel by pixel: this many broadleaves,
  *  then the
@@ -197,7 +199,7 @@ function grow(v: number) {
 /** Broadleaf v's layers, seen from above: grown, its leaves and limbs laid
  *  down a texel at a time, in each layer the highest there showing; the
  *  light less the lower it is, and the deeper under the crown's skin.
- *  Into stamp(layer). */
+ *  Into stamp(layer), and its side into stamp(BROAD_LAYERS). */
 function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => number, v: number) {
   const { leaves, limbs } = grow(v);
   let reach = 0, low = 9, high = -9;
@@ -285,6 +287,34 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
       }
     }
   }
+  // And from the side, for its shadow (`trees.ts`' card): what of it covers,
+  // across as from above, and up from the ground (0) to its top (1), its
+  // crown's foot at SIDE_FOOT.
+  const tall = (z: number) => (z < low ? (SIDE_FOOT * (z + TRUNK_FOOT)) / (low + TRUNK_FOOT) : SIDE_FOOT + (1 - SIDE_FOOT) * up(z));
+  const row = (z: number) => (1 - tall(z)) * T;
+  const side = new Uint8Array(N);
+  const lr = (LEAF * (1 - SIDE_FOOT) * T) / (high - low);
+  for (let l = 0; l < count; l++) {
+    const [cx, cy] = [texel(leaves[l * 7]), row(leaves[l * 7 + 2])];
+    for (let j = Math.max(0, Math.floor(cy - lr)); j < Math.min(T, Math.ceil(cy + lr)); j++) {
+      for (let i = Math.max(0, Math.floor(cx - lt)); i < Math.min(T, Math.ceil(cx + lt)); i++) {
+        if (((i + 0.5 - cx) / lt) ** 2 + ((j + 0.5 - cy) / lr) ** 2 < 1) side[j * T + i] = 1;
+      }
+    }
+  }
+  for (let b = 0; b < limbs.length; b += 7) {
+    const [x0, y0, x1, y1] = [texel(limbs[b]), row(limbs[b + 2]), texel(limbs[b + 3]), row(limbs[b + 5])];
+    const rt = Math.max(0.6, texel(limbs[b + 6]) - texel(0));
+    const [ex, ey] = [x1 - x0, y1 - y0];
+    const e2 = Math.max(ex * ex + ey * ey, 1e-6);
+    for (let j = Math.max(0, Math.floor(Math.min(y0, y1) - rt)); j < Math.min(T, Math.ceil(Math.max(y0, y1) + rt)); j++) {
+      for (let i = Math.max(0, Math.floor(Math.min(x0, x1) - rt)); i < Math.min(T, Math.ceil(Math.max(x0, x1) + rt)); i++) {
+        const t = Math.min(1, Math.max(0, ((i + 0.5 - x0) * ex + (j + 0.5 - y0) * ey) / e2));
+        if ((i + 0.5 - x0 - ex * t) ** 2 + (j + 0.5 - y0 - ey * t) ** 2 < rt * rt) side[j * T + i] = 1;
+      }
+    }
+  }
+  for (let j = 0, k = 0; j < T; j++) for (let i = 0; i < T; i++, k++) out[stamp(BROAD_LAYERS, i, j)] = side[k] ? 0 : 255;
 }
 
 /** Conifers, as a spruce is from the air: tiers of arms, this many from
@@ -376,12 +406,14 @@ function conifer(out: Uint8Array, k: number, x: number, y: number, v: number, la
  *  stands at (red, halved), which way it tilts (green and blue, from -1
  *  to 1), and how much light reaches down to it (alpha, up to `LIT`), or
  *  that it is twig, not leaf (alpha past it). */
-export const STAMPS = CROWNS * BROAD_LAYERS + CONIFERS * CONIFER_LAYERS;
+export const SIDES = CROWNS * BROAD_LAYERS + CONIFERS * CONIFER_LAYERS;
+export const STAMPS = SIDES + CROWNS;
 export const ROWS = Math.ceil(STAMPS / COLUMNS);
 export function bakeCrowns(): Uint8Array {
   const out = new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4);
   const wide = COLUMNS * CROWN_TEXELS;
-  // A stamp's texel: stamps run broadleaves' layers, then conifers', top down.
+  // A stamp's texel: stamps run broadleaves' layers, then conifers', top
+  // down, then broadleaves' sides.
   const at = (stamp: number, i: number, j: number) => ((Math.floor(stamp / COLUMNS) * CROWN_TEXELS + j) * wide + (stamp % COLUMNS) * CROWN_TEXELS + i) * 4;
   const each = (texel: (x: number, y: number, i: number, j: number) => void) => {
     for (let j = 0; j < CROWN_TEXELS; j++) {
@@ -390,7 +422,7 @@ export function bakeCrowns(): Uint8Array {
       }
     }
   };
-  for (let v = 0; v < CROWNS; v++) broad(out, (layer, i, j) => at(layer * CROWNS + v, i, j), v);
+  for (let v = 0; v < CROWNS; v++) broad(out, (layer, i, j) => at(layer < BROAD_LAYERS ? layer * CROWNS + v : SIDES + v, i, j), v);
   for (let layer = 0; layer < CONIFER_LAYERS; layer++) {
     for (let v = 0; v < CONIFERS; v++) each((x, y, i, j) => conifer(out, at(CROWNS * BROAD_LAYERS + layer * CONIFERS + v, i, j), x, y, v, layer));
   }
