@@ -31,9 +31,9 @@ import { ripples, swashFn } from "./water";
 const STONE = colour(0.66, 0.61, 0.54);
 const RELIEF = 0.5;
 export const CALM = 2;
-/** On the flats the slate's hollows, between its plates, are darker than
- *  its highest plates by this much, and shine this much less; never on a
- *  lip or wall, which keep the stone's own colour and shine. */
+/** On the flats and the walls the slate's hollows, between its plates, are
+ *  darker than its highest plates by this much, and shine this much less;
+ *  never on a lip, which keeps the stone's own colour and shine. */
 const HOLLOW = 0.12;
 const DULL = 0.85;
 /** How far the slate's faces are glossed from the rock's roughness, where
@@ -49,14 +49,16 @@ const ROLL = 1.2;
  *  pixel to the next, which is grainy. */
 const TURN = 1.5;
 /** A wall faces down its slope as steeply as this, from the lip's roll at
- *  its top to this far down it, in tiles, no longer turned by the slate,
- *  so a wall turned from the sun stays as dark as the shade its top casts
- *  (the shadow map leaves a caster's own face lit); its slate read as if the wall
+ *  its top to this far down it, in tiles, turned by the slate as a lip is,
+ *  so its plates face every way, a crag; its slate read as if the wall
  *  were laid back on the ground in front of it, this many tiles out for a
  *  tile down, so its plates are as broad up it as they look across it. */
 const WALL_TILT = 1.8;
 const WALL_ROLL = 0.15;
 const UNROLL = 0.45;
+/** And read this many times finer on a wall than on a top: a crag's plates
+ *  are smaller than a terrace's, and a wall is seen up close. */
+const GRAIN = 2;
 
 const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
@@ -105,14 +107,14 @@ let peakSteep = max(length(peakFall), 0.05);
 let peakWall = abs(input.worldNormal.z) < 0.5;
 let peakOut = peakFall / peakSteep;
 let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, peakWall);
-let peakSlate = slateRead(${at}.xy + peakOut * peakDepth * ${f(UNROLL)});
+let peakRoll = smoothstep(0., ${f(WALL_ROLL)}, peakDepth);
+let peakSlate = mix(slateRead(${at}.xy), slateRead((${at}.xy + peakOut * peakDepth * ${f(UNROLL)}) * ${f(GRAIN)}), peakRoll);
 let peakLayer = floor(${at}.z / ${f(LAYER)} + 0.5);
 let peakIn = (peakRock.y - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
-let peakRoll = smoothstep(0., ${f(WALL_ROLL)}, peakDepth);
-let peakDown = normalize(peakOut + peakSlate.xy * ${f(TURN)} * (1. - peakRoll) + 1e-6);
+let peakDown = normalize(peakOut + peakSlate.xy * ${f(TURN)} + 1e-6);
 let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5 && !peakWall);
 let peakTilt = select(peakLip * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, peakRoll), peakWall);
-let peakHollow = select((0.5 - 0.5 * peakSlate.z) * (1. - peakLip), 0., peakWall);
+let peakHollow = (0.5 - 0.5 * peakSlate.z) * select(1. - peakLip, peakRoll, peakWall);
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
 N = normalize(vec3f(peakDown * peakTilt + peakSlate.xy * ${f(RELIEF)}, 1.));`;
@@ -192,11 +194,13 @@ const LAND_CLIFF = (() => {
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
 let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffDepth = select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall);
-let cliffSlate = slateRead(input.worldPos.xy + cliffFace * cliffDepth * ${f(UNROLL)});
 let cliffRoll = smoothstep(0., ${f(WALL_ROLL)}, cliffDepth);
-let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)} * (1. - cliffRoll));
+let cliffSlate = mix(slateRead(input.worldPos.xy), slateRead((input.worldPos.xy + cliffFace * cliffDepth * ${f(UNROLL)}) * ${f(GRAIN)}), cliffRoll);
+let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
 let cliffTilt = mix((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(WALL_TILT)}, cliffRoll);
-baseColor = vec3f(${rgb(STONE)});
+let cliffHollow = (0.5 - 0.5 * cliffSlate.z) * cliffRoll;
+baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * cliffHollow);
+townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * cliffHollow);
 N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
