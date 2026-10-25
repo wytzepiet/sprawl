@@ -543,7 +543,10 @@ impl World {
             Some(berth) => berth.park(),
             None => {
                 let sides: Vec<f64> = [1.0, -1.0].into_iter().filter(|&s| (if s > 0.0 { w - u_gate } else { u_gate }) >= DOCK_REACH).collect();
-                park(|s, side| grid_at(u_gate + side, d - s), &sides)
+                let (lane, mut docks) = park(|s, side| grid_at(u_gate + side, d - s), &sides);
+                // The docks nearest the building are the last.
+                docks.drain(..docks.len().saturating_sub(crate::blueprint::blueprint(kind).docks));
+                (lane, docks)
             }
         };
         let mut lane = vec![door];

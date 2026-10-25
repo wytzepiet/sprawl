@@ -50,6 +50,9 @@ pub struct Blueprint {
     /// at once (`World::lift`). One, but a harbour's, which works the
     /// ferry's deck and the lorries both.
     pub forklifts: u8,
+    /// Docks in its yard, the ones nearest its building: as many as fit,
+    /// but a sawmill's one, before its barn door (`lots::park`).
+    pub docks: usize,
     /// A farm: its land is what its tractor ploughs in a shift, and its
     /// yard holds a harvest, the cycle's make (`world/fields.rs`).
     pub farm: bool,
@@ -156,7 +159,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
         let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
-        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, farm: false }
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, docks: usize::MAX, farm: false }
     };
     use Good::{Stone, Timber};
     vec![
@@ -232,6 +235,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
+            docks: 1,
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
         // The sawmill's twin at the mountain's foot: four hands, seven to
