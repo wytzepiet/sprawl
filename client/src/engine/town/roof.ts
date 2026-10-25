@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { BAND, PARAPET_H, PARAPET_W, RECESS, eaves, mansard, planted, slope } from "./mass";
+import { BAND, PARAPET_H, PARAPET_W, RECESS, SPAN, TOOTH, eaves, mansard, planted, sawtooth, slope } from "./mass";
 import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
@@ -51,6 +51,9 @@ const KIT = {
   dish: 0.07, dishHigh: 0.04,
   rooflight: 0.075, rooflightHigh: 0.025,
 } as const;
+/** A sawtooth shed's stack and a mill's cyclone, in tiles: how far in
+ *  from the back corner each stands, which is its breadth, and how high. */
+const MILL = { stack: 0.09, stackHigh: 0.62, cyclone: 0.2, cycloneHigh: 0.42 } as const;
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
@@ -82,7 +85,7 @@ export interface Prop {
   ty: number;
 }
 /** The props there are, in the order their codes cross from the worker. */
-export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp"] as const;
+export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp", "cyclone"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 
 export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {
@@ -121,6 +124,19 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     }
   };
 
+  /** The way from a building to the street its door opens onto, by its id. */
+  let doors: Map<number, P> | undefined;
+  const doorOf = (t: Tile) => {
+    if (!doors) {
+      doors = new Map();
+      for (let r = 0; r < painted.h; r++)
+        for (let c = 0; c < painted.w; c++) {
+          const d = painted.door?.(c, r), id = painted.tile(c, r).id;
+          if (d && id !== undefined) doors.set(id, [d[0] / Math.hypot(...d), d[1] / Math.hypot(...d)]);
+        }
+    }
+    return t.id === undefined ? undefined : doors.get(t.id);
+  };
   for (const { mass, polygon, outline } of plans(known)) {
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
@@ -222,6 +238,45 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
         prop("ac", corner(beside, KIT.ac), z, KIT.ac, KIT.acHigh);
       }
     };
+    /** A sawtooth roof over the flat: strips across the way to the door,
+     *  each a slope from its back up TOOTH to its front, where a glazed
+     *  face stands, a pale shade, toward the door; the walls under each
+     *  slope's sides rise with it. */
+    const teeth = (region: Polygon[], z: number, [fx, fy]: P) => {
+      const all = region.flat(2);
+      const s = ([x, y]: P) => x * fx + y * fy;
+      const back = Math.min(...all.map(s)), deep = Math.max(...all.map(s)) - back;
+      const n = Math.max(1, Math.round(deep / SPAN)), span = deep / n;
+      const box: [number, number, number, number] = [Math.min(...all.map((p) => p[0])) - 1, Math.min(...all.map((p) => p[1])) - 1, Math.max(...all.map((p) => p[0])) + 1, Math.max(...all.map((p) => p[1])) + 1];
+      for (let k = 0; k < n; k++) {
+        const [s0, s1] = [back + k * span, back + (k + 1) * span];
+        const strip = intersect(region, [[convex([[-fx, -fy, -s0], [fx, fy, s1]], box)]]);
+        const at = (p: P) => z + (TOOTH * (s(p) - s0)) / span;
+        cover(strip, at, 0.92);
+        for (const ring of strip.flat()) {
+          ring.forEach((p, i) => {
+            const q = ring[(i + 1) % ring.length];
+            if (at(p) - z < 1e-6 && at(q) - z < 1e-6) return;
+            const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+            const len = Math.hypot(dx, dy);
+            let nrm: V = [dy / len, -dx / len, 0];
+            const mid: P = [(p[0] + q[0]) / 2 + nrm[0] * 1e-3, (p[1] + q[1]) / 2 + nrm[1] * 1e-3];
+            if (strip.some((poly) => inPolygon(mid, poly))) nrm = [-nrm[0], -nrm[1], 0];
+            const front = Math.abs(s(p) - s1) < 1e-6 && Math.abs(s(q) - s1) < 1e-6;
+            const c = front ? paint(mass.tile, 0.25, 0.55) : colourAt(mid);
+            tri([p[0], p[1], z], [q[0], q[1], z], [q[0], q[1], at(q)], nrm, c);
+            tri([p[0], p[1], z], [q[0], q[1], at(q)], [p[0], p[1], at(p)], nrm, c);
+          });
+        }
+      }
+      // At the back, its stack in one corner; a mill's sawdust cyclone,
+      // up on its legs, in the other.
+      const u = ([x, y]: P) => -x * fy + y * fx;
+      const [u0, u1] = [Math.min(...all.map(u)), Math.max(...all.map(u))];
+      const on = (a: number, b: number): P => [a * fx - b * fy, a * fy + b * fx];
+      prop("stack", on(back + MILL.stack, u1 - MILL.stack), z, MILL.stack, MILL.stackHigh);
+      if (mass.tile.kind === "Sawmill") prop("cyclone", on(back + MILL.cyclone, u0 + MILL.cyclone), z, MILL.cyclone, MILL.cycloneHigh);
+    };
     /** A flat roof's parapet: a low wall round its edge, its coping a shade
      *  lighter, so the roof reads as a roof and not a box's lid. */
     const parapet = (region: Polygon[], z: number) => prism(subtract(region, shrink(region, PARAPET_W)), z, () => z + PARAPET_H, 1.08);
@@ -260,8 +315,9 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       }
       for (const piece of hole) fill(piece, () => sunk, paint(mass.tile, ...BITUMEN));
       kit(hole, sunk, mass.tile);
-    } else cover(flat, () => top + height);
-    if (height === 0) parapet(outline, top);
+    } else if (sawtooth(mass.tile) && doorOf(mass.tile)) teeth(flat, top, doorOf(mass.tile)!);
+    else cover(flat, () => top + height);
+    if (height === 0 && !sawtooth(mass.tile)) parapet(outline, top);
     if (planted(mass.tile)) plant(polygon, top, mass.tile);
   }
   return { positions, normals, colors, indices, props };

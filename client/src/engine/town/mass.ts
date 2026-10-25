@@ -72,6 +72,13 @@ export const mansard = (t: Tile) => formOf(t).family === "street" && t.storeys <
 const SIGNED = new Set<BuildingKind>(["Shop"]);
 export const RECESS = 0.03, BAND = 0.035;
 
+/** Whether a shed wears a sawtooth roof, as a mill's or a works' does:
+ *  ridges across it, each a slope up from the back to a glazed face
+ *  toward its door, TOOTH high and about SPAN deep (`roof.ts`). */
+export const sawtooth = (t: Tile) => SAWTOOTH.has(t.kind as BuildingKind);
+const SAWTOOTH = new Set<BuildingKind>(["Sawmill", "Factory"]);
+export const TOOTH = 0.14, SPAN = 0.55;
+
 /** An office tower's flat roof carries its plant, as a real one does: a
  *  lift room at one end, AC units at the other, vents along a side
  *  (`roof.ts`). */
