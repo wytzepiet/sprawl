@@ -62,14 +62,20 @@ const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
 const [c2, s2] = [Math.cos(SECOND[1]), Math.sin(SECOND[1])];
 
-/** `slateRead(p)`: the slate at a point of the map, both sizes of it: its
- *  facing's x and y in `xy`, the turned one's turned back, and its height
- *  in `z`, -1 to 1. */
+/** `slateRead(p, q)`: the slate at a point of the map, both sizes of it:
+ *  its facing's x and y in `xy`, the turned one's turned back, and its
+ *  height in `z`, -1 to 1; as blurred as it is read at `q`, where the
+ *  pixel is, though `p` is elsewhere: a wall's grain, read as if laid back
+ *  on the ground (`UNROLL`), is read as sharp as its top's, not blurred
+ *  and so lit differently. */
 const SLATE_READ = (() => {
-  const T = (uv: string) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`;
-  return `fn slateRead(p: vec2f) -> vec3f {
-  let a = ${T(`p / ${f(SPAN)}`)};
-  let b = ${T(`vec2f(p.x * ${f(c2)} - p.y * ${f(s2)}, p.x * ${f(s2)} + p.y * ${f(c2)}) / ${f(SPAN * SECOND[0])}`)};
+  const turn = (v: string) => `vec2f(${v}.x * ${f(c2)} - ${v}.y * ${f(s2)}, ${v}.x * ${f(s2)} + ${v}.y * ${f(c2)})`;
+  const T = (scale: number, uv: string) => `textureSampleGrad(slate, slateSampler, ${uv} / ${f(scale)}, ${uv === "p" ? "dx" : turn("dx")} / ${f(scale)}, ${uv === "p" ? "dy" : turn("dy")} / ${f(scale)})`;
+  return `fn slateRead(p: vec2f, q: vec2f) -> vec3f {
+  let dx = dpdx(q) * ${f(2 ** CALM)};
+  let dy = dpdy(q) * ${f(2 ** CALM)};
+  let a = ${T(SPAN, "p")};
+  let b = ${T(SPAN * SECOND[0], turn("p"))};
   let bf = b.rg * 2. - 1.;
   return mix(a.rgb * 2. - 1., vec3f(bf.x * ${f(c2)} + bf.y * ${f(s2)}, bf.y * ${f(c2)} - bf.x * ${f(s2)}, b.b * 2. - 1.), ${f(SECOND[2])});
 }`;
@@ -109,7 +115,7 @@ let peakRock = peakHeightAt(${at}.xy, peakCorner);
 let peakOwn = peakRock.x;
 let peakFall = -peakRock.zw;
 let peakSteep = max(length(peakFall), 0.05);
-let peakS = peakOwn + clamp(${f(WANDER)} * min(peakSteep, ${f(STEEPEST)}) * slateRead(${at}.xy).z * 0.5 * min(1., peakOwn / ${f(JAG_FOOT)}), ${f(-WANDERS)}, ${f(WANDERS)});
+let peakS = peakOwn + clamp(${f(WANDER)} * min(peakSteep, ${f(STEEPEST)}) * slateRead(${at}.xy, ${at}.xy).z * 0.5 * min(1., peakOwn / ${f(JAG_FOOT)}), ${f(-WANDERS)}, ${f(WANDERS)});
 let peakLayer = max(floor((peakS - ${f(EDGE)}) / ${f(LAYER)}) + 1., 0.);
 let peakIn = (peakS - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
 let peakBelow = (${f(EDGE)} + peakLayer * ${f(LAYER)} - peakS) / peakSteep;
@@ -117,7 +123,7 @@ let peakRun = min(${f(LEAN * LAYER)}, ${f(0.5 * LAYER)} / peakSteep);
 let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5);
 let peakCliff = 1. - smoothstep(peakRun * 0.8, peakRun, peakBelow);
 let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, abs(input.worldNormal.z) < 0.5);
-let peakSlate = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * ${f(UNROLL)});
+let peakSlate = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * ${f(UNROLL)}, ${at}.xy);
 let peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
 let peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
@@ -198,7 +204,7 @@ const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
 let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
-let cliffSlate = slateRead(input.worldPos.xy + cliffFace * select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall) * ${f(UNROLL)});
+let cliffSlate = slateRead(input.worldPos.xy + cliffFace * select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall) * ${f(UNROLL)}, input.worldPos.xy);
 let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
 let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(CLIFF_TILT)}, cliffFar > 0.);
 baseColor = vec3f(${rgb(STONE)});
