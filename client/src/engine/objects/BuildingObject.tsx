@@ -9,7 +9,7 @@ import { eaves } from "../town/mass";
 import { storeysOf } from "../town/grid";
 import { keepField } from "./field";
 import { placeShape } from "./CarObject";
-import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
+import { FORKLIFT, FORKS, itemOf, ITEMS, LOG_PILE } from "./goods";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
@@ -98,6 +98,20 @@ export function mountBuilding(
     at("terminal", [0.36, 0.26, 0.17], hex(BLUEPRINTS[data.kind].material), -(wide / 2 - 0.32), -0.18, KERB_Z);
     at("roof", [0.4, 0.3, 0.025], TOWER, -(wide / 2 - 0.32), -0.18, KERB_Z + 0.17);
   }
+
+  // A sawmill's log deck: piles of trees in from the woods along its
+  // back wall, between the wall and the plot's edge.
+  const piles = data.kind === "Sawmill" && !data.site
+    ? (() => {
+        const deep = dx === 0 ? bh : bw, wide = dx === 0 ? bw : bh;
+        const [ax, ay] = [-dy, dx];
+        const o = -(deep / 2 - INSET / 2);
+        return [-1, 0, 1].map((k) => {
+          const a = k * (wide / 2 - 0.3);
+          return placeShape(pool, LOG_PILE, { at: [mx + dx * o + ax * a, my + dy * o + ay * a], heading: Math.atan2(ay, ax) }, KERB_Z);
+        });
+      })()
+    : [];
 
   // A site going up: its slab, the walls rising on it as its materials
   // come in, in its colour still pale, scaffolding round them a little
@@ -207,7 +221,7 @@ export function mountBuilding(
   return () => {
     stop();
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const it of [...stood.flat(), ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    for (const it of [...stood.flat(), ...piles, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
   };
 }

@@ -98,6 +98,22 @@ export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
  *  still, one where it moves (`bodyOf` in `CarObject.tsx`). */
 export const itemOf = (g: Good, moving: boolean) => ({ key: ITEMS[g].key + (moving ? "" : "p"), geo: ITEMS[g].geo });
 
+/** A sawmill's log deck: the trees as they come in from the woods, long
+ *  and unstrapped, piled four, three and two on two bearers, lying along
+ *  y, their ends pale. Its base on z = 0. */
+export const LOG_PILE = (() => {
+  const [r, l] = [0.022, 0.36];
+  const R = r / Math.cos(Math.PI / 8);
+  const parts: Part[] = [-1, 1].map((s): Part => [box(9 * r, 0.02, 0.012), [0, s * l * 0.32, 0.006], SLAT]);
+  for (let row = 0; row < 3; row++)
+    for (let k = 0; k < 4 - row; k++) {
+      const at: [number, number, number] = [(k - (3 - row) / 2) * 2 * r, 0, 0.012 + r + row * r * 1.73];
+      parts.push([barrel(R, l), at, BARK]);
+      for (const s of [-1, 1]) parts.push([barrel(R * 0.82, 0.003), [at[0], s * (l / 2 + 0.001), at[2]], END]);
+    }
+  return { key: "log_pile", geo: shape(parts) };
+})();
+
 /** A forklift: a yellow body, its counterweight at the back, a seat
  *  under a dark guard, the mast at its front and the forks before it,
  *  `FORKS` ahead of its middle. Ahead +y, its base on z = 0. */
