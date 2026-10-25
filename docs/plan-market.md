@@ -252,6 +252,18 @@ Northgate, …), each with goods they make and want; here each would own
 an island, make and buy at the world price, and move it. A player who
 joins takes an island's place beside them.
 
+**One big world that lasts** (Wytze, 2026-10-25), an MMO more than a
+round that ends: a newcomer spawns into a living world, and the biggest
+stay the biggest. That holds, as it does in EVE, only while being big
+makes a town a market for small ones and never a weight on them: a big
+town buys what newcomers make; every town's land is its own; freight
+keeps heavy, cheap goods local, so a giant across the sea cannot flood a
+new town's gravel; upkeep grows with size; and the world grows new land
+at its edge for those who come later. Where a town begins is random,
+over a floor every spawn passes (forest within reach, flat land, open
+sea, room from neighbours); a player who dislikes theirs starts again.
+A town given up returns its land.
+
 ## Open
 
 1. Which goods are volatile, and how fast the steady ones drift.
