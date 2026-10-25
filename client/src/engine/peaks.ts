@@ -201,6 +201,11 @@ const ROCK_WET_REACH = 0.6;
  *  as much of this far out to sea from its foot as is water, in tiles
  *  (`shore`, 0 on a beach). */
 const ROCK_REACHED = 0.5;
+/** Its ledge sinks to the water at its broken edge from this far in, in
+ *  tiles, so a wave washes over it from the edge in; foam lying on it at
+ *  the wave's edge, this much of the swash's height deep. */
+const LEDGE_SINK = 0.15;
+const LEDGE_FOAM = 0.35;
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
  *  from the lip down into the water, lit by where it is on the map, as a
@@ -255,12 +260,18 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: U
 ${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}`,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
-// The sea washing up its wall's foot and back, the rock wet behind it.
-let cliffSea = select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall);
+// The sea washing up its wall's foot and over its ledge and back, the
+// ledge lower the nearer its broken edge, foam at the water's edge on it,
+// the rock wet behind.
+let cliffSea = select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), ${f(ROCK_SWASH)} * saturate((cliffBreak - cliffFar) / ${f(LEDGE_SINK)}), cliffLedge);
 let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (max(${f(CLIFF_RUN)} - cliffFar, 0.) + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
 let cliffAfloat = min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffSeaward, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
-if (cliffSea < ${f(ROCK_SWASH)} * cliffWash(material.cliffTime, input.worldPos.xy) * cliffAfloat) { discard; }
-baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));`,
+let cliffReach = ${f(ROCK_SWASH)} * cliffWash(material.cliffTime, input.worldPos.xy) * cliffAfloat;
+if (cliffSea < cliffReach) { discard; }
+baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));
+let cliffFoam = select(0., cliffAfloat * (1. - smoothstep(0., ${f(LEDGE_FOAM * ROCK_SWASH)}, cliffSea - cliffReach)), cliffLedge);
+baseColor = mix(baseColor, vec3f(1.), cliffFoam);
+townShine = townShine * (1. - cliffFoam);`,
           },
   };
   const material = rock(plugin);
