@@ -1174,9 +1174,12 @@ const FOOT = 0.5;
  *  and not on the grass. */
 export const LAYER = 0.9;
 export const EDGE = 0.3;
-/** The rock's heights eased up from nothing at its edge over this many
- *  tiles: within the skirt a chunk has of its neighbours' tiles. */
-const FOOT_EASE = 0.75;
+/** The rock's heights eased up from nothing over this many tiles, from a
+ *  line up to this far in from its edge, wandering with the slate: so its
+ *  first wall breaks as the walls above do, not along the grid. The two
+ *  together within the skirt a chunk has of its neighbours' tiles. */
+const FOOT_EASE = 0.5;
+const FOOT_JAG = 0.5;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
 export const begins = (k: number) => EDGE + (k - 1) * LAYER;
 /** How far, in tiles, a layer's edge wanders with the slate, the slate's
@@ -1350,7 +1353,7 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   // the heights jump, and the first layer's wall would stand on that line,
   // straight down the grid; eased, it stands in on the rock where the slate
   // breaks it as it breaks the walls above.
-  const reach = Math.ceil(FOOT_EASE);
+  const reach = Math.ceil(FOOT_EASE + FOOT_JAG);
   const [tx0, ty0] = [originX - PEAK_APRON - reach, originY - PEAK_APRON - reach];
   const span = CHUNK_SIZE + 2 * (PEAK_APRON + reach) + 1;
   const open = Uint8Array.from({ length: span * span }, (_, k) => (rock(tx0 + (k % span), ty0 + Math.floor(k / span)) ? 0 : 1));
@@ -1358,14 +1361,14 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
     for (let i = 0; i < PEAK_SIDE; i++) {
       if (raw[j * PEAK_SIDE + i] <= 0) continue;
       const [x, y] = place(i, j);
-      let d = FOOT_EASE;
+      let d = FOOT_EASE + FOOT_JAG;
       for (let ty = Math.floor(y) - reach; ty <= Math.floor(y) + reach; ty++) {
         for (let tx = Math.floor(x) - reach; tx <= Math.floor(x) + reach; tx++) {
           if (!open[(ty - ty0) * span + tx - tx0]) continue;
           d = Math.min(d, Math.hypot(Math.max(tx - x, 0, x - tx - 1), Math.max(ty - y, 0, y - ty - 1)));
         }
       }
-      const t = d / FOOT_EASE;
+      const t = Math.min(1, Math.max(0, (d - FOOT_JAG * (0.2 + 0.8 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))))) / FOOT_EASE));
       raw[j * PEAK_SIDE + i] *= t * t * (3 - 2 * t);
     }
   }
