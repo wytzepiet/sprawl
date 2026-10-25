@@ -37,7 +37,7 @@ const TAKEN = 0.09;
 const FORKS = 3;
 /** A branch is as thick as those it carries together (Leonardo's rule, by
  *  this power): a twig this thick, of the crown's radius. */
-const LEONARDO = 2.5;
+const LEONARDO = 2.2;
 const TWIG_THICK = 0.004;
 /** Leaves grow on the youngest wood only, on twigs no thicker than this
  *  many twigs make, and only out in the crown's shell, past this far of the
