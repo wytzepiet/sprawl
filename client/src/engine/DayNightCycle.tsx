@@ -18,7 +18,7 @@ import {
   type Mesh,
 } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
-import { AGX_PUNCHY } from "./toneMap";
+import { TONE } from "./toneMap";
 import { groundCover } from "./view";
 import { skyEnvironment, type SkyLight } from "./sky";
 import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
@@ -445,7 +445,7 @@ export default function DayNightLights(props: ParentProps) {
   // The light brought onto the screen by our own curve (`toneMap.ts`),
   // after the eye's exposure.
   scene.imageProcessing.toneMappingEnabled = true;
-  scene.imageProcessing.toneMapping = AGX_PUNCHY;
+  scene.imageProcessing.toneMapping = TONE;
   scene.imageProcessing.exposure = EYE;
 
   // --- Per-frame update ---
