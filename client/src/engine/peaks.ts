@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z, BEACH_Z } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { bakedTexture } from "./bakeCache";
@@ -201,6 +201,10 @@ const ROCK_WET_REACH = 0.6;
  *  as much of this far out to sea from its foot as is water, in tiles
  *  (`shore`, 0 on a beach). */
 const ROCK_REACHED = 0.5;
+/** Where it stands on a beach, its foot breaks along the slate's plates,
+ *  the sand showing in notches up to this high, in tiles, in the shadow
+ *  map too: the jagged edge the old painted cliff had there. */
+const NOTCH = 0.6;
 
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
@@ -212,7 +216,9 @@ const FIELD = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSample
 const CLIFF_CUT = `let cliffUv = input.vCliffAt.xy / ${f(CHUNK_SIZE)};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)};
-if (!cliffWall && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) { discard; }`;
+let cliffBeach = 1. - min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffUv, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
+let cliffNotch = ${f(NOTCH)} * cliffBeach * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
+if ((!cliffWall && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffWall && input.worldPos.z < ${f(BEACH_Z)} + cliffNotch)) { discard; }`;
 const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});

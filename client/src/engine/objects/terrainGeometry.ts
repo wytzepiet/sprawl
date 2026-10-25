@@ -64,7 +64,7 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
 /** The land stands on a cliff this high over the water; a beach lies
  *  down it, this high, at the water's edge. */
 export const WATER_Z = -0.7;
-const BEACH_Z = -0.66;
+export const BEACH_Z = -0.66;
 
 const ELEVATION: Record<TerrainType, number> = {
   Sea: WATER_Z,
