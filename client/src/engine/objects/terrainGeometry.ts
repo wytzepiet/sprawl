@@ -435,6 +435,9 @@ export const CLIFF_WANDER = 0.2;
  *  tiles, and where its plane lies: over the land's rock, under its grass. */
 export const CLIFF_REACH = 2;
 export const CLIFF_Z = 0.0012;
+/** How far a wall's foot stands out for its height: the land's cliff's
+ *  and a mountain layer's alike. */
+const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
 
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
@@ -1072,18 +1075,7 @@ function cliffField(sink: ChunkSink, sampler: TerrainSampler, originX: number, o
   const decoded = new Float32Array(bytes.length);
   for (let k = 0; k < bytes.length; k++) decoded[k] = (bytes[k] / 255 - 0.5) * 2 * CLIFF_REACH;
   const far = (i: number, j: number) => decoded[j * side + i];
-  // Out to sea at a point: the field's climb, blended between the texels
-  // round it, alike from either cell a point is shared by.
-  const seaward = ([x, y]: Point): Point => {
-    const [tx, ty] = [(x + CLIFF_REACH) * d - 0.5, (y + CLIFF_REACH) * d - 0.5];
-    const [i, j] = [Math.max(1, Math.min(side - 3, Math.floor(tx))), Math.max(1, Math.min(side - 3, Math.floor(ty)))];
-    const [u, v] = [tx - i, ty - j];
-    const grad = (a: number, b: number): Point => [far(a + 1, b) - far(a - 1, b), far(a, b + 1) - far(a, b - 1)];
-    const [g00, g10, g01, g11] = [grad(i, j), grad(i + 1, j), grad(i, j + 1), grad(i + 1, j + 1)];
-    const g = [0, 1].map((n) => (g00[n] * (1 - u) + g10[n] * u) * (1 - v) + (g01[n] * (1 - u) + g11[n] * u) * v);
-    const len = Math.hypot(g[0], g[1]) || 1;
-    return [(g[0] / len) * CLIFF_RUN, (g[1] / len) * CLIFF_RUN];
-  };
+  const seaward = downhill((i, j) => -far(i, j), side, ([x, y]) => [(x + CLIFF_REACH) * d - 0.5, (y + CLIFF_REACH) * d - 0.5], () => CLIFF_RUN);
   const walls = new Builder();
   const m = CLIFF_REACH * d;
   // Rows wholly inland: nothing crosses them.
@@ -1134,7 +1126,7 @@ export const PEAK_SIDE = (CHUNK_SIZE + PEAK_APRON * 2) * PEAK_SAMPLES + 1;
 /** Over the sand, under the grass (`LAYERS`); and how far out under the
  *  grass beside it the rock's foot reaches, of a tile, the sand having the
  *  rest, so the grass's fray shows whichever is nearer. */
-const FOOT_Z = 0.001;
+export const FOOT_Z = 0.001;
 const FOOT = 0.5;
 /** The rock is laid in layers this many tiles high, the first standing
  *  where the heights reach this far above the ground, so its foot follows
@@ -1243,6 +1235,24 @@ function highest(grid: Float32Array, side: number): Float32Array {
   return rows;
 }
 
+/** Down a field on a grid of points, at a point of the map (`grid` puts
+ *  it on the grid), `run(steep)` long, steep in the field's units a grid
+ *  step: its slope blended between the grid points round it, alike from
+ *  either cell a point is shared by, so walls meeting there share a foot. */
+function downhill(at: (i: number, j: number) => number, side: number, grid: (p: Point) => Point, run: (steep: number) => number) {
+  const slope = (a: number, b: number): Point => [at(a + 1, b) - at(a - 1, b), at(a, b + 1) - at(a, b - 1)];
+  return (p: Point): Point => {
+    const [tx, ty] = grid(p);
+    const [i, j] = [Math.max(1, Math.min(side - 3, Math.floor(tx))), Math.max(1, Math.min(side - 3, Math.floor(ty)))];
+    const [u, v] = [tx - i, ty - j];
+    const [g00, g10, g01, g11] = [slope(i, j), slope(i + 1, j), slope(i, j + 1), slope(i + 1, j + 1)];
+    const g = [0, 1].map((n) => (g00[n] * (1 - u) + g10[n] * u) * (1 - v) + (g01[n] * (1 - u) + g11[n] * u) * v);
+    const len = Math.hypot(g[0], g[1]) || 1;
+    const r = run(len / 2);
+    return [(-g[0] / len) * r, (-g[1] / len) * r];
+  };
+}
+
 /** A mesh's buffers, as they are built: a convex polygon, or a wall. */
 class Builder {
   positions: number[] = [];
@@ -1313,9 +1323,12 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   const cells: [number, number, number, number] = [PEAK_APRON * PEAK_SAMPLES, PEAK_APRON * PEAK_SAMPLES, (PEAK_APRON + CHUNK_SIZE) * PEAK_SAMPLES, (PEAK_APRON + CHUNK_SIZE) * PEAK_SAMPLES];
   const at = (i: number, j: number) => broken[j * PEAK_SIDE + i];
   const rows = highest(broken, PEAK_SIDE);
+  // A wall leans back as the land's cliff does, its foot out down the
+  // rock, never past half way to the next layer's edge.
+  const outward = downhill(at, PEAK_SIDE, ([x, y]) => [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES], (steep) => Math.min(LEAN * LAYER, (0.5 * LAYER) / Math.max(steep * PEAK_SAMPLES, 1e-3)));
   for (let k = 1; begins(k) <= top; k++) {
     const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
-    contour(at, place, cells, begins(k), (p, q) => out.wall(p, q, lo, hi), (polygon) => out.polygon(polygon, hi), begins(k + 1), rows);
+    contour(at, place, cells, begins(k), (p, q) => out.wall(p, q, lo, hi, [outward(p), outward(q)]), (polygon) => out.polygon(polygon, hi), begins(k + 1), rows);
   }
   // The rock's own ground, on its tiles; its foot under the grass beside
   // them: half a tile out along a side of rock, a quarter-tile triangle

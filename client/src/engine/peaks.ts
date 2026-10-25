@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { bakedTexture } from "./bakeCache";
@@ -16,8 +16,9 @@ import { ripples, swashFn } from "./water";
  * The rock's height comes with its chunk, a texture (the heights the
  * server sends), and where its layers break, found by where the pixel is
  * on the map. Near its edge a layer's lip rolls over, facing down the
- * slope, turned by the slate, so a notch's sides face across it; a wall
- * faces as it stands, the slate's plates lying along it as beds.
+ * slope, turned by the slate, so a notch's sides face across it; and on
+ * down its wall, lit as a steep slope of the same slate, as the old
+ * painted cliffs were, so top and wall read as one stone.
  *
  * Over it all the slate's own grain, read twice, at two sizes and turned,
  * so its repeat does not show, tilting the light; and on the flats its
@@ -47,10 +48,13 @@ const ROLL = 1.2;
  *  slate's smooth facing, not from how the broken edge changes from one
  *  pixel to the next, which is grainy. */
 const TURN = 1.5;
-/** A wall's beds: the slate read this many times flatter up it than
- *  along, tilting its facing this far. */
-const BEDS = 2.5;
-const BEDDED = 0.6;
+/** A wall faces down its slope as steeply as this, from the lip's roll at
+ *  its top to this far down it, in tiles; its slate read as if the wall
+ *  were laid back on the ground in front of it, this many tiles out for a
+ *  tile down, so its plates are as broad up it as they look across it. */
+const WALL_TILT = 1.8;
+const WALL_ROLL = 0.15;
+const UNROLL = 0.45;
 
 const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
@@ -96,19 +100,19 @@ const PEAK_LOOK = (() => {
 let peakRock = peakHeightAt(${at}.xy, peakCorner);
 let peakFall = -peakRock.zw;
 let peakSteep = max(length(peakFall), 0.05);
-let peakSlate = slateRead(${at}.xy);
-let peakOut = normalize(input.worldNormal.xy + 1e-6);
-let peakAlong = vec2f(-peakOut.y, peakOut.x);
-let peakBeds = slateRead(vec2f(dot(${at}.xy, peakAlong), ${at}.z * ${f(BEDS)}));
 let peakWall = abs(input.worldNormal.z) < 0.5;
+let peakOut = peakFall / peakSteep;
+let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, peakWall);
+let peakSlate = slateRead(${at}.xy + peakOut * peakDepth * ${f(UNROLL)});
 let peakLayer = floor(${at}.z / ${f(LAYER)} + 0.5);
 let peakIn = (peakRock.y - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
-let peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
+let peakDown = normalize(peakOut + peakSlate.xy * ${f(TURN)});
 let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5 && !peakWall);
+let peakTilt = select(peakLip * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, smoothstep(0., ${f(WALL_ROLL)}, peakDepth)), peakWall);
 let peakHollow = select((0.5 - 0.5 * peakSlate.z) * (1. - peakLip), 0., peakWall);
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
-N = select(normalize(vec3f(peakDown * peakLip * ${f(ROLL)} + peakSlate.xy * ${f(RELIEF)}, 1.)), normalize(vec3f(peakOut + peakAlong * peakBeds.x * ${f(BEDDED)}, peakBeds.y * ${f(BEDDED)})), peakWall);`;
+N = normalize(vec3f(peakDown * peakTilt + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
@@ -169,8 +173,8 @@ const ROCK_REACHED = 0.5;
 
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
- *  from the lip down into the water, the slate's plates lying along it as
- *  beds. How far out a pixel lies from the lip, `cliffFar`, cuts the
+ *  from the lip down into the water, rolling on down it as a mountain
+ *  layer's wall does. How far out a pixel lies from the lip, `cliffFar`, cuts the
  *  plane, in the shadow map too. Only the facing: the colour is the
  *  stone's own. */
 const FIELD = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.).r - 0.5) * ${f(2 * CLIFF_REACH)})`;
@@ -181,14 +185,13 @@ if (!cliffWall && (cliffFar > ${f(OVERHANG)} || cliffFar < ${f(-CLIFF_INNER)})) 
 const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
-let cliffSlate = slateRead(input.worldPos.xy);
-let cliffFace = normalize(input.worldNormal.xy + 1e-6);
-let cliffAlong = vec2f(-cliffFace.y, cliffFace.x);
-let cliffBeds = slateRead(vec2f(dot(input.worldPos.xy, cliffAlong), input.worldPos.z * ${f(BEDS)}));
-let cliffOut = normalize(normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6) + cliffSlate.xy * ${f(TURN)});
-let cliffLip = 1. - smoothstep(0., ${f(LIP)}, -cliffFar);
+let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
+let cliffDepth = select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall);
+let cliffSlate = slateRead(input.worldPos.xy + cliffFace * cliffDepth * ${f(UNROLL)});
+let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
+let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, smoothstep(0., ${f(WALL_ROLL)}, cliffDepth)), cliffWall);
 baseColor = vec3f(${rgb(STONE)});
-N = select(normalize(vec3f(cliffOut * cliffLip * ${f(ROLL)} + cliffSlate.xy * ${f(RELIEF)}, 1.)), normalize(vec3f(cliffFace + cliffAlong * cliffBeds.x * ${f(BEDDED)}, cliffBeds.y * ${f(BEDDED)})), cliffWall);`;
+N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), the
