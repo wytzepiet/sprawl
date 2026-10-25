@@ -205,7 +205,6 @@ function trade(t: Tags, m2: number): string | null {
   if (["restaurant", "cafe", "fast_food", "ice_cream"].includes(t.amenity)) return "S";
   if (["bar", "pub", "biergarten", "nightclub"].includes(t.amenity)) return "S";
   if (t.shop) return "S";
-  if (t.office || t.building === "office") return "O";
   if (t.craft) return "F";
   if (["industrial", "manufacture"].includes(t.building)) return m2 < 150 ? "" : "F";
   if (["warehouse", "storage_tank"].includes(t.building)) return m2 < 400 ? "" : "D";
@@ -214,10 +213,9 @@ function trade(t: Tags, m2: number): string | null {
 }
 
 /** A plain building by what its land is for: sheds and halls on
- *  industrial land, offices on commercial, shops and big boxes on retail. */
+ *  industrial land, shops and big boxes on retail. */
 function byLand(use: string | undefined, m2: number): string | null | undefined {
   if (use === "industrial") return m2 < 150 ? "" : m2 < 5000 ? "F" : "D";
-  if (use === "commercial") return "O";
   if (use === "retail") return m2 > 1500 ? "M" : "S";
   return null;
 }

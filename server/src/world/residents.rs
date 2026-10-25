@@ -394,7 +394,7 @@ mod tests {
         let mut world = town();
         build(&mut world, 0, BuildingKind::Apartment); // 7 residents
         let near = build(&mut world, 4, BuildingKind::Shop); // 2 jobs
-        let far = build(&mut world, 30, BuildingKind::Office); // 12 jobs
+        let far = build(&mut world, 30, BuildingKind::Factory); // 12 jobs
 
         world.settle();
         let jobs = residents(&world);
@@ -492,7 +492,7 @@ mod tests {
     fn a_desk_nobody_in_town_takes_stays_empty() {
         let mut world = town();
         build(&mut world, 0, BuildingKind::House); // two people
-        let office = build(&mut world, 20, BuildingKind::Office);
+        let office = build(&mut world, 20, BuildingKind::Factory);
         world.settle();
         assert_eq!(residents(&world).len(), 2, "somebody moved in for the job");
         assert!(residents(&world).iter().all(|r| r.work == Some(office)), "the town's two did not take it");

@@ -143,7 +143,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Depot: {
     label: "Depot",
-    about: "Keeps the town's goods. Its lorry fetches packages from the harbour and the makers; its two vans bring them to shops, pumps and building sites. Six jobs, six to six.",
+    about: "Keeps the town's goods. Its lorry fetches packages from the harbour and the makers; its two vans bring them to shops, pumps and building sites. A crew of four, six to six: a hand for each lorry and van, one on the forklift.",
     color: "#A0714A",
     material: "#7E6248",
     // A wide shed: the roof, a loading door and two bays.
@@ -185,20 +185,6 @@ const LOOKS: Record<BuildingKind, Look> = {
     shape: "box",
     heights: [0.45, 0.55],
     tab: "shops",
-  },
-  Office: {
-    label: "Office",
-    about: "Twelve jobs, eight to five.",
-    color: "#2D4E7E",
-    material: "#3F4D5E",
-    // A briefcase, the handle cut out.
-    glyph:
-      "M9 3h6a1.5 1.5 0 0 1 1.5 1.5V7H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5V4.5A1.5 1.5 0 0 1 9 3zm.5 2v2h5V5zM2 12h20v1.5H2z",
-    shape: "box",
-    // Tall, and worth varying: a few towers among them is what gives a
-    // business district a skyline instead of a plateau.
-    heights: [1.0, 1.45, 2.3],
-    tab: "work",
   },
   Factory: {
     label: "Factory",

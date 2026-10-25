@@ -1238,8 +1238,8 @@ mod tests {
     #[test]
     fn a_kerb_parker_needs_a_street_along_a_whole_side() {
         let world = World::meadow(-4..12, -4..8).street(-4..3);
-        assert_eq!(world.fit(BuildingKind::Office, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
-        assert!(world.fit(BuildingKind::Office, GridCoord { x: 2, y: 1 }, 0).is_ok());
+        assert_eq!(world.fit(BuildingKind::Factory, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
+        assert!(world.fit(BuildingKind::Factory, GridCoord { x: 2, y: 1 }, 0).is_ok());
     }
 
     /// A depot's lot is a yard, laid as a harbour's park: a gate in the

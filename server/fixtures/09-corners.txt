@@ -6,7 +6,7 @@
 .=HHAAAHHH=.....=HHH..........
 .=HH...HHH=....=HHHH....HHHHH.
 .=HH...SSS=...=HHHH.....HHHHH.
-.=HHOOOSSS=..=HHHH......HHHHH.
+.=HHAAASSS=..=HHHH......HHHHH.
 .=HHHHHHHH=.=HHHH.......HHHHH.
 .===========.......=====HHHHH.
 ..................=.....HHHHH.

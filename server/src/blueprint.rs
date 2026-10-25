@@ -168,8 +168,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
-        // spike: industry starts before offices, offices before shops.
-        (Office, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], vec![shift(8, 17, 12)])),
+        // spike: industry starts before shops.
         (Factory, row((2, 1), (0, 0), &[(Timber, 16), (Stone, 8)], vec![shift(6, 15, 12)])),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
@@ -189,11 +188,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Where the town's goods are kept, in the open, a little of every
         // good: eight crates, ten pallets of drums, fifteen bundles of
         // timber, fifteen pallets of stone. Its lorry hauls packages from
-        // the harbour and its vans deliver to shops and sites.
+        // the harbour and its vans deliver to shops and sites. Its crew is
+        // a hand a vehicle and one on its forklift.
         (Depot, Blueprint {
             shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
-            ..row((2, 2), (3, 2), &[(Timber, 12)], vec![shift(6, 18, 6)])
+            ..row((2, 2), (3, 2), &[(Timber, 12)], vec![shift(6, 18, 4)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
         // sitting's worth every few minutes: at eighteen crates an hour a

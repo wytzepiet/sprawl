@@ -692,7 +692,7 @@ mod tests {
         world.treasury = 100.0;
         assert!(!depot(Farm) && makes(Farm, Good::Crates) && shelves(Farm) == [Good::Crates], "the farm is not a maker of crates");
         assert!(!makes(Depot, Good::Crates));
-        assert!(super::farm(Farm) && !super::farm(Office));
+        assert!(super::farm(Farm) && !super::farm(Factory));
         assert!((crop(Farm, 200) - 2600.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 2600.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
         assert_eq!(shelf(&world, farm, Good::Crates).level, 0.0, "the yard is founded with a harvest");
         assert!(hiring(&world, farm), "an empty yard offers no work");
@@ -720,7 +720,7 @@ mod tests {
         let mut world = town();
         let home = world.place_on_street(at(4), House).unwrap();
         let shop = world.place_on_street(at(8), Shop).unwrap();
-        let office = world.place_on_street(at(12), Office).unwrap();
+        let office = world.place_on_street(at(12), Factory).unwrap();
         visited(&mut world, shop, Need::Eat, 3.0, 0);
         assert_eq!(shelf(&world, shop, Good::Crates).short(), 3.0);
         assert!((world.gdp - 3.0 * (served_price(Good::Crates) - world_price(Good::Crates))).abs() < 1e-9, "three meals added {}", world.gdp);
@@ -732,7 +732,7 @@ mod tests {
         visited(&mut world, office, Need::Work, 9.0, 0);
         assert!((world.gdp - gdp - 9.0 * WAGE).abs() < 1e-9, "a shift at a desk is not worth its cost");
         assert_eq!(world.treasury, STAKE, "a visit moved money");
-        assert!((world.town.on(0).gdp[&Office] - 9.0 * WAGE).abs() < 1e-9, "the town's page");
+        assert!((world.town.on(0).gdp[&Factory] - 9.0 * WAGE).abs() < 1e-9, "the town's page");
         assert!(matches!(world.lumps.last(), Some(Lump { building, gdp, coins, .. }) if *building == office && *gdp > 0.0 && *coins == 0.0), "no lump at the office");
     }
 

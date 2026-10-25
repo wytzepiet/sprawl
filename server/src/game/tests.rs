@@ -196,7 +196,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     build(&mut world, 0, BuildingKind::Apartment);
     build(&mut world, 6, BuildingKind::Apartment);
     build(&mut world, 30, BuildingKind::Shop);
-    let office = build(&mut world, 60, BuildingKind::Office);
+    let office = build(&mut world, 60, BuildingKind::Factory);
     // Lunch: a shop beside the office, too far from home to staff.
     let lunch = build(&mut world, 64, BuildingKind::Shop);
     // Fuel, or every few days the town goes without.
@@ -266,7 +266,7 @@ fn cars_stop_for_fuel_now_and_then() {
     let mut world = street();
     build(&mut world, 0, BuildingKind::Apartment);
     build(&mut world, 6, BuildingKind::Apartment);
-    build(&mut world, 60, BuildingKind::Office);
+    build(&mut world, 60, BuildingKind::Factory);
     build(&mut world, 40, BuildingKind::Shop);
     let station = build(&mut world, 30, BuildingKind::GasStation);
 
@@ -312,9 +312,9 @@ pub(crate) fn placeable() -> Vec<BuildingKind> {
 pub(crate) fn town_mix() -> Vec<BuildingKind> {
     use BuildingKind::*;
     vec![
-        House, Apartment, Office, House, Apartment, Shop, House, Factory, Apartment, House,
-        House, Apartment, House, Shop, Office, House, Apartment, House, House, Factory,
-        Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Factory,
+        House, Apartment, Factory, House, Apartment, Shop, House, Factory, Apartment, House,
+        House, Apartment, House, Shop, Factory, House, Apartment, House, House, Factory,
+        Apartment, House, GasStation, Apartment, Factory, House, Supermarket, Apartment, House, Factory,
         Farm, House, Apartment, Depot, House, Apartment, House, Apartment, House, Apartment,
     ]
 }
@@ -452,7 +452,7 @@ fn a_town_thinks_within_budget() {
     // Everything the mayor could build. The edge is not a town's to
     // have, so it is not in the mix.
     let every_kind = placeable();
-    for (name, mix) in [("full", &every_kind[..]), ("bare", &[BuildingKind::House, BuildingKind::Office][..])] {
+    for (name, mix) in [("full", &every_kind[..]), ("bare", &[BuildingKind::House, BuildingKind::Factory][..])] {
         let (world, wakes) = live(mix, 1);
         let residents = world.resident_ids().len() as u64;
         let per_resident_day = wakes / residents.max(1);
@@ -666,7 +666,7 @@ pub(crate) fn assert_settled(world: &World, after: &str) {
 #[test]
 fn every_build_leaves_the_town_settled() {
     let mut world = street();
-    for (x, kind) in [(0, BuildingKind::House), (3, BuildingKind::House), (6, BuildingKind::Apartment), (12, BuildingKind::Shop), (30, BuildingKind::Office)] {
+    for (x, kind) in [(0, BuildingKind::House), (3, BuildingKind::House), (6, BuildingKind::Apartment), (12, BuildingKind::Shop), (30, BuildingKind::Factory)] {
         build(&mut world, x, kind);
     }
     let mut game = game(world);
@@ -681,7 +681,7 @@ fn every_build_leaves_the_town_settled() {
     // Placed across the street: two houses and an office.
     act(&mut game, Do::Place(BuildingKind::House, at(20, -1)));
     act(&mut game, Do::Place(BuildingKind::House, at(24, -1)));
-    act(&mut game, Do::Place(BuildingKind::Office, at(41, -1)));
+    act(&mut game, Do::Place(BuildingKind::Factory, at(41, -1)));
     // The office and a house taken down, and the street before a third
     // taken up and laid again.
     act(&mut game, Do::Raze(at(40, -1)));
@@ -755,8 +755,9 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
     // street beside it; and the letters read, and a slot booked going
-    // out for each package an order still wants, while the depot keeps a
-    // lorry's load back for the sites.
+    // out for each package an order still wants, of what the town has in
+    // its depot and its makers' yards, while it keeps a lorry's load back
+    // for the sites.
     let hand = |world: &World, day: u64| -> Steps {
         let x = 112 + 4 * (day as i32 - 1);
         let at = |x, y| GridCoord { x, y };
@@ -771,7 +772,8 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
         // Waiting at the harbour, and booked tonight for a letter before this one.
         let queued = |g: Good, steps: &Steps| (building_of(world, harbour).outgoing.iter().filter(|t| t.good == g).count() + steps.iter().filter(|d| matches!(d, Do::Send(l) if crate::orders::letters(world).iter().any(|o| o.letter == *l && o.good == g))).count()) as f64;
         for o in crate::orders::letters(world) {
-            let spare = (building_of(world, depot).stocks[&o.good].level / o.good.per_package()).floor() - crate::haul::LOAD as f64 - queued(o.good, &steps);
+            let yards: f64 = [quarry, sawmill].iter().map(|&m| building_of(world, m).stocks.get(&o.good).map_or(0.0, |s| s.level)).sum();
+            let spare = ((building_of(world, depot).stocks[&o.good].level + yards) / o.good.per_package()).floor() - crate::haul::LOAD as f64 - queued(o.good, &steps);
             steps.extend((0..(o.packages as f64).min(spare).max(0.0) as usize).map(|_| Do::Send(o.letter)));
         }
         steps

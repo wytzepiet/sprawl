@@ -1,7 +1,7 @@
 # Buildings: the roster
 
 Status: draft, 2026-10-10, for the player to correct. Built so far:
-house, apartment, shop, office, factory, gas station, supermarket, the
+house, apartment, shop, factory, gas station, supermarket, the
 general depot (`Depot`: crates 200, fuel 100, timber 60, stone 60, a
 lorry and two vans, and up to three more lorries bought from the world at
 40 coins each), the farm, the sawmill and the quarry (each four hands
@@ -20,7 +20,6 @@ and how much (`Blueprint::materials`, which a draft's bill reads):
 | House | 4 | |
 | Apartment | 12 | 8 |
 | Shop | 4 | |
-| Office | 10 | 6 |
 | Factory | 14 | 8 |
 | Gas station | 6 | 4 |
 | Supermarket | 16 | 10 |
@@ -55,8 +54,8 @@ one.
   terrain the island draws. Not every town's land has every one, which is
   why towns trade (`game.md` §Goods).
 - **Jobs come from things that make things.** The office and the factory
-  were placeholders, desks that make nothing; they go once the chains give
-  the town its work. Until a chain's buildings exist, nothing pretends.
+  were placeholders, desks that make nothing; the office went on
+  2026-10-25, the factory goes once the chains give the town its work. Until a chain's buildings exist, nothing pretends.
 - **What a kind is built from is a row**, and materials come by tier:
   timber first; concrete and steel for the big, the tall and anything
   over water (`game.md` §Buildings).
@@ -143,7 +142,9 @@ stops the line, in sight.
 
 ## Goes
 
-- **Office and factory**, once the chains supply the jobs.
+- **The office**, gone 2026-10-25: desks that changed nothing. Its
+  fixtures' blocks are flats. **The factory**, once the chains supply the
+  jobs.
 - **The port** as built, the depot with a ship of the world's: replaced by
   the ferry harbour and the container port.
 - **The edge**, where a road leaves the map: the harbour is the only door.

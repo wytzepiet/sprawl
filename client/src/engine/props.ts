@@ -68,7 +68,7 @@ const HEAD: MaterialPlugin = {
 
 /** The fans' turn so far, in turns at the middle speed: run up by the
  *  hour, so a fan slows and stops rather than jumping when it is switched
- *  off. Offices are cooled while they work: on from seven, off at seven,
+ *  off. The town is cooled while it works: on from seven, off at seven,
  *  easing in and out over an hour or so. */
 const fans = { turn: 0 };
 const running = (t: number) => smooth(0.27, 0.31, t) * (1 - smooth(0.77, 0.81, t));
@@ -252,7 +252,6 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
         upright(parts.acBody.m, x, y, z, size, high);
         upright(parts.acFan.m, x, y, z + high + 0.001, size * FAN, 1);
         break;
-      case "vent":
       case "stack":
         upright(parts.ventStem.m, x, y, z, size * STEM, high);
         upright(parts.ventCap.m, x, y, z + high, size, 1);

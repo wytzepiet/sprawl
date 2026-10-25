@@ -215,7 +215,6 @@ pub enum BuildingKind {
     House,
     Apartment,
     Shop,
-    Office,
     Factory,
     /// Pumps that never close, and a kiosk that does.
     GasStation,
@@ -246,11 +245,10 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 11] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
-        BuildingKind::Office,
         BuildingKind::Factory,
         BuildingKind::GasStation,
         BuildingKind::Supermarket,

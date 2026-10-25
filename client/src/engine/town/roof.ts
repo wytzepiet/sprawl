@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { BAND, PARAPET_H, PARAPET_W, RECESS, eaves, mansard, planted, slope } from "./mass";
+import { BAND, PARAPET_H, PARAPET_W, RECESS, eaves, mansard, slope } from "./mass";
 import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
@@ -24,8 +24,7 @@ import { convex, footprints, intersect, shrink, subtract, unite, type Half, type
  * is straight lines, cut exactly (`footprint.ts`), so nothing is sampled
  * and nothing can fail to meet.
  *
- * Every flat roof has a parapet round its edge, and an office tower's
- * carries its plant: a lift room, AC units, vents.
+ * Every flat roof has a parapet round its edge.
  */
 
 
@@ -33,9 +32,6 @@ type V = [number, number, number];
 /** A wall's line: how far in from it a point is, a·x + b·y + c. */
 type Line = [number, number, number];
 
-/** An office roof's plant, in tiles: how far in from the parapet; the lift
- *  room's length, breadth and height; an AC unit's side and height; a
- *  vent's cap across and height. */
 /** A flat roof's bitumen: charcoal, whatever the building's colour (as
  *  a shade of it: the colour × a + b). */
 const BITUMEN = [0.05, 0.3] as const;
@@ -51,7 +47,6 @@ const KIT = {
   dish: 0.07, dishHigh: 0.04,
   rooflight: 0.075, rooflightHigh: 0.025,
 } as const;
-const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
 export function* plans({ town }: Facts) {
@@ -82,7 +77,7 @@ export interface Prop {
   ty: number;
 }
 /** The props there are, in the order their codes cross from the worker. */
-export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp"] as const;
+export const PROP_KINDS = ["ac", "duct", "stack", "dish", "rooflight", "lamp"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 
 export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {
@@ -157,46 +152,6 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       sides(region, z0, z1);
       cover(region, z1, dim);
     };
-    /** A solid standing on the plan from z0 to z1, walls and top one colour. */
-    const solid = (region: Polygon[], z0: number, z1: number, rgb: RGB) => {
-      for (const ring of region.flat()) {
-        ring.forEach((p, i) => {
-          const q = ring[(i + 1) % ring.length];
-          const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
-          const len = Math.hypot(dx, dy);
-          const n: V = [dy / len, -dx / len, 0];
-          tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1], n, rgb);
-          tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1], n, rgb);
-        });
-      }
-      for (const piece of region) fill(piece, () => z1, rgb);
-    };
-    /** A flat roof's plant, as an office's has: a lift room at one end of
-     *  its length, two AC units at the other and vents along a side, both
-     *  props (`props.ts`); clear of the middle, where its sign is painted.
-     *  Which end is which goes by where it stands, so it never changes. */
-    const plant = (polygon: Polygon, top: number, tile: Tile) => {
-      const ring = polygon[0];
-      const [x0, y0] = [Math.min(...ring.map((p) => p[0])), Math.min(...ring.map((p) => p[1]))];
-      const [x1, y1] = [Math.max(...ring.map((p) => p[0])), Math.max(...ring.map((p) => p[1]))];
-      const long = x1 - x0 >= y1 - y0;
-      const [length, width] = long ? [x1 - x0, y1 - y0] : [y1 - y0, x1 - x0];
-      const flip = Math.abs(Math.sin(x0 * 12.9898 + y0 * 78.233) * 43758.5453) % 1 > 0.5;
-      /** A point `a` along the roof's length from one end, `b` across. */
-      const at = (a: number, b: number): P => {
-        const along = flip ? length - a : a;
-        return long ? [x0 + along, y0 + b] : [x0 + b, y0 + along];
-      };
-      const box = ([cx, cy]: P, a: number, b: number): Polygon[] => {
-        const [w, h] = long ? [a, b] : [b, a];
-        return [[[[cx - w / 2, cy - h / 2], [cx + w / 2, cy - h / 2], [cx + w / 2, cy + h / 2], [cx - w / 2, cy + h / 2]]]];
-      };
-      const m = PARAPET_W + PLANT.margin;
-      const [lw, lh] = [Math.min(PLANT.room[0], length * 0.25), Math.min(PLANT.room[1], width - 2 * m)];
-      solid(box(at(m + lw / 2, m + lh / 2), lw, lh), top, top + PLANT.room[2], paint(tile, 0.9, 0.2));
-      for (let k = 0; k < 2; k++) prop("ac", at(length - m - PLANT.ac / 2, m + PLANT.ac / 2 + k * (PLANT.ac + 0.03)), top, PLANT.ac, PLANT.acHigh);
-      for (let k = 0; k < 3; k++) prop("vent", at(m + lw + 0.1 + k * 0.1, width - m - 0.025), top, PLANT.vent, PLANT.ventHigh);
-    };
     /** One AC unit in a corner of a small flat roof, which corner by where
      *  the building stands, clear of the sign in its middle. */
     /** What stands on a high-street place's flat, by its corners, which
@@ -262,7 +217,6 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       kit(hole, sunk, mass.tile);
     } else cover(flat, () => top + height);
     if (height === 0) parapet(outline, top);
-    if (planted(mass.tile)) plant(polygon, top, mass.tile);
   }
   return { positions, normals, colors, indices, props };
 }
