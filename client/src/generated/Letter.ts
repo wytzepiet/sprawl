@@ -3,7 +3,7 @@ import type { Good } from "./Good";
 import type { Mayor } from "./Mayor";
 
 /**
- * A letter's boxes still wanted, not yet booked, and what its mayor
+ * A letter's packages still wanted, not yet booked, and what its mayor
  * pays a unit: what the town can send them.
  */
-export type Letter = { letter: number, good: Good, partner: Mayor, price: number, boxes: number, };
+export type Letter = { letter: number, good: Good, partner: Mayor, price: number, packages: number, };

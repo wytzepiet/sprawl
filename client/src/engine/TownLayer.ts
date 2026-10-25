@@ -15,7 +15,7 @@ import { theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z, LAYER_ORDER } from "./town/draw";
-import type { MeshGeometry, P } from "./geometry";
+import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { surfacesAt } from "./town/surface";
 import { Decks, liftOf, type DeckPiece } from "./decks";
@@ -26,9 +26,8 @@ import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
-import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing, Pose } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
-import { TRAILER } from "./objects/roadGeometry";
 
 /** How many roads one tile may hold: the ground's two side by side, and
  *  the decks' over them. */
@@ -60,7 +59,6 @@ interface Gathered {
   buildings: Snapshot["buildings"];
   roads: Snapshot["roads"];
   doors: Snapshot["doors"];
-  marks: Snapshot["marks"];
   byId: Map<number, GameObjectEntry>;
   /** The bounds of the buildings. */
   built: Bounds;
@@ -199,8 +197,7 @@ export class TownLayer {
 
   /** The world as a drawing is made of it, the building held in it if asked. */
   private gather(held: Placing | null): Gathered {
-    const g: Gathered = { buildings: [], roads: [], doors: [], marks: [], byId: new Map(), built: [Infinity, Infinity, -Infinity, -Infinity] };
-    const marks = new Map<string, Snapshot["marks"][number]>();
+    const g: Gathered = { buildings: [], roads: [], doors: [], byId: new Map(), built: [Infinity, Infinity, -Infinity, -Infinity] };
     this.entities((e) => {
       // The ground's roads: what is above it is drawn as decks (`decks.ts`).
       if (e.object.kind === "RoadNode" && e.position) {
@@ -211,7 +208,6 @@ export class TownLayer {
         const b = e.object.data as Building;
         g.byId.set(e.id, e);
         if (b.door) g.doors.push([b.door.tile.x, b.door.tile.y, b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
-        for (const p of b.park) for (const side of [-1, 1]) slotLine(marks, p.pose, side);
         // A site is its ground, paved, until it stands (`BuildingObject`).
         const yard = yardTiles(b.tiles, b.kind, b.facing);
         for (const t of b.tiles) {
@@ -228,7 +224,6 @@ export class TownLayer {
       }
       if (held.door) g.doors.push([held.door.tile.x, held.door.tile.y, held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     }
-    g.marks = [...marks.values()];
     return g;
   }
 
@@ -271,7 +266,7 @@ export class TownLayer {
     const g = this.gather(held);
     const inside = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
     const snapshot: Snapshot = {
-      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside), world()), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS,
+      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside), world()), doors: g.doors.filter(inside), ground: this.groundUnder(box), kinds: KINDS,
     };
     this.previewing = true;
     this.previewer
@@ -313,7 +308,7 @@ export class TownLayer {
     // One drawing at a time: what goes stale meanwhile is drawn when it lands.
     if (this.drawing) return;
     const started = performance.now();
-    const { buildings, roads, doors, marks, byId, built } = this.gather(null);
+    const { buildings, roads, doors, byId, built } = this.gather(null);
 
     // The town, paved and dressed, only round what is built: a road
     // across open country is asphalt, and the town is what is paved; and
@@ -336,7 +331,7 @@ export class TownLayer {
     if (!todo.length) return;
 
     const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
-    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near), world()), doors, marks, ground: this.groundUnder(box), kinds: KINDS };
+    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near), world()), doors, ground: this.groundUnder(box), kinds: KINDS };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder
@@ -570,19 +565,6 @@ export class TownLayer {
     this.heldWorker.terminate();
   }
 }
-
-/** A line down one side of a trailer park's slot, from behind the box to
- *  past its hitch, where a lorry's cab stands; a line two slots share
- *  painted once. */
-function slotLine(marks: Map<string, Snapshot["marks"][number]>, { at: [x, y], heading }: Pose, side: number) {
-  const [ux, uy] = [Math.cos(heading), Math.sin(heading)];
-  const [cx, cy] = [x - uy * side * SLOT / 2, y + ux * side * SLOT / 2];
-  const [a, b, w] = [-TRAILER.l / 2 - 0.04, TRAILER.l / 2 + 0.12, 0.008];
-  const at = (t: number, o: number): P => [cx + ux * t - uy * o, cy + uy * t + ux * o];
-  marks.set(`${cx.toFixed(2)},${cy.toFixed(2)}`, [at(a, -w), at(b, -w), at(b, w), at(a, w)]);
-}
-/** A slot's width: the docks' spacing (`BAY_W` in the server's `lots.rs`). */
-const SLOT = 0.3;
 
 /** A building's yard, as the server lays its lot out, by tile. */
 const yardTiles = (tiles: GridCoord[], kind: BuildingKind, facing: number) => new Set((yardOf(tiles, kind, facing) ?? []).map((t) => `${t.x},${t.y}`));

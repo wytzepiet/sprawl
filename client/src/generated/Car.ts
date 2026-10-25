@@ -2,12 +2,11 @@
 import type { CarRole } from "./CarRole";
 import type { Good } from "./Good";
 import type { Need } from "./Need";
+import type { Package } from "./Package";
 import type { Pose } from "./Pose";
 import type { Run } from "./Run";
 import type { Sail } from "./Sail";
-import type { Shunt } from "./Shunt";
 import type { Stock } from "./Stock";
-import type { Trailer } from "./Trailer";
 import type { Trip } from "./Trip";
 
 /**
@@ -42,32 +41,28 @@ run: Run | null,
  */
 sail: Sail | null, 
 /**
- * The box on its hitch: a lorry's, or a tug's.
+ * The packages on a lorry's flatbed, a few (`haul::LOAD`).
  */
-hitched: Trailer | null, 
+cargo: Array<Package>, 
 /**
- * What it carries on a call, and how much: a van's load from its
- * depot to the caller's door, a lorry's from a maker's yard home.
- * Loaded as it sets out, landed at the end; on the vehicle, so it is
- * seen.
+ * What a van carries on a call, and how much, whole packages of it:
+ * from its depot to the caller's door. Loaded before it sets out,
+ * landed at the end; on the vehicle, so it is seen.
  */
 load: [Good, number] | null, 
 /**
- * A ferry's deck, by slot (`world/sea.rs` DECK): boxes, and the cars
- * of settlers riding over, by id.
+ * A ferry's deck, by place (`world/sea.rs` DECK): a pallet each.
+ * Settlers' cars ride in the bays with none.
  */
-deck: Array<Trailer | null>, passengers: Array<number>, 
+deck: Array<Package | null>, passengers: Array<number>, 
 /**
- * A tug's move between two poses, while it makes one.
+ * A ferry's packages booked beyond the sea, waiting for a sailing
+ * with room on its deck.
  */
-shunt: Shunt | null, 
+booked: Array<Package>, 
 /**
- * A ferry's boxes booked beyond the sea, waiting for a sailing with
- * room on its deck.
- */
-booked: Array<Trailer>, 
-/**
- * A ferry's next moment on the timetable: when it berths, while it is
- * away or at sea; when it casts off, while it is at the ramp.
+ * Its next moment: a ferry's on the timetable, when it berths, while
+ * it is away or at sea, and when it casts off, while it is at the
+ * ramp; a lorry's or a van's when the forklift is done with it.
  */
 due: number, };

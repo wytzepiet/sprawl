@@ -2,8 +2,8 @@ import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { dayLengthMs, simNow } from "../network/clock";
 import { getEntity } from "./gameObjects";
-import { GOODS } from "../blueprints";
-import type { Car, Sailing, Sea, Shipment } from "../generated";
+import { packages } from "../blueprints";
+import type { Car, Good, Package, Sailing, Sea } from "../generated";
 
 /**
  * The sea as the last update had it: every box with an order, where it is,
@@ -55,15 +55,15 @@ export function hearSea(s: Sea) {
     const was = before.get(x.harbour);
     if (!was || was.berthed === x.berthed) continue;
     if (x.berthed) {
-      const what = [x.boxes && plural(x.boxes, "box", "boxes"), x.settlers && plural(x.settlers, "settler", "settlers")].filter(Boolean);
+      const what = [x.packages && plural(x.packages, "pallet", "pallets"), x.settlers && plural(x.settlers, "settler", "settlers")].filter(Boolean);
       tell(what.length ? `The ferry is in: ${what.join(", ")}` : "The ferry is in, empty", `at the ramp till ${clockAt(x.departs)}`, x.harbour);
     } else {
-      tell(was.out ? `The ferry sails with ${plural(was.out, "box", "boxes")} out` : "The ferry has sailed", `back ${clockAt(x.arrives)}`, x.ferry);
+      tell(was.out ? `The ferry sails with ${plural(was.out, "pallet", "pallets")} out` : "The ferry has sailed", `back ${clockAt(x.arrives)}`, x.ferry);
     }
   }
 }
 
-/** Boxes going out aboard a ferry now. */
+/** Packages going out aboard a ferry now. */
 const outbound = (ferry: number) => sea.shipments.filter((s) => s.outbound && s.leg === "Aboard" && s.carrier === ferry).length;
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -97,5 +97,9 @@ export const tripOf = (id: number | null) => {
   return o?.kind === "Car" ? (o.data as Car).trip : null;
 };
 
-/** A box's load in words: "20 timber". */
-export const load = (s: { good: Shipment["good"]; units: number }) => `${Math.round(s.units)} ${GOODS[s.good].label}`;
+/** A load in words: "3 bundles of timber, 2 crates of food". */
+export const load = (cargo: Package[]) => {
+  const n = new Map<Good, number>();
+  for (const p of cargo) n.set(p.good, (n.get(p.good) ?? 0) + 1);
+  return [...n].map(([g, k]) => packages(g, k)).join(", ");
+};

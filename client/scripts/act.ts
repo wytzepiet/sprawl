@@ -15,13 +15,14 @@
  *                                       cuts
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
+ *   bun run act lorry 79                another lorry for depot #79
  *   bun run act undo                    the hand's last road laid or taken up,
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
- *   bun run act buy Timber 2            two boxes of timber from the market, on
- *       sell Crates                     the next ferry; or a box of crates sold
- *   bun run act send 42 2               two boxes letter 42 asks for, sent
- *   bun run act order buy Fuel 3 0.9    three boxes of fuel bought once its
+ *   bun run act buy Timber 2            two bundles of timber from the market, on
+ *       sell Crates                     the next ferry; or a crate of food sold
+ *   bun run act send 42 2               two packages letter 42 asks for, sent
+ *   bun run act order buy Fuel 3 0.9    three pallets of fuel bought once its
  *                                       price (a unit) falls to 0.9; `sell`,
  *                                       once it rises to it
  *   bun run act cancel 57               order 57 taken back
@@ -239,6 +240,9 @@ for (const line of lines) {
       else report.push(`nothing stands at ${x},${y}`);
       break;
     }
+    case "lorry":
+      send({ type: "BuyLorry", data: { depot: Number(args[0]) } });
+      break;
     case "undo":
       send({ type: "Undo" });
       break;
@@ -249,13 +253,13 @@ for (const line of lines) {
     // market's, is at /sea.
     case "buy":
     case "sell":
-      send({ type: "Trade", data: { good: args[0] as Good, boxes: Number(args[1] ?? 1), out: verb === "sell" } });
+      send({ type: "Trade", data: { good: args[0] as Good, packages: Number(args[1] ?? 1), out: verb === "sell" } });
       break;
     case "send":
-      send({ type: "Send", data: { letter: Number(args[0]), boxes: Number(args[1] ?? 1) } });
+      send({ type: "Send", data: { letter: Number(args[0]), packages: Number(args[1] ?? 1) } });
       break;
     case "order":
-      send({ type: "Order", data: { out: args[0] === "sell", good: args[1] as Good, boxes: Number(args[2]), price: Number(args[3]) } });
+      send({ type: "Order", data: { out: args[0] === "sell", good: args[1] as Good, packages: Number(args[2]), price: Number(args[3]) } });
       break;
     case "cancel":
       send({ type: "Cancel", data: { order: Number(args[0]) } });

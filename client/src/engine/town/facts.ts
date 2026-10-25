@@ -12,8 +12,8 @@ import { defaultJoins } from "./footprint";
  *   its whole width, so the rest of it is a rectangle. A depot's yard
  *   holds lorries at docks either side of a lane in from its gate
  *   (`dressing.ts`).
- * - **Harbours**: all yard, a trailer park, its slots the game's own
- *   (`Building.park`), painted on by the town (`TownLayer`).
+ * - **Harbours**: all yard, its docks one side of its lane and the
+ *   quay's pad the other (`pads.ts`).
  */
 
 export interface Facts {

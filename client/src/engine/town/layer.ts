@@ -4,7 +4,6 @@ import { theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt, SIDEWALK, VERGE_KERB } from "./surface";
-import type { P } from "../geometry";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type RoadView, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
@@ -48,9 +47,6 @@ export interface Snapshot {
   views: [number, number, RoadView[]][];
   /** Each building's door: its tile, and the way to its street. */
   doors: [number, number, number, number][];
-  /** Lines painted on the yards where the game says, on the map: a
-   *  harbour's trailer park's slots. */
-  marks: P[][];
   /** The ground under the box, a row of x at a time, as `kinds` lists it,
    *  255 where it is not known. */
   ground: Uint8Array;
@@ -213,9 +209,7 @@ export function drawChunks(s: Snapshot): Drawing {
   const [c0, r0] = [x1 - wx1, y1 - wy1];
   const [ww, wh] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
   const inWindow = windowOf(whole, c0, r0, ww, wh);
-  // The game's own marks, turned half round into the window.
-  const marks = s.marks.map((m) => m.map(([x, y]): P => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
-  const { pieces, dressing, props } = drawTown(inWindow, theme, paint, windowFacts(known, c0, r0, ww, wh), marks);
+  const { pieces, dressing, props } = drawTown(inWindow, theme, paint, windowFacts(known, c0, r0, ww, wh));
   // The roads, as the paving is cut for them: every tile's asphalt,
   // overlapping as they are drawn.
   const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));

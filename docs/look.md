@@ -135,7 +135,7 @@ The code is `client/src/engine/town/`:
   into the rest of its yard and under its building's wall, where the
   docks are, and short of every other edge by a kerb's strip, so the
   sidewalk runs on between a yard and its street and the gate crosses it;
-  a harbour all through, its trailer park and apron, a strip of quay at
+  a harbour all through, its docks, its quay's pad and apron, a strip of quay at
   the water; and a row of bays where the server lays them, a lane along
   the kerb before flats, a forecourt nose in before shops, the cars close
   to the road and a strip of pavement between them and the wall. Each tile's asphalt is

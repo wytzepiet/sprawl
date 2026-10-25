@@ -1,17 +1,17 @@
 //! The order board: letters from the mayors of the towns beyond the map's
-//! edge, each asking for boxes of a good, and paying for them as they sail
+//! edge, each asking for packages of a good, and paying for them as they sail
 //! (docs/missions.md §Orders).
 //!
 //! A letter comes in on a ferry. An order is a mission (`Key::Order`): one
 //! step, so many units of a good sailed for its town, and its reward the
 //! mayor's. While it wants more, its mayor is a partner to book a slot
-//! going out to (`offers`): the box carries the order's number as its
-//! shipment's, drives to the park and sails with the ferry to the edge,
+//! going out to (`offers`): the package carries the order's number as its
+//! shipment's, rides a lorry to the quay and sails with the ferry to the edge,
 //! and the mayor's coins land at the harbour as it casts off (`sailed`).
 //! An order not filled by its day lapses as a ferry comes in.
 //!
-//! The deck is booked here too (docs/trade.md §The deck): a box from the
-//! market or for it (`market.rs`), or for a mayor whose letter asks for
+//! The deck is booked here too (docs/trade.md §The deck): a package from
+//! the market or for it (`market.rs`), or for a mayor whose letter asks for
 //! it. A slot coming in rides the next ferry and lands for the nearest
 //! depot with room; a slot going out waits at the harbour for a depot's
 //! lorry to load it.
@@ -26,7 +26,7 @@ use ts_rs::TS;
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
 use crate::missions::{Goal, Key, Mission, Reward, Step};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Leg, News, Trailer, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Leg, News, Package, DAY_MS};
 use crate::world::World;
 
 /// Who writes: in the order they come to trust the town.
@@ -76,13 +76,13 @@ struct Who {
     /// What their town makes: what pushes the market's price down, as
     /// what they want pushes it up.
     sells: &'static [Good],
-    /// Boxes in a letter, before standing adds to it.
-    boxes: u32,
+    /// Packages in a letter, before standing adds to it.
+    packages: u32,
     /// What they pay, over the world's price.
     price: f64,
     /// Standing before any order.
     trust: f64,
-    /// A letter: cool, then warm, `{n}` how many boxes and `{good}` of what.
+    /// A letter: cool, then warm, `{n}` how many of what.
     voice: [&'static str; 2],
 }
 
@@ -95,12 +95,12 @@ const WHO: [Who; 4] = [
         colour: "#3f7fa8",
         goods: &[Good::Crates, Good::Fuel],
         sells: &[Good::Crates],
-        boxes: 1,
+        packages: 5,
         price: 1.25,
         trust: 1.0,
         voice: [
-            "The boats are in and the larder isn't. Could you spare {n} of {good}? No great hurry, the fish keep.",
-            "You've never let Saltmere down. {n} of {good} again, if you would, and a pint for whoever drives it.",
+            "The boats are in and the larder isn't. Could you spare {n}? No great hurry, the fish keep.",
+            "You've never let Saltmere down. {n} again, if you would, and a pint for whoever drives it.",
         ],
     },
     Who {
@@ -111,12 +111,12 @@ const WHO: [Who; 4] = [
         colour: "#6b5b7b",
         goods: &[Good::Timber],
         sells: &[Good::Stone],
-        boxes: 2,
+        packages: 10,
         price: 1.5,
         trust: 0.0,
         voice: [
-            "We're short of {good} before winter. Can you send {n}?",
-            "Your props hold. {n} of {good}. Same as before.",
+            "We're short of timber before winter. Can you send {n}?",
+            "Your props hold. {n}. Same as before.",
         ],
     },
     Who {
@@ -127,12 +127,12 @@ const WHO: [Who; 4] = [
         colour: "#c98a2b",
         goods: &[Good::Stone, Good::Timber],
         sells: &[Good::Crates, Good::Timber],
-        boxes: 2,
+        packages: 10,
         price: 1.5,
         trust: 0.0,
         voice: [
-            "Hello from Fernhollow! The cows have kicked the barn down again. {n} of {good} would put it right!",
-            "Our favourite town! Another barn, another {n} of {good}. The cows send their love.",
+            "Hello from Fernhollow! The cows have kicked the barn down again. {n} would put it right!",
+            "Our favourite town! Another barn, another {n}. The cows send their love.",
         ],
     },
     Who {
@@ -143,12 +143,12 @@ const WHO: [Who; 4] = [
         colour: "#a33b3b",
         goods: &[Good::Crates, Good::Timber, Good::Stone, Good::Fuel],
         sells: &[Good::Fuel, Good::Timber],
-        boxes: 4,
+        packages: 20,
         price: 2.0,
         trust: 0.0,
         voice: [
-            "Port Aldra has heard well of you. We require {n} of {good}, and pay accordingly.",
-            "My dear friend: {n} of {good}, at your earliest convenience. The usual terms, with our thanks.",
+            "Port Aldra has heard well of you. We require {n}, and pay accordingly.",
+            "My dear friend: {n}, at your earliest convenience. The usual terms, with our thanks.",
         ],
     },
 ];
@@ -210,8 +210,8 @@ pub fn neighbours(world: &World) -> Vec<Neighbour> {
 }
 
 /// What the town can send: goods a maker in town makes and the depots
-/// have two boxes of; and, one step further, goods a kind of building not
-/// built yet would make.
+/// have two lorryloads of; and, one step further, goods a kind of building
+/// not built yet would make.
 pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
     let mut now = Vec::new();
     let mut built = Vec::new();
@@ -219,7 +219,7 @@ pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         built.push(b.kind);
-        let made = blueprint(b.kind).makes.filter(|&g| b.site.is_none() && world.street_of(e.id).is_some() && kept(g) >= 2.0 * g.per_box());
+        let made = blueprint(b.kind).makes.filter(|&g| b.site.is_none() && world.street_of(e.id).is_some() && kept(g) >= crate::haul::LOAD as f64 * g.per_package());
         if let Some(g) = made.filter(|g| !now.contains(g)) {
             now.push(g);
         }
@@ -232,15 +232,11 @@ fn named(good: Good) -> String {
     format!("{good:?}").to_lowercase()
 }
 
-fn boxes(n: u32, good: Good) -> String {
-    format!("{n} {} of {}", if n == 1 { "box" } else { "boxes" }, named(good))
-}
-
 /// A ferry came in at the harbour: what is overdue lapses, and a letter
 /// may come with it. At most `OPEN` at once, one a `GAP`, and none before
 /// the opening is done.
 pub fn post(world: &mut World, harbour: EntityId, now: GameTime) {
-    // One whose last box has sailed is filled, if not yet read as filled.
+    // One whose last package has sailed is filled, if not yet read as filled.
     for m in world.missions.list.iter_mut().filter(|m| m.finished.is_none() && !m.steps[0].done && m.due.is_some_and(|d| d <= now)) {
         m.finished = Some(now);
         let (w, Goal::Delivered { good, .. }) = (who(m.from.unwrap_or(Mayor::Tam)), m.steps[0].goal) else { continue };
@@ -252,10 +248,11 @@ pub fn post(world: &mut World, harbour: EntityId, now: GameTime) {
     }
     if let Some(order) = write(world, now) {
         let Goal::Delivered { good, units, .. } = order.steps[0].goal else { return };
+        let n = crate::economy::whole(units, good);
         let (w, Reward::Order { coins, .. }) = (who(order.from.unwrap()), order.reward) else { return };
         world.news.push(News {
             text: format!("A letter from {} of {}", w.name, w.town),
-            sub: format!("{} for {coins:.0} coins", boxes((units / good.per_box()).round() as u32, good)),
+            sub: format!("{} for {coins:.0} coins", good.packages(n)),
             at: harbour,
         });
         world.missions.list.push(order);
@@ -284,19 +281,18 @@ pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
         })
     })?;
     let standing = standing(world, w.mayor);
-    let count = w.boxes + (standing / 2.0).floor() as u32;
-    let units = count as f64 * good.per_box();
+    let count = w.packages + crate::haul::LOAD * (standing / 2.0).floor() as u32;
+    let units = count as f64 * good.per_package();
     let coins = (units * crate::economy::world_price(good) * w.price * (1.0 + WARMTH * standing)).round();
-    let n = if count == 1 { "a box".to_string() } else { format!("{count} boxes") };
-    let letter = w.voice[(standing >= 2.0) as usize].replace("{n}", &n).replace("{good}", &named(good));
+    let letter = w.voice[(standing >= 2.0) as usize].replace("{n}", &good.packages(count));
     let id = world.objects.reserve_id();
     Some(Mission {
         key: Key::Order(id),
         title: format!("{} of {}", w.name, w.town),
         steps: vec![Step {
             goal: Goal::Delivered { good, units, sailed: 0.0 },
-            title: format!("{} to {}", boxes(count, good), w.town),
-            text: format!("{}, mayor of {}: {letter}\n\nSend them from the letter's card: a depot's lorry takes each box to the park, and the coins land as it sails.", w.name, w.town),
+            title: format!("{} to {}", good.packages(count), w.town),
+            text: format!("{}, mayor of {}: {letter}\n\nSend them from the letter's card: a depot's lorry takes them to the quay, and the coins land as each sails.", w.name, w.town),
             done: false,
             at: None,
         }],
@@ -308,17 +304,17 @@ pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
     })
 }
 
-/// A box went out on the ferry: if it was booked for an open order, it
-/// is counted to it, and the last fills it.
-pub fn sailed(world: &mut World, t: &Trailer) {
+/// A package went out on the ferry: if it was booked for an open order,
+/// it is counted to it, and the last fills it.
+pub fn sailed(world: &mut World, t: &Package) {
     let Some(m) = world.missions.list.iter_mut().find(|m| m.key == Key::Order(t.order) && m.finished.is_none()) else { return };
     let Goal::Delivered { units, sailed, .. } = &mut m.steps[0].goal else { return };
-    *sailed += t.units;
+    *sailed += t.good.per_package();
     m.steps[0].done = *sailed >= *units - 1e-6;
     world.missions.stir();
 }
 
-/// A letter's boxes still wanted, not yet booked, and what its mayor
+/// A letter's packages still wanted, not yet booked, and what its mayor
 /// pays a unit: what the town can send them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -328,7 +324,7 @@ pub struct Letter {
     pub good: Good,
     pub partner: Mayor,
     pub price: f64,
-    pub boxes: u32,
+    pub packages: u32,
 }
 
 /// What each mayor's town wants and makes: what pushes the market
@@ -337,46 +333,46 @@ pub fn trades() -> impl Iterator<Item = (&'static [Good], &'static [Good])> {
     WHO.iter().map(|w| (w.goods, w.sells))
 }
 
-/// Every open letter that wants boxes not yet booked.
+/// Every open letter that wants packages not yet booked.
 pub fn letters(world: &World) -> Vec<Letter> {
-    let marked = crate::haul::boxes(world);
-    let waiting: Vec<Trailer> = world.harbours.keys().filter_map(|&h| match world.objects.get(h).map(|e| &e.object) {
+    let marked = crate::haul::packages(world);
+    let waiting: Vec<Package> = world.harbours.keys().filter_map(|&h| match world.objects.get(h).map(|e| &e.object) {
         Some(GameObject::Building(b)) => Some(b.outgoing.clone()),
         _ => None,
     }).flatten().collect();
     open(world)
         .filter_map(|m| {
             let (Key::Order(id), Goal::Delivered { good, units, sailed }, Reward::Order { coins, .. }, Some(partner)) = (m.key, m.steps[0].goal, m.reward, m.from) else { return None };
-            let going: f64 = marked.iter().map(|(t, ..)| t).chain(&waiting).filter(|t| t.outbound && t.order == id).map(|t| t.units).sum();
-            let boxes = ((units - sailed - going) / good.per_box()).ceil().max(0.0) as u32;
-            (boxes > 0).then_some(Letter { letter: id, good, partner, price: coins / units, boxes })
+            let going = marked.iter().map(|(t, ..)| t).chain(&waiting).filter(|t| t.outbound && t.order == id).count() as f64 * good.per_package();
+            let packages = ((units - sailed - going) / good.per_package() - 1e-9).ceil().max(0.0) as u32;
+            (packages > 0).then_some(Letter { letter: id, good, partner, price: coins / units, packages })
         })
         .collect()
 }
 
-/// Send so many of the boxes a letter wants: each waits at the harbour
+/// Send so many of the packages a letter wants: each waits at the harbour
 /// for a depot's lorry. How many were booked.
-pub fn send(world: &mut World, letter: u64, boxes: u32) -> u32 {
+pub fn send(world: &mut World, letter: u64, packages: u32) -> u32 {
     let (Some(&harbour), Some(l)) = (world.harbours.keys().next(), letters(world).into_iter().find(|l| l.letter == letter)) else { return 0 };
-    (0..boxes.min(l.boxes)).take_while(|_| book(world, harbour, l.good, true, Some(l.partner), l.price, Some(letter))).count() as u32
+    (0..packages.min(l.packages)).take_while(|_| book(world, harbour, l.good, true, Some(l.partner), l.price, Some(letter))).count() as u32
 }
 
-/// Book a slot of a harbour's deck at a price a unit: a box of a good on
-/// the next ferry in, as far as the treasury goes once what is already
-/// coming is paid for; or a box going out, for a partner or the market,
-/// to wait at the harbour for a lorry. Whether it was booked.
+/// Book a place on a harbour's deck at a price a unit: a package of a
+/// good on the next ferry in, as far as the treasury goes once what is
+/// already coming is paid for; or one going out, for a partner or the
+/// market, to wait at the harbour for a lorry. Whether it was booked.
 pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner: Option<Mayor>, price: f64, letter: Option<u64>) -> bool {
     let deck = crate::world::sea::DECK;
     let id = world.objects.reserve_id();
-    let t = Trailer { id, good, units: good.per_box(), to: None, outbound: out, order: letter.unwrap_or(id), partner, price };
+    let t = Package { id, good, to: None, outbound: out, order: letter.unwrap_or(id), partner, price };
     if out {
         let Some(b) = world.harbours.contains_key(&harbour).then(|| world.building_mut(harbour)).flatten().filter(|b| b.outgoing.len() < deck) else { return false };
         b.outgoing.push(t);
         world.missions.stir();
         return true;
     }
-    let owed: f64 = crate::haul::boxes(world).iter().filter(|(t, l, _)| !t.outbound && matches!(l, Leg::Booked | Leg::Aboard)).map(|(t, ..)| t.price * t.units).sum();
-    if world.treasury - owed < t.price * t.units {
+    let owed: f64 = crate::haul::packages(world).iter().filter(|(t, l, _)| !t.outbound && matches!(l, Leg::Booked | Leg::Aboard)).map(|(t, ..)| t.value()).sum();
+    if world.treasury - owed < t.value() {
         return false;
     }
     let Some(ferry) = world.next_ferry(harbour) else { return false };
@@ -478,12 +474,12 @@ mod tests {
         assert!(tam.finished.is_some_and(|f| f >= tam.opened + LASTS), "Tam's order never lapsed");
         assert!(standing(&world, Mayor::Tam) < 1.0, "a lapsed order cost no standing");
         assert!(world.news.iter().any(|n| n.text.contains("gave up")), "no news of it");
-        // A box booked for it sails after all.
+        // A package booked for it sails after all.
         let crate::missions::Key::Order(id) = tam.key else { unreachable!() };
-        let t = crate::protocol::Trailer { id: 1, good: asked(&tam), units: 10.0, to: None, outbound: true, order: id, partner: Some(Mayor::Tam), price: 1.0 };
+        let t = crate::protocol::Package { id: 1, good: asked(&tam), to: None, outbound: true, order: id, partner: Some(Mayor::Tam), price: 1.0 };
         crate::orders::sailed(&mut world, &t);
         let tam = world.missions.list.iter().find(|m| m.key == tam.key).unwrap();
-        assert!(matches!(tam.steps[0].goal, crate::missions::Goal::Delivered { sailed, .. } if sailed == 0.0), "a lapsed order took a box");
+        assert!(matches!(tam.steps[0].goal, crate::missions::Goal::Delivered { sailed, .. } if sailed == 0.0), "a lapsed order took a package");
     }
 
     /// Port Aldra writes only once the town stands well with someone
@@ -515,9 +511,9 @@ mod tests {
         assert!(from.contains(&Mayor::Aldra), "Port Aldra never wrote: {from:?}");
     }
 
-    /// An order filled the way a player fills it: a slot going out booked
-    /// for its mayor is loaded at the depot, rides the lorry to the
-    /// park and the ferry to the edge, and the mayor's coins land at the
+    /// An order filled the way a player fills it: packages going out
+    /// booked for its mayor are loaded at the depot, ride the lorry to
+    /// the quay and the ferry to the edge, and the mayor's coins land at the
     /// harbour as it casts off, once; the mayor's standing rises, once.
     #[test]
     fn an_order_filled_pays_coins_and_standing_once() {
@@ -534,15 +530,16 @@ mod tests {
         assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Crates), "Tam's letter, for crates");
         let (crate::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
         let before = (world.treasury, standing(world, Mayor::Tam));
-        assert_eq!(crate::orders::send(world, id, 1), 1, "no slot for Tam");
+        let n = crate::orders::letters(world).iter().find(|l| l.letter == id).unwrap().packages;
+        assert_eq!(crate::orders::send(world, id, n), n, "no room for Tam's crates");
         crate::haul::call_lorries(world, &mut game.events);
         let mut marked = false;
         let finished = |w: &World| w.missions.list.iter().any(|m| m.key == order.key && m.finished.is_some());
         while !finished(&game.world) && game.step_to(DAY_MS as u64) {
-            marked |= crate::haul::boxes(&game.world).iter().any(|(t, ..)| t.order == id && t.outbound);
+            marked |= crate::haul::packages(&game.world).iter().any(|(t, ..)| t.order == id && t.outbound);
         }
         let world = &game.world;
-        assert!(marked, "no box was marked for Saltmere");
+        assert!(marked, "no package was marked for Saltmere");
         assert!(finished(world), "the order was never filled");
         let paid = world.lumps.iter().filter(|l| l.building == harbour && l.coins > 0.0).map(|l| l.coins).sum::<f64>();
         assert!((paid - coins).abs() < 1e-6, "Tam paid {paid}, the letter said {coins}");

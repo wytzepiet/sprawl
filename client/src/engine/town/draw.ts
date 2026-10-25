@@ -1,5 +1,5 @@
 import earcut from "earcut";
-import type { MeshGeometry, P } from "../geometry";
+import type { MeshGeometry } from "../geometry";
 import { rgb, type Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
@@ -18,14 +18,6 @@ export interface Piece {
   colour: Rgb | null;
 }
 
-/** A depot's canopy: a sheet-metal roof, pale, on posts a shade under it;
- *  its underside over a box's roof (`TRAILER.h`) and under the hall's
- *  eaves, and a fascia's depth thick. */
-const CANOPY = rgb(0.78, 0.78, 0.77);
-const POST = rgb(0.5, 0.5, 0.5);
-const CANOPY_Z = 0.3;
-const FASCIA = 0.035;
-const POST_W = 0.03;
 /** A quay's wall, stone a shade under the paving, and its capping, a
  *  shade over it. */
 const QUAY = rgb(0.6, 0.58, 0.54);
@@ -53,15 +45,14 @@ const LINE = rgb(0.82, 0.81, 0.77);
 
 /**
  * The town grid's town, drawn: the pavement, the
- * buildings, and a canopy over a depot's docks; the roads are the game's
+ * buildings; the roads are the game's
  * (`roads.ts`).
  * Geometry alone, in the same frame, and the lines painted on the yards'
- * asphalt: the docks', and the game's own `marks`, a harbour's trailer
- * park's slots. The trees the dressing plants are the caller's to plant
+ * asphalt. The trees the dressing plants are the caller's to plant
  * (`treeInstances`), and what stands on its roofs and its street lamps the
  * props' (`props.ts`); what moves on it the game draws itself.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: P[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Rgb | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
@@ -74,19 +65,8 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   const dressing = dress(town, known);
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
-  // A depot's canopy over its docks: a slab, and a post at each end of
-  // its front edge.
-  const canopy: MeshGeometry = { positions: [], normals: [], indices: [] };
-  const posts: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const { roof, posts: feet } of dressing.canopies) {
-    cuboid(canopy, roof, CANOPY_Z, CANOPY_Z + FASCIA);
-    const h = POST_W / 2;
-    for (const [x, y] of feet) cuboid(posts, [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]], KERB_Z, CANOPY_Z);
-  }
-  add("canopy", canopy, CANOPY);
-  add("canopyPosts", posts, POST);
   // Each wound as the sheets' outlines are.
-  add("lines", flatPolygons([...dressing.yardLines, ...marks].map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
+  add("lines", flatPolygons(dressing.yardLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
   // A street lamp stands on the pavement, a prop like what stands on a roof.
   const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: KERB_Z, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
   return { pieces, dressing, props: [...mass.props, ...lamps] };
@@ -121,23 +101,6 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
     });
   }
   return { wall, cap };
-}
-
-/** A block over a quad on the plan, from z0 up to z1: its top and its
- *  four sides; its bottom is the shade under it. */
-function cuboid(g: MeshGeometry, quad: P[], z0: number, z1: number) {
-  // The map's frame is the plan's turned half round.
-  const p = ([x, y]: P, z: number) => [-x, -y, z];
-  face(g, quad.map((q) => p(q, z1)), [0, 0, 1]);
-  const [cx, cy] = [quad.reduce((s, q) => s + q[0], 0) / 4, quad.reduce((s, q) => s + q[1], 0) / 4];
-  quad.forEach((a, i) => {
-    const b = quad[(i + 1) % 4];
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    let n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
-    if (n[0] * (a[0] - cx) + n[1] * (a[1] - cy) < 0) n = [-n[0], -n[1]];
-    face(g, [p(a, z0), p(b, z0), p(b, z1), p(a, z1)], [-n[0], -n[1], 0]);
-  });
-  face(g, quad.map((q) => p(q, z0)), [0, 0, -1]);
 }
 
 /** A flat quad, its corners in order round it, facing `n`: wound as the

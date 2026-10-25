@@ -46,6 +46,10 @@ pub struct Blueprint {
     /// Stands with its back to the sea: the world's ferry berths at the
     /// quay behind it (`world/sea.rs`).
     pub quay: bool,
+    /// Forklifts working its pad: how many vehicles it loads or unloads
+    /// at once (`World::lift`). One, but a harbour's, which works the
+    /// ferry's deck and the lorries both.
+    pub forklifts: u8,
     /// A farm: its land is what its tractor ploughs in a shift, and its
     /// yard holds a harvest, the cycle's make (`world/fields.rs`).
     pub farm: bool,
@@ -152,7 +156,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
         let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
-        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, farm: false }
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, farm: false }
     };
     use Good::{Stone, Timber};
     vec![
@@ -160,35 +164,36 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
-            shelves: &[(Good::Crates, 40)],
+            shelves: &[(Good::Crates, 50)],
             ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
-        (Office, row((2, 1), (0, 0), &[(Timber, 10), (Stone, 6)], vec![shift(8, 17, 12)])),
-        (Factory, row((2, 1), (0, 0), &[(Timber, 14), (Stone, 8)], vec![shift(6, 15, 12)])),
+        (Office, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], vec![shift(8, 17, 12)])),
+        (Factory, row((2, 1), (0, 0), &[(Timber, 16), (Stone, 8)], vec![shift(6, 15, 12)])),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
-        // Its shelf is tanks: a delivery is a van's worth, and more than
-        // four pumps could sell in the two hours a van is away with the lot
-        // full, or it would never stop ordering.
+        // Its shelf is tanks, four pallets of drums: a delivery is a van's
+        // worth, and more than four pumps could sell in the two hours a
+        // van is away with the lot full, or it would never stop ordering.
         (GasStation, Blueprint {
             shelves: &[(Good::Fuel, 40)],
-            ..row((1, 1), (0, 0), &[(Timber, 6), (Stone, 4)], vec![shift(6, 22, 1), pump(always(), 4)])
+            ..row((1, 1), (0, 0), &[(Timber, 8), (Stone, 4)], vec![shift(6, 22, 1), pump(always(), 4)])
         }),
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
         (Supermarket, Blueprint {
             shelves: &[(Good::Crates, 150)],
-            ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 10)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
+            ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 12)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
-        // Where the town's goods are kept, a little of every class: two
-        // boxes of crates, two tank boxes, three of timber, three of stone. Its lorry hauls
-        // boxes from the harbour and its vans deliver to shops and sites.
+        // Where the town's goods are kept, in the open, a little of every
+        // good: eight crates, ten pallets of drums, fifteen bundles of
+        // timber, fifteen pallets of stone. Its lorry hauls packages from
+        // the harbour and its vans deliver to shops and sites.
         (Depot, Blueprint {
             shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
-            ..row((2, 2), (3, 2), &[(Timber, 10)], vec![shift(6, 18, 6)])
+            ..row((2, 2), (3, 2), &[(Timber, 12)], vec![shift(6, 18, 6)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
         // sitting's worth every few minutes: at eighteen crates an hour a
@@ -198,9 +203,10 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // shift, seeds the next day and harvests two days after, each
         // tile's crop landing in the yard as it is cut (§12.8). A depot's
         // lorry fetches from it. Its yard is a harvest: four days of four
-        // hands' nine hours at eighteen crates an hour.
+        // hands' nine hours at eighteen crates an hour, a hundred and four
+        // crates on its pad.
         (Farm, Blueprint {
-            shelves: &[(Good::Crates, 2592)],
+            shelves: &[(Good::Crates, 2600)],
             makes: Some(Good::Crates),
             vehicles: &[CarRole::Tractor],
             farm: true,
@@ -208,24 +214,25 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         }),
         // The door: all yard, three tiles along the quay and two in, no
         // building. Down its middle a lane from the gate on the street to
-        // the ramp, kept clear for what comes off the ferry; either side
-        // of it the trailer park, four docks a side, the slots boxes stand
-        // in; in the corners on the quay the tug's stand and the terminal
-        // (`world/sea.rs`). Two hands drive the tug and work the ramp,
-        // dawn to late. Built from nothing: it is where timber first comes
-        // in.
+        // the ramp, kept clear for what comes off the ferry; on one side
+        // of it the docks lorries back into, on the other the quay's pad,
+        // the pallets standing on it; in the corner on the quay the
+        // terminal (`world/sea.rs`). Two hands work the ramp and its three
+        // forklifts, dawn to late. Built from nothing: it is where timber
+        // first comes in.
         (Harbour, Blueprint {
-            vehicles: &[CarRole::Tug],
             quay: true,
+            forklifts: 3,
             ..row((3, 0), (3, 2), &[], vec![shift(6, 22, 2)])
         }),
         // Four hands, seven to four, felling and sawing the forest round it:
-        // with woods all round, a box of timber a shift and a half, a house
-        // every hour and a bit. Its yard holds six boxes; full, it stops.
+        // with woods all round, five bundles of timber a shift and a half, a
+        // house every hour and a bit. Its yard holds thirty bundles; full,
+        // it stops.
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
-            ..row((2, 2), (2, 2), &[(Timber, 6)], vec![shift(7, 16, 4)])
+            ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
         // The sawmill's twin at the mountain's foot: four hands, seven to
         // four, breaking the rock within reach, as much stone a shift as the
@@ -248,11 +255,16 @@ pub fn check() {
         assert_eq!(*kind as usize, i, "blueprint table out of order at {kind:?}");
         assert_eq!(*kind, BuildingKind::ALL[i], "{kind:?} missing from BuildingKind::ALL");
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
-        // A harbour has a park for the ferry's boxes and a tug to shunt them.
-        assert!(!b.quay || (b.lot.1 > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
+        // A harbour has a yard for the ferry's pallets.
+        assert!(!b.quay || b.lot.1 > 0, "{kind:?} has a quay and nowhere to land a pallet");
         // Its lane runs down its middle from the gate to the ramp.
         assert!(!b.quay || b.size.0 % 2 == 1, "{kind:?} has a quay and no middle tile for its ramp");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
+        // Packages are whole: every shelf holds, and every site takes, so
+        // many of them.
+        for &(good, n) in b.shelves.iter().chain(b.materials) {
+            assert_eq!(n as f64 % good.per_package(), 0.0, "{kind:?} keeps or takes {n} of {good:?}, not whole packages");
+        }
         // A depot's van brings every material a site takes.
         for &(good, _) in b.materials {
             assert!(blueprint(BuildingKind::Depot).shelves.iter().any(|&(s, _)| s == good), "{kind:?} is built of {good:?}, which no depot keeps");
@@ -283,8 +295,9 @@ mod tests {
 
     /// The game's half of each row, written where the client reads it,
     /// beside ts-rs's types (`.cargo/config.toml`): what a kind is built
-    /// from, its footprint and yard, its quay; a good's box; a depot's
-    /// lorries. `blueprints.ts` keeps only the look.
+    /// from, its footprint and yard, its quay; a good's package; what a
+    /// lorry and a van carry; a depot's lorries. `blueprints.ts` keeps
+    /// only the look.
     #[test]
     fn the_client_reads_the_rows() {
         let Ok(dir) = std::env::var("TS_RS_EXPORT_DIR") else { return };
@@ -294,16 +307,25 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean }> = {\n",
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
             let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {} }},\n", pair(b.size), pair(b.lot), b.quay);
+            let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
         }
-        let boxes: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_box())).collect();
-        ts += &format!("}};\n\n/** Units a box of each good holds (`Good::per_box`). */\nexport const PER_BOX: Record<Good, number> = {{ {} }};\n", boxes.join(", "));
+        let packages: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
+        ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
+        let names: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
+        ts += &format!("\n/** What a package of each good is called, one and several (`Good::package`). */\nexport const PACKAGE: Record<Good, [string, string]> = {{ {} }};\n", names.join(", "));
+        ts += &format!(
+            "\n/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */\nexport const LOAD = {};\nexport const VAN_LOAD = {};\nexport const HANDLE_MS = {};\n",
+            crate::haul::LOAD,
+            crate::economy::VAN_LOAD,
+            crate::world::HANDLE_MS
+        );
         ts += &format!(
             "\n/** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */\nexport const LORRY_PRICE = {};\nexport const MORE_LORRIES = {};\n",
             crate::haul::LORRY_PRICE,

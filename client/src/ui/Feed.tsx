@@ -4,10 +4,10 @@ import { eachEntity, groundOf, useGame } from "../state/gameObjects";
 import { missionKey, neighbours, shownMissions } from "../state/missions";
 import { clockAt, news, sea, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { deals, letterOf, setSpread, spread, stepsOf, type Deal } from "../state/deals";
+import { deals, letterOf, setSpread, spread, stepsOf, type Deal, type Piece } from "../state/deals";
 import { quoteOf, total } from "../state/market";
 import { toMarket } from "./Market";
-import { BLUEPRINTS, GOODS } from "../blueprints";
+import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { eye } from "../engine/Camera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
@@ -33,7 +33,7 @@ type Note =
  * The feed: everything that happens to
  * the town as a phone's notifications, top right, or across the top of a
  * phone. News drops in on top and goes by itself; a mission is pinned
- * while it is open; a deal stays while its boxes are on their way. Folded,
+ * while it is open; a deal stays while its packages are on their way. Folded,
  * the newest is in front and two more peek out under it, under its glass;
  * a tap spreads them out, a tap on one opens it.
  */
@@ -127,26 +127,36 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   const { send } = useGame();
   const d = () => props.deal;
   const color = () => (d().done ? GOOD : GOODS[d().good].color);
-  const lead = () => d().boxes[0];
-  const count = () => d().boxes.length + d().wanted;
+  const lead = () => d().pieces[0];
+  const count = () => d().pieces.length + d().wanted;
+  /** Its packages by where they are: a row each, how many there. */
+  const rows = () => {
+    const l: (Piece & { n: number })[] = [];
+    for (const p of d().pieces) {
+      const r = l.find((r) => r.words === p.words);
+      if (r) r.n++;
+      else l.push({ ...p, n: 1 });
+    }
+    return l;
+  };
   const letter = () => letterOf(d().good, d().partner);
-  /** A box more, from the market or for it, at what it pays or costs a box now. */
+  /** A package more, from the market or for it, at what it pays or costs one now. */
   const more = () => {
     const q = d().partner === null && d().key !== "gift" ? quoteOf(d().good) : undefined;
     return q && total(q, 1, d().out);
   };
   const title = () => (d().key === "gift" ? "The starter pack" : `${GOODS[d().good].label[0].toUpperCase()}${GOODS[d().good].label.slice(1)} ${d().out ? "for" : "from"} ${nameOf(d().partner)}`);
-  /** Where it is, in words: its furthest box, or what it waits for. */
+  /** Where it is, in words: its furthest package, or what it waits for. */
   const status = () => {
     if (d().done) return d().out ? "sold, and paid for" : "in the depot";
     const l = lead();
     if (l) return l.words;
-    return `wants ${d().wanted} ${d().wanted === 1 ? "box" : "boxes"}`;
+    return `wants ${packages(d().good, d().wanted)}`;
   };
   const when = () => (d().done ? null : lead()?.eta ?? (lead() ? null : d().due));
   const sendAll = () => {
     const l = letter();
-    if (l) send({ type: "Send", data: { letter: l.letter, boxes: l.boxes } });
+    if (l) send({ type: "Send", data: { letter: l.letter, packages: l.packages } });
   };
   const money = () => (d().coins >= 0 ? GOOD : "ink");
   return (
@@ -174,11 +184,11 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
       <Show when={props.open && !d().done}>
         <Appear pad={{ x: 12, bottom: 12 }} gap={8}>
           <box>
-            <For each={d().boxes}>
+            <For each={rows()}>
               {(b) => (
-                <box dir="row" align="center" gap={8} pad={4} round={12} onTap={b.seen ? () => track(b.trailer) : undefined}>
+                <box dir="row" align="center" gap={8} pad={4} round={12} onTap={b.seen ? () => track(b.package) : undefined}>
                   <GoodDot good={d().good} size={20} />
-                  <text size={13} lines={1} grow={1}>{b.words}</text>
+                  <text size={13} lines={1} grow={1}>{b.n > 1 ? `${b.n} ${b.words}` : b.words}</text>
                   <Show when={b.eta}>{(t) => <text serif size={13}>{until(t())}</text>}</Show>
                   <Show when={b.seen}><Line d={EYE} size={14} width={2.4} ink="ink/0.72" /></Show>
                 </box>
@@ -186,22 +196,22 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
             </For>
           </box>
           <box dir="row" align="center" gap={6}>
-            <Show when={d().boxes.length}>
+            <Show when={d().pieces.length}>
               <text serif size={17} ink={money()}>{coins(d().coins)}</text>
             </Show>
             <box grow={1} />
             <Show when={letter()}>
               {(l) => (
                 <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill={COIN} onTap={sendAll}>
-                  <text size={14} weight={600} ink="white">Send {l().boxes}</text>
-                  <text serif size={14} ink="white">{coins(l().price * GOODS[d().good].box * l().boxes)}</text>
+                  <text size={14} weight={600} ink="white">Send {l().packages}</text>
+                  <text serif size={14} ink="white">{coins(l().price * GOODS[d().good].per * l().packages)}</text>
                 </Press>
               )}
             </Show>
             <Show when={more()}>
               {(c) => (
-                <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => send({ type: "Trade", data: { good: d().good, boxes: 1, out: d().out } })}>
-                  <text size={14} weight={600} soft>+ Box</text>
+                <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => send({ type: "Trade", data: { good: d().good, packages: 1, out: d().out } })}>
+                  <text size={14} weight={600} soft>+ 1</text>
                   <text serif size={14} soft>{coins((d().out ? 1 : -1) * c())}</text>
                 </Press>
               )}
@@ -284,7 +294,7 @@ function toward(ground: TerrainType) {
  *  with, a new deal to make. */
 function Act(props: { step: Step }) {
   const gift = () => sea.shipments.filter((s) => s.order === 0);
-  const parked = () => gift().filter((s) => s.leg === "Parked");
+  const parked = () => gift().filter((s) => s.leg === "Quay");
   const next = () => gift().find((s) => s.eta !== null);
   const ride = () => {
     const d = props.step.at;
@@ -293,8 +303,8 @@ function Act(props: { step: Step }) {
     eachEntity((e) => {
       if (e.object.kind === "Car" && e.object.data.role === "Truck" && e.object.data.owner === d) lorry = e.id;
     });
-    const box = parked()[0];
-    if (box) track(box.trailer, lorry);
+    const first = parked()[0];
+    if (first) track(first.package, lorry);
   };
   return (
     <>
@@ -321,7 +331,7 @@ function Act(props: { step: Step }) {
                   </Show>
                 }
               >
-                <text size={12.5} soft>{parked().length === 1 ? "A box is" : `${parked().length} boxes are`} in the trailer park.</text>
+                <text size={12.5} soft>{parked().length === 1 ? "A package is" : `${parked().length} packages are`} on the quay.</text>
                 <Btn big onTap={ride} color={BLUEPRINTS.Depot.color} disabled={props.step.at === null}>Ride with the lorry</Btn>
               </Show>
             );

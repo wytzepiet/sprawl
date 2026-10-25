@@ -10,7 +10,7 @@ each, and since when, is in its own header, and only there.
 | `roadmap.md` | What is built, and the order the rest is built in, each step pointing at its plan. |
 | `missions.md` | Missions: steps the server reads off the town and a reward; the opening and the trunk, the town's situation, orders from other towns, dailies; how they are read cheaply, and how to add one. |
 | `trade.md` | The economy: coins that move only at a town's border, GDP as the level, the world's two prices, the ferry's deck and its pins, the order board, the Exchange, listings, contracts, depots, materials, the opening. |
-| `shipping.md` | The sea: the world's shipping company and its lines, boxes as the world's and lorries as the town's, boxes only ever full, the ferry harbour and its tug, the container port, yards, the planner and hubs, charters, how ships find their way. |
+| `shipping.md` | The sea: the world's shipping company and its lines, boxes as the world's and lorries as the town's, boxes only ever full, the ferry harbour and its forklifts, the container port, yards, the planner and hubs, charters, how ships find their way. |
 | `buildings.md` | The roster: goods, homes, what serves people, doors, depots, what makes things, what goes. |
 | `canvas.md` | The flat view: the game on a 2D canvas, the minimap, the far zoom and low-end devices; tools for seeing what the server does. |
 | `architecture.md` | How the code is shaped: the discrete event simulation, the tracked state, the wire, persistence, the client, deployment. |

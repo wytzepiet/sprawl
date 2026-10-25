@@ -15,7 +15,7 @@ who runs the ships, how a load finds its way, and who asks for it. And it
 keeps the truck apart from the box.
 
 The thing to get right is that it is a joy to watch. A ship comes in, a
-tug or a crane takes its boxes off one at a time, a lorry backs up to a
+forklift or a crane takes its goods off one at a time, a lorry backs up to a
 box and drives it home, and an order you placed is a box you can follow
 across the sea, through a hub, onto your quay and into your depot. A
 harbour working is the most satisfying thing in the game, and it is drawn
@@ -75,19 +75,18 @@ and through the same yard. One way to learn.
 
 ## Harbours
 
-**The ferry harbour comes first.** A ramp and a trailer park, the way small
+**The ferry harbour comes first.** A ramp and a quay, the way small
 islands are supplied; no small harbour has a crane. The ferry carries the
-settlers' cars and the world's trailers on one deck, so the deck is the
-door's size, and a full ferry leaves a trailer for the next sailing,
+settlers' cars and the world's pallets on one deck, so the deck is the
+door's size, and a full ferry leaves a pallet for the next sailing,
 queued in sight. Settlers drive off forwards into town.
 
-**The harbour's tug** moves trailers between deck and park, as a port's
-tugmasters do: it lifts a trailer's nose, backs it up the ramp into its
-lane on the deck, and pulls it off forwards at the other end. The town's
-lorries never board: they drop a trailer in the park and hitch another,
-so none waits for a ferry, and the ferry sails on time with whatever the
-tug got aboard. Loading is slower than unloading, and a crowded park slows
-the tug, in sight.
+**The harbour's forklifts** lift the pallets off the deck onto the
+quay's pad, and what waits there to go out onto the deck (2026-10-25,
+`plan-goods.md` §The harbour: the tug and its trailers are gone). The
+town's lorries load and unload at the quay like at any pad, so none
+waits for a ferry, and the ferry sails on time with whatever the
+forklifts got aboard. A full quay stops the unloading, in sight.
 
 **The container port comes later**, its own building: cranes, a container
 yard, container ships on the company's lines, many more boxes for less
@@ -97,7 +96,7 @@ other players are one step, and it is a building you can watch work.
 **Berths for tankers and bulkers** come after it (§Charters).
 
 **Harbours have yards.** A ship unloads into its harbour's yard, the
-trailer park or the container stacks, boxes by where they go next. The
+quay's pad or the container stacks, goods by where they go next. The
 yard is a buffer in transit, not stock: nothing in town draws on it, and
 a load is the town's only once a lorry has carried it to a depot. A box in
 a yard waits for its next ship, a transfer, or for a lorry. The yard's
@@ -240,9 +239,9 @@ parted from the direction above.
   out behind the middle of it, which is the berth. Down its middle a
   lane runs from its gate, the one way in, to the ramp, and nothing
   stands in it: what comes off the ferry drives straight up it to the
-  street. Either side of the lane is the trailer park, four docks a
-  side, and in the corners on the quay the tug's stand and the
-  terminal. It costs no timber: it is where timber first comes in. Its
+  street. On one side of the lane are its docks, four, on the other
+  the quay's pad (2026-10-25: the trailer park and the tug are gone,
+  `plan-goods.md`), and in the corner on the quay the terminal. It costs no timber: it is where timber first comes in. Its
   street is the town's way out: a road that reaches a harbour is joined,
   and one that reaches none is drawn red. The edge, its lorries and the
   port's call-driven ship are gone.

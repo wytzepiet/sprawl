@@ -214,7 +214,6 @@ fn link(world: &World, id: EntityId) -> Link {
             CarRole::Truck => "Lorry".into(),
             CarRole::Tractor => "Tractor".into(),
             CarRole::Ferry => "Ferry".into(),
-            CarRole::Tug => "Tug".into(),
         }),
         _ => (LinkKind::Gone, "gone".into()),
     };
@@ -246,7 +245,7 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Residen
 
 fn call_line(world: &World, call: &Call) -> CallLine {
     CallLine {
-        what: format!("{:?}", call.kind),
+        what: format!("{:?}", call.good),
         good: call.good,
         at: link(world, call.at),
         since: hhmm(call.raised),

@@ -3,26 +3,27 @@ import type { Good } from "./Good";
 import type { Mayor } from "./Mayor";
 
 /**
- * A box: a trailer off the ferry, the world's, which the town's lorries
- * haul. Never an entity: a value that stands in one place at a time, on
- * a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
- * (`Car::booked`, a ferry's). A box is only ever full: the world makes it loaded
- * for an import, a depot or a maker when an export is ready, and it is
- * gone once unloaded into a depot's stock or carried off by the ferry.
- * docs/shipping.md §Boxes and lorries.
+ * A package: a bundle, a crate, a pallet, the unit everything is traded
+ * and carried in, whole. Never an entity: a value that stands in one
+ * place at a time, on a ferry's deck, on a quay, on a lorry, or booked
+ * beyond the sea (`Car::booked`, a ferry's). A package of the town's is
+ * gone once it is in a depot's stock; one going out, once the ferry
+ * carries it off. Inside the town goods are counted, not followed: a
+ * depot's or a maker's stock is so many packages on its pad, opened only
+ * where they are used. docs/plan-goods.md.
  */
-export type Trailer = { 
+export type Package = { 
 /**
  * Its number, for following it wherever it is.
  */
-id: number, good: Good, units: number, 
+id: number, good: Good, 
 /**
  * The depot it is bound for; None is the town's, for whichever depot's
  * lorry comes first, or the world's, going back.
  */
 to: number | null, 
 /**
- * Going out: an export, dropped at a harbour for the ferry.
+ * Going out: an export, brought to a harbour's quay for the ferry.
  */
 outbound: boolean, 
 /**

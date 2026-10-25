@@ -14,13 +14,13 @@ describe("facts and dressing", () => {
     const f = facts(t);
     for (const c of [1, 2, 3]) {
       expect([2, 3].every((r) => f.yard(c, r) === "docks")).toBe(true);
-      expect([4, 5].some((r) => f.yard(c, r))).toBe(false);
+      expect([4, 5].every((r) => f.yard(c, r) === "pad")).toBe(true);
     }
     expect(f.town.tile(2, 2).kind).toBe("paved");
     // Docks either side of the lane in from the gate, the middle of its
     // front, four rows of them, each box's tail out at the yard's side
-    // and the way out of it toward the lane; and over each side a canopy.
-    const { docks, canopies } = dress(t, f);
+    // and the way out of it toward the lane.
+    const { docks } = dress(t, f);
     expect(t.door!(2, 2)).toEqual([0, -1]);
     expect(docks.length).toBe(8);
     for (const d of docks) {
@@ -28,19 +28,18 @@ describe("facts and dressing", () => {
       expect(Math.abs(Math.cos(d.angle) + Math.sign(d.x - 2.5))).toBeLessThan(1e-9);
       expect([3.45, 3.15, 2.85, 2.55].some((y) => Math.abs(d.y - y) < 1e-9)).toBe(true);
     }
-    expect(canopies.length).toBe(2);
   });
 
   test("a depot whose street runs behind it has its yard there", () => {
     const t = town(["......", ".DDD..", ".DDD..", ".DDD..", ".DDD..", "======"]);
     const f = facts(t);
     expect(f.yard(2, 4)).toBe("docks");
-    expect(f.yard(2, 1)).toBeUndefined();
+    expect(f.yard(2, 1)).toBe("pad");
   });
 
-  test("a depot short of its plot keeps its hall and has no yard", () => {
+  test("a depot short of its plot has no docks, its goods on the open ground", () => {
     const t = town(["......", "======", "DDDD..", "......"]);
-    expect(facts(t).yard(0, 2)).toBeUndefined();
+    expect(facts(t).yard(0, 2)).toBe("pad");
   });
 
   test("a house a diagonal step from its street has a drive to it on the diagonal", () => {
@@ -62,7 +61,7 @@ describe("facts and dressing", () => {
   });
 
 
-  test("a harbour is open ground all through: a trailer park, no building", () => {
+  test("a harbour is open ground all through: docks and a quay, no building", () => {
     const t = town(["~~~~~", "~~~~~", ".PPP.", ".PPP.", ".PPP.", "====="]);
     const f = facts(t);
     for (let r = 2; r <= 4; r++) for (let c = 1; c <= 3; c++) expect(f.yard(c, r)).toBe("park");

@@ -1,4 +1,4 @@
-import { PER_BOX, ROWS } from "./generated/rows";
+import { PACKAGE, PER_PACKAGE, ROWS } from "./generated/rows";
 import type { Building, BuildingKind, Good, GridCoord } from "./generated";
 
 /**
@@ -132,7 +132,7 @@ export const middle = (b: Building): [number, number] => standing(b).at;
 const LOOKS: Record<BuildingKind, Look> = {
   Harbour: {
     label: "Harbour",
-    about: "The town's door. The ferry lands settlers and boxes on its quay and takes boxes away. Built on the coast with its back to the sea, from nothing.",
+    about: "The town's door. The ferry lands settlers and pallets on its quay and takes pallets away. Built on the coast with its back to the sea, from nothing.",
     color: "#2B6CA3",
     material: "#4E6A84",
     // A quay with a crane over it: the mast, the jib, and the hook.
@@ -143,7 +143,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Depot: {
     label: "Depot",
-    about: "Keeps the town's goods. Its lorry fetches boxes from the harbour and the makers; its two vans bring them to shops, pumps and building sites. Six jobs, six to six.",
+    about: "Keeps the town's goods. Its lorry fetches packages from the harbour and the makers; its two vans bring them to shops, pumps and building sites. Six jobs, six to six.",
     color: "#A0714A",
     material: "#7E6248",
     // A wide shed: the roof, a loading door and two bays.
@@ -304,4 +304,9 @@ const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> 
     glyph: "M8 2h6v3h-6zM5 6h11l3 3v13H5zm3 5v8h8v-8zM17 2.5l3 3-1.5 1.5-3-3z",
   },
 };
-export const GOODS = Object.fromEntries(Object.entries(GOOD_LOOKS).map(([g, look]) => [g, { ...look, box: PER_BOX[g as Good] }])) as Record<Good, (typeof GOOD_LOOKS)[Good] & { box: number }>;
+/** Each good's look, with the units a package of it holds and what one
+ *  and several are called (`Good::per_package`, `Good::package`). */
+export const GOODS = Object.fromEntries(Object.entries(GOOD_LOOKS).map(([g, look]) => [g, { ...look, per: PER_PACKAGE[g as Good], names: PACKAGE[g as Good] }])) as Record<Good, (typeof GOOD_LOOKS)[Good] & { per: number; names: [string, string] }>;
+
+/** So many packages of a good, in words: "3 bundles of timber". */
+export const packages = (g: Good, n: number) => `${n} ${GOODS[g].names[n === 1 ? 0 : 1]}`;

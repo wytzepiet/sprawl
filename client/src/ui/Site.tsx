@@ -1,10 +1,10 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { clockAt, plural, sea, until } from "../state/sea";
-import { boxOf } from "../state/deals";
+import { clockAt, sea, until } from "../state/sea";
+import { pieceOf } from "../state/deals";
 import { setFollowing } from "../state/selection";
-import { BLUEPRINTS, GOODS } from "../blueprints";
+import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { quoteOf, total } from "../state/market";
 import { BAD, Btn, coins, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
@@ -12,8 +12,8 @@ import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../g
 
 /**
  * A site's card: each material it waits on, and where that is — on the
- * van, in stock at the depot, in a maker's yard, in the trailer park, on
- * the boat — and, where it is stuck, the one tap that frees it: a box
+ * van, in stock at the depot, in a maker's yard, on the quay, on the
+ * boat — and, where it is stuck, the one tap that frees it: packages
  * bought at the market, on the next ferry.
  * docs/game.md §Buildings.
  */
@@ -55,28 +55,27 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   const { send, growth } = useGame();
   const g = () => props.good;
   const label = () => GOODS[g()].label;
-  const box = () => GOODS[g()].box;
   const nearest = () => props.depots[0] ?? null;
   const van = () => props.calls.find((c) => c.good === g() && c.answered_by)?.answered_by ?? null;
   const stocked = () => props.depots.find((d) => (d.stocks[g()] ?? 0) >= 1) ?? null;
   const maker = () => props.makers.find((m) => m.good === g() && m.level >= 1) ?? null;
-  /** Its boxes in from the world, the furthest along first. */
-  const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound && s.units > 0).sort((a, b) => boxOf(b).step - boxOf(a).step);
-  /** A box in a trailer park, and the depot whose lorry would fetch it. */
+  /** Its packages in from the world, the furthest along first. */
+  const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound).sort((a, b) => pieceOf(b).step - pieceOf(a).step);
+  /** Packages on a quay, and the depot whose lorry would fetch them. */
   const parked = () => {
-    const s = inbound().find((s) => s.leg === "Parked");
-    const d = s && (props.depots.find((d) => d.depot.id === s.to) ?? nearest());
-    return s && d ? { s, d } : null;
+    const on = inbound().filter((s) => s.leg === "Quay");
+    const d = on[0] && (props.depots.find((d) => d.depot.id === on[0].to) ?? nearest());
+    return d ? { n: on.length, d } : null;
   };
-  const coming = () => inbound().find((s) => s.leg !== "Parked") ?? null;
-  const boxes = () => Math.max(1, Math.ceil(props.short / box()));
+  const coming = () => inbound().find((s) => s.leg !== "Quay") ?? null;
+  const n = () => Math.max(1, Math.ceil(props.short / GOODS[g()].per));
   const quote = () => quoteOf(g());
-  const cost = () => (quote() ? total(quote()!, boxes(), false) : 0);
+  const cost = () => (quote() ? total(quote()!, n(), false) : 0);
   const sailing = () => sea.sailings[0];
   const [ordered, setOrdered] = createSignal(false);
   const order = () => {
     if (!quote() || !sailing()) return;
-    send({ type: "Trade", data: { good: g(), boxes: boxes(), out: false } });
+    send({ type: "Trade", data: { good: g(), packages: n(), out: false } });
     setOrdered(true);
   };
   return (
@@ -89,11 +88,11 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
         const m = maker();
         if (m) return <Line dot={GOOD} text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
         const p = parked();
-        if (p) return <Line dot={p.d.joined ? SEA : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
+        if (p) return <Line dot={p.d.joined ? SEA : "#E0A030"} text={`${packages(g(), p.n)} on the quay`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
         const s = coming();
         if (s) {
-          const b = boxOf(s);
-          return <Line dot={SEA} text={`${Math.round(s.units)} ${label()} ${b.words}`} sub={b.eta ? `in ${until(b.eta)}` : undefined} />;
+          const b = pieceOf(s);
+          return <Line dot={SEA} text={`${packages(g(), inbound().filter((x) => x.leg === s.leg).length)} ${b.words}`} sub={b.eta ? `in ${until(b.eta)}` : undefined} />;
         }
         if (!nearest()) return <Line dot={BAD} text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
         const x = sailing();
@@ -101,7 +100,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
           <Line
             dot={BAD}
             text={ordered() ? `Booked: lands ${x ? clockAt(x.lands) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
-            sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(x.lands)}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
+            sub={x ? `${packages(g(), n())} on the next ferry, landing ${clockAt(x.lands)}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={
               <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !quote() || growth().treasury < cost()}>
                 {ordered() ? "Booked ✓" : `Book ${label()}`}

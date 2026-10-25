@@ -9,7 +9,7 @@ import type { Good } from "./Good";
  */
 export type Lump = { building: number, coins: number, gdp: number, at: number, 
 /**
- * Or goods landing: a box unloaded onto a depot's shelf; or, less
- * than none, leaving it: stone off its shelf for a road laid.
+ * Or goods landing: a package unloaded onto a depot's pad; or, less
+ * than none, leaving it: stone off its pad for a road laid.
  */
 good: Good | null, units: number, };

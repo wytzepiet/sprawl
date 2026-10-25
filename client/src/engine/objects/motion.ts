@@ -1,10 +1,13 @@
 import { drawnPath } from "./drawnPath";
 import { ahead, CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Rig } from "./driver";
-import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
+import { BED_TOP, CAB_BLOCK, DECK_Z, deckPose, sailing } from "./sea";
+import { ITEM } from "./goods";
+import { liftsOf, progress } from "./pads";
 import { rgb } from "../rgb";
-import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
+import { CAB, LANE_OFFSET, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
-import type { Car, Pose, RoadNode, Run, Sail, Trailer, Trip } from "../../generated";
+import type { Car, Good, Lift, Pose, RoadNode, Run, Sail, Trip } from "../../generated";
+import { GOODS } from "../../blueprints";
 import { getObjectsAt } from "../../state/gameObjects";
 
 /**
@@ -55,9 +58,8 @@ export function travelled(t: Trip, now: number): [number, number] {
   return a > 0 && dt > until ? [p + CRUISE * (dt - until), CRUISE] : [p, v];
 }
 
-/** The rig a vehicle steers as: a lorry's cab and the box on its hitch, a
- *  bobtail cab, or a car. */
-const rigOf = (car: Car): Rig => (car.role !== "Truck" ? CAR_RIG : car.hitched ? LORRY_RIG : { axle: LORRY_RIG.axle });
+/** The rig a vehicle steers as: a lorry's cab and its flatbed, or a car. */
+const rigOf = (car: Car): Rig => (car.role === "Truck" ? LORRY_RIG : CAR_RIG);
 
 /** Each vehicle's drive, kept while its trip's route and lanes are the
  *  same; a change of lanes, driven across from the lanes it left. */
@@ -120,7 +122,7 @@ function roadAt(x: number, y: number, height: number): { id: number; data: RoadN
   return best;
 }
 
-/** A parked lorry's box, straight behind its cab. */
+/** A parked lorry's flatbed, straight behind its cab. */
 export const straightBehind = (p: Pose): Pose => ahead(p, -(LORRY_RIG.axle + LORRY_RIG.trailer!.middle));
 
 /** A tractor on its run over the land (a ferry's is `sailing`): the
@@ -145,44 +147,75 @@ function running(run: Run): ((now: number) => Pose) | null {
 const sails = new WeakMap<Sail, (now: number) => Pose>();
 const voyage = (s: Sail) => sails.get(s) ?? sails.set(s, sailing(s)).get(s)!;
 
-/** What stands on a ferry's deck, each in its slot `k` and so far along
- *  it, `d`: the boxes, and the settlers' cars in the free slots from the
- *  sea end, two to a slot, so the first to roll off is at the land end. */
-function aboard(car: Car): { k: number; d: number; box?: Trailer; settler?: number }[] {
-  const slots = car.deck.length ? car.deck : Array<null>(15).fill(null);
-  const free = [...slots.keys()].filter((k) => !slots[k]).reverse();
+/** What stands on a ferry's deck, each where it stands: the pallets in
+ *  their bays, four to a bay, two by two, the land end's first; and the
+ *  settlers' cars in the bays with none, from the sea end, two to a bay,
+ *  so the first to roll off is at the land end (`seats`). */
+const [PER_BAY, BAYS] = [4, 15];
+function aboard(id: number, car: Car, ship: Pose, now: number): { at: Pose; good?: Good; settler?: number }[] {
+  const { goods } = deckSeen(id, car, now);
+  const empty = [...Array(BAYS).keys()].filter((k) => goods.slice(k * PER_BAY, (k + 1) * PER_BAY).every((g) => !g)).reverse();
   return [
-    ...slots.flatMap((box, k) => (box ? [{ k, d: 0, box }] : [])),
-    ...[...car.passengers].reverse().flatMap((settler, j) => (free[j >> 1] === undefined ? [] : [{ k: free[j >> 1], d: j & 1 ? 0.15 : -0.15, settler }])),
+    ...goods.flatMap((good, i) => (good ? [{ at: deckPlace(ship, i), good }] : [])),
+    ...[...car.passengers].reverse().flatMap((settler, j) => (empty[j >> 1] === undefined ? [] : [{ at: ahead(deckPose(ship, empty[j >> 1]), j & 1 ? 0.15 : -0.15), settler }])),
   ];
 }
+/** A ferry's deck as it is seen at `now`, place by place: the server's,
+ *  with what the harbour's forklifts have yet to take off still on it and
+ *  what they have yet to set down not yet; and the place each run's
+ *  package is lifted from or to now. The server says how many a run
+ *  lifts, not which places: off from the land end's places it emptied,
+ *  on to the sea end's it filled, as `work_deck` does. */
+export function deckSeen(id: number, car: Car, now: number): { goods: (Good | null)[]; at: Map<Lift, number> } {
+  const goods = Array.from({ length: BAYS * PER_BAY }, (_, i) => car.deck[i]?.good ?? null);
+  const out = goods.map((_, i) => !!car.deck[i]?.outbound);
+  const at = new Map<Lift, number>();
+  const taken = new Set<number>();
+  for (const l of liftsOf(id).sort((a, b) => a.start - b.start)) {
+    const p = progress(l, now);
+    const free = goods.map((_, i) => i).filter((i) => !taken.has(i));
+    const places = l.onto ? free.filter((i) => out[i] && goods[i] === l.good).reverse().slice(0, l.n) : free.filter((i) => !goods[i]).slice(0, l.n);
+    for (const i of places.slice(l.onto ? p.on : p.off)) goods[i] = l.onto ? null : l.good;
+    for (const i of places) taken.add(i);
+    if (places.length) at.set(l, places[Math.min(places.length - 1, Math.max(0, Math.floor((now - l.start) / l.every)))]);
+  }
+  return { goods, at };
+}
+/** A pallet's place `i` on a ferry's deck: its bay, `i` over four, and
+ *  in it two by two, the land end's pair first (`DECK` in `sea.rs`). */
+export function deckPlace(ship: Pose, i: number): Pose {
+  const q = i % PER_BAY;
+  return aside(ahead(deckPose(ship, Math.floor(i / PER_BAY)), q < 2 ? 0.08 : -0.08), q % 2 ? 0.055 : -0.055);
+}
+/** So far to the left of a pose, facing the same way. */
+const aside = (p: Pose, d: number): Pose => ({ at: [p.at[0] - Math.sin(p.heading) * d, p.at[1] + Math.cos(p.heading) * d], heading: p.heading });
 
-/** What a box behind a cab holds: a good, and how much. */
-export type Load = Pick<Trailer, "good" | "units">;
-
-/** The box behind a vehicle's cab: a lorry's or a tug's on its hitch, the
- *  world's; a van's its load on a call. None for a bobtail, or anything
+/** What stands on a vehicle's flatbed, a good a package, from the front:
+ *  a lorry's cargo, a van's load in whole packages. None for anything
  *  else. */
-export function carried(car: Car): Load | null {
-  if (car.role === "Truck" || car.role === "Tug") return car.hitched;
-  if (car.role === "Van") return car.load && { good: car.load[0], units: car.load[1] };
-  return null;
+export function carried(car: Car): Good[] {
+  if (car.role === "Truck") return car.cargo.map((p) => p.good);
+  if (car.role === "Van" && car.load) return Array(Math.ceil(car.load[1] / GOODS[car.load[0]].per - 1e-9)).fill(car.load[0]);
+  return [];
 }
 
+/** Where the `k`th package from the front stands on a flatbed at `bed`,
+ *  `l` long: in a row down its middle, from the headboard back; five on
+ *  a lorry's, three on a van's (`LOAD`, `VAN_LOAD`). */
+export const onBed = (bed: Pose, l: number, k: number): Pose => ahead(bed, l / 2 - 0.022 - (k + 0.5) * (ITEM + 0.004));
+
 /** A van is a small rigid lorry, VAN long: a lorry's tractor at the front,
- *  and on its chassis from behind the cab its body (`rigidShape` in
- *  `sea.ts`), the rest of the length: a flatbed for a builder's load, a
- *  box for a shop's; `VAN_BOX` of a box's length, so it holds that share
- *  of one. */
-export const VAN_BOX = (VAN.l - CAB_BLOCK) / TRAILER.l;
-const vanParts = (middle: Pose): Moment => ({ body: ahead(middle, (VAN.l - CAB.l) / 2), box: ahead(middle, -CAB_BLOCK / 2) });
+ *  and on its chassis from behind the cab a flatbed (`vanBed` in
+ *  `sea.ts`), the rest of the length. */
+export const VAN_BED = VAN.l - CAB_BLOCK;
+const vanParts = (middle: Pose): Moment => ({ body: ahead(middle, (VAN.l - CAB.l) / 2), bed: ahead(middle, -CAB_BLOCK / 2) });
 
 /** A vehicle at a moment: its body (a lorry's or a van's, its cab); the
- *  box behind it (`carried`); on a ferry's deck, what stands there. */
+ *  flatbed behind it; on a ferry's deck, what stands there. */
 export interface Moment {
   body: Pose;
-  box?: Pose;
-  deck?: { at: Pose; box?: Trailer; settler?: number }[];
+  bed?: Pose;
+  deck?: { at: Pose; good?: Good; settler?: number }[];
 }
 
 /** Where a vehicle is at `now`: on a trip, `along` its route if that is
@@ -190,15 +223,9 @@ export interface Moment {
  *  else exactly where the server's physics has it; none if it is out of
  *  sight. */
 export function moment(id: number, car: Car, now: number, along?: number): Moment | null {
-  switch (car.role) {
-    case "Ferry": {
-      const body = car.sail ? voyage(car.sail)(now) : car.spot;
-      return body && { body, deck: aboard(car).map(({ k, d, box, settler }) => ({ at: ahead(deckPose(body, k), d), box, settler })) };
-    }
-    case "Tug": {
-      const p = car.shunt && car.spot ? shunting(car.shunt, car.spot, !!car.hitched)(now) : car.spot && { tug: car.spot, box: behind(car.spot) };
-      return p && { body: p.tug, box: car.hitched ? p.box : undefined };
-    }
+  if (car.role === "Ferry") {
+    const body = car.sail ? voyage(car.sail)(now) : car.spot;
+    return body && { body, deck: aboard(id, car, body, now) };
   }
   if (car.run) {
     const body = running(car.run)?.(now);
@@ -208,5 +235,15 @@ export function moment(id: number, car: Car, now: number, along?: number): Momen
   const p = drive ? drive.at(Math.min(along ?? travelled(car.trip!, now)[0], drive.length)) : car.spot && { body: car.spot };
   if (!p) return null;
   if (car.role === "Van") return vanParts(p.body);
-  return { body: p.body, box: car.role === "Truck" && car.hitched ? p.trailer ?? straightBehind(p.body) : undefined };
+  return { body: p.body, bed: car.role === "Truck" ? p.trailer ?? straightBehind(p.body) : undefined };
+}
+
+/** Where the `i`th package aboard a vehicle stands at `now`, and how
+ *  high its base is: on a flatbed, from the front, or in a ferry's deck
+ *  place. */
+export function slotOn(id: number, car: Car, now: number, i: number): { at: Pose; z: number } | null {
+  const m = moment(id, car, now);
+  if (m?.bed) return { at: onBed(m.bed, car.role === "Van" ? VAN_BED : TRAILER.l, i), z: ROAD_Z + BED_TOP };
+  if (m && car.role === "Ferry") return { at: deckPlace(m.body, i), z: DECK_Z };
+  return null;
 }
