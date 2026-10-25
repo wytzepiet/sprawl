@@ -5,55 +5,43 @@
  */
 
 /** A broadleaf is a tree grown, as one is: from its trunk's top this many
- *  limbs, give or take one, rising this steeply (from level, in turns), as
- *  long as this of its height; each forking into this many, give or take
- *  one, from this far along it, turned off it up to this far (in turns),
- *  bending up toward the light this much, each this much as long as the
- *  one it grows from and as thick; so many times, and the last carry the
- *  leaves, in clumps this big, of the crown's height, this many along each,
- *  scattered this far off it. So a crown is clumps of clumps of clumps,
- *  as its limbs fork, and between them it is dark, or open to the branches. */
+ *  limbs, give or take one, and a leader up the middle, rising this
+ *  steeply (from level, in turns), this long; each forking into this many,
+ *  give or take one, from this far along it, turned off it up to this far
+ *  (in turns), bending up toward the light this much, each this much as
+ *  long as the one it grows from and as thick; so many times. Its last
+ *  forkings carry the leaves, this many along each, on stalks up to this
+ *  long, each leaf this long and so wide. Nothing groups them: where twigs
+ *  crowd, leaves do, and the crown is clumpy as its forks are. */
 const LIMBS = 6;
 const RISE = [0.08, 0.2];
 const LIMB = 0.42;
-const FORKS = 2.3;
-const FORK_FROM = 0.55;
-const FORK_TURN = 0.11;
-const TOWARD_LIGHT = 0.35;
-const SHORTER = 0.72;
+const FORKS = 2.2;
+const FORK_FROM = 0.5;
+const FORK_TURN = 0.1;
+const TOWARD_LIGHT = 0.3;
+const SHORTER = 0.74;
 const THINNER = 0.62;
-const FORKINGS = 4;
+const FORKINGS = 6;
+const LEAFY = 3;
 const LIMB_THICK = 0.035;
-const CLUMP = [0.09, 0.13];
-const CLUMPS = 3;
-const SCATTER = 0.07;
+const LEAVES = 12;
+const STALK = 0.03;
+const LEAF = 0.028;
+const LEAF_WIDE = 0.6;
 /** And it grows only so far out, this far of a limb's length, give or
  *  take this much, no leaves past that, nor limbs: a crown is round,
  *  its limbs crowding each other in. */
 const SPREAD = 1.4;
 const SPREAD_GIVE = 0.2;
-/** Its leaves fray a clump's outline this much, in leaves this wide, of the
- *  crown's radius, and catch the light each its own way: flat facets this
- *  wide, and shards this wide on them, each tilted at random up to this
- *  far, so the light breaks from leaf to leaf. A clump rolls over this
- *  steeply at its edge. */
-const FRAY = 0.35;
-const LEAF = 1 / 40;
-const FACET = 1 / 40;
-const SHARD = 1 / 80;
-const FACET_TILT = 0.4;
-const SHARD_TILT = 0.24;
-const CLUMP_TILT = 1.3;
-/** A clump is this many smaller, each this much its size, and so on this
- *  many times down; toward the edge of each the light reaches this much less. */
-const SUBS = 5;
-const SUB = 0.55;
-const LEVELS = 2;
-const CREASE = 0.35;
-/** The light reaches down less: at the crown's foot this much of what its
- *  top gets, and less again this much under each layer over it. */
-const FOOT_LIGHT = 0.45;
-const SHADED = 0.12;
+/** A leaf lies tilted at random up to this much (1 at 45°). The light
+ *  reaches down less: at the crown's foot this much of what its top gets;
+ *  and under the crown's skin, a dome over its highest leaves this many
+ *  texels round, it is dark, all of it this deep, of the crown's height. */
+const LEAF_TILT = 0.9;
+const FOOT_LIGHT = 0.5;
+const SKIN = 10;
+const DEEP = 0.25;
 
 /** Crowns are baked, not worked out pixel by pixel: this many broadleaves,
  *  then the
@@ -97,44 +85,31 @@ function facet(x: number, y: number) {
   f0 = fx * 2 - 1;
   f1 = fy * 2 - 1;
 }
-let n0 = 0;
-/** Smooth noise, in n0. */
-function noise(x: number, y: number) {
-  const ix = Math.floor(x), iy = Math.floor(y);
-  const tx = (x - ix) * (x - ix) * (3 - 2 * (x - ix)), ty = (y - iy) * (y - iy) * (3 - 2 * (y - iy));
-  hash(ix, iy, 0);
-  const a = h0;
-  hash(ix + 1, iy, 0);
-  const b = a + (h0 - a) * tx;
-  hash(ix, iy + 1, 0);
-  const c = h0;
-  hash(ix + 1, iy + 1, 0);
-  n0 = b + (c + (h0 - c) * tx - b) * ty;
-}
-
 const byte = (u: number) => Math.round(Math.min(1, Math.max(0, u)) * 255);
 /** The most light a leaf's alpha says; above it, a texel is twig. */
 export const LIT = 0.8;
 
 /** A broadleaf is drawn in layers, as a conifer is (`trees.ts` stacks
- *  them): its clumps shared among them by height, the highest in the top. */
+ *  them): its leaves shared among them by height, the highest in the top. */
 export const BROAD_LAYERS = 4;
 
-/** Broadleaf v grown: its clumps, (x, y, z, radius) each, and its limbs,
- *  (from x, y, z, to x, y, z, thickness) each, its trunk's top at 0. */
+/** Broadleaf v grown: its leaves, (x, y, z, along x, along y, tilt x,
+ *  tilt y) each, and its limbs, (from x, y, z, to x, y, z, thickness)
+ *  each, its trunk's top at 0. */
 function grow(v: number) {
   let n = 0;
   const rnd = () => (hash(v, n++, 11), h0);
-  const clumps: number[] = [], limbs: number[] = [0, 0, -0.5, 0, 0, 0, LIMB_THICK * 1.3];
+  const leaves: number[] = [], limbs: number[] = [0, 0, -0.5, 0, 0, 0, LIMB_THICK * 1.3];
   const branch = (x: number, y: number, z: number, dx: number, dy: number, dz: number, len: number, thick: number, forkings: number) => {
     limbs.push(x, y, z, x + dx * len, y + dy * len, z + dz * len, thick);
-    if (forkings <= 1) {
-      for (let c = 0; c < CLUMPS; c++) {
-        const t = 0.3 + 0.7 * rnd();
-        clumps.push(x + dx * len * t + (rnd() * 2 - 1) * SCATTER, y + dy * len * t + (rnd() * 2 - 1) * SCATTER, z + dz * len * t + (rnd() * 2 - 1) * SCATTER, CLUMP[0] + (CLUMP[1] - CLUMP[0]) * rnd());
+    if (forkings < LEAFY) {
+      for (let l = 0; l < LEAVES; l++) {
+        const t = rnd(), a = rnd() * 2 * Math.PI, stalk = STALK * rnd();
+        const [ox, oy] = [Math.cos(a), Math.sin(a)];
+        leaves.push(x + dx * len * t + ox * stalk, y + dy * len * t + oy * stalk, z + dz * len * t + stalk * (rnd() - 0.3), ox, oy, (rnd() * 2 - 1) * LEAF_TILT, (rnd() * 2 - 1) * LEAF_TILT);
       }
-      if (forkings === 0) return;
     }
+    if (forkings === 0) return;
     // Two ways across it, to turn its forks off it.
     const [ux, uy, uz] = Math.abs(dz) < 0.9 ? [-dy, dx, 0] : [1, 0, 0];
     const ul = Math.hypot(ux, uy, uz);
@@ -151,7 +126,6 @@ function grow(v: number) {
       branch(x + dx * len * along, y + dy * len * along, z + dz * len * along, ex, ey, ez, len * SHORTER, thick * THINNER, forkings - 1);
     }
   };
-  // And its leader, up the middle.
   branch(0, 0, 0, 0.1 * (rnd() - 0.5), 0.1 * (rnd() - 0.5), 1, LIMB * 0.6, LIMB_THICK, FORKINGS);
   const count = LIMBS - 1 + Math.floor(rnd() * 3);
   for (let l = 0; l < count; l++) {
@@ -160,136 +134,106 @@ function grow(v: number) {
     branch(0, 0, -0.1 * rnd(), Math.cos(rise) * Math.cos(az), Math.cos(rise) * Math.sin(az), Math.sin(rise), LIMB * (0.8 + 0.4 * rnd()), LIMB_THICK, FORKINGS);
   }
   // Pruned round: past its reach no leaves, nor limbs.
-  const kept = clumps.filter((_, i) => {
-    const c = i - (i % 4);
-    if (i % 4 === 0) hash(v, c, 12);
-    return Math.hypot(clumps[c], clumps[c + 1]) + clumps[c + 3] < LIMB * SPREAD * (1 + SPREAD_GIVE * (h0 - 0.5));
-  });
-  const end = LIMB * SPREAD * 0.9;
-  const inside = limbs.filter((_, i) => {
-    const b = i - (i % 7);
-    return Math.hypot(limbs[b], limbs[b + 1]) < end && Math.hypot(limbs[b + 3], limbs[b + 4]) < end;
-  });
-  return { clumps: kept, limbs: inside };
-}
-
-/** What every broadleaf's leaves share, a texel each: how far a leaf frays
- *  its clump's outline there, and which way it tilts. */
-function leaves(at: (x: number, y: number) => void) {
-  const fray = new Float32Array(CROWN_TEXELS * CROWN_TEXELS), tilt = new Float32Array(CROWN_TEXELS * CROWN_TEXELS * 2);
-  for (let j = 0, k = 0; j < CROWN_TEXELS; j++) {
-    for (let i = 0; i < CROWN_TEXELS; i++, k++) {
-      at(i, j);
-      const [x, y] = [ax, ay];
-      noise(x / LEAF, y / LEAF);
-      fray[k] = n0;
-      facet(x / FACET, y / FACET);
-      const [l0, l1] = [f0, f1];
-      facet(x / SHARD + 53, y / SHARD + 53);
-      tilt[2 * k] = l0 * FACET_TILT + f0 * SHARD_TILT;
-      tilt[2 * k + 1] = l1 * FACET_TILT + f1 * SHARD_TILT;
-    }
+  const kept: number[] = [];
+  for (let l = 0; l < leaves.length; l += 7) {
+    if (Math.hypot(leaves[l], leaves[l + 1]) + LEAF < LIMB * SPREAD * (1 + SPREAD_GIVE * (rnd() - 0.5))) kept.push(...leaves.slice(l, l + 7));
   }
-  return { fray, tilt };
+  const end = LIMB * SPREAD * 0.9;
+  const inside: number[] = [];
+  for (let b = 0; b < limbs.length; b += 7) {
+    if (Math.hypot(limbs[b], limbs[b + 1]) < end && Math.hypot(limbs[b + 3], limbs[b + 4]) < end) inside.push(...limbs.slice(b, b + 7));
+  }
+  return { leaves: kept, limbs: inside };
 }
-let ax = 0, ay = 0;
 
-/** Broadleaf v's layers, seen from above: grown, its clumps and limbs laid
+/** Broadleaf v's layers, seen from above: grown, its leaves and limbs laid
  *  down a texel at a time, in each layer the highest there showing; the
- *  light less the lower it is and the more layers over it. Into stamp(layer). */
-function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => number, v: number, shared: ReturnType<typeof leaves>) {
-  const { clumps, limbs } = grow(v);
+ *  light less the lower it is, and the deeper under the crown's skin.
+ *  Into stamp(layer). */
+function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => number, v: number) {
+  const { leaves, limbs } = grow(v);
   let reach = 0, low = 9, high = -9;
-  for (let c = 0; c < clumps.length; c += 4) {
-    reach = Math.max(reach, Math.hypot(clumps[c], clumps[c + 1]) + clumps[c + 3]);
-    (low = Math.min(low, clumps[c + 2] - clumps[c + 3])), (high = Math.max(high, clumps[c + 2] + clumps[c + 3]));
+  for (let l = 0; l < leaves.length; l += 7) {
+    reach = Math.max(reach, Math.hypot(leaves[l], leaves[l + 1]) + LEAF);
+    (low = Math.min(low, leaves[l + 2])), (high = Math.max(high, leaves[l + 2]));
   }
   // Of the crown: across, its radius 1 a little in from its outline; up, its foot 0 and its top 1.
   const s = 0.95 / reach;
   const up = (z: number) => (z - low) / (high - low);
   const texel = (u: number) => ((u * s + CROWN_REACH) / (2 * CROWN_REACH)) * CROWN_TEXELS;
-  const N = CROWN_TEXELS * CROWN_TEXELS;
-  const height = new Float32Array(BROAD_LAYERS * N).fill(-1), lean = new Float32Array(BROAD_LAYERS * N * 2), bark = new Uint8Array(BROAD_LAYERS * N), shade = new Float32Array(BROAD_LAYERS * N).fill(1);
-  // A clump's layer by how high it is among the rest, so each has its share.
-  const order = Array.from({ length: clumps.length / 4 }, (_, c) => c).sort((a, b) => clumps[b * 4 + 2] - clumps[a * 4 + 2]);
-  const layerOf = new Uint8Array(order.length);
-  order.forEach((c, rank) => (layerOf[c] = Math.floor((rank / order.length) * BROAD_LAYERS)));
-  // A clump is clumps, and they clumps, LEVELS deep, each SUBS of SUB its
-  // size, sat on its dome; a texel lies in each of them, and each rolls it
-  // over its way and shades it toward its own edge, so the creases between
-  // them are dark at every size.
-  const within: number[] = [];
-  let n = 0;
-  const lay = (cx: number, cy: number, cz: number, r: number, level: number, base: number) => {
-    within.push(texel(cx), texel(cy), texel(r) - texel(0));
-    if (level < LEVELS) {
-      for (let c = 0; c < SUBS; c++) {
-        hash(v, n++, 13);
-        const [a, d] = [h0 * 2 * Math.PI, Math.sqrt(h1) * r * (1 - SUB)];
-        lay(cx + Math.cos(a) * d, cy + Math.sin(a) * d, cz + Math.sqrt(Math.max(0, (r * (1 - SUB)) ** 2 - d * d)), r * SUB, level + 1, base);
-      }
-    } else {
-      const [x, y, rt] = within.slice(-3);
-      for (let j = Math.max(0, Math.floor(y - rt)); j < Math.min(CROWN_TEXELS, Math.ceil(y + rt)); j++) {
-        for (let i = Math.max(0, Math.floor(x - rt)); i < Math.min(CROWN_TEXELS, Math.ceil(x + rt)); i++) {
-          const k = j * CROWN_TEXELS + i;
-          const [dx, dy] = [(i + 0.5 - x) / rt, (j + 0.5 - y) / rt];
-          const d2 = dx * dx + dy * dy;
-          if (d2 > 1 - FRAY * shared.fray[k]) continue;
-          const h = up(cz + r * Math.sqrt(1 - d2));
-          if (h <= height[base + k]) continue;
-          let [tx, ty, lit] = [shared.tilt[2 * k], shared.tilt[2 * k + 1], 1];
-          for (let w = 0; w < within.length; w += 3) {
-            const [ex, ey] = [(i + 0.5 - within[w]) / within[w + 2], (j + 0.5 - within[w + 1]) / within[w + 2]];
-            const e2 = Math.min(1, ex * ex + ey * ey);
-            (tx += ex * CLUMP_TILT), (ty += ey * CLUMP_TILT), (lit *= 1 - CREASE * (1 - Math.sqrt(1 - e2)));
-          }
-          height[base + k] = h;
-          lean[2 * (base + k)] = tx / (LEVELS + 1);
-          lean[2 * (base + k) + 1] = ty / (LEVELS + 1);
-          shade[base + k] = lit;
-          bark[base + k] = 0;
-        }
-      }
-    }
-    within.length -= 3;
-  };
-  for (let c = 0; c < order.length; c++) lay(clumps[c * 4], clumps[c * 4 + 1], clumps[c * 4 + 2], clumps[c * 4 + 3], 0, layerOf[c] * N);
-  for (let b = 0; b < limbs.length; b += 7) {
-    const [x0, y0, z0, x1, y1, z1] = [texel(limbs[b]), texel(limbs[b + 1]), limbs[b + 2], texel(limbs[b + 3]), texel(limbs[b + 4]), limbs[b + 5]];
-    const rt = texel(limbs[b + 6]) - texel(0);
-    const base = Math.min(BROAD_LAYERS - 1, Math.max(0, Math.floor((1 - up((z0 + z1) / 2)) * BROAD_LAYERS))) * N;
-    const [ex, ey] = [x1 - x0, y1 - y0];
-    const e2 = Math.max(ex * ex + ey * ey, 1e-6);
-    for (let j = Math.max(0, Math.floor(Math.min(y0, y1) - rt)); j < Math.min(CROWN_TEXELS, Math.ceil(Math.max(y0, y1) + rt)); j++) {
-      for (let i = Math.max(0, Math.floor(Math.min(x0, x1) - rt)); i < Math.min(CROWN_TEXELS, Math.ceil(Math.max(x0, x1) + rt)); i++) {
-        const t = Math.min(1, Math.max(0, ((i + 0.5 - x0) * ex + (j + 0.5 - y0) * ey) / e2));
-        const [qx, qy] = [i + 0.5 - x0 - ex * t, j + 0.5 - y0 - ey * t];
-        if (qx * qx + qy * qy > rt * rt) continue;
-        const k = j * CROWN_TEXELS + i, h = up(z0 + (z1 - z0) * t);
-        if (h <= height[base + k]) continue;
-        height[base + k] = h;
-        lean[2 * (base + k)] = (qx / rt) * 0.6;
-        lean[2 * (base + k) + 1] = (qy / rt) * 0.6;
-        bark[base + k] = 1;
+  const T = CROWN_TEXELS, N = T * T;
+  const height = new Float32Array(BROAD_LAYERS * N).fill(-1), lean = new Float32Array(BROAD_LAYERS * N * 2), bark = new Uint8Array(BROAD_LAYERS * N);
+  // A leaf's layer by how high it is among the rest, so each has its share.
+  const count = leaves.length / 7;
+  const order = Array.from({ length: count }, (_, l) => l).sort((a, b) => leaves[b * 7 + 2] - leaves[a * 7 + 2]);
+  const layerOf = new Uint8Array(count);
+  order.forEach((l, rank) => (layerOf[l] = Math.floor((rank / count) * BROAD_LAYERS)));
+  const lt = texel(LEAF) - texel(0), rise = (high - low) * s;
+  for (let l = 0; l < count; l++) {
+    const [cx, cy, cz, ox, oy, tx, ty] = [texel(leaves[l * 7]), texel(leaves[l * 7 + 1]), up(leaves[l * 7 + 2]), leaves[l * 7 + 3], leaves[l * 7 + 4], leaves[l * 7 + 5], leaves[l * 7 + 6]];
+    const base = layerOf[l] * N;
+    for (let j = Math.max(0, Math.floor(cy - lt)); j < Math.min(T, Math.ceil(cy + lt)); j++) {
+      for (let i = Math.max(0, Math.floor(cx - lt)); i < Math.min(T, Math.ceil(cx + lt)); i++) {
+        const [dx, dy] = [i + 0.5 - cx, j + 0.5 - cy];
+        // A leaf: pointed, along its stalk's way.
+        const [a, b] = [(dx * ox + dy * oy) / lt, (dy * ox - dx * oy) / (lt * LEAF_WIDE)];
+        if (a * a + b * b > 1 - Math.abs(a) * 0.5) continue;
+        const k = base + j * T + i;
+        const h = cz - ((tx * dx + ty * dy) * 2 * CROWN_REACH) / T / rise;
+        if (h <= height[k]) continue;
+        (height[k] = h), (lean[2 * k] = tx), (lean[2 * k + 1] = ty), (bark[k] = 0);
       }
     }
   }
+  for (let b = 0; b < limbs.length; b += 7) {
+    const [x0, y0, z0, x1, y1, z1] = [texel(limbs[b]), texel(limbs[b + 1]), limbs[b + 2], texel(limbs[b + 3]), texel(limbs[b + 4]), limbs[b + 5]];
+    const rt = Math.max(0.6, texel(limbs[b + 6]) - texel(0));
+    const base = Math.min(BROAD_LAYERS - 1, Math.max(0, Math.floor((1 - up((z0 + z1) / 2)) * BROAD_LAYERS))) * N;
+    const [ex, ey] = [x1 - x0, y1 - y0];
+    const e2 = Math.max(ex * ex + ey * ey, 1e-6);
+    for (let j = Math.max(0, Math.floor(Math.min(y0, y1) - rt)); j < Math.min(T, Math.ceil(Math.max(y0, y1) + rt)); j++) {
+      for (let i = Math.max(0, Math.floor(Math.min(x0, x1) - rt)); i < Math.min(T, Math.ceil(Math.max(x0, x1) + rt)); i++) {
+        const t = Math.min(1, Math.max(0, ((i + 0.5 - x0) * ex + (j + 0.5 - y0) * ey) / e2));
+        const [qx, qy] = [i + 0.5 - x0 - ex * t, j + 0.5 - y0 - ey * t];
+        if (qx * qx + qy * qy > rt * rt) continue;
+        const k = base + j * T + i, h = up(z0 + (z1 - z0) * t);
+        if (h <= height[k]) continue;
+        (height[k] = h), (lean[2 * k] = (qx / rt) * 0.6), (lean[2 * k + 1] = (qy / rt) * 0.6), (bark[k] = 1);
+      }
+    }
+  }
+  // The crown's skin: its highest leaf near each texel, smoothed.
+  const top = new Float32Array(N).fill(0);
+  for (let k = 0; k < N; k++) for (let l = 0; l < BROAD_LAYERS; l++) top[k] = Math.max(top[k], height[l * N + k]);
+  const skin = new Float32Array(N), pass = new Float32Array(N);
+  for (let j = 0; j < T; j++) {
+    for (let i = 0; i < T; i++) {
+      let m = 0;
+      for (let d = Math.max(0, i - SKIN); d <= Math.min(T - 1, i + SKIN); d++) m = Math.max(m, top[j * T + d] - ((d - i) / SKIN) ** 2 * DEEP);
+      pass[j * T + i] = m;
+    }
+  }
+  for (let j = 0; j < T; j++) {
+    for (let i = 0; i < T; i++) {
+      let m = 0;
+      for (let d = Math.max(0, j - SKIN); d <= Math.min(T - 1, j + SKIN); d++) m = Math.max(m, pass[d * T + i] - ((d - j) / SKIN) ** 2 * DEEP);
+      skin[j * T + i] = m;
+    }
+  }
   for (let layer = 0; layer < BROAD_LAYERS; layer++) {
-    for (let j = 0, k = 0; j < CROWN_TEXELS; j++) {
-      for (let i = 0; i < CROWN_TEXELS; i++, k++) {
+    for (let j = 0, k = 0; j < T; j++) {
+      for (let i = 0; i < T; i++, k++) {
         const o = stamp(layer, i, j), h = height[layer * N + k];
         if (h < 0) {
           out[o] = 255;
           continue;
         }
-        let over = 0;
-        for (let l = 0; l < layer; l++) over += height[l * N + k] >= 0 ? 1 : 0;
-        const [x, y] = [((i + 0.5) / CROWN_TEXELS) * 2 * CROWN_REACH - CROWN_REACH, ((j + 0.5) / CROWN_TEXELS) * 2 * CROWN_REACH - CROWN_REACH];
+        const [x, y] = [((i + 0.5) / T) * 2 * CROWN_REACH - CROWN_REACH, ((j + 0.5) / T) * 2 * CROWN_REACH - CROWN_REACH];
+        const under = Math.min(1, Math.max(0, (skin[k] - h) / DEEP));
         out[o] = byte(Math.hypot(x, y) / 2);
         out[o + 1] = byte(0.5 + lean[2 * (layer * N + k)] / 2);
         out[o + 2] = byte(0.5 + lean[2 * (layer * N + k) + 1] / 2);
-        out[o + 3] = bark[layer * N + k] ? 255 : byte((FOOT_LIGHT + (1 - FOOT_LIGHT) * Math.max(0, h)) * (1 - SHADED * over) * shade[layer * N + k] * LIT);
+        out[o + 3] = bark[layer * N + k] ? 255 : byte((FOOT_LIGHT + (1 - FOOT_LIGHT) * Math.max(0, h)) * (1 - under) * LIT);
       }
     }
   }
@@ -398,8 +342,7 @@ export function bakeCrowns(): Uint8Array {
       }
     }
   };
-  const shared = leaves((i, j) => ((ax = ((i + 0.5) / CROWN_TEXELS) * 2 * CROWN_REACH - CROWN_REACH), (ay = ((j + 0.5) / CROWN_TEXELS) * 2 * CROWN_REACH - CROWN_REACH)));
-  for (let v = 0; v < CROWNS; v++) broad(out, (layer, i, j) => at(layer * CROWNS + v, i, j), v, shared);
+  for (let v = 0; v < CROWNS; v++) broad(out, (layer, i, j) => at(layer * CROWNS + v, i, j), v);
   for (let layer = 0; layer < CONIFER_LAYERS; layer++) {
     for (let v = 0; v < CONIFERS; v++) each((x, y, i, j) => conifer(out, at(CROWNS * BROAD_LAYERS + layer * CONIFERS + v, i, j), x, y, v, layer));
   }
