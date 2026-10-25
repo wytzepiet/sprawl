@@ -53,6 +53,9 @@ const TURN = 1.5;
  *  a cliff facing down the slope this steeply, turned by the slate as a
  *  lip is: the old painted cliff, laid over the wall from above. */
 const CLIFF_TILT = 1.8;
+/** Steepening from the lip's roll at the edge to that over this far out,
+ *  in tiles, so lip and cliff meet facing the same way. */
+const STEEPEN = 0.1;
 /** Its plates are read from above, stretched down a wall as the old
  *  painted cliffs were; its grain over them is read as if the wall were
  *  laid back on the ground in front of it, so it is as fine up the wall
@@ -124,7 +127,7 @@ let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) 
 let peakGrain = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * ${f(UNROLL)});
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
-N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * ${f(CLIFF_TILT)}) + peakGrain.xy * ${f(RELIEF)}, 1.));`;
+N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * mix(${f(ROLL)}, ${f(CLIFF_TILT)}, smoothstep(0., ${f(STEEPEN)}, peakBelow))) + peakGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
@@ -203,7 +206,7 @@ let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCli
 let cliffSlate = slateRead(input.worldPos.xy);
 let cliffGrain = slateRead(input.worldPos.xy + cliffFace * select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall) * ${f(UNROLL)});
 let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
-let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(CLIFF_TILT)}, cliffFar > 0.);
+let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, mix(${f(ROLL)}, ${f(CLIFF_TILT)}, smoothstep(0., ${f(STEEPEN)}, cliffFar)), cliffFar > 0.);
 baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
