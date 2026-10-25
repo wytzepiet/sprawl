@@ -127,7 +127,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   return {
     trees: trees.filter((t) => !onDrive(t)),
     hedges: hedges(town),
-    lamps: lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })),
+    lamps: [...lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })), ...lorries.lamps],
     cars: [...park(town), ...drives.cars],
     docks: lorries.docks, yardLines: lorries.lines,
   };
@@ -294,9 +294,10 @@ function driveways(town: Town): { strips: P[][]; cars: Car[] } {
 /** A yard's docks, as the server lays its park (`lots::park`): a lane
  *  straight in from the gate, the door's tile, to the yard's back, and off
  *  it, on each side the yard reaches far enough, rows of docks, the lines
- *  between them painted, some with a lorry. */
-function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
-  const out: Dock[] = [], lines: P[][] = [];
+ *  between them painted, some with a lorry; and either side of its gate,
+ *  a lamp leaning in over the lane. */
+function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][]; lamps: Lamp[] } {
+  const out: Dock[] = [], lines: P[][] = [], lamps: Lamp[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       // A harbour's docks are on one side of its lane, the quay's pad on
@@ -315,6 +316,10 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
       // `s` in from it and `side` across.
       const [ox, oy] = [c + 0.5 - fx * (deep - 0.5), r + 0.5 - fy * (deep - 0.5)];
       const at = (s: number, side: number): P => [ox + fx * s + px * side, oy + fy * s + py * side];
+      if (fill === "docks") for (const side of [-1, 1]) {
+        const [x, y] = [c + 0.5 + fx * GATE_LAMP.in + px * side * GATE_LAMP.out, r + 0.5 + fy * GATE_LAMP.in + py * side * GATE_LAMP.out];
+        lamps.push({ x, y, hx: x - px * side * ARM, hy: y - py * side * ARM });
+      }
       for (const side of (fill === "park" ? [1] : [1, -1]).filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
         const [nx, ny] = [px * side, py * side];
         for (const s of [...DOCK_ROWS.map((s) => s - 0.15), DOCK_ROWS[DOCK_ROWS.length - 1] + 0.15]) lines.push(strip(ox, oy, fx, fy, s - 0.008, s + 0.008, nx, ny, 0.45, TAIL));
@@ -325,8 +330,12 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
       }
     }
   }
-  return { docks: out, lines };
+  return { docks: out, lines, lamps };
 }
+
+/** A gate's lamps: out from the door tile's middle toward the street, and
+ *  across from the lane's. */
+const GATE_LAMP = { in: 0.36, out: 0.56 };
 
 /** A strip along the line from (x0, y0) along (ux, uy) for `len`, on the
  *  side (nx, ny), from `a` to `b` out from the line. */
