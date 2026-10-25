@@ -33,11 +33,10 @@ together.
 ## Sources
 
 1. **The trunk.** The opening, opened with the town: a harbour, a depot,
-   a street between them, the starter pack fetched, houses and their
-   settlers (`game.md` §The opening). Then one at a time, each opening
-   as the last finishes, three short missions for the core loop, each
-   on the ferry's deck (`trade.md` §The deck): book a box of timber,
-   pin a box of stone, sell a box of crates over the sea.
+   a street between them, a sawmill (the town's first stands at once,
+   a lorry's load in its yard), a bundle of its timber sold, the starter
+   pack fetched, houses for its hands and their settlers
+   (`plan-opening.md`). Then the market: a pallet of fuel bought.
 2. **Kinds.** Each building kind may carry a mission that teaches it.
    Nothing is locked (`game.md` §The build), so it opens from source 3:
    the mission that asks for a quarry is the quarry's teaching mission.

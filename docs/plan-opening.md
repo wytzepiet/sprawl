@@ -5,7 +5,7 @@ opening into the game: problems that come to the player, the fix that
 unlocks the next thing, and a first sale within a few minutes. For
 Wytze to react to; nothing here is built. It sits on the goods work
 (pads, packages, the pallet ferry) and changes `missions.md` where they
-meet.
+meet. The opening's first cut is built (§The opening, built).
 
 ## Pacing, as numbers first
 
@@ -45,6 +45,55 @@ same way, is the baseline.
 The first three minutes are close to the beats; the first sale is at
 ten, and from then on nothing arrives: no situation opens in the half
 hour, since the starter pack keeps every shelf stocked.
+
+## The opening, built
+
+2026-10-25, on Wytze's word: the sawmill is the starter, no pick
+("wood is the first basic material you need; let's babysit the player
+a bit"). The farm takes days to grow and the quarry's stone builds
+nothing alone; both come later, asked for by the town.
+
+1. Build a harbour (as before).
+2. Build a depot, and 3. join them (as before).
+4. **Build a sawmill.** The town's first stands at once, like its first
+   depot, with a lorry's load (five bundles) in its yard, so the first
+   sale waits on no shift and no hands (`World::founded`).
+5. **Sell a bundle of timber**, a step of the opening, not a mission
+   after it, so the sale does not wait on the settlers.
+6. Fetch the starter pack, now two bundles of timber (the hands'
+   houses), five of stone, two crates, two drums.
+7. **Houses for its hands**, beside it: people take the work nearest
+   home, so houses by the depot staff its desks instead.
+
+Then the market: a pallet of fuel bought.
+
+`first_half_hour` now plays it at three join hours (midnight, nine, six
+in the evening), on the test street:
+
+| | 0:00 | 9:00 | 18:00 |
+|---|---|---|---|
+| Depot, sawmill placed | 0:10, 0:20 | same | same |
+| Goods on the quay | 0:25 | same | same |
+| A bundle put up for sale | 0:30 | same | same |
+| Houses placed | 1:31 | same | same |
+| Settlers home | 5:58 | same | same |
+| **First coins: the sale, the opening done** | 7:00 | same | same |
+| First letter | 8:45 | same | same |
+| The sawmill's hands at work | 8:11 | 18:26 | 11:05 |
+
+What it shows:
+
+- **The sale misses the first ferry.** It is up at 0:30, while the
+  first ferry is in (0:25 to 1:27), but the lorry fetches the starter
+  pack first and the bundle reaches the quay at 5:00; the next ferry is
+  in at 5:58 and casts off at 7:00. The ferry's rhythm is the opening's
+  heartbeat (§What to decide). Proposed: the first call waits at the
+  quay for the first sale, the card saying so.
+- **The depot's six desks take the first hands.** They make nothing (a
+  depot's lorries run unstaffed); houses near it leave the sawmill
+  empty. Proposed: a depot with no jobs.
+- **Night shows**: joined at nine, the hands come home after their
+  shift ends and first work at 18:26; the day/night rule is still open.
 
 ## The opening, cut
 

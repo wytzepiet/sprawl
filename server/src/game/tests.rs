@@ -1057,9 +1057,14 @@ fn a_real_coast_is_called_at_as_often_as_ever() {
     assert!(per_day >= 6.0, "{per_day} calls a day");
 }
 
-/// The opening, done: what the town's situation waits for.
+/// The opening and the trunk after it, done: what the town's situation
+/// waits for, and nothing left to pay for a sale or a purchase.
 pub(crate) fn opening_done(world: &mut World) {
-    world.missions.list.iter_mut().for_each(|m| m.finished = Some(0));
+    while world.missions.list.iter().any(|m| m.finished.is_none()) {
+        world.missions.list.iter_mut().for_each(|m| m.finished = Some(0));
+        world.missions.stir();
+        crate::missions::check(world, 0);
+    }
 }
 /// The open missions' steps, by mission, as the step after now reads them.
 pub(crate) fn missions(game: &mut Game) -> Vec<(crate::missions::Key, Vec<bool>, bool)> {
@@ -1071,13 +1076,26 @@ pub(crate) fn missions(game: &mut Game) -> Vec<(crate::missions::Key, Vec<bool>,
 pub(crate) fn opening(game: &mut Game) -> Vec<bool> {
     missions(game).into_iter().find(|m| m.0 == crate::missions::Key::Opening).expect("no opening").1
 }
+/// A sawmill placed by the hand on the test street at `x`, the woods
+/// planted behind it as the season's are.
+pub(crate) fn sawmill(world: &mut World, x: i32) -> EntityId {
+    for (tx, ty) in (x - 5..x + 7).flat_map(|tx| (5..14).map(move |ty| (tx, ty))) {
+        world.terrain.insert((tx, ty), TerrainType::Forest);
+    }
+    let at = GridCoord { x, y: 1 };
+    let facing = world.site_for(at, BuildingKind::Sawmill).expect("no room for the sawmill");
+    let mill = world.place_building(at, BuildingKind::Sawmill, facing).expect("the sawmill was refused");
+    world.orient(mill);
+    mill
+}
+
 /// The opening, docs/game.md: a harbour, a depot, a street between
-/// them. The first ferry comes in on time with the starter pack and
+/// them, a sawmill that stands at once with a load in its yard. The first ferry comes in on time with the starter pack and
 /// the forklifts lift it onto the quay, for nothing; the depot's
 /// lorry fetches a load and its forklift unloads it into the yard, and a second
 /// lorry helps fetch the rest. A house is a site until a
 /// van brings its timber; then its settlers come on the next ferry and
-/// drive home. A box of crates sold goes out on the ferry, paid as it
+/// drive home; and a bundle of the sawmill's timber sold goes out on the ferry, paid as it
 /// casts off; and the ferry keeps its timetable throughout. The
 /// opening mission ticks off each step as the town does it, on the
 /// server, and pays when the last is done; the trunk follows it.
@@ -1088,7 +1106,7 @@ fn the_opening_from_the_harbour() {
     use crate::world::sea::FIRST_CALL;
     let mut game = game(street());
     let harbour = harbour_of(&game.world);
-    assert_eq!(opening(&mut game), [true, false, false, false, false], "the harbour stands, and nothing else");
+    assert_eq!(opening(&mut game), [true, false, false, false, false, false, false], "the harbour stands, and nothing else");
     let x = HARBOUR_X - 12;
     let world = &mut game.world;
     let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
@@ -1096,7 +1114,11 @@ fn the_opening_from_the_harbour() {
     world.orient(depot);
     assert!(building_of(world, depot).site.is_none(), "the first depot is a site");
     assert!(building_of(world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
-    assert_eq!(opening(&mut game), [true, true, true, false, false], "a depot on the harbour's street");
+    assert_eq!(opening(&mut game), [true, true, true, false, false, false, false], "a depot on the harbour's street");
+    let mill = sawmill(&mut game.world, SAWMILL_X);
+    assert!(building_of(&game.world, mill).site.is_none(), "the first sawmill is a site");
+    assert_eq!(building_of(&game.world, mill).stocks[&Good::Timber].level, crate::haul::LOAD as f64 * Good::Timber.per_package(), "the first sawmill's yard is not a load");
+    assert_eq!(opening(&mut game), [true, true, true, true, false, false, false], "the sawmill stands");
     let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let lorry = lorries_of(world, depot)[0];
@@ -1137,7 +1159,7 @@ fn the_opening_from_the_harbour() {
     assert!(game.now - berthed <= DWELL + 100, "it sailed late: {} after berthing", game.now - berthed);
     assert!(!car_of(&game.world, ferry).deck.iter().flatten().any(|t| !t.outbound), "it sailed with the starter pack aboard");
     let quay = |w: &World| building_of(w, harbour).pad.len();
-    assert!(quay(&game.world) >= 10, "only {} packages landed on the quay", quay(&game.world));
+    assert!(quay(&game.world) as u32 >= starter / 2, "only {} packages landed on the quay", quay(&game.world));
     assert_eq!(game.world.treasury, crate::economy::STAKE, "the starter pack was paid for");
 
     // The lorry fetches a load as it lands, and unloads it.
@@ -1147,7 +1169,7 @@ fn the_opening_from_the_harbour() {
     assert!(stock(&game.world) > 0.0, "the lorry brought nothing home in two hours");
     assert!(car_of(&game.world, lorry).cargo.is_empty(), "the load was not gone into stock");
     assert!(game.world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
-    assert_eq!(opening(&mut game), [true, true, true, true, false], "the load fetched");
+    assert_eq!(opening(&mut game), [true, true, true, true, false, true, false], "the load fetched");
 
     // A second lorry, bought from the world: the two fetch the rest.
     let before = game.world.treasury;
@@ -1157,7 +1179,17 @@ fn the_opening_from_the_harbour() {
     let until = game.now + day / 4;
     while (quay(&game.world) > 0 || car_of(&game.world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && game.step_to(until) {}
     let shelf = |w: &World, g: Good| building_of(w, depot).stocks[&g].level;
-    assert!(shelf(&game.world, Good::Timber) >= 40.0, "the timber did not come in: {}", shelf(&game.world, Good::Timber));
+    assert!(shelf(&game.world, Good::Timber) >= 8.0, "the timber did not come in: {}", shelf(&game.world, Good::Timber));
+
+    // A bundle of timber sold: out on the ferry, paid as it casts off.
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: true });
+    let until = game.now + day / 4;
+    while game.world.town.on(game.now).sold.get(&Good::Timber).is_none() && game.step_to(until) {}
+    let sold = game.world.town.on(game.now).sold.get(&Good::Timber).copied().unwrap_or(0.0);
+    // What the depot spares over its own shelf, at the market's price less freight.
+    assert!(sold > 0.0 && sold <= Good::Timber.per_package() * crate::market::Market::ceiling(Good::Timber) + 1e-6, "the timber went out for {sold}");
+    assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
+    assert!(opening(&mut game)[4], "the timber sold");
 
     // A house, placed: a site until a van brings its timber.
     does(&mut game, Do::Place(BuildingKind::House, GridCoord { x: 20, y: 1 }));
@@ -1190,29 +1222,20 @@ fn the_opening_from_the_harbour() {
     }
     assert!(rolled > 0, "no settler was seen rolling off the deck");
     assert!(settlers.iter().all(|&id| at_of(&game.world, id) == Some(house)), "the settlers never got home");
-    // The opening done, and paid; the trunk opens on the market: a
-    // package bought.
+    // The opening done, and paid; the trunk opens on the market.
     // Paid in the step they came home in, as coins landing at the harbour.
-    assert_eq!(opening(&mut game), [true; 5], "the settlers came");
+    assert_eq!(opening(&mut game), [true; 7], "the settlers came");
     let paid = game.world.lumps.iter().filter(|l| l.building == harbour && l.good.is_none()).map(|l| l.coins).sum::<f64>();
     assert!((paid - 100.0).abs() < 1e-9, "the opening paid {paid}");
     // The trunk alone: the market's orders come and go beside it.
     let trunk = |game: &mut Game| missions(game).into_iter().filter(|(k, ..)| !matches!(k, Key::Order(_))).map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
     assert_eq!(trunk(&mut game), [(Key::Opening, true), (Key::Book, false)]);
-    let price = game.world.market.price(Good::Timber);
-    game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: false });
-    assert_eq!(trunk(&mut game)[1..], [(Key::Book, true), (Key::Sell, false)]);
-    assert!(game.world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
-    // A crate of food sold: out on the ferry, paid as it casts off.
-    game.command(PLAYER, ClientMessage::Trade { good: Good::Crates, packages: 1, out: true });
-    let until = game.now + 2 * turn;
-    while game.world.town.on(game.now).sold.get(&Good::Crates).is_none() && game.step_to(until) {}
-    let sold = game.world.town.on(game.now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
-    // What the depot spares over its own shelf, at the market's price less freight.
-    assert!(sold > 0.0 && sold <= Good::Crates.per_package() * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the crate went out for {sold}");
-    assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
-    assert_eq!(trunk(&mut game)[2], (Key::Sell, true), "the crate sold");
+    // Then the market: a pallet of fuel bought pushes its price.
+    let price = game.world.market.price(Good::Fuel);
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Fuel, packages: 1, out: false });
+    assert_eq!(trunk(&mut game)[1], (Key::Book, true), "the fuel was not booked");
+    assert!(game.world.market.price(Good::Fuel) > price, "buying fuel did not push its price");
 }
 
 /// One lorry, its depot a short street from the harbour, fetches the
@@ -1283,41 +1306,73 @@ fn a_lorry_scrapped_on_its_way_leaves_its_load() {
 }
 
 /// The first half hour of play, as the beats `docs/plan-opening.md`
-/// asks of it, timed in real minutes (a day is twenty). The hand plays
-/// the opening as a quick player would, ten seconds' thought before each
-/// move, and does what each mission asks the moment it opens if the
-/// trunk asks it; what the town's situation asks it only notes. Prints
-/// when each beat came against when it should; asserts nothing yet, the
-/// numbers are what it is for.
+/// asks of it, timed in real minutes (a day is twenty), for a player who
+/// joins at midnight, at nine and at six in the evening: a shared server's
+/// clock is not the newcomer's to choose. The hand plays the opening as a
+/// quick player would, ten seconds' thought before each move, and does
+/// what each mission asks the moment it opens if the trunk asks it; what
+/// the town's situation asks it only notes. Prints when each beat came
+/// against when it should; asserts nothing yet, the numbers are what it
+/// is for.
 #[test]
 #[ignore]
 fn first_half_hour() {
+    let hour = DAY_MS as GameTime / 24;
+    for join in [0, 9, 18] {
+        let beats = half_hour_from(join * hour);
+        let clock = |t: GameTime| format!("{:>2}:{:02}", t / 60_000, (t / 1_000) % 60);
+        eprintln!("\njoined at {join}:00, the first half hour in real minutes (a day is twenty)\n");
+        for (t, what) in &beats {
+            eprintln!("  {}  {what}", clock(*t));
+        }
+    }
+    eprintln!("\nplan-opening.md asks: a road by 0:30, goods on a pad by 1:00, coins by 3:00,");
+    eprintln!("a problem the player did not ask for by 5:00, a new kind every 3 to 5 minutes.");
+}
+
+/// The beats of a first half hour from `join`, each at how long after it.
+fn half_hour_from(join: GameTime) -> Vec<(GameTime, String)> {
     use crate::missions::Key;
     let think = 10_000;
     let half_hour = 30 * 60_000;
-    let mut game = game(street());
-    let harbour = harbour_of(&game.world);
+    let mut world = street();
+    // The fixture's harbour was built at midnight; its first ferry is due
+    // as if it was built at the join.
+    let harbour = harbour_of(&world);
+    for f in world.ferries_of(harbour) {
+        if let Some(c) = world.car_mut(f) {
+            c.due += join;
+        }
+    }
+    let mut game = Game::new(world, join, 1, Box::new(World::new));
+    game.connect(PLAYER, PLAYER);
     let mut beats: Vec<(GameTime, String)> = vec![];
-    let mut beat = |beats: &mut Vec<(GameTime, String)>, at: GameTime, what: &str| {
+    let beat = |beats: &mut Vec<(GameTime, String)>, at: GameTime, what: &str| {
         if !beats.iter().any(|(_, w)| w == what) {
-            beats.push((at, what.to_string()));
+            beats.push((at.saturating_sub(join), what.to_string()));
         }
     };
-    let mut depot = None;
-    let mut houses = 0;
+    let (mut depot, mut mill) = (None, None);
+    let (mut houses, mut sold) = (0, false);
     let mut acted: Vec<Key> = vec![];
     let mut seen: Vec<Key> = vec![];
-    while game.now < half_hour {
+    let steps = |w: &World| w.missions.list.iter().find(|m| m.key == Key::Opening).map(|m| m.steps.iter().map(|s| s.done).collect::<Vec<_>>()).unwrap_or_default();
+    while game.now < join + half_hour {
         let now = game.now;
         // The depot, the opening's first move: the street is the fixture's.
-        if depot.is_none() && now >= think {
+        if depot.is_none() && now >= join + think {
             let x = HARBOUR_X - 12;
             let world = &mut game.world;
             let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
             let d = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
             world.orient(d);
             depot = Some(d);
-            beat(&mut beats, game.now, "depot placed, joined by the fixture's street");
+            beat(&mut beats, now, "depot placed, joined by the fixture's street");
+        }
+        // Then the sawmill, at the woods' edge.
+        if mill.is_none() && now >= join + 2 * think {
+            mill = Some(sawmill(&mut game.world, SAWMILL_X));
+            beat(&mut beats, now, "sawmill placed, a load in its yard");
         }
         if !building_of(&game.world, harbour).pad.is_empty() {
             beat(&mut beats, now, "goods on the quay");
@@ -1327,6 +1382,11 @@ fn first_half_hour() {
                 beat(&mut beats, now, "goods in the depot");
             }
         }
+        if let Some(m) = mill {
+            if game.world.staff(m).iter().any(|&r| at_of(&game.world, r) == Some(m)) {
+                beat(&mut beats, now, "the sawmill at work");
+            }
+        }
         if game.world.lumps.iter().any(|l| l.coins > 0.0) {
             beat(&mut beats, now, "first coins in");
         }
@@ -1334,7 +1394,7 @@ fn first_half_hour() {
             if !seen.contains(&m.key) {
                 seen.push(m.key);
                 let what = match m.key {
-                    Key::Opening | Key::Book | Key::Sell => format!("mission: {}", m.title),
+                    Key::Opening | Key::Book => format!("mission: {}", m.title),
                     Key::Order(_) => "first letter".to_string(),
                     _ => format!("problem: {}", m.title),
                 };
@@ -1350,19 +1410,19 @@ fn first_half_hour() {
             // The trunk's asks, done after a moment's thought.
             if m.finished.is_none() && now >= m.opened + think && !acted.contains(&m.key) {
                 match m.key {
-                    Key::Book => game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: false }),
-                    Key::Sell => game.command(PLAYER, ClientMessage::Trade { good: Good::Crates, packages: 1, out: true }),
+                    Key::Book => game.command(PLAYER, ClientMessage::Trade { good: Good::Fuel, packages: 1, out: false }),
                     _ => continue,
                 }
                 acted.push(m.key);
             }
         }
-        // Houses once the starter pack is home: four, side by side, west of the depot.
-        let steps = |w: &World| w.missions.list.iter().find(|m| m.key == Key::Opening).map(|m| m.steps.iter().map(|s| s.done).collect::<Vec<_>>()).unwrap_or_default();
-        if houses == 0 && steps(&game.world).get(3) == Some(&true) {
+        // Houses for the sawmill's four hands once the starter pack is
+        // home: two, side by side, beside it; nearer the depot, its desks
+        // would take them.
+        if houses == 0 && steps(&game.world).get(5) == Some(&true) {
             for i in 0..12 {
-                let at = GridCoord { x: HARBOUR_X - 40 - 3 * i, y: 1 };
-                if houses < 4 && !game.world.occupied.contains_key(&(at.x, at.y)) {
+                let at = GridCoord { x: SAWMILL_X - 6 - 3 * i, y: 1 };
+                if houses < 2 && !game.world.occupied.contains_key(&(at.x, at.y)) {
                     if let Some(facing) = game.world.site_for(at, BuildingKind::House) {
                         if let Some(h) = game.world.place_building(at, BuildingKind::House, facing) {
                             game.world.orient(h);
@@ -1373,17 +1433,20 @@ fn first_half_hour() {
             }
             beat(&mut beats, game.now, &format!("{houses} houses placed"));
         }
-        if steps(&game.world).get(4) == Some(&true) {
+        if steps(&game.world).get(6) == Some(&true) {
             beat(&mut beats, now, "first settlers home");
+        }
+        // The first sale, a moment after the sawmill stands.
+        if !sold && mill.is_some() && now >= join + 3 * think {
+            game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: true });
+            sold = true;
+            beat(&mut beats, now, "a bundle of timber put up for sale");
+        }
+        if steps(&game.world).get(4) == Some(&true) {
+            beat(&mut beats, now, "the first sale paid");
         }
         game.step_to(now + 1_000);
     }
     beats.sort_by_key(|(t, _)| *t);
-    let clock = |t: GameTime| format!("{:>2}:{:02}", t / 60_000, (t / 1_000) % 60);
-    eprintln!("\nthe first half hour, in real minutes (a day is twenty)\n");
-    for (t, what) in &beats {
-        eprintln!("  {}  {what}", clock(*t));
-    }
-    eprintln!("\nplan-opening.md asks: a road by 0:30, goods on a pad by 1:00, coins by 3:00,");
-    eprintln!("a problem the player did not ask for by 5:00, a new kind every 3 to 5 minutes.");
+    beats
 }

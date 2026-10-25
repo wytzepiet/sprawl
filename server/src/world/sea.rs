@@ -57,9 +57,10 @@ pub const ROLL_MS: GameTime = 4_000;
 /// The starter pack's order: the world's gift, paid for by nobody.
 pub const GIFT: u64 = 0;
 /// The starter pack, the first harbour's first sailing: timber for the
-/// first houses, stone for the first streets, crates for the first shop,
-/// fuel; so many packages of each.
-pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 15), (Good::Stone, 5), (Good::Crates, 4), (Good::Fuel, 5)];
+/// houses of the first sawmill's hands, stone for the first streets,
+/// crates for the first shop, fuel; so many packages of each. Little, so
+/// the town runs short soon and the next building is asked for.
+pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 2), (Good::Stone, 5), (Good::Crates, 2), (Good::Fuel, 2)];
 
 fn ahead(heading: f64, d: f64) -> [f64; 2] {
     [heading.cos() * d, heading.sin() * d]

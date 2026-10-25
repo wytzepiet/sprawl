@@ -793,7 +793,8 @@ mod tests {
     /// A building costs materials, not coins: placed, it is a site, with
     /// no shelf, no door for anyone but its materials; all of them in, it
     /// stands, its shelves empty and calling. The town's first depot
-    /// stands at once: it is where the first timber is kept.
+    /// stands at once: it is where the first timber is kept; and its
+    /// first sawmill, a lorry's load in its yard: it is the first sale.
     #[test]
     fn a_site_stands_when_its_materials_are_in() {
         let mut world = town();
@@ -815,6 +816,12 @@ mod tests {
         assert_eq!(world.treasury, STAKE, "a building cost coins");
         let second = world.place_building(at(40), Depot, 2).unwrap();
         assert!(world.building(second).unwrap().site.is_some(), "a second depot stood for nothing");
+        let mill = world.place_building(at(50), Sawmill, 2).unwrap();
+        let b = world.building(mill).unwrap();
+        assert!(b.site.is_none(), "the first sawmill waited for timber");
+        assert_eq!(b.stocks[&Good::Timber].level, crate::haul::LOAD as f64 * Good::Timber.per_package(), "its yard is not a load");
+        let second = world.place_building(at(60), Sawmill, 2).unwrap();
+        assert!(world.building(second).unwrap().site.is_some(), "a second sawmill stood for nothing");
     }
 
     /// The opening teaches one material: everything it builds, a house, a
@@ -857,8 +864,10 @@ mod tests {
             assert!(reach(&world, near) > 0.9, "{kind:?}: its ground is thin: {}", reach(&world, near));
             visited(&mut world, open, Need::Work, 9.0, 0);
             assert_eq!(shelf(&world, open, good).level, 0.0, "{good:?} from nothing");
+            // The first sawmill's load in its yard is not this shift's.
+            let first = shelf(&world, near, good).level;
             visited(&mut world, near, Need::Work, 9.0, 0);
-            let made = shelf(&world, near, good).level;
+            let made = shelf(&world, near, good).level - first;
             assert!((made - 9.0 * HANDS * reach(&world, near)).abs() < 1e-9, "a shift made {made}");
             assert!((world.gdp - made * world_price(good)).abs() < 1e-9);
             if let Some(b) = world.building_mut(near) {
