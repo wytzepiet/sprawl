@@ -20,8 +20,9 @@ var c = (clamp(log2(max(toneIn * c0, vec3f(1e-10))), vec3f(-12.47393), vec3f(4.0
 let c2 = c * c;
 let c4 = c2 * c2;
 c = 15.5 * c4 * c2 - 40.14 * c4 * c + 31.96 * c4 - 6.868 * c2 * c + 0.4298 * c2 + 0.1191 * c - 0.00232;
+c = pow(max(c, vec3f(0.)), vec3f(${contrast}));
 let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
-c = luma + ${colour} * (pow(max(c, vec3f(0.)), vec3f(${contrast})) - luma);
+c = luma + ${colour} * (c - luma);
 return pow(max(toneOut * c, vec3f(0.)), vec3f(2.2));
 }`;
 
@@ -33,10 +34,10 @@ const punchy = (id: string, colour: number, contrast: number): ToneMapping => ({
 
 /** The town's tone mapping, set on the scene (`DayNightCycle.tsx`); the
  *  exposure, the eye's, applied first. In development `?tone=` tries
- *  another: `richer`, more colour and contrast, or `neutral`, Khronos's. */
+ *  another: `richer`, more colour, or `neutral`, Khronos's. */
 const TONES: Record<string, ToneMapping> = {
   agx: punchy("agx-punchy", 1.4, 1.35),
-  richer: punchy("agx-richer", 1.6, 1.5),
+  richer: punchy("agx-richer", 1.7, 1.35),
   neutral: NeutralToneMapping,
 };
 export const TONE: ToneMapping = TONES[(import.meta.env.DEV && new URLSearchParams(location.search).get("tone")) || "agx"] ?? TONES.agx;
