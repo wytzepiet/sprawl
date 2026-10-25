@@ -1491,6 +1491,10 @@ const STAND_SPECK = 0.45;
 const STAND_MIX = 0.09;
 const CONIFER_WIDE = 0.8;
 const CONIFER_TALL = 1.6;
+/** A broadleaf is drawn this much wider than the room it keeps, so its
+ *  crown reaches into its neighbours' as a wood's do, and this much taller. */
+const BROAD_WIDE = 1.3;
+const BROAD_TALL = 1.35;
 /** The smallest a conifer squeezed between broadleaves grows, of its size. */
 const SQUEEZED = 0.4;
 /** How many times a conifer is pushed off broadleaves before it shrinks. */
@@ -1600,13 +1604,13 @@ export function buildTrees(
         const placed = kind === "conifer" ? makeWay(x, y, tree) : tree;
         if (!placed) continue;
         const { matrices, colors } = sets[kind];
-        const w = placed.scale * TREE_RADIUS * (kind === "conifer" ? CONIFER_WIDE : 1);
+        const w = placed.scale * TREE_RADIUS * (kind === "conifer" ? CONIFER_WIDE : BROAD_WIDE);
         const c = Math.cos(placed.turn) * w, s = Math.sin(placed.turn) * w;
         // Column-major 4x4: a turn and a scale, translation in the last row.
         matrices.push(
           c, s, 0, 0,
           -s, c, 0, 0,
-          0, 0, CROWN_HEIGHT * (0.45 + 0.55 * placed.tall) * (kind === "conifer" ? CONIFER_TALL : 1), 0,
+          0, 0, CROWN_HEIGHT * (0.45 + 0.55 * placed.tall) * (kind === "conifer" ? CONIFER_TALL : BROAD_TALL), 0,
           x - originX + placed.x, y - originY + placed.y, 0, 1,
         );
         let pick = 0, t = placed.shade;
