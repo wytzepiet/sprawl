@@ -77,6 +77,8 @@ const f = (x: number) => x.toFixed(4);
  *  much of it through them. */
 const BARK = [0.36, 0.47, 0.35];
 const BARK_SHOWS = 0.5;
+/** A broadleaf's limbs, between its leaves: wood, all of it. */
+const WOOD = [0.24, 0.18, 0.13];
 /** A conifer's shadow is its side, as its top is from above: branches
  *  down to the ground, this many rows of them up its height, drooping away
  *  from the trunk this much on the whole, each row its own way; each as
@@ -105,13 +107,15 @@ export type Kind = "broad" | "conifer";
  *  under; how dark between its clumps
  *  or branches; and its shadow's card, how wide, its side baked if it is
  *  (which, by `treeSeed`), and what of it is cut away (`cardOut`). */
-const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: number; hollow: number; underside: number; wide: number; high: number; side: string; cut: string }> = {
+const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: number; hollow: number; bark: number[]; barkShows: number; underside: number; wide: number; high: number; side: string; cut: string }> = {
   broad: {
     first: 0,
     count: CROWNS,
     round: CROWN_ROUND,
     peak: CROWN_PEAK,
     hollow: 0.92,
+    bark: WOOD,
+    barkShows: 1,
     underside: UNDERSIDE,
     wide: 1,
     high: CARD_HEIGHT,
@@ -124,6 +128,8 @@ const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: n
     round: 0,
     peak: 0.8,
     hollow: 0.85,
+    bark: BARK,
+    barkShows: BARK_SHOWS,
     underside: 0,
     wide: SIDE_WIDE,
     high: SIDE_HIGH,
@@ -158,7 +164,7 @@ export const crownsBaked = (engine: LiteEngine): Promise<void> => whenBaked(engi
  *  once a corner. Then its crown, turned the tree's way, read:
  *  cut to its outline, and its facing rolled over the dome, over the clump,
  *  and turned by the leaf. */
-function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow, underside }: (typeof LOOKS)[Kind]): MaterialPlugin {
+function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow, bark, barkShows, underside }: (typeof LOOKS)[Kind]): MaterialPlugin {
   const rolled = round > 0 ? `mix(vec3f(0., 0., 1.), vec3f(crownOut, 1.) * 0.70710678, clamp((crownR - ${f(1 - round)}) / ${f(round)}, 0., 1.))` : "vec3f(0., 0., 1.)";
   return {
     name: "Crown",
@@ -193,7 +199,7 @@ let crownLean = crownTex.gb * 2. - 1.;
 let crownTilt = vec2f(crownTurn.x * crownLean.x - crownTurn.y * crownLean.y, crownTurn.y * crownLean.x + crownTurn.x * crownLean.y);
 let crownNear = max(dot(crownOut, normalize(scene.vEyePosition.xy - input.worldPos.xy + 1e-4)), 0.) * smoothstep(${f(UNDERSIDE_FROM)}, 1., length(input.vCrown)) * ${f(underside)};
 N = normalize(${rolled} + vec3f(crownTilt + crownOut * sqrt(length(input.vCrown)) * ${f(peak)}, 0.) - vec3f(0., 0., crownNear));
-baseColor = mix(baseColor * mix(${f(hollow)}, 1., min(crownTex.a / ${f(LIT)}, 1.)), vec3f(${BARK.map(f).join(", ")}), smoothstep(${f(LIT)}, 1., crownTex.a) * ${f(BARK_SHOWS)});`,
+baseColor = mix(baseColor * mix(${f(hollow)}, 1., min(crownTex.a / ${f(LIT)}, 1.)), vec3f(${bark.map(f).join(", ")}), smoothstep(${f(LIT)}, 1., crownTex.a) * ${f(barkShows)});`,
           },
   };
 }
