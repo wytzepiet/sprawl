@@ -175,10 +175,12 @@ function smooth(g: MeshGeometry): MeshGeometry {
   return { ...g, normals: n };
 }
 
-/** The chips' two halves of the yard, either side of the lorries' dock,
- *  x and y from and to; mapped by where they are, so the coat knows how
- *  far in from their edge (`loose`). */
-const CHIP_YARDS = [[-0.97, 0.15, -1.0, 0.32], [-0.97, 0.15, 0.8, 1.92]];
+/** The dust over the yard's left half, x and y from and to; its edge to
+ *  the lane wandering, and bitten back from the dock's mouth (`lots.rs`)
+ *  to the fence, whose side the dock's flatbed lies over. Mapped by
+ *  where it is, so the coat knows how far in from its edge (`loose`). */
+const DUST_YARD = [-0.97, 0.15, -1.0, 1.92];
+const LANE_EDGE = (y: string) => `${f(DUST_YARD[1])} - 0.05 * (1. + sin(${y} * 7. + 1.)) - 0.6 * (smoothstep(0.1, 0.42, ${y}) - smoothstep(0.7, 1.02, ${y}))`;
 
 const SAWMILL = solids(() => {
   const wood: Part[] = [], zinc: Part[] = [], bark: Part[] = [], dust: Part[] = [], chips: Part[] = [];
@@ -189,7 +191,7 @@ const SAWMILL = solids(() => {
 
   // The ground: wood chips over the yard's left half, out to the lorries' lane.
   // Thick enough to show over the hall's paving, which stands a little higher.
-  dust.push([mesh(Solid.union(CHIP_YARDS.map(([x0, x1, y0, y1]) => box(x0, x1, y0, y1, 0, 0.016))), (p) => [p[0], p[1]]), [0, 0, 0], SAWDUST]);
+  dust.push([mesh(box(DUST_YARD[0], DUST_YARD[1], DUST_YARD[2], DUST_YARD[3], 0, 0.016), (p) => [p[0], p[1]]), [0, 0, 0], SAWDUST]);
 
   // The hall, at the back.
   const [hx0, hx1, hy0, hy1, he, hr, hRidgeY] = [-0.78, 0.5, -1.86, -1.0, 0.2, 0.42, -1.62];
@@ -253,7 +255,7 @@ const SAWMILL = solids(() => {
   put(slope(z0, z0 + 0.017, cw / 2 - 0.01), BELT);
   for (const y of [0.15, -0.2, -0.55]) logged(log([cx, y, rise(y) + 0.036], 0.02, cw - 0.025, "x"));
   // Sawdust heaped about its foot and by the canopy, on the chips.
-  [[-0.34, -0.55, 0.15, 0.035], [0.05, -0.62, 0.12, 0.03], [-0.02, 1.05, 0.14, 0.035], [-0.3, 1.32, 0.09, 0.024]].forEach(([x, y, r, h], k) =>
+  [[-0.34, -0.55, 0.15, 0.035], [0.05, -0.62, 0.12, 0.03], [-0.46, 1.06, 0.14, 0.035], [-0.3, 1.32, 0.09, 0.024]].forEach(([x, y, r, h], k) =>
     chips.push([heap(x, y, r, h, 0.016, k + 1), [0, 0, 0], CHIPS]));
 
   // Three stacks of logs on the chips.
@@ -329,7 +331,7 @@ baseColor = baseColor * barkMap.b;
 roughness = 0.95;`, (engine) => ({ millBark: bark(engine) })),
   // Its edge how far in from the yard's, the nearer of its two halves',
   // wandering in and out.
-  dust: loose("MillDust", `max(${CHIP_YARDS.map(([x0, x1, y0, y1]) => `min(min(input.uv.x - ${f(x0)}, ${f(x1)} - input.uv.x), min(input.uv.y - ${f(y0)}, ${f(y1)} - input.uv.y))`).join(", ")})
+  dust: loose("MillDust", `min(min(input.uv.x - ${f(DUST_YARD[0])}, ${LANE_EDGE("input.uv.y")} - input.uv.x), min(input.uv.y - ${f(DUST_YARD[2])}, ${f(DUST_YARD[3])} - input.uv.y))
   < ${f(DUST_FRAY)} * looseLump * looseLump * 2. + ${f(DUST_WANDER)} * textureSample(millGrain, millGrainSampler, looseAt / ${f(DUST_BENDS)}).r`, `
 let dustBump = looseSlope(looseAt, ${f(DUST_FLECKS)}) + 0.6 * looseSlope(looseAt, ${f(DUST_LUMPS)});
 N = normalize(N - vec3f(dustBump * ${f(DUST_TILT)}, 0.));
@@ -383,7 +385,7 @@ const LEFT = Object.fromEntries(Object.entries(SAWMILL).map(([k, s]) => [k, mirr
  *  come up; its one dock across from it. */
 export function sawmill(engine: EngineContext, side: 1 | -1) {
   const coats = COATS.get(engine) ?? COATS.set(engine, Object.fromEntries(Object.entries(MAKE).map(([k, make]) => [k, make(engine)])) as Record<Finish, MaterialPlugin>).get(engine)!;
-  return (Object.keys(SAWMILL) as Finish[]).map((k) => ({ key: `sawmill_${k}${side > 0 ? "" : "_left"}`, geo: (side > 0 ? SAWMILL : LEFT)[k], coat: coats[k] }));
+  return (Object.keys(SAWMILL) as Finish[]).map((k) => ({ key: `sawmill_${k}${side > 0 ? "" : "_left"}`, geo: (side > 0 ? SAWMILL : LEFT)[k], coat: coats[k], cast: k !== "dust" }));
 }
 
 /** A shape seen in a mirror across x = 0, wound round again. */
