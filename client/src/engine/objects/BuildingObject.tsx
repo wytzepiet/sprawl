@@ -8,6 +8,7 @@ import { INSET } from "../town/footprint";
 import { eaves } from "../town/mass";
 import { storeysOf } from "../town/grid";
 import { keepField } from "./field";
+import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, itemOf, ITEMS, LOG_PILE } from "./goods";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
@@ -38,6 +39,10 @@ const SLAB = hex("#BDB2A0");
 const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
 const CRANE = hex("#E9B530");
+/** A shop's tub, its flowers, its parasol and table. */
+const TUB = hex("#8A6A4A");
+const BLOOM = hex("#E5A24A");
+const PARASOL = hex("#F1EADB");
 const WHITE_RGB = hex("#FFFFFF");
 /** Heights in steps of a hundredth, so a site's buckets are few. */
 const round = (h: number) => Math.max(0.01, Math.round(h * 100) / 100);
@@ -65,7 +70,9 @@ export function mountBuilding(
   const put = (name: string, [w, l, h]: number[], colour: Rgb, [x, y]: number[], [ox, oy]: number[], across: number, out: number, z: number) => {
     const key = `${name}_${w}_${l}_${h}${look.key}`;
     pool.ensureBucket(key, boxGeometry(w, l, h), look.tint(colour), true, true);
-    placed.push({ key, id: pool.addInstance(key, [x - oy * across + ox * out, y + ox * across + oy * out, z + h / 2], [0, 0, Math.atan2(oy, ox) - Math.PI / 2]) });
+    const one = { key, id: pool.addInstance(key, [x - oy * across + ox * out, y + ox * across + oy * out, z + h / 2], [0, 0, Math.atan2(oy, ox) - Math.PI / 2]) };
+    placed.push(one);
+    return one;
   };
 
   // A harbour's berth, behind the middle of its back, where its paving
@@ -112,6 +119,28 @@ export function mountBuilding(
         });
       })()
     : [];
+
+  // A shop's front: at the far end from its crates, a tub of flowers by
+  // its awning and, through lunch, a table out under a parasol.
+  const lunch = data.kind === "Shop" && !data.site
+    ? (() => {
+        const w = dx === 0 ? bw : bh, d = dx === 0 ? bh : bw;
+        const [a, o] = [w / 2 - 0.1, d / 2 - INSET / 2];
+        const at = (name: string, size: number[], colour: Rgb, across: number, z: number) => put(name, size, colour, [mx, my], [dx, dy], across, o, z);
+        at("tub", [0.06, 0.06, 0.035], TUB, a - 0.13, KERB_Z);
+        at("bloom", [0.05, 0.05, 0.03], BLOOM, a - 0.13, KERB_Z + 0.035);
+        let out: ReturnType<typeof put>[] = [];
+        return ctx.beforeRender(() => {
+          const t = shownTimeOfDay() * 24;
+          const open = t >= 11.5 && t < 14;
+          if (open && !out.length) out = [at("tableLeg", [0.008, 0.008, 0.15], IRON, a, KERB_Z), at("tableTop", [0.06, 0.06, 0.006], PARASOL, a, KERB_Z + 0.05), at("parasol", [0.12, 0.12, 0.012], PARASOL, a, KERB_Z + 0.145)];
+          if (!open && out.length) {
+            for (const one of out) pool.removeInstance(one.key, one.id), placed.splice(placed.indexOf(one), 1);
+            out = [];
+          }
+        });
+      })()
+    : () => {};
 
   // A site going up: its slab, the walls rising on it as its materials
   // come in, in its colour still pale, scaffolding round them a little
@@ -220,6 +249,7 @@ export function mountBuilding(
 
   return () => {
     stop();
+    lunch();
     for (const { key, id } of placed) pool.removeInstance(key, id);
     for (const it of [...stood.flat(), ...piles, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
