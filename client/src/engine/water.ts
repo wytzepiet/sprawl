@@ -9,7 +9,6 @@ import laceRecipe from "./lace.ts?raw";
 import { WAVES_SIDE } from "./waves";
 import wavesRecipe from "./waves.ts?raw";
 import { bakedTexture } from "./bakeCache";
-import { TILT } from "./Camera";
 
 /**
  * The sea and the lakes, drawn as water: their own meshes (`terrainGeometry`
@@ -45,11 +44,6 @@ const DEEP = 0.55;
 /** The surface, near enough smooth: the sun's glint broken up only by the
  *  ripple's facing. */
 const WATER_ROUGHNESS = 0.17;
-/** Seen from the camera's height, flat water mirrors a sun up as high as
- *  the camera, never a low one: the ripple tilts it only this far. So the
- *  ripples turned most toward the sun are tilted the rest of the way, and
- *  a low sun still glitters on the sea as it would seen from the shore. */
-const RIPPLE_REACH = 0.15;
 const CLARITY = 0.6;
 /** Pale sand under clear water, the red drunk out of the light: turquoise,
  *  as off a Hebridean beach; and right at the sand, barely any water over
@@ -291,13 +285,7 @@ const water = () => {
     `}`,
     // The open sea's ripples, calmed where the waves come in, so theirs is
     // the shape there, and the swell's.
-    `let rip = ${slope};`,
-    `N = normalize(N + vec3f(-rip * mix(${f(INSHORE_CALM)}, 1., smoothstep(${f(WAVE_FROM * 0.5)}, ${f(SHORE_REACH)}, ashore)) - seaward * swellSlope, 0.));`,
-    // The ripples turned toward the sun, turned on to catch it, the rest
-    // left as they are (`RIPPLE_REACH`).
-    `let lean = material.waterLean.xy;`,
-    `let leans = length(lean);`,
-    `N = normalize(N + vec3f(lean * smoothstep(0.06, 0.18, dot(-rip, lean / max(leans, 1e-6))) * (1. - frothed), 0.));`,
+    `N = normalize(N + vec3f(-(${slope}) * mix(${f(INSHORE_CALM)}, 1., smoothstep(${f(WAVE_FROM * 0.5)}, ${f(SHORE_REACH)}, ashore)) - seaward * swellSlope, 0.));`,
     `baseColor = (mix(baseColor * ${f(DEEP)}, mix(vec3f(${TURQUOISE.map(f).join(", ")}), vec3f(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)})));`,
     `baseColor = (mix(baseColor, vec3f(mix(${f(FOAM_THIN)}, ${f(FOAM_WHITE)}, pow(frothed, ${f(FOAM_SCARCE)}))), frothed));`,
     // Foam is matte, its light scattered every way, not the sea's gloss.
@@ -310,7 +298,7 @@ const water = () => {
  *  cliff as `cliffField` does. Its clock ticks before each frame
  *  (`tick`); its textures are let go with `dispose`. Where on its chunk a
  *  pixel is: the mesh's own frame, however placed. */
-export function waterMaterial(engine: EngineContext, shore: Uint8Array | null, cliff: Uint8Array | null, sun: () => { x: number; y: number; z: number } | undefined) {
+export function waterMaterial(engine: EngineContext, shore: Uint8Array | null, cliff: Uint8Array | null) {
   // The shore's distance and the cliff's field, a texel of each, so one
   // read serves both; as far from either as each reaches, where there is
   // none.
@@ -324,19 +312,9 @@ export function waterMaterial(engine: EngineContext, shore: Uint8Array | null, c
     getVaryings: () => [{ name: "vWaterAt", type: "vec2f" }],
     getSamplers: () => ["waterRipple", "waterFields", "waterSlate", "waterLace"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
     bindTextures: (out) => out.push({ texture: ripples(engine) }, { texture: fields }, { texture: slate(engine) }, { texture: lace(engine) }),
-    getUniforms: () => ({ ubo: [{ name: "waterLean", type: "vec4<f32>" }, { name: "waterTime", type: "f32" }] }),
-    // Seconds, wrapped so a long session keeps the drift's precision. And
-    // how far a ripple must tilt past its own to mirror the sun to the
-    // camera: halfway between them, less what the ripple reaches.
-    writeUbo: (data, offsets) => {
-      data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600;
-      const d = sun();
-      const len = d ? Math.hypot(d.x, d.y, d.z) : 0;
-      const [hx, hy, hz] = d && d.z < 0 ? [-d.x / len, -d.y / len - Math.sin(TILT), -d.z / len + Math.cos(TILT)] : [0, 0, 1];
-      const need = Math.hypot(hx, hy) / hz;
-      const k = need > RIPPLE_REACH ? (need - RIPPLE_REACH) / need / hz : 0;
-      data.set([hx * k, hy * k, 0, 0], offsets.get("waterLean")! / 4);
-    },
+    getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
+    // Seconds, wrapped so a long session keeps the drift's precision.
+    writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
     getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water() }),
   };
   const material = townMaterial([plugin], WATER_ROUGHNESS);

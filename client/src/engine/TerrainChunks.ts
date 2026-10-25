@@ -1,4 +1,4 @@
-import { addToScene, type DirectionalLight, type Mesh } from "@babylonjs/lite";
+import { addToScene, type Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
 import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
@@ -255,7 +255,7 @@ export class TerrainChunks {
       return mesh;
     };
     // Its own materials: for its own shore, its own field, its own heights.
-    const water = waterMaterial(engine, geometry.shore, geometry.cliffField, () => (scene.lights.find((l) => l.shadowGenerator) as DirectionalLight | undefined)?.direction);
+    const water = waterMaterial(engine, geometry.shore, geometry.cliffField);
     chunk.dispose.push(water.dispose);
     chunk.tick = water.tick;
     add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true });
