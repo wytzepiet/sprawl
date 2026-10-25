@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { AWNING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, planted, sawtooth, slope } from "./mass";
+import { AWNING, OPENING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, formOf, planted, sawtooth, slope } from "./mass";
 import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
@@ -92,14 +92,16 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
   const prop = (kind: PropKind, [x, y]: P, z: number, size: number, high: number, [tx, ty]: P = [x, y]) => props.push({ kind, x: -x, y: -y, z, size, high, tx: -tx, ty: -ty });
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
-  const tri = (p: V, q: V, s: V, n: V, rgb: RGB) => {
+  /** A triangle in the fixture's frame, `lit` 0 if it is glass, which
+   *  glows at night (`TownLayer`'s masses). */
+  const tri = (p: V, q: V, s: V, n: V, rgb: RGB, lit = 1) => {
     const world = (v: V): V => [-v[0], -v[1], v[2]];
     let [a, b, e] = [world(p), world(q), world(s)];
     const wn = world(n);
     const g = [(b[1] - a[1]) * (e[2] - a[2]) - (b[2] - a[2]) * (e[1] - a[1]), (b[2] - a[2]) * (e[0] - a[0]) - (b[0] - a[0]) * (e[2] - a[2]), (b[0] - a[0]) * (e[1] - a[1]) - (b[1] - a[1]) * (e[0] - a[0])];
     if (g[0] * wn[0] + g[1] * wn[1] + g[2] * wn[2] > 0) [b, e] = [e, b];
     const base = positions.length / 3;
-    for (const v of [a, b, e]) positions.push(...v), normals.push(...wn), colors.push(...rgb, 1);
+    for (const v of [a, b, e]) positions.push(...v), normals.push(...wn), colors.push(...rgb, lit);
     indices.push(base, base + 1, base + 2);
   };
   /** A flat polygon, triangulated, each point lifted by `z`. */
@@ -150,7 +152,8 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
         for (const piece of mass.parts.length === 1 ? region : intersect(region, part.polygons)) fill(piece, z, rgb);
       }
     };
-    const colourAt = (p: P): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
+    const partAt = (p: P) => mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0];
+    const colourAt = (p: P): RGB => tint(partAt(p));
     /** Walls round a region from z0 up to its top at z1, coloured as the
      *  building is, and the top, a shade darker or lighter by `dim`. */
     const sides = (region: Polygon[], z0: number, z1: (p: P) => number) => {
@@ -261,8 +264,8 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
             if (strip.some((poly) => inPolygon(mid, poly))) nrm = [-nrm[0], -nrm[1], 0];
             const front = Math.abs(s(p) - s1) < 1e-6 && Math.abs(s(q) - s1) < 1e-6;
             const c = front ? paint(mass.tile, 0.25, 0.55) : colourAt(mid);
-            tri([p[0], p[1], z], [q[0], q[1], z], [q[0], q[1], at(q)], nrm, c);
-            tri([p[0], p[1], z], [q[0], q[1], at(q)], [p[0], p[1], at(p)], nrm, c);
+            tri([p[0], p[1], z], [q[0], q[1], z], [q[0], q[1], at(q)], nrm, c, front ? 0 : 1);
+            tri([p[0], p[1], z], [q[0], q[1], at(q)], [p[0], p[1], at(p)], nrm, c, front ? 0 : 1);
           });
         }
       }
@@ -273,6 +276,59 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       const on = (a: number, b: number): P => [a * fx - b * fy, a * fy + b * fx];
       prop("stack", on(back + MILL.stack, u1 - MILL.stack), z, MILL.stack, MILL.stackHigh);
       if (mass.tile.kind === "Sawmill") prop("cyclone", on(back + MILL.cyclone, u0 + MILL.cyclone), z, MILL.cyclone, MILL.cycloneHigh);
+    };
+    /** Windows and doors on every wall, by rule: a row of windows to a
+     *  storey, evenly along the wall within its ends, each glass in a
+     *  chunky cream frame, the glass lit at night. On the wall toward the
+     *  door, the ground floor has a door every third window (a shop's
+     *  windows between them wide, its shop front), or a shed's one big
+     *  door in the middle. */
+    const openings = (region: Polygon[], top: number) => {
+      for (const ring of region.flat()) {
+        ring.forEach((p, i) => {
+          const q = ring[(i + 1) % ring.length];
+          const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+          const len = Math.hypot(dx, dy);
+          if (len < OPENING.pitch + 2 * OPENING.end) return;
+          const n: P = [dy / len, -dx / len], t: P = [dx / len, dy / len];
+          const part = partAt([(p[0] + q[0]) / 2 - n[0] * 1e-3, (p[1] + q[1]) / 2 - n[1] * 1e-3]);
+          const tile = part.tile, f = doorOf(tile);
+          const front = !!f && n[0] * f[0] + n[1] * f[1] > 0.9;
+          const shed = formOf(tile).family !== "street";
+          /** A quad on the wall, `a` along it, from z0 to z1, `w` wide, `off` out. */
+          const pane = (a: number, w: number, z0: number, z1: number, off: number, rgb: RGB, lit = 1) => {
+            const at = (b: number, z: number): V => [p[0] + t[0] * b + n[0] * off, p[1] + t[1] * b + n[1] * off, z];
+            const nrm: V = [n[0], n[1], 0];
+            tri(at(a - w / 2, z0), at(a + w / 2, z0), at(a + w / 2, z1), nrm, rgb, lit);
+            tri(at(a - w / 2, z0), at(a + w / 2, z1), at(a - w / 2, z1), nrm, rgb, lit);
+          };
+          const cream = paint(tile, 0.08, 0.84), glass = paint(tile, 0, 0.26), door = paint(tile, 0.55, 0);
+          const window = (a: number, w: number, z0: number, z1: number) => {
+            pane(a, w + 2 * OPENING.frame, z0 - OPENING.frame, z1 + OPENING.frame, 0.003, cream);
+            pane(a, w, z0, z1, 0.005, glass, 0);
+          };
+          const big = shed && front ? OPENING.shedDoor : 0;
+          const cols = Math.floor((len - 2 * OPENING.end) / OPENING.pitch) + 1;
+          const first = (len - (cols - 1) * OPENING.pitch) / 2;
+          if (big) {
+            pane(len / 2, big + 2 * OPENING.frame, 0, OPENING.shedHigh + OPENING.frame, 0.003, cream);
+            pane(len / 2, big, 0, OPENING.shedHigh, 0.005, door);
+          }
+          for (let k = 0; ; k++) {
+            // The ground floor stands 0.1 higher than the others, its windows higher in it.
+            const z0 = k === 0 ? 0.07 : 0.13 + 0.12 * k, z1 = z0 + OPENING.high;
+            if (z1 > top - 0.02) break;
+            for (let j = 0; j < cols; j++) {
+              const a = first + j * OPENING.pitch;
+              if (big && Math.abs(a - len / 2) < big / 2 + OPENING.wide / 2) continue;
+              if (k === 0 && front && !shed && j % 3 === 1) {
+                pane(a, OPENING.door + 2 * OPENING.frame, 0, OPENING.doorHigh + OPENING.frame, 0.003, cream);
+                pane(a, OPENING.door, 0, OPENING.doorHigh, 0.005, door);
+              } else window(a, k === 0 && front && tile.kind === "Shop" ? OPENING.pitch - 2.5 * OPENING.frame : OPENING.wide, z0, z1);
+            }
+          }
+        });
+      }
     };
     /** A shop's awning: over the middle of its front, the wall toward its
      *  door, from AWNING.at of the way up the wall out and down, in
@@ -319,6 +375,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     // Walls: every edge of every ring, from the ground to the roof; the
     // roof's faces and its flat are what cover them.
     sides(outline, 0, roofAt);
+    openings(outline, top);
     const faces = reach > 0 ? roofFaces(polygon, reach) : [];
     for (const { line, region } of faces) {
       cover(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));

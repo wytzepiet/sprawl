@@ -63,6 +63,11 @@ export function slope(t: Tile) {
   return { pitch: 0.75, height: 0.225 };
 }
 
+/** A wall's windows and doors (`roof.ts`), in tiles: a window's width and
+ *  height, how far apart they stand and how far in from the wall's ends,
+ *  their frames' width; a door's width and height; a shed's big door. */
+export const OPENING = { wide: 0.06, high: 0.065, pitch: 0.15, end: 0.06, frame: 0.012, door: 0.07, doorHigh: 0.15, shedDoor: 0.26, shedHigh: 0.17 } as const;
+
 /** A shop's awning over its front, striped in its colour and cream: how
  *  high on the wall it hangs, how far out it reaches and how far it drops
  *  there, how much of the front it spans, and how wide a stripe is
