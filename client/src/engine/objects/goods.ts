@@ -3,7 +3,6 @@ import { barrel, prism, shape, type Part, type Shape } from "./sea";
 import type { RGB } from "../rgb";
 import type { MeshGeometry, P } from "../geometry";
 import type { Good } from "../../generated";
-import { mesh, Solid } from "../solid";
 
 /**
  * The goods, as they stand on a pad, a flatbed or a deck: one package
@@ -135,22 +134,6 @@ export const HUT = (() => {
   };
 })();
 
-/** A sawmill's log deck: the trees as they come in from the woods, long
- *  and unstrapped, piled four, three and two on two bearers, lying along
- *  y, their ends pale. Its base on z = 0. */
-export const LOG_PILE = (() => {
-  const [r, l] = [0.022, 0.36];
-  const R = r / Math.cos(Math.PI / 8);
-  const parts: Part[] = [-1, 1].map((s): Part => [box(9 * r, 0.02, 0.012), [0, s * l * 0.32, 0.006], SLAT]);
-  for (let row = 0; row < 3; row++)
-    for (let k = 0; k < 4 - row; k++) {
-      const at: [number, number, number] = [(k - (3 - row) / 2) * 2 * r, 0, 0.012 + r + row * r * 1.73];
-      parts.push([barrel(R, l), at, BARK]);
-      for (const s of [-1, 1]) parts.push([barrel(R * 0.82, 0.003), [at[0], s * (l / 2 + 0.001), at[2]], END]);
-    }
-  return { key: "log_pile", geo: shape(parts) };
-})();
-
 /** A forklift: a yellow body, its counterweight at the back, a seat
  *  under a dark guard, the mast at its front and the forks before it,
  *  `FORKS` ahead of its middle. Ahead +y, its base on z = 0. */
@@ -169,56 +152,3 @@ export const FORKLIFT = {
     ...[-1, 1].flatMap((s): Part[] => [-1, 1].map((t): Part => [box(0.012, 0.026, 0.026), [s * 0.036, t * 0.032, 0.013], [0.12, 0.12, 0.13]])),
   ]),
 };
-
-/** A sawmill's yard, shaped as solids are (`solid.ts`): a box, a
- *  cylinder, a hull round points, one cut out of another. */
-const TIMBER: RGB = [0.55, 0.4, 0.27];
-const PLANK: RGB = [0.86, 0.72, 0.52];
-const STEELWORK: RGB = [0.5, 0.52, 0.55];
-const ZINC: RGB = [0.72, 0.74, 0.76];
-const BELT: RGB = [0.27, 0.27, 0.28];
-const cube = (x: number, y: number, z: number, at: [number, number, number]) => Solid.cube([x, y, z], true).translate([at[0], at[1], at[2] + z / 2]);
-
-/** Its water tower: a timber tank on four splayed legs, braced, under a
- *  low cone. Its base on z = 0. */
-export const WATER_TOWER = (() => {
-  const [legs, r, tank, cap] = [0.3, 0.1, 0.15, 0.06];
-  const leg = (sx: number, sy: number) => Solid.hull([[sx * 0.1, sy * 0.1, 0], [sx * 0.1 + 0.014 * sx, sy * 0.1 + 0.014 * sy, 0], [sx * 0.07, sy * 0.07, legs], [sx * 0.07 + 0.014 * sx, sy * 0.07 + 0.014 * sy, legs]]);
-  const frame = Solid.union([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => leg(sx, sy)))
-    .add(cube(0.19, 0.012, 0.012, [0, 0.085, legs * 0.45])).add(cube(0.19, 0.012, 0.012, [0, -0.085, legs * 0.45]))
-    .add(cube(0.012, 0.19, 0.012, [0.085, 0, legs * 0.45])).add(cube(0.012, 0.19, 0.012, [-0.085, 0, legs * 0.45]));
-  const body = Solid.cylinder(tank, r, r, 12).translate([0, 0, legs]);
-  const hoops = Solid.union([0.03, 0.12].map((h) => Solid.cylinder(0.008, r + 0.004, r + 0.004, 12).translate([0, 0, legs + h])));
-  const roof = Solid.cylinder(cap, r + 0.015, 0.012, 12).translate([0, 0, legs + tank]);
-  return { key: "water_tower", geo: shape([[mesh(frame), [0, 0, 0], STEELWORK], [mesh(body), [0, 0, 0], TIMBER], [mesh(hoops), [0, 0, 0], STEELWORK], [mesh(roof), [0, 0, 0], SLAT]]) };
-})();
-
-/** Its log conveyor: a belt from the yard up to the hall's wall, LONG
- *  along +y, rising RISE, on legs; side rails, the belt dark between. */
-export const CONVEYOR = (() => {
-  const [l, w, rise] = [0.5, 0.07, 0.2];
-  const slab = (z0: number, z1: number, half: number) => Solid.hull([[-half, 0, z0], [half, 0, z0], [-half, l, z0 + rise], [half, l, z0 + rise], [-half, 0, z1], [half, 0, z1], [-half, l, z1 + rise], [half, l, z1 + rise]]);
-  const rails = slab(0.03, 0.055, w / 2).subtract(slab(0.045, 0.08, w / 2 - 0.008));
-  const belt = slab(0.03, 0.046, w / 2 - 0.008);
-  const legs = Solid.union([0.15, 0.32, 0.47].flatMap((y) => [-1, 1].map((s) => cube(0.01, 0.01, 0.03 + (rise * y) / l, [s * (w / 2 - 0.005), y, 0]))));
-  // Two logs riding up it, lying across.
-  const logs = Solid.union([0.18, 0.36].map((y) => Solid.cylinder(w - 0.02, 0.016, 0.016, 8, true).rotate([0, 90, 0]).translate([0, y, 0.062 + (rise * y) / l])));
-  return { key: "conveyor", geo: shape([[mesh(rails.add(legs)), [0, 0, 0], STEELWORK], [mesh(belt), [0, 0, 0], BELT], [mesh(logs), [0, 0, 0], BARK]]) };
-})();
-
-/** Its open plank shed: a ribbed zinc pent roof on posts, high at the
- *  back (-y) and low at the front, over the back of three stacks of sawn
- *  planks that run out from under it. Its base on z = 0. */
-export const PLANK_SHED = (() => {
-  const [wide, deep, roofed, back, front, t] = [0.6, 0.56, 0.36, 0.22, 0.16, 0.012];
-  const y0 = -deep / 2, y1 = y0 + roofed;
-  const height = (y: number) => back + ((front - back) * (y - y0)) / roofed;
-  const posts = Solid.union([-1, 0, 1].flatMap((sx) => [y0 + 0.02, y1 - 0.02].map((y) => cube(0.02, 0.02, height(y), [sx * (wide / 2 - 0.02), y, 0]))));
-  const e = 0.03;
-  const sheet = (x0: number, x1: number, dz: number) => Solid.hull([[x0, y0 - e], [x1, y0 - e], [x0, y1 + e], [x1, y1 + e]].flatMap(([x, y]) => [0, t].map((z): [number, number, number] => [x, y, height(y) + z + dz])));
-  const roof = sheet(-wide / 2 - e, wide / 2 + e, 0);
-  const ribs = Solid.union(Array.from({ length: 7 }, (_, k) => { const x = -wide / 2 + (k + 0.5) * (wide / 7); return sheet(x - 0.008, x + 0.008, 0.008); }));
-  const stacks = Solid.union([-1, 0, 1].flatMap((k) => [0, 1, 2, 3].map((layer) => cube(0.15, deep - 0.04, 0.022, [k * 0.19, 0, 0.012 + layer * 0.026]))));
-  const spacers = Solid.union([-1, 0, 1].flatMap((k) => [0, 1, 2, 3].flatMap((layer) => [-1, 1].map((s) => cube(0.16, 0.014, 0.004, [k * 0.19, s * deep * 0.3, 0.008 + layer * 0.026])))));
-  return { key: "plank_shed", geo: shape([[mesh(posts), [0, 0, 0], TIMBER], [mesh(roof.add(ribs)), [0, 0, 0], ZINC], [mesh(stacks), [0, 0, 0], PLANK], [mesh(spacers), [0, 0, 0], SLAT]]) };
-})();
