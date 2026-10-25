@@ -62,7 +62,7 @@ const DEEP = 0.25;
 const DARKEST = 0.75;
 /** Under all, between its clumps, leaves in shade: wherever this much of
  *  what is within this many texels each way is leaves. */
-const DENSE_OF = 0.55;
+const DENSE_OF = 0.45;
 const DENSE = 9;
 /** Seen from the side, its crown's foot this high, of its height. */
 const SIDE_FOOT = 0.45;
