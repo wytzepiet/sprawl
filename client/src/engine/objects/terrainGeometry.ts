@@ -1169,9 +1169,11 @@ export const FOOT_Z = 0.001;
 const FOOT = 0.5;
 /** The rock is laid in layers this many tiles high, the first standing
  *  where the heights reach this far above the ground, so its foot follows
- *  them round, not the grid they are on. */
+ *  them round, not the grid they are on, and the rock lies level round it
+ *  first, its ground a layer like the rest, its first wall standing on it
+ *  and not on the grass. */
 export const LAYER = 0.9;
-export const EDGE = 0.05;
+export const EDGE = 0.3;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
 export const begins = (k: number) => EDGE + (k - 1) * LAYER;
 /** How far, in tiles, a layer's edge wanders with the slate, the slate's
