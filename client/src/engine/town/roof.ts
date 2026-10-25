@@ -126,27 +126,34 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     }
   };
 
-  /** The way from a building to the street its door opens onto, by its id. */
-  let doors: Map<number, P> | undefined;
-  const doorOf = (t: Tile) => {
+  /** The way from a building to the street its door opens onto, by its
+   *  id, and the middle of the tile it opens from, its gate's. */
+  let doors: Map<number, { way: P; at: P }> | undefined;
+  const doorAt = (t: Tile) => {
     if (!doors) {
       doors = new Map();
       for (let r = 0; r < painted.h; r++)
         for (let c = 0; c < painted.w; c++) {
           const d = painted.door?.(c, r), id = painted.tile(c, r).id;
-          if (d && id !== undefined) doors.set(id, [d[0] / Math.hypot(...d), d[1] / Math.hypot(...d)]);
+          if (d && id !== undefined) doors.set(id, { way: [d[0] / Math.hypot(...d), d[1] / Math.hypot(...d)], at: [c + 0.5, r + 0.5] });
         }
     }
     return t.id === undefined ? undefined : doors.get(t.id);
   };
+  const doorOf = (t: Tile) => doorAt(t)?.way;
   for (const { mass, polygon, outline } of plans(known)) {
     // A sawmill is a model of its own (`objects/sawmill.ts`), but for the
-    // smoke from its chimney: the model's (0.84, -1.56), its plot's middle
-    // a tile out from the hall's, x across to the door's right.
+    // smoke from its chimney: the model's (±0.84, -1.56), its plot's middle
+    // a tile out from the hall's.
     if (mass.tile.kind === "Sawmill") {
-      const f = doorOf(mass.tile);
+      const door = doorAt(mass.tile);
       const ring = polygon[0], mid = (k: 0 | 1) => (Math.min(...ring.map((p) => p[k])) + Math.max(...ring.map((p) => p[k]))) / 2;
-      if (f) prop("smoke", [mid(0) + f[0] * (1 - 1.56) + f[1] * 0.84, mid(1) + f[1] * (1 - 1.56) - f[0] * 0.84], CHIMNEY, MILL.puff, 0);
+      if (door) {
+        // On the gate's side, as its wing is.
+        const { way: [fx, fy], at: [gx, gy] } = door;
+        const x = (gx - mid(0)) * fy - (gy - mid(1)) * fx >= 0 ? 0.84 : -0.84;
+        prop("smoke", [mid(0) + fx * (1 - 1.56) + fy * x, mid(1) + fy * (1 - 1.56) - fx * x], CHIMNEY, MILL.puff, 0);
+      }
       continue;
     }
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;

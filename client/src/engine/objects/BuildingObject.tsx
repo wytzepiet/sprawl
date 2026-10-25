@@ -11,11 +11,12 @@ import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, HUT, itemOf, ITEMS } from "./goods";
-import { SAWMILL } from "./sawmill";
+import { BARN_DOOR, SAWMILLS } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
 import { simNow } from "../../network/clock";
+import { HANDLE_MS } from "../../generated/rows";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated";
@@ -48,6 +49,9 @@ const TUB = hex("#8A6A4A");
 const BLOOM = hex("#E5A24A");
 const PARASOL = hex("#F1EADB");
 const WHITE_RGB = hex("#FFFFFF");
+/** How many packages of what it makes each building had when last
+ *  mounted: one more is one just made. */
+const seen = new Map<number, number>();
 /** Heights in steps of a hundredth, so a site's buckets are few. */
 const round = (h: number) => Math.max(0.01, Math.round(h * 100) / 100);
 /**
@@ -112,13 +116,20 @@ export function mountBuilding(
 
   // A sawmill is a model of its own, hall, wing and yard (`sawmill.ts`),
   // on its whole plot, its front to the street; the town grid leaves it.
-  const piles = data.kind === "Sawmill" && !data.site
+  const mill = data.kind === "Sawmill" && !data.site
     ? (() => {
         const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
         const at: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
-        return [placeShape(pool, SAWMILL, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012)];
+        // Its wing on the gate's side: the model's +x, across the way it faces.
+        const side = !data.door || (data.door.tile.x + 0.5 - at[0]) * dy - (data.door.tile.y + 0.5 - at[1]) * dx >= 0 ? 1 : -1;
+        const [x, y] = [BARN_DOOR[0] * side, BARN_DOOR[1]];
+        return {
+          model: placeShape(pool, side > 0 ? SAWMILLS.right : SAWMILLS.left, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012),
+          // Out of its barn door, toward the street.
+          door: { at: [at[0] + dx * y + dy * x, at[1] + dy * y - dx * x], heading: Math.atan2(dy, dx) } as Pose,
+        };
       })()
-    : [];
+    : null;
 
   // A depot's office hut in the middle of its yard, between its back bays,
   // where its sign would be painted,
@@ -211,11 +222,21 @@ export function mountBuilding(
   // vehicle with a package in their forks, one lift at a time.
   setLifts(entry.id, data.lifts);
   const pad = padOf(data);
+  // A bundle the mill has made since it was last seen: carried out of the
+  // barn door to its place on the pad, a lift's while, its forklift's.
+  const made = BLUEPRINTS[data.kind].makes;
+  const count = made ? packagesOf(data, made) : 0;
+  const fresh = mill && made && count > (seen.get(entry.id) ?? count) && !data.lifts.some((l) => !l.onto && l.good === made && ends(l) > simNow());
+  if (made) seen.set(entry.id, count);
+  const arrival = fresh ? { start: simNow(), good: made! } : null;
+  /** How far the arrival is, 0 to 1, or null when it is over. */
+  const arriving = (now: number) => (arrival && now < arrival.start + HANDLE_MS ? (now - arrival.start) / HANDLE_MS : null);
   const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
   const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
   const lay = (now: number) =>
     pad?.bays.forEach((bay, b) => {
-      const want = packagesOf(data, bay.good) + data.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, now), 0);
+      const a = arriving(now);
+      const want = packagesOf(data, bay.good) + data.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, now), 0) - (a !== null && a < DROP && arrival!.good === bay.good ? 1 : 0);
       const have = stood[b];
       while (have.length > Math.max(0, want)) have.pop()!.remove();
       while (have.length < want) {
@@ -224,7 +245,7 @@ export function mountBuilding(
       }
     });
   lay(simNow());
-  const working = pad && data.lifts.some((l) => ends(l) > simNow());
+  const working = pad && (arrival || data.lifts.some((l) => ends(l) > simNow()));
   // A yard's forklifts stand in it; a shop's or a site's come out to a lift.
   const forks = (pad && (pad.yard || working) ? pad.homes : []).map((home) => ({ home, truck: placeShape(pool, FORKLIFT, home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
   const stop = working
@@ -233,9 +254,11 @@ export function mountBuilding(
         lay(now);
         forks.forEach((f, k) => {
           const l = data.lifts.find((l) => l.k === k && l.start <= now && ends(l) > now);
-          const at = l && pad && lifting(l, pad.bays.find((b) => b.good === l.good), now);
+          const bay = pad && pad.bays.find((b) => b.good === (l?.good ?? arrival?.good));
+          const a = arriving(now);
+          const at = l && bay ? lifting(l, bay, now) : k === 0 && a !== null && bay && mill ? carry(mill.door, placeIn(bay, count - 1)[0], a, bay) : null;
           f.truck.move(at ? at.truck : f.home);
-          if (at?.load && !f.load) f.load = placeShape(pool, itemOf(l!.good, true), at.load, base);
+          if (at?.load && !f.load) f.load = placeShape(pool, itemOf(l?.good ?? arrival!.good, true), at.load, base);
           if (!at?.load && f.load) (f.load.remove(), (f.load = null));
           if (at?.load) f.load!.move(at.load, 0.02);
         });
@@ -256,8 +279,12 @@ export function mountBuilding(
     const i = car.role === "Ferry" ? deckSeen(l.car, car, now).at.get(l) : l.onto ? aboard - l.n + p.on : aboard + l.n - p.off;
     const onCar = i === undefined ? undefined : slotOn(l.car, car, now, i)?.at;
     if (!onCar) return null;
-    const [from, to] = l.onto ? [onPad.at, onCar.at] : [onCar.at, onPad.at];
-    const t = (now - l.start) / l.every % 1;
+    const [from, to] = l.onto ? [onPad, onCar] : [onCar, onPad];
+    return carry(from, to, (now - l.start) / l.every % 1, bay);
+  };
+  /** A forklift `t` of the way through one lift from one place to another:
+   *  in to the package, across with it, set down, and back. */
+  const carry = ({ at: from }: Pose, { at: to }: Pose, t: number, bay: Bay): { truck: Pose; load: Pose | null } => {
     const heading = Math.atan2(to[1] - from[1], to[0] - from[0]);
     const back = (q: [number, number]): Pose => ({ at: [q[0] - Math.cos(heading) * FORKS, q[1] - Math.sin(heading) * FORKS], heading });
     const mix = (k: number): [number, number] => [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
@@ -277,7 +304,7 @@ export function mountBuilding(
     stop();
     lunch();
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const it of [...stood.flat(), ...piles, ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    for (const it of [...stood.flat(), ...(mill ? [mill.model] : []), ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
   };
 }
