@@ -24,7 +24,7 @@ const SHORTER = 0.72;
 const THINNER = 0.62;
 const FORKINGS = 4;
 const LIMB_THICK = 0.035;
-const CLUMP = [0.07, 0.11];
+const CLUMP = [0.09, 0.13];
 const CLUMPS = 3;
 const SCATTER = 0.07;
 /** And it grows only so far out, this far of a limb's length, give or
@@ -44,6 +44,12 @@ const SHARD = 1 / 80;
 const FACET_TILT = 0.4;
 const SHARD_TILT = 0.24;
 const CLUMP_TILT = 1.3;
+/** A clump is this many smaller, each this much its size, and so on this
+ *  many times down; toward the edge of each the light reaches this much less. */
+const SUBS = 5;
+const SUB = 0.55;
+const LEVELS = 2;
+const CREASE = 0.35;
 /** The light reaches down less: at the crown's foot this much of what its
  *  top gets, and less again this much under each layer over it. */
 const FOOT_LIGHT = 0.45;
@@ -203,29 +209,52 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
   const up = (z: number) => (z - low) / (high - low);
   const texel = (u: number) => ((u * s + CROWN_REACH) / (2 * CROWN_REACH)) * CROWN_TEXELS;
   const N = CROWN_TEXELS * CROWN_TEXELS;
-  const height = new Float32Array(BROAD_LAYERS * N).fill(-1), lean = new Float32Array(BROAD_LAYERS * N * 2), bark = new Uint8Array(BROAD_LAYERS * N);
+  const height = new Float32Array(BROAD_LAYERS * N).fill(-1), lean = new Float32Array(BROAD_LAYERS * N * 2), bark = new Uint8Array(BROAD_LAYERS * N), shade = new Float32Array(BROAD_LAYERS * N).fill(1);
   // A clump's layer by how high it is among the rest, so each has its share.
   const order = Array.from({ length: clumps.length / 4 }, (_, c) => c).sort((a, b) => clumps[b * 4 + 2] - clumps[a * 4 + 2]);
   const layerOf = new Uint8Array(order.length);
   order.forEach((c, rank) => (layerOf[c] = Math.floor((rank / order.length) * BROAD_LAYERS)));
-  for (let c = 0; c < order.length; c++) {
-    const [cx, cy, cz, r] = [texel(clumps[c * 4]), texel(clumps[c * 4 + 1]), clumps[c * 4 + 2], clumps[c * 4 + 3]];
-    const rt = texel(r) - texel(0), base = layerOf[c] * N;
-    for (let j = Math.max(0, Math.floor(cy - rt)); j < Math.min(CROWN_TEXELS, Math.ceil(cy + rt)); j++) {
-      for (let i = Math.max(0, Math.floor(cx - rt)); i < Math.min(CROWN_TEXELS, Math.ceil(cx + rt)); i++) {
-        const k = j * CROWN_TEXELS + i;
-        const [dx, dy] = [(i + 0.5 - cx) / rt, (j + 0.5 - cy) / rt];
-        const d2 = dx * dx + dy * dy;
-        if (d2 > 1 - FRAY * shared.fray[k]) continue;
-        const h = up(cz + r * Math.sqrt(1 - d2));
-        if (h <= height[base + k]) continue;
-        height[base + k] = h;
-        lean[2 * (base + k)] = dx * CLUMP_TILT + shared.tilt[2 * k];
-        lean[2 * (base + k) + 1] = dy * CLUMP_TILT + shared.tilt[2 * k + 1];
-        bark[base + k] = 0;
+  // A clump is clumps, and they clumps, LEVELS deep, each SUBS of SUB its
+  // size, sat on its dome; a texel lies in each of them, and each rolls it
+  // over its way and shades it toward its own edge, so the creases between
+  // them are dark at every size.
+  const within: number[] = [];
+  let n = 0;
+  const lay = (cx: number, cy: number, cz: number, r: number, level: number, base: number) => {
+    within.push(texel(cx), texel(cy), texel(r) - texel(0));
+    if (level < LEVELS) {
+      for (let c = 0; c < SUBS; c++) {
+        hash(v, n++, 13);
+        const [a, d] = [h0 * 2 * Math.PI, Math.sqrt(h1) * r * (1 - SUB)];
+        lay(cx + Math.cos(a) * d, cy + Math.sin(a) * d, cz + Math.sqrt(Math.max(0, (r * (1 - SUB)) ** 2 - d * d)), r * SUB, level + 1, base);
+      }
+    } else {
+      const [x, y, rt] = within.slice(-3);
+      for (let j = Math.max(0, Math.floor(y - rt)); j < Math.min(CROWN_TEXELS, Math.ceil(y + rt)); j++) {
+        for (let i = Math.max(0, Math.floor(x - rt)); i < Math.min(CROWN_TEXELS, Math.ceil(x + rt)); i++) {
+          const k = j * CROWN_TEXELS + i;
+          const [dx, dy] = [(i + 0.5 - x) / rt, (j + 0.5 - y) / rt];
+          const d2 = dx * dx + dy * dy;
+          if (d2 > 1 - FRAY * shared.fray[k]) continue;
+          const h = up(cz + r * Math.sqrt(1 - d2));
+          if (h <= height[base + k]) continue;
+          let [tx, ty, lit] = [shared.tilt[2 * k], shared.tilt[2 * k + 1], 1];
+          for (let w = 0; w < within.length; w += 3) {
+            const [ex, ey] = [(i + 0.5 - within[w]) / within[w + 2], (j + 0.5 - within[w + 1]) / within[w + 2]];
+            const e2 = Math.min(1, ex * ex + ey * ey);
+            (tx += ex * CLUMP_TILT), (ty += ey * CLUMP_TILT), (lit *= 1 - CREASE * (1 - Math.sqrt(1 - e2)));
+          }
+          height[base + k] = h;
+          lean[2 * (base + k)] = tx / (LEVELS + 1);
+          lean[2 * (base + k) + 1] = ty / (LEVELS + 1);
+          shade[base + k] = lit;
+          bark[base + k] = 0;
+        }
       }
     }
-  }
+    within.length -= 3;
+  };
+  for (let c = 0; c < order.length; c++) lay(clumps[c * 4], clumps[c * 4 + 1], clumps[c * 4 + 2], clumps[c * 4 + 3], 0, layerOf[c] * N);
   for (let b = 0; b < limbs.length; b += 7) {
     const [x0, y0, z0, x1, y1, z1] = [texel(limbs[b]), texel(limbs[b + 1]), limbs[b + 2], texel(limbs[b + 3]), texel(limbs[b + 4]), limbs[b + 5]];
     const rt = texel(limbs[b + 6]) - texel(0);
@@ -260,7 +289,7 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
         out[o] = byte(Math.hypot(x, y) / 2);
         out[o + 1] = byte(0.5 + lean[2 * (layer * N + k)] / 2);
         out[o + 2] = byte(0.5 + lean[2 * (layer * N + k) + 1] / 2);
-        out[o + 3] = bark[layer * N + k] ? 255 : byte((FOOT_LIGHT + (1 - FOOT_LIGHT) * Math.max(0, h)) * (1 - SHADED * over) * LIT);
+        out[o + 3] = bark[layer * N + k] ? 255 : byte((FOOT_LIGHT + (1 - FOOT_LIGHT) * Math.max(0, h)) * (1 - SHADED * over) * shade[layer * N + k] * LIT);
       }
     }
   }
