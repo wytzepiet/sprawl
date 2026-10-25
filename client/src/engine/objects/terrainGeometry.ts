@@ -1150,10 +1150,10 @@ export const begins = (k: number) => EDGE + (k - 1) * LAYER;
  *  height added scaled by how steep the rock is, the steepness counted at
  *  most this, never more than this far either way; fading out over this
  *  much height at the foot, so the rock keeps to its own ground. */
-const WANDER = 0.4;
-const STEEPEST = 4;
-const WANDERS = 0.4;
-const JAG_FOOT = 0.25;
+export const WANDER = 0.4;
+export const STEEPEST = 4;
+export const WANDERS = 0.4;
+export const JAG_FOOT = 0.25;
 
 type Point = [number, number];
 

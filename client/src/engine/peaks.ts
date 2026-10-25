@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, LAYER, LEAN, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { bakedTexture } from "./bakeCache";
@@ -16,9 +16,10 @@ import { ripples, swashFn } from "./water";
  * The rock's height comes with its chunk, a texture (the heights the
  * server sends), and where its layers break, found by where the pixel is
  * on the map. Near its edge a layer's lip rolls over, facing down the
- * slope, turned by the slate, so a notch's sides face across it; and on
- * down its wall, lit as a steep slope of the same slate, as the old
- * painted cliffs were, so top and wall read as one stone.
+ * slope, turned by the slate, so a notch's sides face across it; past its
+ * edge, as far as the wall leans out, the cliff, steeper: the old painted
+ * cliffs, laid over the walls from above, so top and wall read as one
+ * stone.
  *
  * Over it all the slate's own grain, read twice, at two sizes and turned,
  * so its repeat does not show, tilting the light; and on the flats its
@@ -48,38 +49,10 @@ const ROLL = 1.2;
  *  slate's smooth facing, not from how the broken edge changes from one
  *  pixel to the next, which is grainy. */
 const TURN = 1.5;
-/** A wall faces down its slope as steeply as this, from the lip's roll at
- *  its top to this far down it, in tiles, turned by the slate as a lip is,
- *  so its plates face every way, a crag; its slate read as if the wall
- *  were laid back on the ground in front of it, this many tiles out for a
- *  tile down, so its plates are as broad up it as they look across it. */
-const WALL_TILT = 1.8;
-const WALL_ROLL = 0.15;
-const UNROLL = 0.45;
-/** And read this many times finer on a wall than on a top: a crag's plates
- *  are smaller than a terrace's, and a wall is seen up close. */
-const GRAIN = 5;
-/** Where top turns to wall is painted, not where the mesh bends: it
- *  wanders with the slate, read as finely as the wall's, this far either
- *  side of the bend, counted in on a top and down a wall as the wall's
- *  slate is unrolled, so a plate standing proud is lit as top a way down
- *  the wall and a missing one is lit as wall a way into the top, as the
- *  old painted cliffs broke. */
-const JAG = 0.15;
-/** A wall's foot is painted so too, onto the top below: that top rising
- *  to meet it over this far, in tiles, facing out this steeply at the
- *  foot, a scree; the wall flattening into it. */
-const FILLET = 0.12;
-const FILLET_TILT = 0.7;
-/** And a wall's body broken into ledges, one every this many tiles down
- *  it, their lines wandering with the slate this far, of a ledge's
- *  spacing, and broken off where the slate faces one way; a ledge, this
- *  much of the spacing below its line, lit as a top is, and the stone
- *  above it darkened into the corner as a hollow. */
-const BAND = 0.3;
-const BAND_JAG = 0.45;
-const LEDGE = 0.35;
-const CORNER = 0.25;
+/** Below a layer's edge, out as far as its wall leans, the rock is lit as
+ *  a cliff facing down the slope this steeply, turned by the slate as a
+ *  lip is: the old painted cliff, laid over the wall from above. */
+const CLIFF_TILT = 1.8;
 
 const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
@@ -97,26 +70,6 @@ const SLATE_READ = (() => {
   return mix(a.rgb * 2. - 1., vec3f(bf.x * ${f(c2)} + bf.y * ${f(s2)}, bf.y * ${f(c2)} - bf.x * ${f(s2)}, b.b * 2. - 1.), ${f(SECOND[2])});
 }`;
 })();
-
-/** `crag(top, foot, slate)`: how a pixel of rock is lit, from how far
- *  it is, in tiles, past the painted line where its top turns to wall
- *  (`top`, out on the top, less than 0 down the wall) and where its wall
- *  meets the top below (`foot`, out on that top, less than 0 up the
- *  wall), and the slate its ledges break along (`slate`): its facing's
- *  tilt down the slope; how much a top it is, to read the top's slate;
- *  and how much its hollows darken. */
-const CRAG = `fn crag(top: f32, foot: f32, slate: vec3f) -> vec3f {
-  let flat = max(smoothstep(-0.005, 0.005, top), smoothstep(-0.005, 0.005, foot));
-  let lip = 1. - smoothstep(0., ${f(LIP)}, top);
-  let fillet = (1. - smoothstep(0., ${f(FILLET)}, foot)) * step(${f(LIP)}, top);
-  let down = max(-top, 0.) / ${f(BAND * UNROLL)} - ${f(BAND_JAG)} * slate.z;
-  let ledge = fract(down);
-  let shelf = (1. - smoothstep(${f(LEDGE * 0.7)}, ${f(LEDGE)}, ledge)) * step(1., down) * smoothstep(-0.1, 0.1, slate.x);
-  let corner = smoothstep(${f(1 - CORNER)}, 1., ledge) * step(1. - ${f(BAND_JAG)}, down) * smoothstep(-0.1, 0.1, slate.x);
-  let roll = smoothstep(0., ${f(WALL_ROLL * UNROLL)}, -top) * smoothstep(0., ${f(WALL_ROLL * UNROLL)}, -foot);
-  let wall = mix(${f(ROLL)}, ${f(WALL_TILT)}, roll * (1. - shelf));
-  return vec3f(mix(wall, max(lip * ${f(ROLL)}, fillet * ${f(FILLET_TILT)}), flat), flat, mix(min(roll * (1. - shelf) + corner, 1.), 1. - lip, flat));
-}`;
 
 /** `peakHeightAt(p, corner)`: the rock's height at a point of the map, and
  *  where its layers break, from the texture of the chunk whose heights
@@ -137,29 +90,34 @@ const HEIGHT_AT = (() => {
 }`;
 })();
 
-/** A pixel of the rock lit, at its place on the map (the mesh is laid
- *  there): a top, its lip rolling over near its edge, or a wall. */
+/** A pixel of the rock lit by where it is on the map, seen from above,
+ *  whether the mesh there is a top or a wall: the rock's height there with
+ *  the slate's added, scaled by how steep the rock is (as `layPeaks` adds
+ *  it, but at every pixel, not every eighth of a tile), says which layer
+ *  it is in and how near that layer's edge, and how near the edge of the
+ *  layer above, whose wall leans out over it. So the edge breaks along
+ *  the slate's plates finer than the mesh does, a plate standing proud
+ *  lit as top over the wall and a missing one as wall over the top. */
 const PEAK_LOOK = (() => {
   const at = "input.vPeakAt";
   return `let peakCorner = material.peakCorner.xy - ${f(PEAK_APRON)};
 let peakRock = peakHeightAt(${at}.xy, peakCorner);
+let peakOwn = peakRock.x;
 let peakFall = -peakRock.zw;
 let peakSteep = max(length(peakFall), 0.05);
-let peakWall = abs(input.worldNormal.z) < 0.5;
-let peakOut = peakFall / peakSteep;
-let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, peakWall);
-let peakLayer = floor(${at}.z / ${f(LAYER)} + 0.5);
-let peakIn = (peakRock.y - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
-let peakJag = ${f(JAG)} * vec2f(slateRead(${at}.xy * ${f(GRAIN)}).z, slateRead(${at}.xy * ${f(GRAIN)} + 7.31).z);
-let peakFoot = (${f(EDGE)} + peakLayer * ${f(LAYER)} - peakRock.y) / peakSteep - min(${f(LEAN * LAYER)}, ${f(0.5 * LAYER)} / peakSteep);
-let peakCrag = crag(select(select(1e3, peakIn, peakLayer > 0.5), -peakDepth * ${f(UNROLL)}, peakWall) - peakJag.x, select(peakFoot, (peakDepth - ${f(LAYER)}) * ${f(UNROLL)}, peakWall) - peakJag.y, slateRead(${at}.xy * ${f(GRAIN / 2)} + 3.17));
-let peakSlate = mix(slateRead((${at}.xy + peakOut * peakDepth * ${f(UNROLL)}) * ${f(GRAIN)}), slateRead(${at}.xy), peakCrag.y);
-let peakDown = normalize(peakOut + peakSlate.xy * ${f(TURN)} + 1e-6);
-let peakTilt = peakCrag.x;
-let peakHollow = (0.5 - 0.5 * peakSlate.z) * peakCrag.z;
+let peakSlate = slateRead(${at}.xy);
+let peakS = peakOwn + clamp(${f(WANDER)} * min(peakSteep, ${f(STEEPEST)}) * peakSlate.z * 0.5 * min(1., peakOwn / ${f(JAG_FOOT)}), ${f(-WANDERS)}, ${f(WANDERS)});
+let peakLayer = max(floor((peakS - ${f(EDGE)}) / ${f(LAYER)}) + 1., 0.);
+let peakIn = (peakS - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
+let peakBelow = (${f(EDGE)} + peakLayer * ${f(LAYER)} - peakS) / peakSteep;
+let peakRun = min(${f(LEAN * LAYER)}, ${f(0.5 * LAYER)} / peakSteep);
+let peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
+let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5);
+let peakCliff = 1. - smoothstep(peakRun * 0.8, peakRun, peakBelow);
+let peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
-N = normalize(vec3f(peakDown * peakTilt + peakSlate.xy * ${f(RELIEF)}, 1.));`;
+N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
@@ -197,7 +155,6 @@ export function peakMaterial(engine: EngineContext, heights: Uint16Array, corner
         ? { CUSTOM_VERTEX_MAIN_END: "out.vPeakAt = position;" }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
-${CRAG}
 ${HEIGHT_AT}`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: PEAK_LOOK,
           },
@@ -223,8 +180,8 @@ const ROCK_REACHED = 0.5;
 
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
- *  from the lip down into the water, rolling on down it as a mountain
- *  layer's wall does. How far out a pixel lies from the lip, `cliffFar`, cuts the
+ *  from the lip down into the water, lit by where it is on the map, as a
+ *  mountain's wall is, out to where its foot leans. How far out a pixel lies from the lip, `cliffFar`, cuts the
  *  plane, in the shadow map too. Only the facing: the colour is the
  *  stone's own. */
 const FIELD = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.).r - 0.5) * ${f(2 * CLIFF_REACH)})`;
@@ -235,15 +192,10 @@ if (!cliffWall && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) { discard; }
 const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
-let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
-let cliffDepth = select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall);
-let cliffCrag = crag(select(-cliffFar, -cliffDepth * ${f(UNROLL)}, cliffWall) - ${f(JAG)} * slateRead(input.worldPos.xy * ${f(GRAIN)}).z, 1e3, slateRead(input.worldPos.xy * ${f(GRAIN / 2)} + 3.17));
-let cliffSlate = mix(slateRead((input.worldPos.xy + cliffFace * cliffDepth * ${f(UNROLL)}) * ${f(GRAIN)}), slateRead(input.worldPos.xy), cliffCrag.y);
-let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
-let cliffTilt = cliffCrag.x;
-let cliffHollow = (0.5 - 0.5 * cliffSlate.z) * cliffCrag.z;
-baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * cliffHollow);
-townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * cliffHollow);
+let cliffSlate = slateRead(input.worldPos.xy);
+let cliffOut = normalize(normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6) + cliffSlate.xy * ${f(TURN)});
+let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(CLIFF_TILT)}, cliffFar > 0.);
+baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
@@ -273,7 +225,6 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: U
         ? { CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
-${CRAG}
 ${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}`,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
