@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, LAYER, LEAN, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { bakedTexture } from "./bakeCache";
@@ -57,8 +57,6 @@ const TURN = 1.5;
 const WALL_TILT = 1.8;
 const WALL_ROLL = 0.15;
 const UNROLL = 0.45;
-/** A wall turned this far from the sun (the cosine) is in its shade. */
-const TURNING = 0.25;
 
 const f = (x: number) => x.toFixed(4);
 const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
@@ -76,31 +74,6 @@ const SLATE_READ = (() => {
   return mix(a.rgb * 2. - 1., vec3f(bf.x * ${f(c2)} + bf.y * ${f(s2)}, bf.y * ${f(c2)} - bf.x * ${f(s2)}, b.b * 2. - 1.), ${f(SECOND[2])});
 }`;
 })();
-
-/** The sky's light on a surface facing `n` (Lite's spherical harmonics,
- *  `ibl-fragment.ts`). */
-const SKY_ON = (n: string) => `(scene.vSphericalL00.rgb + scene.vSphericalL1_1.rgb * ${n}.y + scene.vSphericalL10.rgb * ${n}.z + scene.vSphericalL11.rgb * ${n}.x
-  + scene.vSphericalL2_2.rgb * (${n}.y * ${n}.x) + scene.vSphericalL2_1.rgb * (${n}.y * ${n}.z) + scene.vSphericalL20.rgb * (3. * ${n}.z * ${n}.z - 1.)
-  + scene.vSphericalL21.rgb * (${n}.z * ${n}.x) + scene.vSphericalL22.rgb * (${n}.x * ${n}.x - ${n}.y * ${n}.y))`;
-/** A wall turned from the sun gets none of it, as the shade its top casts
- *  gets none: turned, as it stands, leaning back (`LEAN`), whichever way
- *  the slate tilts its facing, which the shadow map would not cover (its
- *  bias leaves a wall's top in the light): so it faces across the sun.
- *  And facing sideways it would take the land's light from round it,
- *  warm, where the shade takes the sky's from overhead, blue: so its
- *  colour is scaled to take the shade's light instead. Written where the
- *  lights are, never with the definitions, which the shadow pass compiles
- *  too, without them. */
-const SHADED = (wall: string, out: string) => `if (${wall}) {
-  let sunL = normalize(-lights.lights[0].vLightData.xyz);
-  let wallShade = smoothstep(0., ${f(TURNING)}, -dot(normalize(vec3f(normalize(${out} + 1e-6), ${f(LEAN)})), sunL));
-  let across = vec3f(0., 0., 1.) - sunL * sunL.z;
-  N = normalize(mix(N, across / max(length(across), 1e-4), wallShade));
-  let wallN = rotateY(N, scene.envRotationY);
-  let skyN = rotateY(vec3f(0., 0., 1.), scene.envRotationY);
-  let shadeLight = max(${SKY_ON("skyN")}, vec3f(1e-4)) / max(${SKY_ON("wallN")}, vec3f(1e-4));
-  baseColor = baseColor * mix(vec3f(1.), pow(shadeLight, vec3f(1. / 2.2)), wallShade);
-}`;
 
 /** `peakHeightAt(p, corner)`: the rock's height at a point of the map, and
  *  where its layers break, from the texture of the chunk whose heights
@@ -142,8 +115,7 @@ let peakTilt = select(peakLip * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, pea
 let peakHollow = select((0.5 - 0.5 * peakSlate.z) * (1. - peakLip), 0., peakWall);
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
-N = normalize(vec3f(peakDown * peakTilt + peakSlate.xy * ${f(RELIEF)}, 1.));
-${SHADED("peakWall", "peakOut")}`;
+N = normalize(vec3f(peakDown * peakTilt + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** Each engine's slate: flat until the worker has baked it. The cliffs the
@@ -225,8 +197,7 @@ let cliffRoll = smoothstep(0., ${f(WALL_ROLL)}, cliffDepth);
 let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)} * (1. - cliffRoll));
 let cliffTilt = mix((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(WALL_TILT)}, cliffRoll);
 baseColor = vec3f(${rgb(STONE)});
-N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));
-${SHADED("cliffWall", "cliffFace")}`;
+N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), the
