@@ -46,7 +46,47 @@ The first three minutes are close to the beats; the first sale is at
 ten, and from then on nothing arrives: no situation opens in the half
 hour, since the starter pack keeps every shelf stocked.
 
-## The opening, built
+## The opening: you are the first lorry
+
+Decided with Wytze, 2026-10-25, after the sawmill-first cut below was
+built and timed. The cold start (houses wait on a depot, a depot's
+desks wait on houses, the sawmill on hands) is solved the way Factorio
+solves it: **the player is the generalist.** You are the town's first
+lorry and its first builder, and every building after replaces a chore
+you were doing by hand. That is the automation, felt.
+
+1. **Spawn.** The game gives a random patch of coast over a floor
+   (forest in reach, flat land, open sea, room from neighbours) and
+   seats the dock on it; a player who dislikes it starts again. No
+   placing the dock.
+2. **The cutscene.** The ferry sails in; your lorry rolls off; the
+   dock's forklifts lift the starter pack onto the quay. Skippable, and
+   for the newcomer only.
+3. **A guide** greets you: a robot-like voice, anonymous, a line at a
+   time. Named people are trade partners, and only them.
+4. **A road to the woods**, from the quay.
+5. **The sawmill, built by you.** Tap the starter timber on the quay
+   and the forklift lifts it onto your lorry; tap the sawmill's site
+   and you drive there, on your roads, and stand while its ring fills.
+   It stands with a lorry's load of its own in the yard.
+6. **Houses for its hands**, beside it, of its own timber, hauled and
+   built by you. Settlers come on the next ferry: jobs bring people.
+7. **The first sale.** The rest of the yard, driven to the quay; the
+   coins land as the ferry casts off. The first ferry waits for it.
+8. **You cannot keep up**: the yard fills while you build, the quay
+   waits while you haul, and their pins fill. The **depot** hires your
+   driver: its lorry hauls and its vans build, on their own. Your lorry
+   stays, for a rush job.
+9. Later, **the construction company** takes the big builds (§plan-goods
+   §Jobs, buildings that grow): builder-hours, crews in vans.
+
+What the sim needs: a lorry of the mayor's (`CarRole::Hand`) that is
+sent with one errand (load this at that pad, take it there), and a site
+it stands at is built after a while, as its forklift holds a lorry
+today. Steering is never asked for: a tap picks the destination and it
+drives the roads.
+
+## The sawmill cut, built and timed
 
 2026-10-25, on Wytze's word: the sawmill is the starter, no pick
 ("wood is the first basic material you need; let's babysit the player
