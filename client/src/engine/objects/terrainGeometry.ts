@@ -437,7 +437,7 @@ export const CLIFF_REACH = 2;
 export const CLIFF_Z = 0.0012;
 /** How far a wall's foot stands out for its height: the land's cliff's
  *  and a mountain layer's alike. */
-const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
+export const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
 /** How far in behind the cliff's wall its lip is laid on the wall's mesh. */
 const TUCK = 0.05;
 
