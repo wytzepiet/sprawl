@@ -67,11 +67,14 @@ const layered = (heights: number[], reach: number[]) => ({
   indices: reach.flatMap((_, l) => [0, 2, 1, 0, 3, 2].map((i) => i + l * 4)),
 });
 const BROAD_TOP = layered([1], [1]);
+/** Its layers' heights the closer the higher, to this power, so its
+ *  narrow top, seen from the side, stands as one spire, not loose discs. */
+const LAYER_CLOSE = 1.5;
 /** A conifer's top: a square a layer, from these heights down as its bands begin, of the crown's,
  *  the topmost under the tip of its shadow's card (`SIDE_HIGH`), and as wide
  *  as its arms reach. They cast no shadow (the card does), so they may
  *  stand where they read best. */
-const LAYER_HEIGHTS = LAYER_FROM.map((from) => 1.15 - (0.67 * from) / LAYER_FROM[LAYER_FROM.length - 1]);
+const LAYER_HEIGHTS = LAYER_FROM.map((from) => 1.15 - 0.67 * (from / LAYER_FROM[LAYER_FROM.length - 1]) ** LAYER_CLOSE);
 const CONIFER_TOP = layered(LAYER_HEIGHTS, LAYER_REACH);
 /** The body's card: x across it, -1 to 1, and z its foot (0) or head (1),
  *  which the shader turns to the sun and cuts to a trunk, facing along y,
