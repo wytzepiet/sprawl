@@ -164,8 +164,9 @@ export default function Signs() {
       const kind = b.kind;
       const where = seat({ kind, storeys: storeysOf(kind) });
       // Homes say nothing, nor a site, nor a harbour, whose ground is all
-      // yard and no roof.
-      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay ? null : where.painted ? "paint" : "plate";
+      // yard and no roof, nor a depot, whose office hut stands where its
+      // sign would lie.
+      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || kind === "Depot" ? null : where.painted ? "paint" : "plate";
       if (!look) continue;
       keep.add(e.id);
       const bucket = `${look}_${kind}`;

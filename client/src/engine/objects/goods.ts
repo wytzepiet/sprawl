@@ -1,7 +1,7 @@
 import { boxGeometry as box } from "./buildings";
 import { barrel, prism, shape, type Part, type Shape } from "./sea";
 import type { RGB } from "../rgb";
-import type { P } from "../geometry";
+import type { MeshGeometry, P } from "../geometry";
 import type { Good } from "../../generated";
 
 /**
@@ -97,6 +97,42 @@ export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
 /** A good's package to place: in a bucket of its own where it stands
  *  still, one where it moves (`bodyOf` in `CarObject.tsx`). */
 export const itemOf = (g: Good, moving: boolean) => ({ key: ITEMS[g].key + (moving ? "" : "p"), geo: ITEMS[g].geo });
+
+/** A depot's office hut: where its hands clock in, its gable end to the
+ *  street (+y), eaves deep, a door too big for it and a window beside, a
+ *  chimney at the back. Its base on z = 0. */
+export const HUT = (() => {
+  const [w, d, h, rise, eave] = [0.38, 0.3, 0.16, 0.13, 0.04];
+  const WALL: RGB = [0.6, 0.48, 0.37], ROOF: RGB = [0.42, 0.33, 0.25], CREAM: RGB = [0.93, 0.9, 0.83], GLASS: RGB = [0.26, 0.29, 0.33];
+  // The roof: two slopes from the eaves up to the ridge along y.
+  const [x0, x1, y0, y1] = [-w / 2 - eave, w / 2 + eave, -d / 2 - eave, d / 2 + eave];
+  const slope = (s: number): MeshGeometry => {
+    const n = [s * rise, 0, w / 2 + eave].map((v, _, a) => v / Math.hypot(...a));
+    const xe = s > 0 ? x1 : x0;
+    return { positions: [xe, y0, 0, 0, y0, rise, 0, y1, rise, xe, y1, 0], normals: [...n, ...n, ...n, ...n], indices: s > 0 ? [0, 2, 1, 0, 3, 2] : [0, 1, 2, 0, 2, 3] };
+  };
+  // Its gable ends, the triangles under the ridge.
+  const end = (s: number): MeshGeometry => {
+    const y = s * d / 2;
+    return { positions: [-w / 2, y, 0, w / 2, y, 0, 0, y, rise * (w / 2) / (w / 2 + eave)], normals: [0, s, 0, 0, s, 0, 0, s, 0], indices: s > 0 ? [0, 2, 1] : [0, 1, 2] };
+  };
+  return {
+    key: "hut",
+    geo: shape([
+      [box(w, d, h), [0, 0, h / 2], WALL],
+      [end(1), [0, 0, h], WALL],
+      [end(-1), [0, 0, h], WALL],
+      [slope(1), [0, 0, h], ROOF],
+      [slope(-1), [0, 0, h], ROOF],
+      [box(0.045, 0.045, 0.11), [w / 4, -d / 4, h + rise * 0.6], WALL],
+      // The door, oversized, and the window beside it, in cream frames.
+      [box(0.1, 0.006, 0.14), [-w / 4, d / 2 + 0.002, 0.07], CREAM],
+      [box(0.076, 0.008, 0.124), [-w / 4, d / 2 + 0.004, 0.062], ROOF],
+      [box(0.13, 0.006, 0.08), [w / 5, d / 2 + 0.002, 0.09], CREAM],
+      [box(0.106, 0.008, 0.056), [w / 5, d / 2 + 0.004, 0.09], GLASS],
+    ]),
+  };
+})();
 
 /** A sawmill's log deck: the trees as they come in from the woods, long
  *  and unstrapped, piled four, three and two on two bearers, lying along
