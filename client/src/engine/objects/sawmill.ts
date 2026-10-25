@@ -41,7 +41,7 @@ const TRIM: RGB = [0.42, 0.27, 0.18];
 const ZINC: RGB = [0.72, 0.74, 0.77];
 const DOOR: RGB = [0.2, 0.24, 0.32];
 const BRICK: RGB = [0.62, 0.3, 0.22];
-const CHIPS: RGB = [0.58, 0.42, 0.29];
+const CHIPS: RGB = [0.68, 0.52, 0.34];
 const SAWDUST: RGB = [0.84, 0.65, 0.42];
 const BARK: RGB = [0.56, 0.39, 0.24];
 const END: RGB = [0.89, 0.76, 0.56];
@@ -323,7 +323,7 @@ baseColor = baseColor * barkMap.b;
 roughness = 0.95;`, (engine) => ({ millBark: bark(engine) })),
   dust: loose("MillDust", `input.uv.x > 0.94 + ${f(SPILL - 0.94)} * looseLump * looseLump`, 0.86, 0.26),
   // How far in from the yard's edge, the nearer of its two halves'.
-  chips: loose("MillChips", `max(${CHIP_YARDS.map(([x0, x1, y0, y1]) => `min(min(input.uv.x - ${f(x0)}, ${f(x1)} - input.uv.x), min(input.uv.y - ${f(y0)}, ${f(y1)} - input.uv.y))`).join(", ")}) < ${f(CHIPS_FRAY)} * looseLump * looseLump * 2.`, 0.72, 0.5),
+  chips: loose("MillChips", `max(${CHIP_YARDS.map(([x0, x1, y0, y1]) => `min(min(input.uv.x - ${f(x0)}, ${f(x1)} - input.uv.x), min(input.uv.y - ${f(y0)}, ${f(y1)} - input.uv.y))`).join(", ")}) < ${f(CHIPS_FRAY)} * looseLump * looseLump * 2.`, 0.86, 0.26),
 };
 /** Something loose on the ground, sawdust or chips: lumpy, mottled
  *  between `dark` and `dark` + `spread` by the land's grain, and gone
