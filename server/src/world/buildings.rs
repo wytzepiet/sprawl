@@ -1,5 +1,5 @@
 use crate::protocol::{
-    Building, BuildingKind, Door, EntityId, GameObject, Good, GridCoord, Placing, TerrainType,
+    Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing, TerrainType,
 };
 use crate::world::World;
 
@@ -312,29 +312,22 @@ impl World {
         self.occupied.get(&(tile.x, tile.y)).copied()
     }
 
-    /// A building placed by the mayor: the town's first depot and first
-    /// sawmill, and anything built of nothing, stand at once, and the rest
-    /// are sites waiting for their timber. The first sawmill stands with a
-    /// lorry's load in its yard, so the town's first sale waits on no
-    /// shift and no hands.
+    /// A building placed by the mayor: the town's first depot, and anything
+    /// built of nothing, stands at once, and the rest are sites waiting for
+    /// their timber.
     pub fn founded(&mut self, id: EntityId) {
         let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return };
         let kind = b.kind;
-        let first = (crate::economy::depot(kind) || kind == BuildingKind::Sawmill)
+        let first_depot = crate::economy::depot(kind)
             && !self.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == kind && o.site.is_none()));
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-            if first {
+            if first_depot {
                 b.site = None;
             }
         }
         let standing = matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_none());
         if standing {
             crate::economy::stand(self, id);
-        }
-        if first && kind == BuildingKind::Sawmill
-            && let Some(s) = self.building_mut(id).and_then(|b| b.stocks.get_mut(&Good::Timber))
-        {
-            s.level = crate::haul::LOAD as f64 * Good::Timber.per_package();
         }
     }
 

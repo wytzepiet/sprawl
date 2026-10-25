@@ -495,12 +495,45 @@ pub struct Car {
     #[serde(default)]
     #[ts(type = "number")]
     pub due: u64,
+    /// The mayor's lorry's errand, while it is on one (`haul::send`).
+    #[serde(default)]
+    pub errand: Option<Errand>,
+}
+
+/// Where the mayor sent their lorry: so many packages of a good, from a
+/// pad to a building that takes them. The one lorry that remembers what
+/// it is doing, since a tap is all the hand gives it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Errand {
+    /// The quay, a maker's yard or a depot; the lorry itself, for what is
+    /// aboard already.
+    #[ts(type = "number")]
+    pub from: EntityId,
+    pub good: Good,
+    pub packages: u32,
+    /// A site, which the lorry stands at while it is built; the harbour,
+    /// to sell; or a depot.
+    #[ts(type = "number")]
+    pub to: EntityId,
+    pub doing: Doing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Doing {
+    /// On its way to be loaded.
+    Fetch,
+    /// Loaded, on its way to unload.
+    Carry,
+    /// At the site, building: done at the lorry's `due`.
+    Build,
 }
 
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, stocks: crate::needs::Bucket::driven(), run: None, sail: None, cargo: Vec::new(), load: None, deck: Vec::new(), passengers: Vec::new(), booked: Vec::new(), due: 0 }
+        Car { owner, trip: None, role, spot: None, stocks: crate::needs::Bucket::driven(), run: None, sail: None, cargo: Vec::new(), load: None, deck: Vec::new(), passengers: Vec::new(), booked: Vec::new(), due: 0, errand: None }
     }
 }
 
@@ -1022,6 +1055,16 @@ pub enum ClientMessage {
     /// Packages bought once the price falls to this, or sold once it rises to it.
     Order { good: Good, out: bool, packages: u32, price: f64 },
     Cancel { #[ts(type = "number")] order: u64 },
+    /// The mayor's lorry sent: loaded at one place, unloaded at another
+    /// (`haul::send`).
+    Haul {
+        #[ts(type = "number")]
+        from: EntityId,
+        good: Good,
+        packages: u32,
+        #[ts(type = "number")]
+        to: EntityId,
+    },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// The card of one thing on the map, asked for again while it is open.

@@ -40,10 +40,6 @@ pub enum Key {
 pub enum Goal {
     /// A building of this kind stands, built and reached by a street.
     Stands(BuildingKind),
-    /// A depot's street joined to the harbour's.
-    Joined,
-    /// Something on a depot's shelf: a box fetched and unloaded.
-    Fetched,
     /// Settlers in town: someone has driven off the ferry.
     Settled,
     /// A box booked to come in on the deck.
@@ -76,8 +72,8 @@ pub struct Step {
     /// How, paragraphs apart by a blank line.
     pub text: String,
     pub done: bool,
-    /// The building the step's button acts on: the depot, for a depot's
-    /// goal.
+    /// The building the step's button acts on: the harbour, for the
+    /// deck's goals.
     #[ts(type = "number | null")]
     pub at: Option<EntityId>,
 }
@@ -133,13 +129,11 @@ const ROWS: &[Row] = &[
         when: When::Start,
         title: "The opening",
         steps: &[
-            (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Take the harbour and drag it onto the coast. It stands half on the water, its back to the sea, and shows how it would stand, or, in red, why it cannot: the ferry needs open sea straight out behind it.\n\nLet go, and it stands at once, with a street of its own."),
-            (Goal::Stands(BuildingKind::Depot), "Build a depot", "Where the town keeps what lands: drag it from the build menu beside the harbour's street, its yard to the street. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
-            (Goal::Joined, "Join them with a street", "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
-            (Goal::Stands(BuildingKind::Sawmill), "Build a sawmill", "Timber is what the town is built of. Drag the sawmill from the build menu to the forest's edge, on a street: the town's first stands at once, with a lorry's load already stacked in its yard. Its hands fell the woods round it, and the depot's lorry fetches what they make."),
-            (Goal::Sold, "Sell a bundle of timber", "Open the market: each good has a price that moves, and a graph of it. Tap timber and sell a bundle. The depot's lorry fetches it from the sawmill's yard and takes it to the quay, and the coins land as the ferry casts off."),
-            (Goal::Fetched, "Fetch the starter pack", "Stone, crates and fuel, and timber for the first houses, the world's gift, come on the first ferry, and the harbour's forklifts lift them onto the quay. The depot's lorry fetches them as they land: tap it, and ride along."),
-            (Goal::Settled, "Build houses for its hands", "The sawmill wants four hands, and a house holds two. Drag houses from the build menu onto a street beside it, side by side: people take the work nearest home. each is a site till a van brings its timber. Then the next ferry brings their people, and they go to work. Take one down while it is new and you get back what it cost."),
+            (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Take the harbour and drag it onto the coast. It stands half on the water, its back to the sea, and shows how it would stand, or, in red, why it cannot: the ferry needs open sea straight out behind it.\n\nLet go, and it stands at once, with a street of its own. The first ferry brings your lorry, and the world's gift on its deck."),
+            (Goal::Stands(BuildingKind::Sawmill), "Build a sawmill", "Timber is what the town is built of. Draw a street from the quay to the woods, and drag the sawmill to their edge: it is a site, waiting for two bundles of timber.\n\nThe gift's timber is on the quay. Tap it, then the sawmill: the forklift loads your lorry, you drive it there, and you build it. It stands with a load of its own in the yard."),
+            (Goal::Settled, "Build houses for its hands", "The sawmill wants four hands, and a house holds two. Drag two houses onto a street beside it, then bring each a bundle from the sawmill's yard and build it. People take the work nearest home, and the next ferry brings them."),
+            (Goal::Sold, "Sell a bundle of timber", "Bring the sawmill's timber to the quay: tap its yard, then the harbour. It is sold at the market's price, and the coins land as the ferry casts off."),
+            (Goal::Stands(BuildingKind::Depot), "Hire a driver: build a depot", "One lorry cannot haul and build at once. A depot's lorry fetches from the sawmill and the quay by itself, and its vans take timber to every site and build it. Yours stays, for a rush."),
         ],
         reward: Reward::Coins(100.0),
     },
@@ -239,8 +233,6 @@ fn open(row: &Row, now: GameTime) -> Mission {
 fn met(world: &World, goal: Goal) -> bool {
     match goal {
         Goal::Stands(kind) => world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.street_of(e.id).is_some()),
-        Goal::Joined => world.depots().into_iter().any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
-        Goal::Fetched => world.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
         Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
         Goal::Booked => crate::haul::packages(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
@@ -254,7 +246,6 @@ fn at(world: &World, goal: Goal) -> Option<EntityId> {
         Goal::Stands(_) | Goal::Settled => None,
         // The deck is the harbour's.
         Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
-        _ => world.depots().into_iter().next().map(|(id, _)| id),
     }
 }
 

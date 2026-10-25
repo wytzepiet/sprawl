@@ -32,11 +32,12 @@ together.
 
 ## Sources
 
-1. **The trunk.** The opening, opened with the town: a harbour, a depot,
-   a street between them, a sawmill (the town's first stands at once,
-   a lorry's load in its yard), a bundle of its timber sold, the starter
-   pack fetched, houses for its hands and their settlers
-   (`plan-opening.md`). Then the market: a pallet of fuel bought.
+1. **The trunk.** The opening, opened with the town, played with the
+   mayor's own lorry (`plan-opening.md`): a harbour; a sawmill, its
+   timber brought from the quay and built by hand; houses for its hands,
+   of its own timber; a bundle sold, the ferry waiting for it; a depot,
+   whose lorry and vans take over. Then the market: a pallet of fuel
+   bought.
 2. **Kinds.** Each building kind may carry a mission that teaches it.
    Nothing is locked (`game.md` §The build), so it opens from source 3:
    the mission that asks for a quarry is the quarry's teaching mission.

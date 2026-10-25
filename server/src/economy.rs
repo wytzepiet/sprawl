@@ -222,11 +222,18 @@ pub fn open(world: &mut World, id: EntityId) {
 
 /// The last of a site's materials landed: it stands, its shelves empty and
 /// calling; its vehicles stand in its yard, and a farm claims its land.
+/// The town's first sawmill stands with a lorry's load in its yard, so
+/// the first sale waits on no shift and no hands.
 pub fn stand(world: &mut World, id: EntityId) {
     if let Some(b) = world.building_mut(id) {
         b.site = None;
     }
     open(world, id);
+    let first_mill = world.building(id).is_some_and(|b| b.kind == BuildingKind::Sawmill)
+        && !world.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == BuildingKind::Sawmill && o.site.is_none()));
+    if first_mill && let Some(s) = world.building_mut(id).and_then(|b| b.stocks.get_mut(&Good::Timber)) {
+        s.level = crate::haul::LOAD as f64 * Good::Timber.per_package();
+    }
     world.unsettled.insert(id);
     if world.street_of(id).is_some() {
         crate::calls::stable(world, id);
@@ -794,7 +801,7 @@ mod tests {
     /// no shelf, no door for anyone but its materials; all of them in, it
     /// stands, its shelves empty and calling. The town's first depot
     /// stands at once: it is where the first timber is kept; and its
-    /// first sawmill, a lorry's load in its yard: it is the first sale.
+    /// first sawmill stands with a lorry's load in its yard: the first sale.
     #[test]
     fn a_site_stands_when_its_materials_are_in() {
         let mut world = town();
@@ -816,12 +823,15 @@ mod tests {
         assert_eq!(world.treasury, STAKE, "a building cost coins");
         let second = world.place_building(at(40), Depot, 2).unwrap();
         assert!(world.building(second).unwrap().site.is_some(), "a second depot stood for nothing");
-        let mill = world.place_building(at(50), Sawmill, 2).unwrap();
-        let b = world.building(mill).unwrap();
-        assert!(b.site.is_none(), "the first sawmill waited for timber");
-        assert_eq!(b.stocks[&Good::Timber].level, crate::haul::LOAD as f64 * Good::Timber.per_package(), "its yard is not a load");
-        let second = world.place_building(at(60), Sawmill, 2).unwrap();
-        assert!(world.building(second).unwrap().site.is_some(), "a second sawmill stood for nothing");
+        let load = crate::haul::LOAD as f64 * Good::Timber.per_package();
+        let mill = |world: &mut World, x| {
+            let mill = world.place_building(at(x), Sawmill, 2).unwrap();
+            assert!(world.building(mill).unwrap().site.is_some(), "a sawmill stood for nothing");
+            assert_eq!(delivered(world, mill, Good::Timber, 8.0), 0.0);
+            world.building(mill).unwrap().stocks[&Good::Timber].level
+        };
+        assert_eq!(mill(&mut world, 50), load, "the first sawmill's yard is not a load");
+        assert_eq!(mill(&mut world, 60), 0.0, "a second sawmill stood stocked");
     }
 
     /// The opening teaches one material: everything it builds, a house, a

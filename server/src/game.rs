@@ -328,6 +328,11 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
             events.wake(0, id);
         }
     }
+    // A depot or a maker built, or a street: every idle lorry thinks
+    // again, a new depot's first of all.
+    if changed {
+        crate::haul::call_lorries(world, events);
+    }
     let day = DAY_MS as u64;
     events.wake(day - events.now() % day, MIDNIGHT);
 }

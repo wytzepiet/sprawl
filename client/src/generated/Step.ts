@@ -11,7 +11,7 @@ title: string,
  */
 text: string, done: boolean, 
 /**
- * The building the step's button acts on: the depot, for a depot's
- * goal.
+ * The building the step's button acts on: the harbour, for the
+ * deck's goals.
  */
 at: number | null, };

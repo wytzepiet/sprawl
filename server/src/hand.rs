@@ -43,6 +43,9 @@ pub(crate) fn handle_player_action(
         }
         ClientMessage::Order { good, out, packages, price } => crate::market::order(world, good, out, packages, price),
         ClientMessage::Cancel { order } => crate::market::cancel(world, order),
+        ClientMessage::Haul { from, good, packages, to } => {
+            crate::haul::send(world, events, from, good, packages, to);
+        }
         ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
         ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::Card(_) => {
             unreachable!("handled by Game::command")

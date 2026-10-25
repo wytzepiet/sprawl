@@ -149,6 +149,14 @@ impl Market {
     }
 
     /// The town traded so many packages: the price moves its way.
+    /// A package bought or sold here: the price it moves to, which it is
+    /// paid at.
+    pub fn deal(&mut self, good: Good, out: bool) -> f64 {
+        let price = self.next(good, out);
+        self.traded(good, 1.0, out);
+        price
+    }
+
     fn traded(&mut self, good: Good, packages: f64, out: bool) {
         let at = self.at.entry(good).or_default();
         *at = (*at + if out { -1.0 } else { 1.0 } * packages / DEPTH).clamp(-1.0, 1.0);
@@ -246,7 +254,7 @@ pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
         if !crate::orders::book(world, harbour, good, out, None, price, None) {
             return n;
         }
-        world.market.traded(good, 1.0, out);
+        world.market.deal(good, out);
     }
     packages
 }

@@ -223,6 +223,9 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Harbour, Blueprint {
             quay: true,
             forklifts: 3,
+            // The mayor's own lorry, which goes where the hand sends it
+            // (`haul::send`).
+            vehicles: &[CarRole::Truck],
             ..row((3, 0), (3, 2), &[], vec![shift(6, 22, 2)])
         }),
         // Four hands, seven to four, felling and sawing the forest round it:

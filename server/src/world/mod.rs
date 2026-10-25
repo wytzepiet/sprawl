@@ -100,6 +100,10 @@ pub struct World {
     /// claims, keyed by node or crossing. Never saved: trips are not.
     pub streets: crate::intersection::IntersectionRegistry,
     pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
+    /// Ferries held at the ramp for the mayor's load, and when each was
+    /// due to cast off by the timetable (`World::wait_for`). Never saved:
+    /// a restart sails them.
+    pub held: HashMap<EntityId, GameTime>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -260,6 +264,7 @@ impl World {
             junctions: crate::intersection::IntersectionRegistry::new(),
             streets: crate::intersection::IntersectionRegistry::new(),
             voyages: HashMap::default(),
+            held: HashMap::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::default(),
             occupied: HashMap::default(),

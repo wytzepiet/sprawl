@@ -257,12 +257,16 @@ impl World {
             if let Some(g) = self.berth_gate(harbour).filter(|g| !self.junctions.has_passage(g.id, ferry)) {
                 self.junctions.get_or_create_with(g.id, g.kind.rule()).register(ferry, g.from, g.to, now);
             }
+            self.release(ferry, harbour, now);
+            let due = self.car(ferry).map_or(due, |c| c.due);
             if now >= due {
+                self.held.remove(&ferry);
                 self.cast_off(events, ferry, now);
             } else {
                 self.roll_off(events, ferry, harbour, now);
                 self.work_deck(events, ferry, harbour, now);
-                let next = if self.passengers(ferry) > 0 { ROLL_MS } else { due - now };
+                // Held, it looks again every second whether it may go.
+                let next = if self.passengers(ferry) > 0 { ROLL_MS } else if self.held.contains_key(&ferry) { 1_000 } else { due - now };
                 events.wake(next.min(due - now).max(1), ferry);
             }
         } else {
@@ -285,6 +289,36 @@ impl World {
             let way = crate::shipping::last(way, left);
             self.board(ferry, harbour);
             self.set_out(events, ferry, way, false, now);
+        }
+    }
+
+    /// The ferry at the ramp waits for the mayor's load on its way to
+    /// sell: two dwells at most, and it casts off once the load is lifted
+    /// aboard (`release`). The hand's sale makes the boat.
+    pub fn wait_for(&mut self, harbour: EntityId) {
+        let Some((ferry, due)) = self.berthed(harbour) else { return };
+        let due = *self.held.entry(ferry).or_insert(due);
+        if let Some(c) = self.car_mut(ferry) {
+            c.due = due + 2 * DWELL;
+        }
+    }
+
+    /// A held ferry whose wait is over, the mayor's lorry neither on its
+    /// way with a load nor at the quay, and nothing still being lifted
+    /// aboard: due again by the timetable, or now.
+    fn release(&mut self, ferry: EntityId, harbour: EntityId, now: GameTime) {
+        let Some(&due) = self.held.get(&ferry) else { return };
+        let coming = crate::haul::mayors(self).is_some_and(|l| {
+            let bound = self.car(l).and_then(|c| c.errand).is_some_and(|e| e.to == harbour && e.doing != crate::protocol::Doing::Fetch);
+            bound || (self.claims.get(&l) == Some(&harbour) && !self.handled(l, now))
+        });
+        let lifting = self.building(harbour).is_some_and(|b| b.lifts.iter().any(|l| l.car == ferry && l.onto && l.ends() > now));
+        if coming || lifting {
+            return;
+        }
+        self.held.remove(&ferry);
+        if let Some(c) = self.car_mut(ferry) {
+            c.due = c.due.min(due.max(now));
         }
     }
 
