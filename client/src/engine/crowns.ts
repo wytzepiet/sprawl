@@ -47,9 +47,9 @@ const TWIG_THICK = 0.004;
 const LEAF_WOOD = 4;
 const SHELL = 0.4;
 const COVER = 5;
-const LEAF = 0.035;
+const LEAF = 0.025;
 const LEAF_WIDE = 0.6;
-const STALK = 0.05;
+const STALK = 0.045;
 /** A leaf lies tilted at random up to this much (1 at 45°). The light
  *  reaches down less: at the crown's foot this much of what its top gets;
  *  and under the crown's skin, a dome over its highest leaves this many
