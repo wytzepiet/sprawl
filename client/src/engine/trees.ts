@@ -5,7 +5,7 @@ import type { Casters } from "./DayNightCycle";
 import { drop, meshOf } from "./geometry";
 import type { Area } from "./cull";
 import { lacquer } from "./bevel";
-import { BROAD_LAYERS, COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS, UPPER_REACH } from "./crowns";
+import { BROAD_LAYERS, COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS } from "./crowns";
 import recipe from "./crowns.ts?raw";
 import { bakedTexture, whenBaked } from "./bakeCache";
 
@@ -60,13 +60,13 @@ const CARD_HEIGHT = 1;
 /** A top in layers: a square each, at these heights of the crown's and
  *  this wide, each known to the shader by its facing's x, which nothing
  *  else reads (the crown's facing is the shader's own). A broadleaf's is
- *  two: its upper clumps at the crown's height, the whole a little under. */
+ *  four, its clumps spread among them, its branches in the lowest. */
 const layered = (heights: number[], reach: number[]) => ({
   positions: reach.flatMap((w, l) => [-w, -w, heights[l], w, -w, heights[l], w, w, heights[l], -w, w, heights[l]]),
   normals: reach.flatMap((_, l) => [l, 0, 1, l, 0, 1, l, 0, 1, l, 0, 1]),
   indices: reach.flatMap((_, l) => [0, 2, 1, 0, 3, 2].map((i) => i + l * 4)),
 });
-const BROAD_TOP = layered([1, 0.72], [UPPER_REACH, 1]);
+const BROAD_TOP = layered([1, 0.86, 0.72, 0.58], [1, 1, 1, 1]);
 /** A conifer's top: a square a layer, from these heights down, each below the one over it in proportion to how wide that one is, of the crown's,
  *  the topmost under the tip of its shadow's card (`SIDE_HIGH`), and as wide
  *  as its arms reach. They cast no shadow (the card does), so they may

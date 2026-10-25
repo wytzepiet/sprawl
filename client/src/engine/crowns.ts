@@ -98,56 +98,83 @@ const byte = (u: number) => Math.round(Math.min(1, Math.max(0, u)) * 255);
 /** The most light a leaf's alpha says; above it, a texel is twig. */
 export const LIT = 0.8;
 
-/** A broadleaf is drawn in two layers, as a conifer is (`trees.ts` stacks
- *  them): over the whole crown, its upper clumps alone, those with their
- *  middle within this far of the crown's, drawn out to this far at most,
- *  of its radius, and this share of them, give or take, each as far round
- *  its middle as this; the clumps
- *  under them, in the lower layer, this much darker. */
-export const BROAD_LAYERS = 2;
-const UPPER_MIDDLE = 0.55;
-export const UPPER_REACH = 0.9;
-const UPPER = 0.6;
-const UPPER_BODY = 0.42;
-const UPPER_SHADE = 0.5;
+/** A broadleaf is drawn in layers, as a conifer is (`trees.ts` stacks
+ *  them): each clump in one, the nearer the crown's middle the higher, give
+ *  or take this much of the whole; a clump this far round its middle, so
+ *  the ground shows between clumps, and holed where its leaves thin, more
+ *  toward its edge, up to this share of it, in holes this wide; each layer
+ *  under another this much darker. Under them all, in the lowest, its
+ *  branches, this many, from this wide at the trunk to this at their tips,
+ *  bending this much. */
+export const BROAD_LAYERS = 4;
+const BROAD_MIX = 0.6;
+const BODY = 0.76;
+const HOLES = 0.2;
+const HOLE = 1 / 10;
+const BROAD_UNDER = 0.18;
+const LIMBS = 6;
+const LIMB_FOOT = 0.07;
+const LIMB_TIP = 0.015;
+const LIMB_BEND = 0.5;
 
-/** A broadleaf's texel at (x, y), of its radius, into out at k, in its
- *  upper layer or its whole: the clump nearest, the outline pulled in away
- *  from clumps and frayed by the leaves, and the light less, the further
- *  out of the clump's middle. */
-function broad(out: Uint8Array, k: number, x: number, y: number, s0: number, s1: number, upper: boolean) {
+/** A broadleaf's texel at (x, y), of its radius, into out at k, in a
+ *  layer: the clump nearest, if it is that layer's, its outline pulled in
+ *  away from clumps and frayed by the leaves, and the light less, the
+ *  further out of the clump's middle; else in the lowest a branch; else
+ *  nothing, and what is under it shows. */
+function broad(out: Uint8Array, k: number, x: number, y: number, s0: number, s1: number, layer: number) {
   noise(x / WARP_SPAN + s1 * 23, y / WARP_SPAN + s0 * 23);
   const [w0, w1] = [n0, n1];
   facet(x / FACET + s0 * 41, y / FACET + s1 * 41);
   const [l0, l1] = [f0, f1];
   const ax = x / CLUMP + s0 * 17 + (w0 - 0.5) * 2 * WARP + l0 * RAGGED;
   const ay = y / CLUMP + s1 * 17 + (w1 - 0.5) * 2 * WARP + l1 * RAGGED;
-  let near = 9, tx = 0, ty = 0, high = false;
+  let near = 9, tx = 0, ty = 0, own = 0;
   const [ax0, ay0] = [Math.floor(ax), Math.floor(ay)];
   for (let cy = ay0 - 1; cy <= ay0 + 1; cy++) {
     for (let cx = ax0 - 1; cx <= ax0 + 1; cx++) {
       hash(cx, cy, 5);
       const size = CLUMP_SIZES[0] + (CLUMP_SIZES[1] - CLUMP_SIZES[0]) * h0;
-      const raised = h1 < UPPER;
+      const lot = h1;
       hash(cx, cy, 4);
       const [mx, my] = [cx + (1 - JITTER) / 2 + JITTER * h0, cy + (1 - JITTER) / 2 + JITTER * h1];
       const dx = (ax - mx) / size;
       const dy = (ay - my) / size;
       const d = Math.sqrt(dx * dx + dy * dy);
+      if (d >= near) continue;
       // Where its middle is on the crown, of its radius, the warp aside.
-      const [px, py] = [(mx - s0 * 17) * CLUMP, (my - s1 * 17) * CLUMP];
-      if (d < near) (near = d), (tx = dx), (ty = dy), (high = raised && px * px + py * py < UPPER_MIDDLE * UPPER_MIDDLE);
+      const out_ = Math.hypot((mx - s0 * 17) * CLUMP, (my - s1 * 17) * CLUMP);
+      (near = d), (tx = dx), (ty = dy), (own = Math.min(BROAD_LAYERS - 1, Math.floor(BROAD_LAYERS * Math.max(0, out_ * (1 - BROAD_MIX) + lot * BROAD_MIX))));
     }
   }
   noise(x / LEAF + s0 * 31, y / LEAF + s1 * 31);
   const r = Math.sqrt(x * x + y * y) + LUMP * (near - 0.25) + (n0 - 0.5) * FRINGE;
   const deep = Math.min(1, Math.max(0, (near - HOLLOW_FROM) / (0.75 - HOLLOW_FROM) + (n1 - 0.5) * 0.4));
+  const fray = (n0 - 0.5) * FRINGE * 2;
+  noise(x / HOLE + s1 * 61, y / HOLE + s0 * 61);
+  const holed = n0 < HOLES * Math.min(1, Math.max(0, (near - 0.15) / (BODY - 0.15)));
   facet(x / SHARD + s1 * 53, y / SHARD + s0 * 53);
-  const shown = upper ? high && near + (n0 - 0.5) * FRINGE * 2 < UPPER_BODY : true;
-  out[k] = shown ? byte(r / 2) : 255;
-  out[k + 1] = byte(0.5 + (tx * CLUMP_TILT + l0 * FACET_TILT + f0 * SHARD_TILT) / 2);
-  out[k + 2] = byte(0.5 + (ty * CLUMP_TILT + l1 * FACET_TILT + f1 * SHARD_TILT) / 2);
-  out[k + 3] = byte((1 - deep * deep * (3 - 2 * deep)) * LIT * (!upper && high ? UPPER_SHADE : 1));
+  if (own === layer && near + fray < BODY && !holed && r < 2) {
+    out[k] = byte(r / 2);
+    out[k + 1] = byte(0.5 + (tx * CLUMP_TILT + l0 * FACET_TILT + f0 * SHARD_TILT) / 2);
+    out[k + 2] = byte(0.5 + (ty * CLUMP_TILT + l1 * FACET_TILT + f1 * SHARD_TILT) / 2);
+    out[k + 3] = byte((1 - deep * deep * (3 - 2 * deep)) * LIT * (1 - BROAD_UNDER * layer));
+    return;
+  }
+  // The branches, under everything: from the trunk out, bending as they go.
+  const rho = Math.sqrt(x * x + y * y);
+  const theta = Math.atan2(y, x) + rho * LIMB_BEND * (s0 - 0.5) * 2;
+  const u = (theta / (2 * Math.PI)) * LIMBS + s1 * 7;
+  const across = Math.abs(u - Math.round(u)) * ((2 * Math.PI) / LIMBS) * rho;
+  const reach = 0.55 + 0.3 * ((Math.round(u) * 0.618 + s0) % 1);
+  if (layer === BROAD_LAYERS - 1 && rho < reach && across < LIMB_FOOT + (LIMB_TIP - LIMB_FOOT) * (rho / reach)) {
+    out[k] = byte(rho / 2);
+    out[k + 1] = byte(0.5 + (Math.cos(theta) * 0.3) / 2);
+    out[k + 2] = byte(0.5 + (Math.sin(theta) * 0.3) / 2);
+    out[k + 3] = 255;
+    return;
+  }
+  out[k] = 255;
 }
 
 /** Conifers, as a spruce is from the air: tiers of arms, this many from
@@ -257,7 +284,7 @@ export function bakeCrowns(): Uint8Array {
     for (let v = 0; v < CROWNS; v++) {
       hash(v, 0, 3);
       const s0 = h0, s1 = h1;
-      each((x, y, i, j) => broad(out, at(layer * CROWNS + v, i, j), x, y, s0, s1, layer === 0));
+      each((x, y, i, j) => broad(out, at(layer * CROWNS + v, i, j), x, y, s0, s1, layer));
     }
   }
   for (let layer = 0; layer < CONIFER_LAYERS; layer++) {
