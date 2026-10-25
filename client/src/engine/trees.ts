@@ -5,7 +5,7 @@ import type { Casters } from "./DayNightCycle";
 import { drop, meshOf } from "./geometry";
 import type { Area } from "./cull";
 import { lacquer } from "./bevel";
-import { COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_FROM, LAYER_REACH, LIT, ROWS } from "./crowns";
+import { COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS } from "./crowns";
 import recipe from "./crowns.ts?raw";
 import { bakedTexture, whenBaked } from "./bakeCache";
 
@@ -67,14 +67,12 @@ const layered = (heights: number[], reach: number[]) => ({
   indices: reach.flatMap((_, l) => [0, 2, 1, 0, 3, 2].map((i) => i + l * 4)),
 });
 const BROAD_TOP = layered([1], [1]);
-/** Its layers' heights the closer the higher, to this power, so its
- *  narrow top, seen from the side, stands as one spire, not loose discs. */
-const LAYER_CLOSE = 1.5;
-/** A conifer's top: a square a layer, from these heights down as its bands begin, of the crown's,
+/** A conifer's top: a square a layer, from these heights down, each below the one over it in proportion to how wide that one is, of the crown's,
  *  the topmost under the tip of its shadow's card (`SIDE_HIGH`), and as wide
  *  as its arms reach. They cast no shadow (the card does), so they may
  *  stand where they read best. */
-const LAYER_HEIGHTS = LAYER_FROM.map((from) => 1.15 - 0.67 * (from / LAYER_FROM[LAYER_FROM.length - 1]) ** LAYER_CLOSE);
+const LAYER_DROP = 0.67 / LAYER_REACH.slice(0, -1).reduce((a, b) => a + b, 0);
+const LAYER_HEIGHTS = LAYER_REACH.map((_, l) => 1.15 - LAYER_DROP * LAYER_REACH.slice(0, l).reduce((a, b) => a + b, 0));
 const CONIFER_TOP = layered(LAYER_HEIGHTS, LAYER_REACH);
 /** The body's card: x across it, -1 to 1, and z its foot (0) or head (1),
  *  which the shader turns to the sun and cuts to a trunk, facing along y,

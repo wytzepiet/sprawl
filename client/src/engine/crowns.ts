@@ -151,8 +151,6 @@ export const CONIFER_LAYERS = 6;
 const BANDING = 1.6;
 const bound = (layer: number) => Math.max(layer, Math.round(TIERS * (layer / CONIFER_LAYERS) ** BANDING));
 const bandOf = (layer: number) => [bound(layer), bound(layer + 1)];
-/** Where each layer's band begins, of the tiers, top down. */
-export const LAYER_FROM = Array.from({ length: CONIFER_LAYERS }, (_, layer) => bound(layer) / TIERS);
 const ARMS = [12, 18];
 const ARM_REACH = 0.3;
 const ARM_TURN = 0.35;
