@@ -4,6 +4,7 @@ import { BLUEPRINTS } from "../blueprints";
 import { select, setFollowing, setSubject } from "../state/selection";
 import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
+import { mayorsLorry } from "../state/haul";
 import { DepotPanel } from "./Depot";
 import { SitePanel } from "./Site";
 import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
@@ -55,7 +56,7 @@ export function InspectHead() {
             case "resident":
               return { title: k.name, sub: k.at ? `at ${k.at.label}` : "off the map" };
             case "car": {
-              const what = ROLE[k.role];
+              const what = k.id === mayorsLorry()?.id ? "Your lorry" : ROLE[k.role];
               return { title: k.rider ? `${k.rider.label}'s ${what.toLowerCase()}` : what, sub: k.trip ? `to ${k.trip.to.label}` : k.parked_at ? `parked at ${k.parked_at.label}` : k.role === "Ferry" ? "of the harbour" : "parked out of sight" };
             }
             case "building": {
@@ -216,7 +217,7 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
   const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
   return (
     <>
-      <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
+      <Show when={site()}>{(s) => <SitePanel id={props.id} site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
       <Show when={!site() && kind() === "Depot"}>
         <DepotPanel id={props.id} lorries={lorries()} />
       </Show>

@@ -324,10 +324,11 @@ mod tests {
         let names: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
         ts += &format!("\n/** What a package of each good is called, one and several (`Good::package`). */\nexport const PACKAGE: Record<Good, [string, string]> = {{ {} }};\n", names.join(", "));
         ts += &format!(
-            "\n/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */\nexport const LOAD = {};\nexport const VAN_LOAD = {};\nexport const HANDLE_MS = {};\n",
+            "\n/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), a forklift's lift (`world::HANDLE_MS`), and building one by hand (`haul::BUILD_MS`). */\nexport const LOAD = {};\nexport const VAN_LOAD = {};\nexport const HANDLE_MS = {};\nexport const BUILD_MS = {};\n",
             crate::haul::LOAD,
             crate::economy::VAN_LOAD,
-            crate::world::HANDLE_MS
+            crate::world::HANDLE_MS,
+            crate::haul::BUILD_MS
         );
         ts += &format!(
             "\n/** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */\nexport const LORRY_PRICE = {};\nexport const MORE_LORRIES = {};\n",

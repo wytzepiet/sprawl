@@ -1,12 +1,14 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { clockAt, sea, until } from "../state/sea";
+import { clockAt, now, sea, until } from "../state/sea";
 import { pieceOf } from "../state/deals";
 import { setFollowing } from "../state/selection";
+import { mayorsLorry } from "../state/haul";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { quoteOf, total } from "../state/market";
-import { BAD, Btn, coins, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
+import { Bar, BAD, Btn, coins, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
+import { BUILD_MS } from "../generated/rows";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../generated";
 
@@ -17,13 +19,27 @@ import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../g
  * bought at the market, on the next ferry.
  * docs/game.md §Buildings.
  */
-export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
+export function SitePanel(props: { id: number; site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
   const materials = () => (Object.entries(props.site) as [Good, Stock][]).filter(([, s]) => s);
   const short = (s: Stock) => Math.max(0, Math.ceil(s.cap - s.level));
   const waiting = () => materials().filter(([, s]) => short(s) > 0);
+  /** How far your lorry is through building what it brought, while it
+   *  stands here: a package a `BUILD_MS`. */
+  const building = () => {
+    const l = mayorsLorry();
+    const e = l?.car.errand;
+    if (!l || e?.doing !== "Build" || e.to !== props.id) return null;
+    return Math.max(0, Math.min(1, 1 - (l.car.due - now()) / (e.packages * BUILD_MS)));
+  };
   return (
     <Section title="Going up">
       <text size={15} weight={600}>{waiting().length ? `Waiting on ${waiting().map(([g, s]) => `${short(s)} ${GOODS[g].label}`).join(" and ")}` : "All its materials are here"}</text>
+      <Show when={building() !== null}>
+        <box dir="row" align="center" gap={10} pad={{ top: 6 }}>
+          <text size={13} weight={600}>Your lorry is building</text>
+          <Bar value={building()!} color={GOOD} />
+        </box>
+      </Show>
       <For each={materials()}>
         {([good, stock]) => (
           <box pad={{ top: 8 }} gap={6}>
@@ -41,7 +57,7 @@ export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: 
               </box>
             </box>
             <Show when={short(stock) > 0}>
-              <Where good={good} short={short(stock)} depots={props.depots} makers={props.makers} calls={props.calls} />
+              <Where site={props.id} good={good} short={short(stock)} depots={props.depots} makers={props.makers} calls={props.calls} />
             </Show>
           </box>
         )}
@@ -51,7 +67,7 @@ export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: 
 }
 
 /** Where a material a site waits on is, and the fix where it is stuck. */
-function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
+function Where(props: { site: number; good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
   const { send, growth } = useGame();
   const g = () => props.good;
   const label = () => GOODS[g()].label;
@@ -61,12 +77,20 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   const maker = () => props.makers.find((m) => m.good === g() && m.level >= 1) ?? null;
   /** Its packages in from the world, the furthest along first. */
   const inbound = () => sea.shipments.filter((s) => s.good === g() && !s.outbound).sort((a, b) => pieceOf(b).step - pieceOf(a).step);
-  /** Packages on a quay, and the depot whose lorry would fetch them. */
+  /** Packages on a quay, the harbour's, and the depot whose lorry would
+   *  fetch them. */
   const parked = () => {
     const on = inbound().filter((s) => s.leg === "Quay");
-    const d = on[0] && (props.depots.find((d) => d.depot.id === on[0].to) ?? nearest());
-    return d ? { n: on.length, d } : null;
+    return on[0] ? { n: on.length, at: on[0].carrier, d: props.depots.find((d) => d.depot.id === on[0].to) ?? nearest() } : null;
   };
+  /** Your lorry: on its way with this, or free to go and fetch it. */
+  const lorry = () => mayorsLorry();
+  const mine = () => {
+    const e = lorry()?.car.errand;
+    return !!e && e.to === props.site && e.good === g();
+  };
+  const bring = (from: number | null) =>
+    lorry() && from !== null && <Btn big color={GOODS[g()].color} onTap={() => send({ type: "Haul", data: { from, good: g(), packages: n(), to: props.site } })}>Bring it yourself</Btn>;
   const coming = () => inbound().find((s) => s.leg !== "Quay") ?? null;
   const n = () => Math.max(1, Math.ceil(props.short / GOODS[g()].per));
   const quote = () => quoteOf(g());
@@ -81,14 +105,15 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   return (
     <box pad={{ left: 36 }}>
       <>{() => {
+        if (mine()) return <Line dot={GOOD} text="Your lorry is on it" act={<Btn onTap={() => setFollowing(lorry()!.id)}>follow</Btn>} />;
         const v = van();
         if (v) return <Line dot={GOOD} text="On the van, on its way" act={<Btn onTap={() => setFollowing(v.id)}>follow</Btn>} />;
         const d = stocked();
         if (d) return <Line dot={GOOD} text={`In stock at the depot: ${Math.floor(d.stocks[g()] ?? 0)}`} sub="its van brings it" />;
         const m = maker();
-        if (m) return <Line dot={GOOD} text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
+        if (m) return <Line dot={GOOD} text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub={nearest() ? "the depot's lorry fetches it, then its van brings it" : undefined} act={bring(m.maker.id)} />;
         const p = parked();
-        if (p) return <Line dot={p.d.joined ? SEA : "#E0A030"} text={`${packages(g(), p.n)} on the quay`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
+        if (p) return <Line dot={!p.d || p.d.joined ? SEA : "#E0A030"} text={`${packages(g(), p.n)} on the quay`} sub={!p.d ? undefined : p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} act={bring(p.at)} />;
         const s = coming();
         if (s) {
           const b = pieceOf(s);

@@ -1,8 +1,9 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, Index, Show } from "solid-js";
-import { eachEntity, groundOf, useGame } from "../state/gameObjects";
+import { groundOf, useGame } from "../state/gameObjects";
+import { mayorsLorry, standing } from "../state/haul";
 import { missionKey, neighbours, shownMissions } from "../state/missions";
-import { clockAt, news, sea, until, type News } from "../state/sea";
+import { news, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { deals, letterOf, setSpread, spread, stepsOf, type Deal, type Piece } from "../state/deals";
 import { quoteOf, total } from "../state/market";
@@ -10,7 +11,7 @@ import { toMarket } from "./Market";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
-import { hold, setTool } from "./buildMode";
+import { hold } from "./buildMode";
 import { track } from "./Shipments";
 import { Appear, Btn, COIN, coins, Crest, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
@@ -290,21 +291,14 @@ function toward(ground: TerrainType) {
         if (sea(x, y)) return eye.go(x0 + ((x - x0) * (r - 4)) / r, y0 + ((y - y0) * (r - 4)) / r);
 }
 
-/** What the step at hand offers to do: a tool to take, a lorry to ride
- *  with, a new deal to make. */
+/** What the step at hand offers to do: a tool to take, a load to bring,
+ *  a new deal to make. */
 function Act(props: { step: Step }) {
-  const gift = () => sea.shipments.filter((s) => s.order === 0);
-  const parked = () => gift().filter((s) => s.leg === "Quay");
-  const next = () => gift().find((s) => s.eta !== null);
-  const ride = () => {
-    const d = props.step.at;
-    if (d === null) return;
-    let lorry: number | null = null;
-    eachEntity((e) => {
-      if (e.object.kind === "Car" && e.object.data.role === "Truck" && e.object.data.owner === d) lorry = e.id;
-    });
-    const first = parked()[0];
-    if (first) track(first.package, lorry);
+  const { send } = useGame();
+  /** The sawmill's bundle to the quay, on your lorry. */
+  const sell = () => {
+    const [from, to] = [standing("Sawmill"), props.step.at];
+    if (from !== null && to !== null) send({ type: "Haul", data: { from, good: "Timber", packages: 1, to } });
   };
   return (
     <>
@@ -315,31 +309,12 @@ function Act(props: { step: Step }) {
             const kind = goal.data;
             return <Btn onTap={() => (GROUND[kind] && toward(GROUND[kind]!), hold(kind))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>;
           }
-          case "Joined":
-            return <Btn onTap={() => setTool("Street")}>Take the street</Btn>;
-          case "Fetched":
-            return (
-              <Show
-                when={parked().length > 0}
-                fallback={
-                  <Show when={next()}>
-                    {(s) => (
-                      <text size={12.5} soft>
-                        The first ferry is in at {clockAt(s().eta!)}, <text weight={700}>{until(s().eta!)}</text> from now.
-                      </text>
-                    )}
-                  </Show>
-                }
-              >
-                <text size={12.5} soft>{parked().length === 1 ? "A package is" : `${parked().length} packages are`} on the quay.</text>
-                <Btn big onTap={ride} color={BLUEPRINTS.Depot.color} disabled={props.step.at === null}>Ride with the lorry</Btn>
-              </Show>
-            );
           case "Settled":
             return <Btn onTap={() => hold("House")}>Take a house</Btn>;
-          case "Booked":
           case "Sold":
-            return <Btn big onTap={() => toMarket(goal.kind === "Sold" ? "Timber" : "Fuel")} color={BLUEPRINTS.Harbour.color}>Open the market</Btn>;
+            return <Btn big onTap={sell} color={BLUEPRINTS.Harbour.color} disabled={!mayorsLorry() || standing("Sawmill") === null}>Bring a bundle to the quay</Btn>;
+          case "Booked":
+            return <Btn big onTap={() => toMarket("Fuel")} color={BLUEPRINTS.Harbour.color}>Open the market</Btn>;
         }
       }}
     </>

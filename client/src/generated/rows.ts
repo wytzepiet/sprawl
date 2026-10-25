@@ -24,10 +24,11 @@ export const PER_PACKAGE: Record<Good, number> = { Timber: 4, Stone: 4, Crates: 
 /** What a package of each good is called, one and several (`Good::package`). */
 export const PACKAGE: Record<Good, [string, string]> = { Timber: ["bundle of timber", "bundles of timber"], Stone: ["pallet of stone", "pallets of stone"], Crates: ["crate of food", "crates of food"], Fuel: ["pallet of fuel drums", "pallets of fuel drums"] };
 
-/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */
+/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), a forklift's lift (`world::HANDLE_MS`), and building one by hand (`haul::BUILD_MS`). */
 export const LOAD = 5;
 export const VAN_LOAD = 3;
 export const HANDLE_MS = 1500;
+export const BUILD_MS = 6000;
 
 /** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */
 export const LORRY_PRICE = 40;
