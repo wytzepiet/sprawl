@@ -1,5 +1,5 @@
 import type { Manifold, Vec3 } from "manifold-3d";
-import { mesh, Solid } from "../solid";
+import { mesh, Solid, solids } from "../solid";
 import { shape, type Part } from "./sea";
 import type { RGB } from "../rgb";
 
@@ -91,7 +91,7 @@ const stack = (x: number, y: number, along: "x" | "y", l: number, n: number, r =
   return out;
 };
 
-export const SAWMILL = (() => {
+export const SAWMILL = solids(() => {
   const parts: Part[] = [];
   const put = (solid: Manifold, rgb: RGB) => parts.push([mesh(solid), [0, 0, 0], rgb]);
   const roof = ([s, r]: [Manifold, Manifold], a: RGB, b: RGB) => (put(s, a), put(r, b));
@@ -188,4 +188,4 @@ export const SAWMILL = (() => {
   planks(0.74, 1.28, 1.8, 3);
   planks(0.9, 1.28, 1.8, 4);
   return { key: "sawmill", geo: shape(parts) };
-})();
+});
