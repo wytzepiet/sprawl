@@ -49,7 +49,9 @@ const ROLL = 1.2;
  *  pixel to the next, which is grainy. */
 const TURN = 1.5;
 /** A wall faces down its slope as steeply as this, from the lip's roll at
- *  its top to this far down it, in tiles; its slate read as if the wall
+ *  its top to this far down it, in tiles, no longer turned by the slate,
+ *  so a wall turned from the sun stays as dark as the shade its top casts
+ *  (the shadow map leaves a caster's own face lit); its slate read as if the wall
  *  were laid back on the ground in front of it, this many tiles out for a
  *  tile down, so its plates are as broad up it as they look across it. */
 const WALL_TILT = 1.8;
@@ -96,7 +98,7 @@ const HEIGHT_AT = (() => {
  *  there): a top, its lip rolling over near its edge, or a wall. */
 const PEAK_LOOK = (() => {
   const at = "input.vPeakAt";
-  return `let peakCorner = floor(${at}.xy / ${f(CHUNK_SIZE)}) * ${f(CHUNK_SIZE)} - ${f(PEAK_APRON)};
+  return `let peakCorner = material.peakCorner.xy - ${f(PEAK_APRON)};
 let peakRock = peakHeightAt(${at}.xy, peakCorner);
 let peakFall = -peakRock.zw;
 let peakSteep = max(length(peakFall), 0.05);
@@ -106,9 +108,10 @@ let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) 
 let peakSlate = slateRead(${at}.xy + peakOut * peakDepth * ${f(UNROLL)});
 let peakLayer = floor(${at}.z / ${f(LAYER)} + 0.5);
 let peakIn = (peakRock.y - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
-let peakDown = normalize(peakOut + peakSlate.xy * ${f(TURN)});
+let peakRoll = smoothstep(0., ${f(WALL_ROLL)}, peakDepth);
+let peakDown = normalize(peakOut + peakSlate.xy * ${f(TURN)} * (1. - peakRoll) + 1e-6);
 let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5 && !peakWall);
-let peakTilt = select(peakLip * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, smoothstep(0., ${f(WALL_ROLL)}, peakDepth)), peakWall);
+let peakTilt = select(peakLip * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, peakRoll), peakWall);
 let peakHollow = select((0.5 - 0.5 * peakSlate.z) * (1. - peakLip), 0., peakWall);
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
@@ -130,7 +133,7 @@ export const slate = (engine: EngineContext): Texture2D =>
  *  pairs, `PEAK_SIDE` to a side): their surface is laid where it is on the
  *  map, so the slate and the heights are read by where a pixel is. Its
  *  texture is let go with `dispose`. */
-export function peakMaterial(engine: EngineContext, heights: Uint16Array) {
+export function peakMaterial(engine: EngineContext, heights: Uint16Array, corner: [number, number]) {
   const texture = createTexture2DFromPixels(engine, heights, PEAK_SIDE, PEAK_SIDE, { format: "rg16float" });
   const plugin: MaterialPlugin = {
     name: "Basalt",
@@ -141,6 +144,10 @@ export function peakMaterial(engine: EngineContext, heights: Uint16Array) {
       { texture: "peakHeights", sampler: "peakHeightsSampler" },
     ],
     bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }),
+    // The chunk's corner, not found from where a pixel is: a wall leans out
+    // over the next chunk's ground.
+    getUniforms: () => ({ ubo: [{ name: "peakCorner", type: "vec4<f32>" }] }),
+    writeUbo: (data, offsets) => data.set([corner[0], corner[1], 0, 0], offsets.get("peakCorner")! / 4),
     getCustomCode: (stage) =>
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: "out.vPeakAt = position;" }
@@ -156,10 +163,8 @@ ${HEIGHT_AT}`,
 }
 
 /** How far in from the land's lip its plane is drawn, in tiles: under
- *  where the grass stops (`ground.ts`); and how far past it, in tiles, so
- *  the lip overhangs its wall by a hair and nothing shows between. */
+ *  where the grass stops (`ground.ts`). */
 const CLIFF_INNER = 0.9;
-const OVERHANG = 0.02;
 
 /** How far up the cliff's face a wave washes, at most, in tiles of it,
  *  the rock showing wet behind, this much darker, this far again. */
@@ -181,15 +186,16 @@ const FIELD = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSample
 const CLIFF_CUT = `let cliffUv = input.vCliffAt.xy / ${f(CHUNK_SIZE)};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)};
-if (!cliffWall && (cliffFar > ${f(OVERHANG)} || cliffFar < ${f(-CLIFF_INNER)})) { discard; }`;
+if (!cliffWall && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) { discard; }`;
 const LAND_CLIFF = (() => {
   const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
 let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffDepth = select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall);
 let cliffSlate = slateRead(input.worldPos.xy + cliffFace * cliffDepth * ${f(UNROLL)});
-let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
-let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, mix(${f(ROLL)}, ${f(WALL_TILT)}, smoothstep(0., ${f(WALL_ROLL)}, cliffDepth)), cliffWall);
+let cliffRoll = smoothstep(0., ${f(WALL_ROLL)}, cliffDepth);
+let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)} * (1. - cliffRoll));
+let cliffTilt = mix((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, ${f(WALL_TILT)}, cliffRoll);
 baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 })();

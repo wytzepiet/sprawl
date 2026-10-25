@@ -266,7 +266,7 @@ export class TerrainChunks {
       add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: true, receive: true });
     }
     if (geometry.peakHeights) {
-      const peaks = peakMaterial(engine, geometry.peakHeights);
+      const peaks = peakMaterial(engine, geometry.peakHeights, [ox, oy]);
       chunk.dispose.push(peaks.dispose);
       add("peaks", geometry.peaks, peaks.material, [0, 0], { cast: true, receive: true });
     }

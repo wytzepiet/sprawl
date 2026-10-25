@@ -438,6 +438,8 @@ export const CLIFF_Z = 0.0012;
 /** How far a wall's foot stands out for its height: the land's cliff's
  *  and a mountain layer's alike. */
 const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
+/** How far in behind the cliff's wall its lip is laid on the wall's mesh. */
+const TUCK = 0.05;
 
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
@@ -1080,7 +1082,16 @@ function cliffField(sink: ChunkSink, sampler: TerrainSampler, originX: number, o
   const m = CLIFF_REACH * d;
   // Rows wholly inland: nothing crosses them.
   const rows = highest(decoded, side);
-  contour(far, place, [m, m, m + CHUNK_SIZE * d, m + CHUNK_SIZE * d], 0, (p, q) => walls.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]), undefined, Infinity, rows);
+  // And behind its top a strip of the lip, just under the plane and lit as
+  // it is, uncut (the shader takes it for the wall's top), so where
+  // the plane's cut, read from the field by the sampler, falls short of the
+  // wall, the lip runs on to it: the plane need not overhang the wall, nor
+  // shade it.
+  const back = (p: Point): Point => {
+    const [x, y] = seaward(p);
+    return [p[0] - (x / CLIFF_RUN) * TUCK, p[1] - (y / CLIFF_RUN) * TUCK];
+  };
+  contour(far, place, [m, m, m + CHUNK_SIZE * d, m + CHUNK_SIZE * d], 0, (p, q) => (walls.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]), walls.polygon([p, q, back(q), back(p)], CLIFF_Z / 4)), undefined, Infinity, rows);
   append(sink.cliffPlane, walls, 0, 0, 0, NO_COLOUR);
   return inner((k) => bytes[k] / 255, CLIFF_REACH);
 }
