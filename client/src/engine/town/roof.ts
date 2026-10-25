@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { BAND, PARAPET_H, PARAPET_W, RECESS, SPAN, TOOTH, eaves, mansard, planted, sawtooth, slope } from "./mass";
+import { AWNING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, planted, sawtooth, slope } from "./mass";
 import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
@@ -36,9 +36,6 @@ type Line = [number, number, number];
 /** An office roof's plant, in tiles: how far in from the parapet; the lift
  *  room's length, breadth and height; an AC unit's side and height; a
  *  vent's cap across and height. */
-/** A flat roof's bitumen: charcoal, whatever the building's colour (as
- *  a shade of it: the colour × a + b). */
-const BITUMEN = [0.05, 0.3] as const;
 /** What stands on a high-street place's flat (`kit`), in tiles: how far in
  *  from the flat's edge; an AC unit's side and height; a duct's breadth
  *  and height; an extract stack's breadth (its cowl's) and height; a
@@ -277,6 +274,40 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       prop("stack", on(back + MILL.stack, u1 - MILL.stack), z, MILL.stack, MILL.stackHigh);
       if (mass.tile.kind === "Sawmill") prop("cyclone", on(back + MILL.cyclone, u0 + MILL.cyclone), z, MILL.cyclone, MILL.cycloneHigh);
     };
+    /** A shop's awning: over the middle of its front, the wall toward its
+     *  door, from AWNING.at of the way up the wall out and down, in
+     *  stripes of its colour and cream, a valance at its hem. */
+    const awning = (polygons: Polygon[], tile: Tile) => {
+      const f = doorOf(tile);
+      if (!f) return;
+      let front: [P, P] | undefined, best = 0;
+      for (const ring of polygons.flatMap((poly) => poly.slice(0, 1))) {
+        ring.forEach((p, i) => {
+          const q = ring[(i + 1) % ring.length];
+          const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+          const facing = ((q[1] - p[1]) * f[0] - (q[0] - p[0]) * f[1]) / len;
+          if (facing > 0.9 && len > best) [front, best] = [[p, q], len];
+        });
+      }
+      if (!front) return;
+      const [p, q] = front;
+      const t: P = [(q[0] - p[0]) / best, (q[1] - p[1]) / best];
+      const w = best * AWNING.span, n = Math.max(3, Math.round(w / AWNING.stripe) | 1);
+      const mid: P = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      const z0 = top * AWNING.at, z1 = z0 - AWNING.drop;
+      const at = (a: number, out: number, z: number): V => [mid[0] + t[0] * a + f[0] * out, mid[1] + t[1] * a + f[1] * out, z];
+      const up: V = [f[0] * AWNING.drop, f[1] * AWNING.drop, AWNING.out];
+      const l = Math.hypot(...up);
+      const nUp = up.map((v) => v / l) as V, nDown = nUp.map((v) => -v) as V, nOut: V = [f[0], f[1], 0];
+      for (let k = 0; k < n; k++) {
+        const [a0, a1] = [-w / 2 + (k * w) / n, -w / 2 + ((k + 1) * w) / n];
+        const rgb = k % 2 ? paint(tile, 1, 0) : paint(tile, 0.08, 0.84);
+        const [b0, b1, c0, c1] = [at(a0, 0.002, z0), at(a1, 0.002, z0), at(a0, AWNING.out, z1), at(a1, AWNING.out, z1)];
+        for (const nrm of [nUp, nDown]) tri(b0, b1, c1, nrm, rgb), tri(b0, c1, c0, nrm, rgb);
+        const [d0, d1] = [at(a0, AWNING.out, z1 - 0.02), at(a1, AWNING.out, z1 - 0.02)];
+        tri(c0, c1, d1, nOut, rgb), tri(c0, d1, d0, nOut, rgb);
+      }
+    };
     /** A flat roof's parapet: a low wall round its edge, its coping a shade
      *  lighter, so the roof reads as a roof and not a box's lid. */
     const parapet = (region: Polygon[], z: number) => prism(subtract(region, shrink(region, PARAPET_W)), z, () => z + PARAPET_H, 1.08);
@@ -293,31 +324,13 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       cover(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
     }
     const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
-    if (mansard(mass.tile)) {
-      // A mansard's flat behind its slope: at the slope's top a flat band
-      // round a hole, capped along the slope's edge; and in the hole,
-      // sunk below it, the flat, bitumen, an AC unit in a corner.
-      const [rim, sunk] = [top + height, top + height - RECESS];
-      const hole = shrink(flat, BAND);
-      cover(subtract(flat, hole), () => rim);
-      // The step down to it walled, facing in: never seen from above, but
-      // the sun would slip through the gap and draw the hole on the ground.
-      for (const ring of hole.flat()) {
-        ring.forEach((p, i) => {
-          const q = ring[(i + 1) % ring.length];
-          const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
-          const len = Math.hypot(dx, dy);
-          const inward: V = [-dy / len, dx / len, 0];
-          const c = colourAt(p);
-          tri([p[0], p[1], sunk], [q[0], q[1], sunk], [q[0], q[1], rim], inward, c);
-          tri([p[0], p[1], sunk], [q[0], q[1], rim], [p[0], p[1], rim], inward, c);
-        });
-      }
-      for (const piece of hole) fill(piece, () => sunk, paint(mass.tile, ...BITUMEN));
-      kit(hole, sunk, mass.tile);
-    } else if (sawtooth(mass.tile) && doorOf(mass.tile)) teeth(flat, top, doorOf(mass.tile)!);
+    if (sawtooth(mass.tile) && doorOf(mass.tile)) teeth(flat, top, doorOf(mass.tile)!);
     else cover(flat, () => top + height);
     if (height === 0 && !sawtooth(mass.tile)) parapet(outline, top);
+    if (mass.tile.kind === "Shop") {
+      kit(shrink(flat, PARAPET_W), top, mass.tile);
+      for (const part of mass.parts) awning(part.polygons, part.tile);
+    }
     if (planted(mass.tile)) plant(polygon, top, mass.tile);
   }
   return { positions, normals, colors, indices, props };
