@@ -1182,8 +1182,8 @@ export const EDGE = 0.3;
  *  ground rolls up into the first wall as a layer's top rolls into the
  *  wall above it (`peaks.ts`). */
 const FOOT_EASE = 0.5;
-const FOOT_JAG = 0.5;
-const FOOT_RISE = 1.5;
+const FOOT_JAG = 0.3;
+const FOOT_RISE = 2.5;
 /** Where layer `k` begins, of the rock's height: the ground is layer 0. */
 export const begins = (k: number) => EDGE + (k - 1) * LAYER;
 /** How far, in tiles, a layer's edge wanders with the slate, the slate's
@@ -1371,7 +1371,7 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
           d = Math.min(d, Math.hypot(Math.max(tx - x, 0, x - tx - 1), Math.max(ty - y, 0, y - ty - 1)));
         }
       }
-      const u = (inside ? d : -d) - FOOT_JAG * (0.2 + 0.8 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))));
+      const u = (inside ? d : -d) - FOOT_JAG * (0.15 + 0.85 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))));
       const t = Math.min(1, Math.max(0, u / FOOT_EASE));
       const e = t * t * (3 - 2 * t);
       const own = raw[j * PEAK_SIDE + i];
