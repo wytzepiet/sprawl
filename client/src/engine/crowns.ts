@@ -4,24 +4,29 @@
  * (`bakeWorker.ts`): two million texels take a second and more.
  */
 
-/** A broadleaf is grown as a tree grows, by space colonisation: its buds
- *  reach for the light, and light is room. This many points of room are
- *  scattered through its crown, a dome this wide, this tall of its width
- *  over its middle and this deep under it (its foot cut flat there); its
- *  trunk rises from this far below the middle toward them, and each step
- *  every bud grows this far, toward the room it is the nearest bud to
- *  within this far, tipped up toward the sky this much. Room a bud comes
- *  this near is taken. So branches fork where room pulls two ways, and
- *  crowd each other out, and fill the dome evenly, as a tree does. */
-const ROOM = 1600;
-const DOME_UP = 0.75;
-const DOME_DOWN = 0.45;
+/** A broadleaf is grown as an oak grows: a trunk this long (from its
+ *  crown's middle down), leaning up to this far, forking from this high,
+ *  into this many great limbs, give or take, the lowest off it this far up
+ *  its forking stretch; each limb out this far, crooked by up to this much,
+ *  to a crown of its own, this big, its middle this high, as tall as this
+ *  of its width; the last limb is the leader, up the middle. Then the rest
+ *  by space colonisation: its buds reach for the light, and light is room,
+ *  this many points of it scattered through those crowns; each step every
+ *  bud grows this far, toward the room it is the nearest bud to within
+ *  this far, tipped up toward the sky this much; room a bud comes this
+ *  near is taken, and a bud forks at most this many ways. So each limb
+ *  fills its own crown, a tree on the tree, and they crowd each other. */
 const TRUNK_FOOT = 1.1;
-/** And the dome bulges, as a crown does over each of its big limbs: this
- *  many bulges, the dome between them this far in, each this narrow. */
-const LOBES = 7;
-const LOBED = 0.65;
-const LOBE_NARROW = 4;
+const LEAN_TRUNK = 0.25;
+const FORK_TOP = -0.45;
+const SCAFFOLD = [4, 6];
+const FORK_LOW = 0.6;
+const SCAFFOLD_OUT = [0.4, 0.65];
+const CROOK = 0.3;
+const SUB_CROWN = [0.38, 0.52];
+const SUB_RISE = [-0.2, 0.15];
+const SUB_TALL = 0.8;
+const ROOM = 1800;
 const STEP = 0.045;
 const SEES = 0.4;
 const SKYWARD = 0.15;
@@ -109,31 +114,70 @@ export const BROAD_LAYERS = 4;
 function grow(v: number) {
   let n = 0;
   const rnd = () => (hash(v, n++, 11), h0);
-  // Room, through the dome.
-  const lobes: number[] = [];
-  for (let l = 0; l < LOBES; l++) {
-    const [a, up] = [rnd() * 2 * Math.PI, rnd() * 0.8];
-    lobes.push(Math.cos(a) * Math.sqrt(1 - up * up), Math.sin(a) * Math.sqrt(1 - up * up), up);
-  }
-  const room: number[] = [];
-  while (room.length < ROOM * 3) {
-    const [x, y, z] = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1];
-    const d = Math.hypot(x, y, z);
-    let lobe = 0;
-    for (let l = 0; l < lobes.length; l += 3) lobe = Math.max(lobe, (x * lobes[l] + y * lobes[l + 1] + z * lobes[l + 2]) / d);
-    const zz = z * (z > 0 ? DOME_UP : DOME_DOWN);
-    if (d < LOBED + (1 - LOBED) * Math.max(0, lobe) ** LOBE_NARROW && zz > -DOME_DOWN * 0.7) room.push(x, y, zz);
-  }
-  // Buds: where each is, and the bud it grew from.
+  // Buds: where each is, and the bud it grew from; a run of them from a
+  // bud to a point, crooked on the way.
   const at: number[] = [], from: number[] = [];
   const bud = (x: number, y: number, z: number, parent: number) => (at.push(x, y, z), from.push(parent), from.length - 1);
-  let last = bud(0, 0, -TRUNK_FOOT, -1);
-  const forks = new Uint8Array(ROOM * 8);
+  const run = (b: number, x: number, y: number, z: number) => {
+    const [x0, y0, z0] = at.slice(b * 3, b * 3 + 3);
+    const [kx, ky, kz] = [(rnd() - 0.5) * CROOK, (rnd() - 0.5) * CROOK, (rnd() - 0.5) * CROOK * 0.5];
+    const steps = Math.max(1, Math.round(Math.hypot(x - x0, y - y0, z - z0) / STEP));
+    for (let s = 1; s <= steps; s++) {
+      const [t, bend] = [s / steps, Math.sin((Math.PI * s) / steps)];
+      b = bud(x0 + (x - x0) * t + kx * bend, y0 + (y - y0) * t + ky * bend, z0 + (z - z0) * t + kz * bend, b);
+    }
+    return b;
+  };
+  // The trunk, leaning a little, and its limbs off it at heights up its
+  // top, each out to the middle of a crown of its own; the topmost the
+  // leader, up the middle.
+  const lean = [(rnd() - 0.5) * LEAN_TRUNK, (rnd() - 0.5) * LEAN_TRUNK];
+  const trunk: number[] = [bud(0, 0, -TRUNK_FOOT, -1)];
+  while (at[trunk[trunk.length - 1] * 3 + 2] < FORK_TOP) {
+    const b = trunk[trunk.length - 1], t = (at[b * 3 + 2] + TRUNK_FOOT) / (FORK_TOP + TRUNK_FOOT);
+    trunk.push(bud(lean[0] * t * t, lean[1] * t * t, at[b * 3 + 2] + STEP, b));
+  }
+  const count = SCAFFOLD[0] + Math.floor(rnd() * (SCAFFOLD[1] - SCAFFOLD[0] + 1));
+  const domes: number[] = [];
+  const turn = rnd() * 2 * Math.PI;
+  for (let l = 0; l < count; l++) {
+    const top = l === count - 1;
+    const foot = trunk[Math.floor(trunk.length * (top ? 1 : FORK_LOW + (1 - FORK_LOW) * rnd())) - (top ? 1 : 0)];
+    const az = turn + (2 * Math.PI * (l + 0.5 * (rnd() - 0.5))) / (count - 1);
+    const out = top ? 0.1 * rnd() : SCAFFOLD_OUT[0] + (SCAFFOLD_OUT[1] - SCAFFOLD_OUT[0]) * rnd();
+    const r = SUB_CROWN[0] + (SUB_CROWN[1] - SUB_CROWN[0]) * rnd();
+    const [x, y, z] = [Math.cos(az) * out, Math.sin(az) * out, (top ? SUB_RISE[1] : SUB_RISE[0] + (SUB_RISE[1] - SUB_RISE[0]) * rnd()) - r * 0.3];
+    run(foot, x, y, z);
+    domes.push(x, y, z + r * 0.3, r);
+  }
+  // Room, through each limb's crown, as much as it is big.
+  const room: number[] = [];
+  const big = domes.reduce((sum, d, i) => sum + (i % 4 === 3 ? d ** 3 : 0), 0);
+  for (let d = 0; d < domes.length; d += 4) {
+    const [cx, cy, cz, r] = domes.slice(d, d + 4);
+    for (let p = 0; p < Math.round((ROOM * r ** 3) / big); ) {
+      const [x, y, z] = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1];
+      if (x * x + y * y + z * z > 1 || z < -0.6) continue;
+      room.push(cx + x * r, cy + y * r, cz + z * r * (z > 0 ? SUB_TALL : 0.6));
+      p++;
+    }
+  }
+  const points = room.length / 3;
+  /** How far out in its own crown a point is, 1 at its edge. */
+  const shell = (x: number, y: number, z: number) => {
+    let out = 9;
+    for (let d = 0; d < domes.length; d += 4) {
+      const dz = z - domes[d + 2];
+      out = Math.min(out, Math.hypot(x - domes[d], y - domes[d + 1], dz / (dz > 0 ? SUB_TALL : 0.6)) / domes[d + 3]);
+    }
+    return out;
+  };
+  const forks = new Uint8Array(points * 12);
   // Each point of room's nearest bud, and how near.
-  const nearest = new Int32Array(ROOM).fill(-1), near = new Float32Array(ROOM).fill(SEES);
-  const free = new Uint8Array(ROOM).fill(1);
+  const nearest = new Int32Array(points).fill(-1), near = new Float32Array(points).fill(SEES);
+  const free = new Uint8Array(points).fill(1);
   const see = (first: number) => {
-    for (let p = 0; p < ROOM; p++) {
+    for (let p = 0; p < points; p++) {
       if (!free[p]) continue;
       for (let b = first; b < from.length; b++) {
         const d = Math.hypot(room[p * 3] - at[b * 3], room[p * 3 + 1] - at[b * 3 + 1], room[p * 3 + 2] - at[b * 3 + 2]);
@@ -142,15 +186,10 @@ function grow(v: number) {
       }
     }
   };
-  // The trunk climbs until it sees room.
   see(0);
-  while (!nearest.some((b, p) => free[p] && b >= 0)) {
-    last = bud(at[last * 3], at[last * 3 + 1], at[last * 3 + 2] + STEP, last);
-    see(last);
-  }
-  for (let grown = 1; grown > 0 && from.length < ROOM * 8; ) {
+  for (let grown = 1; grown > 0 && from.length < points * 12; ) {
     const pull = new Map<number, number[]>();
-    for (let p = 0; p < ROOM; p++) {
+    for (let p = 0; p < points; p++) {
       const b = nearest[p];
       if (!free[p] || b < 0) continue;
       const d = near[p];
@@ -181,8 +220,7 @@ function grow(v: number) {
   for (let b = 1; b < from.length; b++) {
     const p = from[b];
     limbs.push(at[p * 3], at[p * 3 + 1], at[p * 3 + 2], at[b * 3], at[b * 3 + 1], at[b * 3 + 2], carries[b] ** (1 / LEONARDO));
-    const out = Math.hypot(at[b * 3], at[b * 3 + 1], at[b * 3 + 2] / (at[b * 3 + 2] > 0 ? DOME_UP : DOME_DOWN));
-    if (carries[b] <= LEAF_WOOD * TWIG_THICK ** LEONARDO && out > SHELL) leafy.push(b);
+    if (carries[b] <= LEAF_WOOD * TWIG_THICK ** LEONARDO && shell(at[b * 3], at[b * 3 + 1], at[b * 3 + 2]) > SHELL) leafy.push(b);
   }
   // Enough leaves to cover the ground under the crown COVER times over.
   const each = Math.ceil((COVER * Math.PI) / (Math.PI * LEAF * LEAF * LEAF_WIDE) / Math.max(1, leafy.length));
