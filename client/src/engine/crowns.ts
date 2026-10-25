@@ -4,36 +4,44 @@
  * (`bakeWorker.ts`): two million texels take a second and more.
  */
 
-/** A broadleaf is a tree grown, as one is: from its trunk's top this many
- *  limbs, give or take one, and a leader up the middle, rising this
- *  steeply (from level, in turns), this long; each forking into this many,
- *  give or take one, from this far along it, turned off it up to this far
- *  (in turns), bending up toward the light this much, each this much as
- *  long as the one it grows from and as thick; so many times. Its last
- *  forkings carry the leaves, this many along each, on stalks up to this
- *  long, each leaf this long and so wide. Nothing groups them: where twigs
- *  crowd, leaves do, and the crown is clumpy as its forks are. */
-const LIMBS = 6;
-const RISE = [0.08, 0.2];
-const LIMB = 0.42;
-const FORKS = 2.2;
-const FORK_FROM = 0.5;
-const FORK_TURN = 0.1;
-const TOWARD_LIGHT = 0.3;
-const SHORTER = 0.74;
-const THINNER = 0.62;
-const FORKINGS = 6;
-const LEAFY = 3;
-const LIMB_THICK = 0.035;
-const LEAVES = 12;
-const STALK = 0.03;
-const LEAF = 0.028;
+/** A broadleaf is grown as a tree grows, by space colonisation: its buds
+ *  reach for the light, and light is room. This many points of room are
+ *  scattered through its crown, a dome this wide, this tall of its width
+ *  over its middle and this deep under it (its foot cut flat there); its
+ *  trunk rises from this far below the middle toward them, and each step
+ *  every bud grows this far, toward the room it is the nearest bud to
+ *  within this far, tipped up toward the sky this much. Room a bud comes
+ *  this near is taken. So branches fork where room pulls two ways, and
+ *  crowd each other out, and fill the dome evenly, as a tree does. */
+const ROOM = 1600;
+const DOME_UP = 0.75;
+const DOME_DOWN = 0.45;
+const TRUNK_FOOT = 1.1;
+/** And the dome bulges, as a crown does over each of its big limbs: this
+ *  many bulges, the dome between them this far in, each this narrow. */
+const LOBES = 7;
+const LOBED = 0.65;
+const LOBE_NARROW = 4;
+const STEP = 0.045;
+const SEES = 0.4;
+const SKYWARD = 0.15;
+const TAKEN = 0.09;
+const FORKS = 3;
+/** A branch is as thick as those it carries together (Leonardo's rule, by
+ *  this power): a twig this thick, of the crown's radius. */
+const LEONARDO = 2.5;
+const TWIG_THICK = 0.004;
+/** Leaves grow on the youngest wood only, on twigs no thicker than this
+ *  many twigs make, and only out in the crown's shell, past this far of the
+ *  way to its edge: inside, it is too dark for them. So many leaves that
+ *  they cover the ground under it this many times over; each this long, of
+ *  the crown's radius, and so wide, up to this far off its twig. */
+const LEAF_WOOD = 4;
+const SHELL = 0.4;
+const COVER = 5;
+const LEAF = 0.035;
 const LEAF_WIDE = 0.6;
-/** And it grows only so far out, this far of a limb's length, give or
- *  take this much, no leaves past that, nor limbs: a crown is round,
- *  its limbs crowding each other in. */
-const SPREAD = 1.4;
-const SPREAD_GIVE = 0.2;
+const STALK = 0.05;
 /** A leaf lies tilted at random up to this much (1 at 45°). The light
  *  reaches down less: at the crown's foot this much of what its top gets;
  *  and under the crown's skin, a dome over its highest leaves this many
@@ -95,55 +103,95 @@ export const BROAD_LAYERS = 4;
 
 /** Broadleaf v grown: its leaves, (x, y, z, along x, along y, tilt x,
  *  tilt y) each, and its limbs, (from x, y, z, to x, y, z, thickness)
- *  each, its trunk's top at 0. */
+ *  each; its crown's middle at 0, 1 to its edge. */
 function grow(v: number) {
   let n = 0;
   const rnd = () => (hash(v, n++, 11), h0);
-  const leaves: number[] = [], limbs: number[] = [0, 0, -0.5, 0, 0, 0, LIMB_THICK * 1.3];
-  const branch = (x: number, y: number, z: number, dx: number, dy: number, dz: number, len: number, thick: number, forkings: number) => {
-    limbs.push(x, y, z, x + dx * len, y + dy * len, z + dz * len, thick);
-    if (forkings < LEAFY) {
-      for (let l = 0; l < LEAVES; l++) {
-        const t = rnd(), a = rnd() * 2 * Math.PI, stalk = STALK * rnd();
-        const [ox, oy] = [Math.cos(a), Math.sin(a)];
-        leaves.push(x + dx * len * t + ox * stalk, y + dy * len * t + oy * stalk, z + dz * len * t + stalk * (rnd() - 0.3), ox, oy, (rnd() * 2 - 1) * LEAF_TILT, (rnd() * 2 - 1) * LEAF_TILT);
+  // Room, through the dome.
+  const lobes: number[] = [];
+  for (let l = 0; l < LOBES; l++) {
+    const [a, up] = [rnd() * 2 * Math.PI, rnd() * 0.8];
+    lobes.push(Math.cos(a) * Math.sqrt(1 - up * up), Math.sin(a) * Math.sqrt(1 - up * up), up);
+  }
+  const room: number[] = [];
+  while (room.length < ROOM * 3) {
+    const [x, y, z] = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1];
+    const d = Math.hypot(x, y, z);
+    let lobe = 0;
+    for (let l = 0; l < lobes.length; l += 3) lobe = Math.max(lobe, (x * lobes[l] + y * lobes[l + 1] + z * lobes[l + 2]) / d);
+    const zz = z * (z > 0 ? DOME_UP : DOME_DOWN);
+    if (d < LOBED + (1 - LOBED) * Math.max(0, lobe) ** LOBE_NARROW && zz > -DOME_DOWN * 0.7) room.push(x, y, zz);
+  }
+  // Buds: where each is, and the bud it grew from.
+  const at: number[] = [], from: number[] = [];
+  const bud = (x: number, y: number, z: number, parent: number) => (at.push(x, y, z), from.push(parent), from.length - 1);
+  let last = bud(0, 0, -TRUNK_FOOT, -1);
+  const forks = new Uint8Array(ROOM * 8);
+  // Each point of room's nearest bud, and how near.
+  const nearest = new Int32Array(ROOM).fill(-1), near = new Float32Array(ROOM).fill(SEES);
+  const free = new Uint8Array(ROOM).fill(1);
+  const see = (first: number) => {
+    for (let p = 0; p < ROOM; p++) {
+      if (!free[p]) continue;
+      for (let b = first; b < from.length; b++) {
+        const d = Math.hypot(room[p * 3] - at[b * 3], room[p * 3 + 1] - at[b * 3 + 1], room[p * 3 + 2] - at[b * 3 + 2]);
+        if (d < TAKEN) free[p] = 0;
+        else if (d < near[p]) (near[p] = d), (nearest[p] = b);
       }
     }
-    if (forkings === 0) return;
-    // Two ways across it, to turn its forks off it.
-    const [ux, uy, uz] = Math.abs(dz) < 0.9 ? [-dy, dx, 0] : [1, 0, 0];
-    const ul = Math.hypot(ux, uy, uz);
-    const [px, py, pz] = [ux / ul, uy / ul, uz / ul];
-    const [wx, wy, wz] = [dy * pz - dz * py, dz * px - dx * pz, dx * py - dy * px];
-    const forks = Math.floor(FORKS + rnd());
-    for (let f = 0; f < forks; f++) {
-      const along = f === 0 ? 1 : FORK_FROM + (1 - FORK_FROM) * rnd();
-      const a = rnd() * 2 * Math.PI, t = FORK_TURN * 2 * Math.PI * (0.5 + 0.5 * rnd());
-      const [cx, cy, cz] = [Math.cos(a) * px + Math.sin(a) * wx, Math.cos(a) * py + Math.sin(a) * wy, Math.cos(a) * pz + Math.sin(a) * wz];
-      let [ex, ey, ez] = [dx * Math.cos(t) + cx * Math.sin(t), dy * Math.cos(t) + cy * Math.sin(t), dz * Math.cos(t) + cz * Math.sin(t) + TOWARD_LIGHT];
-      const el = Math.hypot(ex, ey, ez);
-      [ex, ey, ez] = [ex / el, ey / el, ez / el];
-      branch(x + dx * len * along, y + dy * len * along, z + dz * len * along, ex, ey, ez, len * SHORTER, thick * THINNER, forkings - 1);
-    }
   };
-  branch(0, 0, 0, 0.1 * (rnd() - 0.5), 0.1 * (rnd() - 0.5), 1, LIMB * 0.6, LIMB_THICK, FORKINGS);
-  const count = LIMBS - 1 + Math.floor(rnd() * 3);
-  for (let l = 0; l < count; l++) {
-    const az = (2 * Math.PI * (l + 0.6 * (rnd() - 0.5))) / count;
-    const rise = 2 * Math.PI * (RISE[0] + (RISE[1] - RISE[0]) * rnd());
-    branch(0, 0, -0.1 * rnd(), Math.cos(rise) * Math.cos(az), Math.cos(rise) * Math.sin(az), Math.sin(rise), LIMB * (0.8 + 0.4 * rnd()), LIMB_THICK, FORKINGS);
+  // The trunk climbs until it sees room.
+  see(0);
+  while (!nearest.some((b, p) => free[p] && b >= 0)) {
+    last = bud(at[last * 3], at[last * 3 + 1], at[last * 3 + 2] + STEP, last);
+    see(last);
   }
-  // Pruned round: past its reach no leaves, nor limbs.
-  const kept: number[] = [];
-  for (let l = 0; l < leaves.length; l += 7) {
-    if (Math.hypot(leaves[l], leaves[l + 1]) + LEAF < LIMB * SPREAD * (1 + SPREAD_GIVE * (rnd() - 0.5))) kept.push(...leaves.slice(l, l + 7));
+  for (let grown = 1; grown > 0 && from.length < ROOM * 8; ) {
+    const pull = new Map<number, number[]>();
+    for (let p = 0; p < ROOM; p++) {
+      const b = nearest[p];
+      if (!free[p] || b < 0) continue;
+      const d = near[p];
+      const w = pull.get(b) ?? [0, 0, 0];
+      (w[0] += (room[p * 3] - at[b * 3]) / d), (w[1] += (room[p * 3 + 1] - at[b * 3 + 1]) / d), (w[2] += (room[p * 3 + 2] - at[b * 3 + 2]) / d);
+      pull.set(b, w);
+    }
+    const first = from.length;
+    for (const [b, [x, y, z]] of pull) {
+      // Pulled two ways evenly, a bud would grow a twig back into itself
+      // forever: a bud forks at most this many ways.
+      if (forks[b]++ >= FORKS) continue;
+      const l = Math.hypot(x, y, z + SKYWARD) || 1;
+      const [dx, dy, dz] = [x / l, y / l, (z + SKYWARD) / l];
+      bud(at[b * 3] + dx * STEP, at[b * 3 + 1] + dy * STEP, at[b * 3 + 2] + dz * STEP, b);
+    }
+    grown = from.length - first;
+    see(first);
   }
-  const end = LIMB * SPREAD * 0.9;
-  const inside: number[] = [];
-  for (let b = 0; b < limbs.length; b += 7) {
-    if (Math.hypot(limbs[b], limbs[b + 1]) < end && Math.hypot(limbs[b + 3], limbs[b + 4]) < end) inside.push(...limbs.slice(b, b + 7));
+  // Thickness, from the twigs in: each bud as thick as all it carries.
+  const carries = new Float32Array(from.length);
+  for (let b = from.length - 1; b > 0; b--) {
+    carries[b] += carries[b] === 0 ? TWIG_THICK ** LEONARDO : 0;
+    carries[from[b]] += carries[b];
   }
-  return { leaves: kept, limbs: inside };
+  const limbs: number[] = [], leaves: number[] = [];
+  const leafy: number[] = [];
+  for (let b = 1; b < from.length; b++) {
+    const p = from[b];
+    limbs.push(at[p * 3], at[p * 3 + 1], at[p * 3 + 2], at[b * 3], at[b * 3 + 1], at[b * 3 + 2], carries[b] ** (1 / LEONARDO));
+    const out = Math.hypot(at[b * 3], at[b * 3 + 1], at[b * 3 + 2] / (at[b * 3 + 2] > 0 ? DOME_UP : DOME_DOWN));
+    if (carries[b] <= LEAF_WOOD * TWIG_THICK ** LEONARDO && out > SHELL) leafy.push(b);
+  }
+  // Enough leaves to cover the ground under the crown COVER times over.
+  const each = Math.ceil((COVER * Math.PI) / (Math.PI * LEAF * LEAF * LEAF_WIDE) / Math.max(1, leafy.length));
+  for (const b of leafy) {
+    for (let l = 0; l < each; l++) {
+      const a = rnd() * 2 * Math.PI, stalk = STALK * Math.sqrt(rnd());
+      const [ox, oy] = [Math.cos(a), Math.sin(a)];
+      leaves.push(at[b * 3] + ox * stalk, at[b * 3 + 1] + oy * stalk, at[b * 3 + 2] + STALK * (rnd() - 0.4), ox, oy, (rnd() * 2 - 1) * LEAF_TILT, (rnd() * 2 - 1) * LEAF_TILT);
+    }
+  }
+  return { leaves, limbs };
 }
 
 /** Broadleaf v's layers, seen from above: grown, its leaves and limbs laid
