@@ -169,6 +169,34 @@ depots on roads, later by train; and the local, packages from depots to
 shops, stations, sites and small producers on streets. Where a depot
 stands decides where the heavy traffic ends.
 
+## Jobs, buildings that grow, and the lab
+
+Talked through with Wytze, 2026-10-25; direction, nothing built.
+
+- **Every job makes, moves or serves something you can see.** Jobs stay:
+  they are why residents drive, and later why they need shops and
+  hospitals. A job that changes nothing when empty goes: the office, and
+  the depot's desks as they are. A depot's hands are its crew, one a
+  vehicle and one a forklift; an empty seat parks its lorry, and that is
+  the first workers pin.
+- **A building grows in place, not by tiers in the menu.** The small one
+  is placed; when it is outgrown (a full yard, lorries queueing at the
+  forklift) its card offers to grow, onto the land beside it, so a
+  building boxed in by streets cannot, and leaving room is part of the
+  road puzzle. Its next step is built of a material from a longer chain:
+  timber, then stone (later concrete), then steel, perhaps machinery. A
+  quarry is not built of stone, nor a rig of oil; a rig waits on a
+  steelworks. Imports at the market are the way round, at a price.
+- **A lab makes blueprints, in time.** It is a building with hands, the
+  office with a purpose; a blueprint takes so many researcher-hours, so
+  more researchers make it sooner, and what they cost is the town that
+  houses and feeds them while they are not at the sawmill. It offers only
+  what the town has grown into (the bigger rig once a small one has run a
+  while). A blueprint is owned and can be sold to a named partner. A
+  university is the lab grown: more at once, and students to house. Not
+  a skill tree: materials still decide what can be built. After the
+  opening and the first chains.
+
 ## Open
 
 - The camera, after a few days of play in the tilt.
