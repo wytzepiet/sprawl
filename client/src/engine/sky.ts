@@ -15,8 +15,12 @@ import { add, lerp, scale, type Rgb } from "./rgb";
  */
 const SIZE = 16;
 
-/** Of the sky's and the sun's light, how much the land below sends back. */
+/** Of the sky's and the sun's light, how much the land below sends back,
+ *  in the colour of the sky overhead: a rock face turned down to it is
+ *  lit no warmer than the top it stands under, which the eye takes for
+ *  another stone. */
 const LAND = 0.18;
+const luma = (c: Rgb) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
 type V3 = readonly [number, number, number];
 const FACES: [V3, V3, V3][] = [
@@ -47,7 +51,7 @@ export interface SkyLight {
 export function skyEnvironment(scene: SceneContext, light: SkyLight) {
   const faces = FACES.map(() => new Float32Array(SIZE * SIZE * 4));
   const paint = ({ zenith, glow, belt, sun, sunward }: SkyLight) => {
-    const land = scale(add(zenith, sun), LAND);
+    const land = scale(zenith, (LAND * luma(add(zenith, sun))) / Math.max(luma(zenith), 1e-6));
     for (let f = 0; f < 6; f++) {
       const [n, ax, ay] = FACES[f];
       const data = faces[f];
