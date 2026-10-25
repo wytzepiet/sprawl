@@ -1,0 +1,100 @@
+# The first half hour
+
+Plan, 2026-10-25, to put `plan-goods.md` §The rule of thumb and §The
+opening into the game: problems that come to the player, the fix that
+unlocks the next thing, and a first sale within a few minutes. For
+Wytze to react to; nothing here is built. It sits on the goods work
+(pads, packages, the pallet ferry) and changes `missions.md` where they
+meet.
+
+## Pacing, as numbers first
+
+The opening is judged by a clock, not by feel alone, so it gets a test
+before it changes, the way the season test keeps the town.
+
+`cargo test first_half_hour` plays the opening with the hand's best
+moves and asserts the beats, in real minutes of play (a day is twenty):
+
+| Beat | By |
+|---|---|
+| The first road drawn | 0:30 |
+| Goods on the producer's pad | 1:00 |
+| The first coins land | 3:00 |
+| The first problem the player did not ask for | 5:00 |
+| A new kind of building asked for | every 3 to 5 minutes after |
+| The first jam | about 15:00 |
+
+It prints each beat's time, so a change to the ferry, a building or a
+mission shows what it did to the start. Today's opening, measured the
+same way, is the baseline.
+
+## The opening, cut
+
+What the start asks today: build a harbour, build a depot, join them,
+fetch the starter pack, build houses, then buy and sell at the market
+(`missions.rs` `ROWS`). Five steps of plumbing before anything is made.
+
+The new one:
+
+1. **The harbour stands.** A new town is seated with its harbour on the
+   coast and the camera on it. Placing the harbour was the hardest step
+   in the 2026-10-10 playtest and teaches nothing the game is about.
+2. **Pick a starter**: a sawmill, a farm or a quarry, each where the
+   island offers it near the harbour. The dots show where.
+3. **Draw the road** from it to the harbour's quay. Its packages start
+   piling on its pad.
+4. **Haul by hand.** The town's truck: tap the pile, tap the quay. The
+   forklift loads it, it drives your road, the packages wait on the quay,
+   and they are paid for as the ferry casts off at the world's price.
+   The first coins.
+
+Goes from the opening: the depot step (the quay is a pad and holds what
+lands), the starter pack as a gift (the starter building is the gift),
+and the market missions, which open later, when there is something to
+trade.
+
+## Problems that come
+
+The situation missions already work this way (`When::Short`, `When::Dry`
+in `missions.rs`, sensed on events, never on a scan). Each new problem is
+one more `When`, sensed where the server already finds it:
+
+| The problem | Sensed where | The fix it asks for | What the fix brings |
+|---|---|---|---|
+| The producer wants workers | its jobs unfilled | houses, a road to them | commuters on the haul road |
+| The pad is full and you are still tapping | a pad at capacity, the truck idle | a depot and its own lorry | the first lorry that runs on its own |
+| Residents are hungry | a meal not found | a farm and a shop | crates, a second chain |
+| Cars run dry | already sensed | a gas station | drums to deliver |
+| A site waits on timber or stone | already sensed | a sawmill or a quarry | the next chain |
+| A junction jams | a vehicle stopped there over a minute | redraw it, on that tile | the road puzzle |
+| A letter asks for more than you make | already written (`orders.rs`) | a second producer, a bigger yard | more trips |
+
+The jam is the one that makes this our game: the server already knows a
+car that stands for good (`Watch`, in replays). A mission that says
+"lorries wait at this junction", with the tile and a follow, turns
+traffic into a problem that arrives on its own.
+
+## What to decide
+
+- **Houses: placed by the game or by the player?** Mini Motorways
+  places homes and you connect them. Here, when a producer wants
+  workers, the game could put down a few house sites waiting for a
+  road, or open a mission asking the player to place them. The first is
+  less initiative and more like the problem arriving; the second keeps
+  every building the player's.
+- **Pressure that grows by itself** (letters and demand rising over
+  time) or only when the player builds. `plan-goods.md` leans to the
+  first, gently.
+- **The ferry's rhythm in the first half hour.** Coins land as it casts
+  off, so its timetable is the opening's heartbeat; the first sailings
+  may need to come more often than later ones.
+
+## The order to build it
+
+1. `first_half_hour`, on today's opening, as the baseline.
+2. The harbour seated with the town, and the starter pick.
+3. The quay as a pad and the tapped truck, on the goods work.
+4. The new problems, one `When` at a time, each with a test that it
+   opens once at the right moment (`a_site_short_of_stone_asks_for_a_quarry_once`
+   is the pattern).
+5. Play it, read the beats, tune the ferry and the producers.
