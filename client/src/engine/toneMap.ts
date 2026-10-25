@@ -1,9 +1,9 @@
-import { NeutralToneMapping, type ToneMapping } from "@babylonjs/lite";
+import type { ToneMapping } from "@babylonjs/lite";
 
 /**
  * How the scene's light, unbounded, is brought into what a screen can show:
  * AgX, Troy Sobotka's, as film takes light, in Benjamin Wrensch's fit, with
- * its punchy look. Laid into every material where Lite's own curve would
+ * a richer punchy look. Laid into every material where Lite's own curve would
  * go, after the exposure and before the colour is put into gamma.
  *
  * The light is leant a little toward grey, so a saturated light (a red sun)
@@ -26,18 +26,12 @@ c = luma + ${colour} * (c - luma);
 return pow(max(toneOut * c, vec3f(0.)), vec3f(2.2));
 }`;
 
-const punchy = (id: string, colour: number, contrast: number): ToneMapping => ({
-  id,
-  helpersWGSL: agx(colour, contrast),
-  callWGSL: "color = toneMap(color * scene.vImageInfos.x);",
-});
-
 /** The town's tone mapping, set on the scene (`DayNightCycle.tsx`); the
- *  exposure, the eye's, applied first. In development `?tone=` tries
- *  another: `richer`, more colour, or `neutral`, Khronos's. */
-const TONES: Record<string, ToneMapping> = {
-  agx: punchy("agx-punchy", 1.4, 1.35),
-  richer: punchy("agx-richer", 1.7, 1.35),
-  neutral: NeutralToneMapping,
+ *  exposure, the eye's, applied first. Richer than Wrensch's punchy, whose
+ *  colour is 1.4: AgX takes the colour out of a bright light, and a noon
+ *  in full sun came out pale. */
+export const TONE: ToneMapping = {
+  id: "agx-rich",
+  helpersWGSL: agx(1.7, 1.35),
+  callWGSL: "color = toneMap(color * scene.vImageInfos.x);",
 };
-export const TONE: ToneMapping = TONES[(import.meta.env.DEV && new URLSearchParams(location.search).get("tone")) || "agx"] ?? TONES.agx;
