@@ -231,7 +231,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   in its `index.ts`.
 - **A branch in the browser:** every push gets its own fresh world at
   `https://<branch>.preview.sprawl.nl` (the branch lowercased, `/` as `-`),
-  and deleting the branch takes it away (`.github/workflows/preview.yml`,
+  and deleting the branch takes it away; a push to main deletes every
+  branch whose last commit it holds (`.github/workflows/preview.yml`,
   the box's half in `preview/`). A world not pushed to for a week sleeps
   until the next push; the summary of the run has the link. When you push
   something to be seen, wait for the run (a couple of minutes) and give
