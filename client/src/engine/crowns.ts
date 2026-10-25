@@ -53,11 +53,17 @@ const STALK = 0.045;
 /** A leaf lies tilted at random up to this much (1 at 45°). The light
  *  reaches down less: at the crown's foot this much of what its top gets;
  *  and under the crown's skin, a dome over its highest leaves this many
- *  texels round, it is dark, all of it this deep, of the crown's height. */
+ *  texels round, it is darker: all of it this deep, of the crown's height,
+ *  by this much. */
 const LEAF_TILT = 0.9;
 const FOOT_LIGHT = 0.5;
 const SKIN = 10;
 const DEEP = 0.25;
+const DARKEST = 0.75;
+/** Under all, between its clumps, leaves in shade: wherever this much of
+ *  what is within this many texels each way is leaves. */
+const DENSE_OF = 0.55;
+const DENSE = 9;
 /** Seen from the side, its crown's foot this high, of its height. */
 const SIDE_FOOT = 0.45;
 
@@ -239,6 +245,30 @@ function grow(v: number) {
   return { leaves, limbs };
 }
 
+/** Where a stamp is mostly covered (height 0 or more) within r texels
+ *  each way: its gaps narrower than that filled, its outline rounded, and
+ *  its wider gaps left. */
+function closed(height: Float32Array, r: number) {
+  const T = CROWN_TEXELS;
+  // How much of the texels within r of each along a row, then a column, is covered.
+  const pass = (src: Float32Array, across: boolean) => {
+    const out = new Float32Array(T * T);
+    for (let a = 0; a < T; a++) {
+      let sum = 0;
+      const at = (b: number) => (across ? a * T + b : b * T + a);
+      for (let b = 0; b < r && b < T; b++) sum += src[at(b)];
+      for (let b = 0; b < T; b++) {
+        if (b + r < T) sum += src[at(b + r)];
+        if (b - r - 1 >= 0) sum -= src[at(b - r - 1)];
+        out[at(b)] = sum / (2 * r + 1);
+      }
+    }
+    return out;
+  };
+  const near = pass(pass(Float32Array.from(height, (h) => (h >= 0 ? 1 : 0)), true), false);
+  return near.map((c) => (c > DENSE_OF ? 1 : 0));
+}
+
 /** Broadleaf v's layers, seen from above: grown, its leaves and limbs laid
  *  down a texel at a time, in each layer the highest there showing; the
  *  light less the lower it is, and the deeper under the crown's skin.
@@ -296,7 +326,7 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
     }
   }
   // The crown's skin: its highest leaf near each texel, smoothed.
-  const top = new Float32Array(N).fill(0);
+  const top = new Float32Array(N).fill(-1);
   for (let k = 0; k < N; k++) for (let l = 0; l < BROAD_LAYERS; l++) top[k] = Math.max(top[k], height[l * N + k]);
   const skin = new Float32Array(N), pass = new Float32Array(N);
   for (let j = 0; j < T; j++) {
@@ -313,6 +343,15 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
       skin[j * T + i] = m;
     }
   }
+  // Where it is mostly leaves, the lowest layer is leaves deep in shade, as
+  // a crown is between its clumps: only its wider gaps open to the ground.
+  const shaded = closed(top, DENSE);
+  const deepest = (BROAD_LAYERS - 1) * N;
+  for (let k = 0; k < N; k++) {
+    if (!shaded[k] || height[deepest + k] >= 0) continue;
+    hash(k, v, 14);
+    (height[deepest + k] = 0), (lean[2 * (deepest + k)] = (h0 * 2 - 1) * LEAF_TILT), (lean[2 * (deepest + k) + 1] = (h1 * 2 - 1) * LEAF_TILT), (bark[deepest + k] = 0);
+  }
   for (let layer = 0; layer < BROAD_LAYERS; layer++) {
     for (let j = 0, k = 0; j < T; j++) {
       for (let i = 0; i < T; i++, k++) {
@@ -326,7 +365,7 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
         out[o] = byte(Math.hypot(x, y) / 2);
         out[o + 1] = byte(0.5 + lean[2 * (layer * N + k)] / 2);
         out[o + 2] = byte(0.5 + lean[2 * (layer * N + k) + 1] / 2);
-        out[o + 3] = bark[layer * N + k] ? 255 : byte((FOOT_LIGHT + (1 - FOOT_LIGHT) * Math.max(0, h)) * (1 - under) * LIT);
+        out[o + 3] = bark[layer * N + k] ? 255 : byte((FOOT_LIGHT + (1 - FOOT_LIGHT) * Math.max(0, h)) * (1 - DARKEST * under) * LIT);
       }
     }
   }
