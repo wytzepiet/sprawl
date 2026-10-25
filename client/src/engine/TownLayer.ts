@@ -526,13 +526,13 @@ export class TownLayer {
       giveBevel(engine, mesh, geo);
       const colour = p.colour ?? WHITE;
       mesh.material = p.name === "mass" ? this.masses : paved ? this.pavement(colour, kerbs) : this.pieceMaterial(p.name, colour);
-      if (p.name === "mass" || paved) mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
+      if (p.name !== "lines") mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
       mesh.position.x = ox;
       mesh.position.y = oy;
       mesh.receiveShadows = true;
       this.ctx.cull.keep(mesh, area);
       addToScene(scene, mesh);
-      if (p.name === "mass") this.casters.add(mesh);
+      if (p.name === "mass" || p.name === "hedges") this.casters.add(mesh);
       meshes.push(mesh);
     }
     const { matrices, colors } = trees;

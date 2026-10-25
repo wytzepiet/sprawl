@@ -40,7 +40,7 @@ const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
 const CRANE = hex("#E9B530");
 /** A depot's fence: how far in from its plot's edge, on its asphalt inside the kerb, how high, its rail's
- *  and its posts' breadth and how far apart, its gate's width; cream. */
+ *  and its posts' breadth and how far apart, its gate's width; painted green. */
 const FENCE = { in: 0.13, high: 0.1, rail: 0.02, post: 0.028, every: 0.25, gate: 1.0, colour: hex("#4F7A5C") };
 /** A shop's tub, its flowers, its parasol and table. */
 const TUB = hex("#8A6A4A");

@@ -2,7 +2,7 @@ import { isBuilt, type Town } from "./grid";
 import type { Facts } from "./facts";
 import { formOf } from "./mass";
 import { HALF_W } from "../objects/roadGeometry";
-import { INSET } from "./footprint";
+import { defaultJoins, INSET } from "./footprint";
 import { baysAt, drive, SIDEWALK } from "./surface";
 import type { P } from "../geometry";
 
@@ -20,6 +20,8 @@ import type { P } from "../geometry";
  *   with a gap here and there.
  *
  * - Street lamps stand where the road's edge runs (`lamps`).
+ *
+ * - A hedge runs round a home's or a shop's plot (`hedges`).
  *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
@@ -61,8 +63,12 @@ export interface Lamp {
   hy: number;
 }
 
+/** A hedge: the line it runs along, end to end. */
+export type Hedge = [P, P];
+
 export interface Dressing {
   trees: Tree[];
+  hedges: Hedge[];
   lamps: Lamp[];
   cars: Car[];
   docks: Dock[];
@@ -120,10 +126,47 @@ export function dress(town: Town, facts: Facts): Dressing {
   const lorries = docks(town, facts);
   return {
     trees: trees.filter((t) => !onDrive(t)),
+    hedges: hedges(town),
     lamps: lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })),
     cars: [...park(town), ...drives.cars],
     docks: lorries.docks, yardLines: lorries.lines,
   };
+}
+
+/** A hedge's thickness. */
+export const HEDGE_THICK = 0.08;
+
+/** Down each edge of a home's or a shop's plot that meets open ground or
+ *  a building it is not joined to: never along a road, and where a road
+ *  runs past its end, stopped at the front wall, the front strip left
+ *  open. Between two such plots, once, on the line between them; against
+ *  anything else, inside its own. */
+function hedges(town: Town): Hedge[] {
+  const joined = town.joins ?? defaultJoins(town);
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const plot = (c: number, r: number) => {
+    const t = town.tile(c, r);
+    return isBuilt(t) && formOf(t).family === "street";
+  };
+  const out: Hedge[] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (!plot(c, r)) continue;
+      for (const [dc, dr] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        const [nc, nr] = [c + dc, r + dr];
+        const n = town.tile(nc, nr);
+        if ((n.kind !== "open" && !isBuilt(n)) || joined(c, r, nc, nr) || joined(nc, nr, c, r)) continue;
+        const shared = plot(nc, nr);
+        if (shared && dc + dr < 0) continue;
+        const into = shared ? 0.5 : 0.5 - HEDGE_THICK / 2;
+        const [mx, my] = [c + 0.5 + dc * into, r + 0.5 + dr * into];
+        const [px, py] = [-dr, dc];
+        const end = (s: number) => (road(c + px * s, r + py * s) || road(nc + px * s, nr + py * s) ? 0.5 - INSET : 0.5);
+        out.push([[mx - px * end(-1), my - py * end(-1)], [mx + px * end(1), my + py * end(1)]]);
+      }
+    }
+  }
+  return out;
 }
 
 /** How far out from a road's middle a lamp stands: on the pavement, just
