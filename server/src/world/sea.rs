@@ -96,7 +96,7 @@ impl Berth {
     /// terminal's side of it; the quay's pad is on the other. Nothing
     /// stands in the lane: what comes off the ferry drives up it to the
     /// gate.
-    pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, usize)>) {
+    pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, [f64; 2])>) {
         let side = self.landward() + std::f64::consts::FRAC_PI_2;
         crate::world::lots::park(|s, out| plus(plus(self.ramp(), ahead(self.landward(), s)), ahead(side, out)), &[1.0])
     }

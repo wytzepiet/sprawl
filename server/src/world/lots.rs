@@ -136,12 +136,13 @@ enum Way {
     Driveway { door: EntityId, street: EntityId },
     /// A yard (`park`): a two-way lane straight in from the door, its
     /// gate, and docks either side of it, each a spot, entered by backing
-    /// in from the stop point beyond its mouth and left forward. `lane`
-    /// runs from the door inward; a bay is (mouth, stop) as indices on it. A harbour's lane runs down to its ramp, and on
+    /// in from where a lorry pulls up for it and left forward. `lane`
+    /// runs from the door inward; a bay is its mouth, an index on it, and
+    /// the node where a lorry pulls up for it. A harbour's lane runs down to its ramp, and on
     /// from it onto the moored ferry's deck: `seats` are where a settler's
     /// car stands aboard, two to a slot, each with the node at the land
     /// end of its deck lane it drives off by.
-    Yard { lane: Vec<EntityId>, bays: Vec<(usize, usize)>, street: EntityId, seats: Vec<[EntityId; 2]> },
+    Yard { lane: Vec<EntityId>, bays: Vec<(usize, EntityId)>, street: EntityId, seats: Vec<[EntityId; 2]> },
     /// Bays at the kerb, a spot each; the door for a car with no bay.
     Kerb { door: EntityId, street: EntityId, bays: Vec<KerbWay> },
 }
@@ -205,38 +206,36 @@ const DOCK_REACH: f64 = 1.4;
 /// How far past a dock's mouth, toward the back, a lorry pulls up to back
 /// in.
 pub const PAST: f64 = 0.5;
+/// How far across the lane, away from its dock, a lorry swings as it pulls
+/// up: it backs in from an angle, round a wide arc, not square from the
+/// lane's middle.
+const SWING: f64 = 0.4;
 
 /// A yard's park, a harbour's and a depot's alike: a lane straight in
 /// from the gate to the yard's back, and off it, on each of `sides`, a
 /// row of docks, a docked lorry's cab facing the lane and its flatbed
-/// behind it out to the yard's side. A lorry drives in past a dock's mouth, pulls
-/// up `PAST` beyond it and backs in; it leaves forward, up the lane to the
-/// gate: a right angle in from the street, the dock, a right angle out,
-/// and never a hairpin. `at(s, side)` is a point `s` in from the back and
-/// `side` out from the lane's middle. The lane's points in order from the
-/// gate, each dock's mouth and its stop; and the docks, both sides of each
-/// row, with the lane points of their mouth and stop.
-pub fn park(at: impl Fn(f64, f64) -> [f64; 2], sides: &[f64]) -> (Vec<[f64; 2]>, Vec<(Pose, usize, usize)>) {
-    let mut stations: Vec<(f64, usize, bool)> = DOCK_ROWS.iter().enumerate().flat_map(|(i, &s)| [(s, i, true), (s - PAST, i, false)]).collect();
-    stations.sort_by(|a, b| b.0.total_cmp(&a.0));
-    let mut rows = [(0, 0); DOCK_ROWS.len()];
-    for (k, &(_, i, mouth)) in stations.iter().enumerate() {
-        if mouth {
-            rows[i].0 = k;
-        } else {
-            rows[i].1 = k;
-        }
-    }
-    let lane = stations.iter().map(|&(s, ..)| at(s, 0.0)).collect();
+/// behind it out to the yard's side. A lorry drives in to a dock's mouth,
+/// swings across the lane away from it as it pulls up `PAST` beyond, and
+/// backs in round a wide arc, as a driver sets up a lorry to back; it
+/// leaves forward, up the lane to the gate. `at(s, side)` is a point `s`
+/// in from the back and `side` out from the lane's middle. The lane's
+/// points in order from the gate, each row's mouth and, last, the back
+/// row's stop; and the docks, both sides of each row, with the lane point
+/// of their mouth and where a lorry pulls up to back into them.
+pub fn park(at: impl Fn(f64, f64) -> [f64; 2], sides: &[f64]) -> (Vec<[f64; 2]>, Vec<(Pose, usize, [f64; 2])>) {
+    let back = DOCK_ROWS.iter().copied().fold(f64::MAX, f64::min) - PAST;
+    let mut lane: Vec<[f64; 2]> = DOCK_ROWS.iter().rev().map(|&s| at(s, 0.0)).collect();
+    lane.push(at(back, 0.0));
     let docks = DOCK_ROWS
         .iter()
-        .zip(rows)
-        .flat_map(|(&s, (mouth, stop))| {
+        .rev()
+        .enumerate()
+        .flat_map(|(mouth, &s)| {
             let at = &at;
             sides.iter().map(move |&side| {
                 let p = at(s, side * DOCK_OUT);
                 let toward = at(s, 0.0);
-                (Pose { at: p, heading: (toward[1] - p[1]).atan2(toward[0] - p[0]) }, mouth, stop)
+                (Pose { at: p, heading: (toward[1] - p[1]).atan2(toward[0] - p[0]) }, mouth, at(s - PAST, -side * SWING))
             })
         })
         .collect();
@@ -580,10 +579,15 @@ impl World {
         let mut spots = Vec::new();
         let mut bays = Vec::new();
         for (pose, mouth, stop) in docks {
-            let (mouth, stop) = (mouth + 1, stop + 1);
+            let mouth = mouth + 1;
             let id = node(self, pose.at);
+            let stop = node(self, stop);
             edge(self, lane[mouth], id);
             edge(self, id, lane[mouth]);
+            for k in mouth - 1..=mouth + 1 {
+                edge(self, lane[k], stop);
+            }
+            edge(self, stop, id);
             spots.push(Spot { node: id, pose, windows: Vec::new() });
             bays.push((mouth, stop));
         }
@@ -935,13 +939,12 @@ impl World {
         let (path, lot_nodes): (&[EntityId], Vec<EntityId>) = match (&lot.way, claim) {
             (Way::Driveway { .. }, Claim::Spot(i)) => (&ways.street, vec![lot.spots[i].node]),
             (Way::Driveway { door, .. } | Way::Kerb { door, .. }, Claim::Door) => (&ways.street, vec![*door]),
-            // Along the lane past the mouth to the stop point, then back
-            // to the mouth and into the dock: the last two edges in reverse.
+            // Along the lane, swinging across it from short of the mouth to
+            // pull up, and backed into the dock: the last edge in reverse.
             (Way::Yard { lane, bays, .. }, Claim::Spot(i)) => {
                 let (mouth, stop) = bays[i];
-                let mut v: Vec<EntityId> = lane[..=stop].to_vec();
-                v.push(lane[mouth]);
-                v.push(lot.spots[i].node);
+                let mut v: Vec<EntityId> = lane[..mouth].to_vec();
+                v.extend([stop, lot.spots[i].node]);
                 (&ways.street, v)
             }
             (Way::Yard { lane, .. }, Claim::Door) => (&ways.street, vec![lane[0]]),
@@ -977,10 +980,13 @@ impl World {
         }
     }
 
-    /// The street nodes of the stretch a car turns across between the
-    /// street and its kerb bay, coming or going: the street waits at all of
-    /// them.
-    pub fn kerb_stretch(&self, car: EntityId) -> Vec<EntityId> {
+    /// The nodes a car holds while it turns between the street and its
+    /// place, coming or going, besides where it leaves or joins the street:
+    /// the street waits at all of them. A kerb bay's, the stretch it turns
+    /// across. A dock's, the yard's door: a yard is one lorry moving at a
+    /// time, so one coming in waits at the gate and one leaving in its
+    /// dock until the lane is clear, never meeting in it.
+    pub fn stretch(&self, car: EntityId) -> Vec<EntityId> {
         let Some(&building) = self.claims.get(&car) else { return Vec::new() };
         let Some(lot) = self.lots.get(&building) else { return Vec::new() };
         match (&lot.way, self.claim_of(building, car)) {
@@ -990,17 +996,18 @@ impl World {
                 nodes.dedup();
                 nodes
             }
+            (Way::Yard { lane, .. }, Some(Claim::Spot(_))) => vec![lane[0]],
             _ => Vec::new(),
         }
     }
 
     /// How many edges at the end of the car's way in are driven backwards:
-    /// two into a dock, or into a kerb bay too close to its entry to pull
+    /// one into a dock, or into a kerb bay too close to its entry to pull
     /// into; none anywhere else.
     pub fn reverse_tail(&self, car: EntityId) -> usize {
         let Some(&building) = self.claims.get(&car) else { return 0 };
         match (self.lots.get(&building).map(|l| &l.way), self.claim_of(building, car)) {
-            (Some(Way::Yard { .. }), Some(Claim::Spot(_))) => 2,
+            (Some(Way::Yard { .. }), Some(Claim::Spot(_))) => 1,
             (Some(Way::Kerb { bays, .. }), Some(Claim::Spot(i))) => bays[i].sides[self.lots[&building].side(i, car)].backs,
             _ => 0,
         }
@@ -1256,18 +1263,21 @@ mod tests {
         world.release_spot(lorry);
         let ways = world.ways_to(depot, world.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
         let (way, _) = world.way_in(depot, lorry, &ways, 0, GameTime::MAX).unwrap();
-        assert_eq!(world.reverse_tail(lorry), 2, "the last two edges are driven backwards");
+        assert_eq!(world.reverse_tail(lorry), 1, "the last edge is driven backwards");
         let n = way.len();
-        let (stop, mouth, dock) = (world.node_pos(way[n - 3]).unwrap(), world.node_pos(way[n - 2]).unwrap(), world.node_pos(way[n - 1]).unwrap());
+        let (before, stop, dock) = (world.node_pos(way[n - 3]).unwrap(), world.node_pos(way[n - 2]).unwrap(), world.node_pos(way[n - 1]).unwrap());
         let gate = world.door_of(depot).unwrap().0;
-        assert!((stop[0] - mouth[0]).abs() < 1e-9 && (mouth[0] - gate.x as f64 - 0.5).abs() < 1e-9, "the lane runs straight in from the gate: {stop:?} {mouth:?}");
-        assert!(stop[1] > mouth[1] + 0.4, "the stop point is beyond the mouth, deeper in: {stop:?} {mouth:?}");
+        assert!((before[0] - gate.x as f64 - 0.5).abs() < 1e-9, "the lane runs straight in from the gate: {before:?}");
+        let mouth = [before[0], dock[1]];
+        assert!(stop[1] > mouth[1] + 0.4, "the lorry pulls up beyond the mouth, deeper in: {stop:?} {mouth:?}");
         assert!((dock[1] - mouth[1]).abs() < 1e-9 && (dock[0] - mouth[0]).abs() > 0.5, "the dock is straight out from the mouth: {dock:?}");
+        assert!((stop[0] - mouth[0]) * (dock[0] - mouth[0]) < 0.0 && (stop[0] - mouth[0]).abs() > 0.3, "it swings across the lane, away from the dock: {stop:?} {dock:?}");
         world.park_in_lot(depot, lorry, 0);
         let out = world.way_out(lorry).unwrap();
         assert_eq!(out[0], way[n - 1], "out of the dock");
-        assert_eq!(out[1], way[n - 2], "forward to the mouth");
-        assert_eq!(world.reverse_tail(lorry), 2);
+        assert!((world.node_pos(out[1]).unwrap()[1] - dock[1]).abs() < 1e-9, "forward to the mouth");
+        assert_eq!(world.stretch(lorry), vec![out[out.len() - 2]], "one lorry in the lane at a time: it holds the yard's door");
+        assert_eq!(world.reverse_tail(lorry), 1);
         // Staff at a depot stop at the door: a yard has no car spots.
         let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         assert_eq!(world.claim_spot(depot, car, 0, GameTime::MAX, |_| true), Some(Claim::Door));

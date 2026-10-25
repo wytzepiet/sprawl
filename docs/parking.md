@@ -39,13 +39,14 @@ road went 2026-10-04.
 A depot, a farm and a harbour keep a yard, laid alike (`park`): a lane
 straight in from a gate in the middle of its front, and a row of docks
 either side, a docked lorry's cab facing the lane and its box behind it.
-A lorry drives in past a dock's mouth, pulls up `PAST` beyond it and
-backs in, the cab following its hitch on a way planned from where it
-stands (`reverse`); it leaves forward, up the lane to the gate. A lorry
-takes a dock, its own depot's included, and anything else at a yard stops
-at the door; with every dock taken, the lorry's trip waits and tries
-again. One moving from dock to dock drives the lane (`World::redock`),
-never out to the street. A harbour's docks are on one side of its lane, its quay's pad on the other.
+A lorry drives in to a dock's mouth, swings across the lane away from it
+as it pulls up `PAST` beyond (`SWING`), and backs in round a wide arc,
+on a way planned from where it stands (`reverse`); it leaves forward, up
+the lane to the gate. A yard is one lorry moving at a time: one turning
+in or pulling out holds the yard's door (`World::stretch`), so one coming
+waits at the gate and one leaving waits in its dock. A lorry takes a
+dock, its own depot's included, and anything else at a yard stops at the
+door; with every dock taken, the lorry's trip waits and tries again. A harbour's docks are on one side of its lane, its quay's pad on the other.
 
 ## 4. Kerb bays
 

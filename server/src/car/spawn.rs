@@ -49,7 +49,7 @@ pub fn depart(
         _ => return false,
     };
     let backs_out = world.backs_out(car_id);
-    let leaving = world.kerb_stretch(car_id);
+    let leaving = world.stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
@@ -71,7 +71,7 @@ pub fn depart(
     let backs_in = world.reverse_tail(car_id);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
-    let stretches = [leaving, world.kerb_stretch(car_id)];
+    let stretches = [leaving, world.stretch(car_id)];
     let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, stretches, leaves, now);
     set_off(world, events, car_id, trip);
     true
