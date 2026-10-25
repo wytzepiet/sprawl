@@ -147,7 +147,7 @@ const TIERS = 12;
  *  top first (`trees.ts` stacks them), so its upper arms stand over its
  *  lower and shade them; the bands the thinner the higher, to this power,
  *  where a tree is narrow and its stack shows most. */
-export const CONIFER_LAYERS = 6;
+export const CONIFER_LAYERS = 8;
 const BANDING = 1.6;
 const bound = (layer: number) => Math.max(layer, Math.round(TIERS * (layer / CONIFER_LAYERS) ** BANDING));
 const bandOf = (layer: number) => [bound(layer), bound(layer + 1)];
