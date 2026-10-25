@@ -59,7 +59,8 @@ const STEEPEN = 0.1;
 /** Its plates are read from above, stretched down a wall as the old
  *  painted cliffs were; its grain over them is read as if the wall were
  *  laid back on the ground in front of it, so it is as fine up the wall
- *  as across: a tile down the wall this much further out than it leans. */
+ *  as across: a tile down the coast's wall this much further out than it
+ *  leans (a mountain's by its own lean, as steep as its rock lets it). */
 const UNROLL = Math.hypot(1, LEAN) - LEAN;
 
 const f = (x: number) => x.toFixed(4);
@@ -131,7 +132,8 @@ let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5
 let peakCliff = 1. - smoothstep(peakRun * 0.8, peakRun, peakBelow);
 let peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
 let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, abs(input.worldNormal.z) < 0.5);
-let peakGrain = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * ${f(UNROLL)});
+let peakLean = peakRun / ${f(LAYER)};
+let peakGrain = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * (sqrt(1. + peakLean * peakLean) - peakLean));
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 townShine = ${f(ROCK_SHINE)} * (1. - ${f(DULL)} * peakHollow);
 N = normalize(vec3f(peakDown * max(peakLip * ${f(ROLL)}, peakCliff * mix(${f(ROLL)}, ${f(CLIFF_TILT)}, smoothstep(0., ${f(STEEPEN)}, peakBelow))) + peakGrain.xy * ${f(RELIEF)}, 1.));`;
