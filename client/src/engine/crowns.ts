@@ -17,7 +17,7 @@
  *  near is taken, and a bud forks at most this many ways. So each limb
  *  fills its own crown, a tree on the tree, and they crowd each other. */
 const TRUNK_FOOT = 1.1;
-const LEAN_TRUNK = 0.25;
+const LEAN_TRUNK = 0.35;
 const FORK_TOP = -0.45;
 const SCAFFOLD = [4, 6];
 const FORK_LOW = 0.6;
@@ -26,6 +26,9 @@ const CROOK = 0.3;
 const SUB_CROWN = [0.38, 0.52];
 const SUB_RISE = [-0.2, 0.15];
 const SUB_TALL = 0.8;
+/** And each tree its own habit: its limbs reaching out up to this much
+ *  further or nearer, and rising as much less or more. */
+const HABIT = 0.3;
 const ROOM = 1800;
 const STEP = 0.045;
 const SEES = 0.4;
@@ -137,6 +140,8 @@ function grow(v: number) {
     const b = trunk[trunk.length - 1], t = (at[b * 3 + 2] + TRUNK_FOOT) / (FORK_TOP + TRUNK_FOOT);
     trunk.push(bud(lean[0] * t * t, lean[1] * t * t, at[b * 3 + 2] + STEP, b));
   }
+  // Its habit: spreading and low, or narrow and tall.
+  const spread = 1 + HABIT * (rnd() * 2 - 1);
   const count = SCAFFOLD[0] + Math.floor(rnd() * (SCAFFOLD[1] - SCAFFOLD[0] + 1));
   const domes: number[] = [];
   const turn = rnd() * 2 * Math.PI;
@@ -144,9 +149,9 @@ function grow(v: number) {
     const top = l === count - 1;
     const foot = trunk[Math.floor(trunk.length * (top ? 1 : FORK_LOW + (1 - FORK_LOW) * rnd())) - (top ? 1 : 0)];
     const az = turn + (2 * Math.PI * (l + 0.5 * (rnd() - 0.5))) / (count - 1);
-    const out = top ? 0.1 * rnd() : SCAFFOLD_OUT[0] + (SCAFFOLD_OUT[1] - SCAFFOLD_OUT[0]) * rnd();
+    const out = top ? 0.1 * rnd() : (SCAFFOLD_OUT[0] + (SCAFFOLD_OUT[1] - SCAFFOLD_OUT[0]) * rnd()) * spread;
     const r = SUB_CROWN[0] + (SUB_CROWN[1] - SUB_CROWN[0]) * rnd();
-    const [x, y, z] = [Math.cos(az) * out, Math.sin(az) * out, (top ? SUB_RISE[1] : SUB_RISE[0] + (SUB_RISE[1] - SUB_RISE[0]) * rnd()) - r * 0.3];
+    const [x, y, z] = [Math.cos(az) * out, Math.sin(az) * out, (top ? SUB_RISE[1] : SUB_RISE[0] + (SUB_RISE[1] - SUB_RISE[0]) * rnd()) / spread - r * 0.3];
     run(foot, x, y, z);
     domes.push(x, y, z + r * 0.3, r);
   }
