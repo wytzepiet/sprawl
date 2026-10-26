@@ -46,7 +46,7 @@ It is closer than it sounds:
 
 - **The sim is already plain Rust.** tokio, axum and rusqlite live only in
   `main.rs`, `network/`, `game_loop/` and `persistence.rs`. The four
-  `Instant::now()` perf timers (`mountains.rs`, `world/mod.rs`,
+  `Instant::now()` perf timers (`mountains.rs`, `map/src/lib.rs`,
   `shipping/`) are the only other thing that won't run in wasm, and
   they can go behind a clock passed in.
 - **The client already talks to the sim through one small interface:**
@@ -470,7 +470,7 @@ What runs, and where; the rest of the order above is still to come.
   `game::Game`; `server/host/` the server; `server/web/` the game for a
   Web Worker (`bun run wasm` in `client/` builds it). A trip may end on a
   road, driven off its end (`car::spawn::drive_through`).
-- **Levels** (`server/src/level.rs`, `server/levels/*.txt`): gates,
+- **Levels** (`server/interchange/src/level.rs`, `server/levels/*.txt`): gates,
   wants, our own solve (`%` rows, arrows for one-ways, `%#` for priority,
   `%^h` for a height) and its flow (`@flow`), Build and Test, a
   jam called by a backed-up gate or a stopped road, efficiency as flow
@@ -497,14 +497,14 @@ What runs, and where; the rest of the order above is still to come.
   nowhere else (`World::leads_nowhere`): a hairpin, a ramp against the
   traffic. The junction is drawn with the shallow turns only. A drive
   still meets its street square or not at all.
-- **Where roads may stand is one rule** (`world/clear.rs`): a node's
-  road is its lane curves as cars drive them (`intersection::track`), as
+- **Where roads may stand is one rule** (`map/clear.rs`): a node's
+  road is its lane curves as cars drive them (`track::track`), as
   wide as they are drawn and as high as the node and its seams, and a
   road may be laid where everything it touches stays its width apart on
   the map or a level apart in height; links that meet at a node are a
   junction, and two diagonals across one corner a crossing. Nothing else
   says where roads may stand beside, over or across each other.
-- **Roads side by side** (`world/decks.rs`, `RoadNode::side`): nodes on
+- **Roads side by side** (`map/decks.rs`, `RoadNode::side`): nodes on
   a tile at heights, and moved a little to one side of its middle, a
   thin road beside another. A one-way drawn along a road that runs
   against it goes beside it, the road there moving over, and back to the
@@ -543,7 +543,7 @@ What runs, and where; the rest of the order above is still to come.
   ends. No paint says which turns a junction has: the
   asphalt is worn, two wheel tracks down each lane along the curve its
   cars drive (`wearOf`), and a corner no car goes round is square.
-- **Right of way from the lanes' shapes** (`intersection::track`): a car
+- **Right of way from the lanes' shapes** (`track::track`): a car
   at a junction gives its way through, its lane's curve from seam to seam
   as the client draws it (`laneOf`), and gives way to those whose ways
   come within a car's width of its own; from one arm they follow, to one
@@ -582,7 +582,7 @@ What runs, and where; the rest of the order above is still to come.
   Priority is the hand's, not a kind of road (`Build.road`): any road
   drawn with it on has it, and drawn along again, gains or loses it.
   The town's Road is a street drawn with it.
-- **Overpasses** (`world/decks.rs`, `client/src/engine/decks.ts`): node
+- **Overpasses** (`map/decks.rs`, `client/src/engine/decks.ts`): node
   heights in half-levels, slopes, clearance. A slope is its tile: it
   climbs, eased, from the edge it comes in by to the edge it goes out by,
   the tiles either side level (`decks.ts`'s `rise`). A deck's road is a

@@ -12,7 +12,7 @@ export interface LevelConnection extends Connection {
   /** Our own solve, laid. */
   solve(): void;
   /** Mark this moment, and the tile pointed at, as something wrong; and
-   *  then say what (`server/src/replay.rs`). */
+   *  then say what (`server/interchange/src/replay.rs`). */
   flag(tile: [number, number] | null): void;
   note(note: string): void;
   /** Everything played since the level opened, to play again, as JSON. */
