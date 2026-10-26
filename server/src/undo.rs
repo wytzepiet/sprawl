@@ -11,11 +11,11 @@
 //! with why, and stays. All of it is the server's, and dies with the
 //! process.
 
-use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
+use traffic::event_queue::EventQueue;
+use model::GameTime;
+use model::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
-use crate::world::decks::Side;
+use map::decks::Side;
 
 /// How long an action may be taken back: five minutes of play, a quarter
 /// of the town's day. Long enough to see a slip for what it is; short
@@ -77,7 +77,7 @@ pub struct Purse {
 
 impl Purse {
     pub fn of(world: &World) -> Purse {
-        Purse { coins: world.treasury, stone: world.depots().into_iter().map(|(id, b)| (id, stone(b))).collect() }
+        Purse { coins: world.treasury, stone: world.map.depots().into_iter().map(|(id, b)| (id, stone(b))).collect() }
     }
 
     pub fn paid(&self, world: &World) -> Paid {
@@ -85,7 +85,7 @@ impl Purse {
             .stone
             .iter()
             .filter_map(|&(id, was)| {
-                let now = world.objects.get(id).and_then(|e| match e.object {
+                let now = world.map.objects.get(id).and_then(|e| match e.object {
                     GameObject::Building(ref b) => Some(stone(b)),
                     _ => None,
                 })?;
@@ -128,8 +128,8 @@ pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, steps: &[Lai
     let mut paid = Paid::default();
     for step in steps.iter().rev() {
         let [a, b] = step.nodes;
-        if step.fresh && (world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))) {
-            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
+        if step.fresh && (world.map.edges.contains_key(&(a, b)) || world.map.edges.contains_key(&(b, a))) {
+            world.drive(events, |t, e| traffic::car::reroute::handle_link_demolish(t, e, a, b, now));
         }
         paid.add(step.paid.clone());
     }
@@ -150,31 +150,31 @@ pub fn doomed(world: &World, step: Build) -> Option<Act> {
     let Build { from, to, .. } = step;
     let [h0, h1] = step.up.unwrap_or_default();
     if from == to {
-        let node = world.node_in(to, h1, step.sides.unwrap_or_default()[1])?;
-        let mut arms = world.arms_of(node, false);
+        let node = world.map.node_in(to, h1, step.sides.unwrap_or_default()[1])?;
+        let mut arms = world.map.arms_of(node, false);
         arms.sort_unstable();
         arms.dedup();
         return Some(Act::Cut(arms.into_iter().filter_map(|arm| link_of(world, node, arm)).collect()));
     }
     let [s0, s1] = step.sides.unwrap_or_default();
-    let (a, b) = world.link_between_at(from, h0, s0, to, h1, s1)?;
+    let (a, b) = world.map.link_between_at(from, h0, s0, to, h1, s1)?;
     Some(Act::Cut(vec![link_of(world, a, b)?]))
 }
 
 /// The road between two nodes as it stands: the way it runs, from the one
 /// it runs from; its priority, heights, sides and lanes.
 fn link_of(world: &World, a: EntityId, b: EntityId) -> Option<Link> {
-    let at = |id: EntityId| world.objects.get(id).and_then(|e| e.position);
-    let (out, back) = (world.edges.contains_key(&(a, b)), world.edges.contains_key(&(b, a)));
+    let at = |id: EntityId| world.map.objects.get(id).and_then(|e| e.position);
+    let (out, back) = (world.map.edges.contains_key(&(a, b)), world.map.edges.contains_key(&(b, a)));
     let (a, b) = if back && !out { (b, a) } else { (a, b) };
     Some(Link {
         from: at(a)?,
         to: at(b)?,
         one_way: out != back,
-        road: world.is_road_between(a, b),
-        up: [world.height_of(a), world.height_of(b)],
-        sides: [world.side_of(a), world.side_of(b)],
-        wide: world.is_wide(a, b),
+        road: world.map.is_road_between(a, b),
+        up: [world.map.height_of(a), world.map.height_of(b)],
+        sides: [world.map.side_of(a), world.map.side_of(b)],
+        wide: world.map.is_wide(a, b),
     })
 }
 
@@ -218,7 +218,7 @@ pub fn bought_express(world: &World, coins: f64) -> News {
     News {
         text: format!("Stone bought express, {coins:.0} coins"),
         sub: "the depots have none for the road".into(),
-        at: world.harbours.keys().next().copied().unwrap_or(0),
+        at: world.map.harbours.keys().next().copied().unwrap_or(0),
     }
 }
 
@@ -239,7 +239,7 @@ pub struct Placed {
 
 /// A building placed, kept a while for razing to give back.
 pub fn placed(world: &mut World, id: EntityId, laid: Vec<Link>, paid: Paid, after: EntityId, now: GameTime) {
-    let Some(b) = world.building(id) else { return };
+    let Some(b) = world.map.building(id) else { return };
     let placed = Placed { id, kind: b.kind, free: b.site.is_none(), laid, paid, at: now, after };
     world.placed.retain(|p| now.saturating_sub(p.at) <= WINDOW);
     world.placed.push(placed);
@@ -251,7 +251,7 @@ pub fn placed(world: &mut World, id: EntityId, laid: Vec<Link>, paid: Paid, afte
 pub fn raze(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime) -> Option<News> {
     let lately = world.placed.iter().position(|p| p.id == id && now.saturating_sub(p.at) <= WINDOW).map(|i| world.placed.remove(i));
     let Some(Placed { kind, laid, paid, free, after, .. }) = lately else {
-        world.remove_building(id);
+        world.map.remove_building(id);
         return None;
     };
     // The street it brought stays if a building since opens onto it.
@@ -319,7 +319,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, owner: OwnerId, now: Gam
     };
     let refused = match &done.act {
         Act::Laid { links, .. } => rests_on(world, links, done.after),
-        Act::Cut(links) => links.iter().any(|l| world.occupied.contains_key(&(l.to.x, l.to.y)) || world.occupied.contains_key(&(l.from.x, l.from.y))).then_some("Something stands where it ran"),
+        Act::Cut(links) => links.iter().any(|l| world.map.occupied.contains_key(&(l.to.x, l.to.y)) || world.map.occupied.contains_key(&(l.from.x, l.from.y))).then_some("Something stands where it ran"),
         Act::Drawn { steps, .. } => rests_on(world, &steps.iter().filter(|s| s.fresh).map(|s| s.link).collect::<Vec<_>>(), done.after),
     };
     if let Some(why) = refused {
@@ -350,7 +350,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, owner: OwnerId, now: Gam
 /// anyone, opens onto them.
 fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static str> {
     let laid: Vec<GridCoord> = links.iter().flat_map(|l| [l.from, l.to]).collect();
-    world
+    world.map
         .objects
         .iter()
         .any(|e| e.id >= after && matches!(e.object, GameObject::Building(ref b) if b.door.is_some_and(|d| laid.contains(&d.street))))
@@ -363,21 +363,21 @@ fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static s
 /// paid given back. What was given back, said.
 #[allow(clippy::too_many_arguments)]
 fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: BuildingKind, laid: &[Link], paid: &Paid, free: bool, now: GameTime) -> String {
-    let site = match world.objects.get(id).map(|e| &e.object) {
+    let site = match world.map.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Building(b)) => b.site.clone(),
         _ => None,
     };
-    let at = world.objects.get(id).and_then(|e| e.position).unwrap_or(GridCoord { x: 0, y: 0 });
+    let at = world.map.objects.get(id).and_then(|e| e.position).unwrap_or(GridCoord { x: 0, y: 0 });
     // None if it stood for nothing.
     let mut materials: Vec<(Good, f64)> = match site {
         Some(site) => site.iter().map(|(&g, s)| (g, s.level)).collect(),
         None if free => Vec::new(),
-        None => crate::blueprint::takes(kind),
+        None => model::blueprint::takes(kind),
     };
     // The van arrives empty.
     let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
     materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
-    world.remove_building(id);
+    world.map.remove_building(id);
     take_up(world, events, laid, now);
     let mut back = vec![refund(world, paid, now)];
     back.push(give_back(world, &materials, at, now));
@@ -391,8 +391,8 @@ fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: Build
 /// The links taken up, newest first, as the demolisher would.
 fn take_up(world: &mut World, events: &mut EventQueue, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
-        if let Some((a, b)) = world.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
-            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
+        if let Some((a, b)) = world.map.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
+            world.drive(events, |t, e| traffic::car::reroute::handle_link_demolish(t, e, a, b, now));
         }
     }
 }
@@ -408,7 +408,7 @@ fn refund(world: &mut World, paid: &Paid, now: GameTime) -> String {
         coins += crate::economy::import(Good::Stone, units - put);
     }
     if coins > 0.0 {
-        let at = world.harbours.keys().next().copied().unwrap_or(0);
+        let at = world.map.harbours.keys().next().copied().unwrap_or(0);
         crate::economy::refunded(world, at, coins, now);
     }
     [(stone > 0.0).then(|| format!("{stone:.0} stone back on the shelf")), (coins > 0.0).then(|| format!("{coins:.0} coins back"))]
@@ -428,7 +428,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
         *all.entry(good).or_default() += units;
     }
     for (good, units) in all.into_iter().filter(|(_, u)| *u > 0.0) {
-        let near = world.nearest(at, world.depots().into_iter().map(|(id, _)| id));
+        let near = world.map.nearest(at, world.map.depots().into_iter().map(|(id, _)| id));
         let mut left = units;
         for (_, depot) in near {
             left -= shelve(world, depot, good, left);
@@ -439,7 +439,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
         coins += crate::economy::import(good, left);
     }
     if coins > 0.0 {
-        let harbour = world.harbours.keys().next().copied().unwrap_or(0);
+        let harbour = world.map.harbours.keys().next().copied().unwrap_or(0);
         crate::economy::refunded(world, harbour, coins, now);
         out.push(format!("{coins:.0} coins back"));
     }
@@ -448,7 +448,7 @@ fn give_back(world: &mut World, goods: &[(Good, f64)], at: GridCoord, now: GameT
 
 /// Units of a good put on a depot's shelf, as far as it has room: how many.
 fn shelve(world: &mut World, depot: EntityId, good: Good, units: f64) -> f64 {
-    let Some(b) = world.building_mut(depot) else { return 0.0 };
+    let Some(b) = world.map.building_mut(depot) else { return 0.0 };
     let Some(stock) = b.stocks.get_mut(&good) else { return 0.0 };
     let put = units.min(stock.cap - stock.level).max(0.0);
     stock.level += put;

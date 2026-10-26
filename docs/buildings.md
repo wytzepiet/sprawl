@@ -46,7 +46,7 @@ takes and makes, what it is built from, and what moves its goods. What kinds the
 has once trade, materials and chains are in: what each is for, what it
 takes and makes, what it is built from, and what moves its goods. The
 numbers are guesses to be tuned in play; the shape is the point. A kind is
-a row in `server/src/blueprint.rs`, and nothing else in the game names
+a row in `server/model/src/blueprint.rs`, and nothing else in the game names
 one.
 
 ## The principles

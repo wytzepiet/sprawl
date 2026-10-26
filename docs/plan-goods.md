@@ -191,7 +191,7 @@ stands decides where the heavy traffic ends.
    (`haul::LOAD`), a van three. A depot's, a maker's and a buyer's pad
    is its stock, delivered in whole packages and opened only where it is
    used; the quay's is the packages standing on it (`Building::pad`, 48).
-   A lift is `HANDLE_MS` a package (`world/pads.rs`), and a vehicle
+   A lift is `HANDLE_MS` a package (`map/pads.rs`), and a vehicle
    stands until its forklift is done (`Car::due`). The market's depth is
    200 packages, and its prices, the letters and the deals count
    packages.

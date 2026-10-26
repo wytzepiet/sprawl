@@ -11,22 +11,22 @@
 //! plan offers the places a tile may stand in the order a hand would mean
 //! them (`sides`): along a road already there, followed, nothing laid; a
 //! one-way beside a road that runs against it, the road moving over
-//! (`World::moving_over`); into a road there; the middle; on along the
+//! (`Map::moving_over`); into a road there; the middle; on along the
 //! side it is on. Of these, the first the world allows (`hand::may_step`),
 //! judged with the drag's next step where it is drawn (`plan`); where
 //! nothing may, the drag stops there. Where roads may stand is the world's
-//! one rule of their shapes (`world/clear.rs`), not the plan's.
+//! one rule of their shapes (`map/clear.rs`), not the plan's.
 //!
 //! Wherever the drag meets a road on its level, it joins it: a junction,
 //! with every turn its angles allow. A road to cross with no turns goes
 //! over or under. A drag is one action to undo (`undo::Act::Drawn`).
 
-use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
+use traffic::event_queue::EventQueue;
+use model::GameTime;
+use model::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
-use crate::world::decks::{across, other, toward, Side, MIDDLE};
-use crate::world::clear::End;
+use map::decks::{across, other, toward, Side, MIDDLE};
+use map::clear::End;
 use crate::world::World;
 
 /// Where on its tile a drag stands: how high, in half-levels, and on which
@@ -72,7 +72,7 @@ pub fn reach(world: &World, owner: OwnerId, stroke: &Stroke) -> Vec<Option<Stand
 /// May a drag with this tool start on this tile: a step out of it, from
 /// anywhere on it, at the pen's height or on a road there.
 pub fn may_start(world: &World, tool: Tool, road: bool, want: u8, at: GridCoord) -> bool {
-    let on: Vec<Place> = world.nodes_on(at).into_iter().map(|(_, id)| place_of(world, id)).collect();
+    let on: Vec<Place> = world.map.nodes_on(at).into_iter().map(|(_, id)| place_of(world, id)).collect();
     STEPS.iter().any(|&(dx, dy)| {
         let tiles = [at, GridCoord { x: at.x + dx, y: at.y + dy }];
         let stroke = Stroke { id: 0, tool, road, tiles: tiles.iter().map(|&at| Spot { at, want }).collect(), start: None };
@@ -94,7 +94,7 @@ pub fn draw(world: &mut World, events: &mut EventQueue, owner: OwnerId, stroke: 
     let mine = matches!(history.last(), Some(Done { act: Act::Drawn { stroke: was, .. }, .. }) if was.id == stroke.id);
     let (was, mut steps, after) = match mine.then(|| history.pop()).flatten() {
         Some(Done { act: Act::Drawn { stroke: was, steps }, after, .. }) => (Some(was), steps, after),
-        _ => (None, Vec::new(), world.objects.next_id()),
+        _ => (None, Vec::new(), world.map.objects.next_id()),
     };
     let express = |steps: &[Laid]| steps.iter().map(|s| s.paid.coins).sum::<f64>();
     let paid_before = express(&steps);
@@ -121,24 +121,24 @@ fn lay_on(world: &mut World, stroke: &Stroke, steps: &mut Vec<Laid>, now: GameTi
         let Some((pf, pt)) = plan(world, stroke, &tiles, i, &froms) else { return };
         let (from, to) = (tiles[i - 1], tiles[i]);
         let link = Link { from, to, one_way: stroke.tool != Tool::Street, road: stroke.road, up: [pf.h, pt.h], sides: [pf.s, pt.s], wide: stroke.tool == Tool::Wide };
-        let fresh = world.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s).is_none();
+        let fresh = world.map.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s).is_none();
         let purse = Purse::of(world);
         if fresh {
             let laid = crate::hand::lay(world, link);
             crate::economy::paved(world, to, laid, now);
-        } else if let Some((a, b)) = world.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s)
-            && world.is_road_between(a, b) != stroke.road
+        } else if let Some((a, b)) = world.map.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s)
+            && world.map.is_road_between(a, b) != stroke.road
         {
-            world.set_priority(a, b, stroke.road);
+            world.map.set_priority(a, b, stroke.road);
         }
-        let (Some(a), Some(b)) = (world.node_in(from, pf.h, pf.s), world.node_in(to, pt.h, pt.s)) else { return };
+        let (Some(a), Some(b)) = (world.map.node_in(from, pf.h, pf.s), world.map.node_in(to, pt.h, pt.s)) else { return };
         steps.push(Laid { link, nodes: [a, b], fresh, paid: purse.paid(world) });
     }
 }
 
 /// Where a node stands on its tile.
 fn place_of(world: &World, id: EntityId) -> Place {
-    Place { h: world.height_of(id), s: world.side_of(id) }
+    Place { h: world.map.height_of(id), s: world.map.side_of(id) }
 }
 
 /// Where the drag may start on its first tile, the likeliest first: where
@@ -176,7 +176,7 @@ fn plan(world: &World, stroke: &Stroke, tiles: &[GridCoord], i: usize, froms: &[
                 // Laid with the next, as a drag beside a road moves it over.
                 let ahead: Vec<GridCoord> = match tiles.get(i + 1) {
                     Some(&next) => vec![next],
-                    None => world.moving_over(to, h, s).into_iter().flat_map(|(m, _)| world.arms_of(m, false)).filter_map(|a| world.objects.get(a)?.position).filter(|&t| t != from).collect(),
+                    None => world.map.moving_over(to, h, s).into_iter().flat_map(|(m, _)| world.map.arms_of(m, false)).filter_map(|a| world.map.objects.get(a)?.position).filter(|&t| t != from).collect(),
                 };
                 for next in ahead {
                     let mut on_to = tiles.to_vec();
@@ -214,7 +214,7 @@ fn heights(world: &World, to: GridCoord, h: u8, want: u8) -> Vec<u8> {
     if h % 2 == 0 {
         out.push(h);
     }
-    let mut there: Vec<u8> = world.nodes_on(to).into_iter().map(|(g, _)| g).filter(|g| g.abs_diff(h) <= 1).collect();
+    let mut there: Vec<u8> = world.map.nodes_on(to).into_iter().map(|(g, _)| g).filter(|g| g.abs_diff(h) <= 1).collect();
     there.sort_by_key(|g| g.abs_diff(want));
     out.extend(there);
     dedup(out)
@@ -230,10 +230,10 @@ fn heights(world: &World, to: GridCoord, h: u8, want: u8) -> Vec<u8> {
 fn sides(world: &World, tool: Tool, tiles: &[GridCoord], i: usize, h: u8, pf: Place) -> Vec<Side> {
     let (from, to) = (tiles[i - 1], tiles[i]);
     let mut out = Vec::new();
-    if let Some(a) = world.node_in(from, pf.h, pf.s) {
-        for (g, id) in world.nodes_on(to) {
+    if let Some(a) = world.map.node_in(from, pf.h, pf.s) {
+        for (g, id) in world.map.nodes_on(to) {
             if g == h && linked(world, a, id) {
-                out.push(world.side_of(id));
+                out.push(world.map.side_of(id));
             }
         }
     }
@@ -241,7 +241,7 @@ fn sides(world: &World, tool: Tool, tiles: &[GridCoord], i: usize, h: u8, pf: Pl
         out.extend(beside(world, tiles, i, h, pf.s));
     }
     let travel = tiles.get(i + 1).map_or(step(from, to), |&n| step(to, n));
-    let mut into: Vec<(EntityId, Side)> = world.nodes_on(to).into_iter().filter(|&(g, _)| g == h).map(|(_, id)| (id, world.side_of(id))).collect();
+    let mut into: Vec<(EntityId, Side)> = world.map.nodes_on(to).into_iter().filter(|&(g, _)| g == h).map(|(_, id)| (id, world.map.side_of(id))).collect();
     into.sort_by_key(|&(id, s)| (!runs(world, id, travel), -toward(wide(pf.s), s).signum()));
     out.extend(into.into_iter().map(|(_, s)| s));
     out.extend([MIDDLE, pf.s]);
@@ -251,18 +251,18 @@ fn sides(world: &World, tool: Tool, tiles: &[GridCoord], i: usize, h: u8, pf: Pl
 /// The free sides of tile `i` beside the roads there, within a level of
 /// `h`, that run against the drag, along the way it comes in or goes on:
 /// the side it is on (`came`) first, then the side it comes from, then its
-/// right. The road there moves over (`World::moving_over`).
+/// right. The road there moves over (`Map::moving_over`).
 fn beside(world: &World, tiles: &[GridCoord], i: usize, h: u8, came: Side) -> Vec<Side> {
     let at = tiles[i];
     let inn = i.checked_sub(1).map(|j| step(tiles[j], at));
     let out = tiles.get(i + 1).map(|&n| step(at, n));
     let back = inn.map(|(x, y)| (-x, -y));
     let mut found = Vec::new();
-    for (g, m) in world.nodes_on(at) {
-        let mut arms = world.arms_of(m, false);
+    for (g, m) in world.map.nodes_on(at) {
+        let mut arms = world.map.arms_of(m, false);
         arms.sort_unstable();
         arms.dedup();
-        let Some(steps) = world.steps_to(m, &arms).filter(|_| g.abs_diff(h) < 2) else { continue };
+        let Some(steps) = world.map.steps_to(m, &arms).filter(|_| g.abs_diff(h) < 2) else { continue };
         // Against it: come in along it, it runs out the way the drag came;
         // or going on along it, it runs in from where the drag goes.
         let in_along = back.filter(|b| steps.contains(b));
@@ -271,7 +271,7 @@ fn beside(world: &World, tiles: &[GridCoord], i: usize, h: u8, came: Side) -> Ve
             (None, Some(o)) => runs(world, m, (-o.0, -o.1)),
             _ => false,
         };
-        let way = match world.side_of(m) {
+        let way = match world.map.side_of(m) {
             MIDDLE => across(&steps),
             s => Some(s),
         };
@@ -279,7 +279,7 @@ fn beside(world: &World, tiles: &[GridCoord], i: usize, h: u8, came: Side) -> Ve
             found.extend([w, other(w)]);
         }
     }
-    found.retain(|&s| s != MIDDLE && world.node_in(at, h, s).is_none());
+    found.retain(|&s| s != MIDDLE && world.map.node_in(at, h, s).is_none());
     let right = inn.or(out).map(|(x, y)| (-y, x));
     let key = |s: Side| [toward(wide(came), s).signum(), back.map_or(0, |b| toward(b, s)).signum(), right.map_or(0, |r| toward(r, s)).signum()];
     found.sort_by_key(|&s| std::cmp::Reverse(key(s)));
@@ -294,17 +294,17 @@ fn wide(s: Side) -> Step {
 /// Does a road run this way through a node: out by an arm that way, or in
 /// by one from the other.
 fn runs(world: &World, id: EntityId, (x, y): Step) -> bool {
-    world.arms_of(id, false).into_iter().any(|a| {
-        let Some(s) = world.steps_to(id, &[a]).map(|v| v[0]) else { return false };
-        (s == (x, y) && world.edges.contains_key(&(id, a))) || (s == (-x, -y) && world.edges.contains_key(&(a, id)))
+    world.map.arms_of(id, false).into_iter().any(|a| {
+        let Some(s) = world.map.steps_to(id, &[a]).map(|v| v[0]) else { return false };
+        (s == (x, y) && world.map.edges.contains_key(&(id, a))) || (s == (-x, -y) && world.map.edges.contains_key(&(a, id)))
     })
 }
 
 /// Is there a road already from here to there that a drag with this tool
 /// runs along: either way for a street, its way for a one-way.
 fn follows(world: &World, tool: Tool, from: GridCoord, pf: Place, to: GridCoord, pt: Place) -> bool {
-    let (Some(a), Some(b)) = (world.node_in(from, pf.h, pf.s), world.node_in(to, pt.h, pt.s)) else { return false };
-    world.edges.contains_key(&(a, b)) && (tool == Tool::Street) == world.edges.contains_key(&(b, a))
+    let (Some(a), Some(b)) = (world.map.node_in(from, pf.h, pf.s), world.map.node_in(to, pt.h, pt.s)) else { return false };
+    world.map.edges.contains_key(&(a, b)) && (tool == Tool::Street) == world.map.edges.contains_key(&(b, a))
 }
 
 /// May the step be laid, the drag going on from it that way, if it does,
@@ -317,7 +317,7 @@ fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord
 }
 
 fn linked(world: &World, a: EntityId, b: EntityId) -> bool {
-    world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))
+    world.map.edges.contains_key(&(a, b)) || world.map.edges.contains_key(&(b, a))
 }
 
 fn step(a: GridCoord, b: GridCoord) -> Step {
@@ -337,7 +337,7 @@ fn dedup<T: PartialEq>(v: Vec<T>) -> Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::Spot;
+    use model::Spot;
 
     /// Open grass, and a hand that draws on it as the brush does: the
     /// whole drag so far, a tile on each time.
@@ -349,7 +349,7 @@ mod tests {
 
     impl Field {
         fn new() -> Field {
-            let mut world = World::meadow(-10..16, -10..10);
+            let mut world = World::from(map::Map::meadow(-10..16, -10..10));
             world.treasury = 1e9;
             Field { world, events: EventQueue::new(), id: 0 }
         }
@@ -363,11 +363,11 @@ mod tests {
         }
 
         fn node(&self, x: i32, y: i32) -> EntityId {
-            self.world.road_node_at(GridCoord { x, y }).unwrap()
+            self.world.map.road_node_at(GridCoord { x, y }).unwrap()
         }
 
         fn turn(&self, a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> bool {
-            crate::world::pathfinding::may_turn(&self.world, self.node(a.0, a.1), self.node(b.0, b.1), self.node(c.0, c.1))
+            map::pathfinding::may_turn(&self.world.map, self.node(a.0, a.1), self.node(b.0, b.1), self.node(c.0, c.1))
         }
     }
 
@@ -395,7 +395,7 @@ mod tests {
         let spots = row.iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
         draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: None }, 0);
         assert_eq!(f.node(1, 0), kept, "a step standing as planned was laid again");
-        assert!(f.world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "the drag was not drawn on");
+        assert!(f.world.map.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "the drag was not drawn on");
         match f.world.undo.get(&1).and_then(|h| h.last()).map(|d| &d.act) {
             Some(Act::Drawn { steps, .. }) => assert_eq!(steps.len(), 5),
             other => panic!("the drag is not one action: {other:?}"),
@@ -410,7 +410,7 @@ mod tests {
         let row: Vec<(i32, i32)> = (0..9).map(|x| (x, 0)).collect();
         f.drag(Tool::Street, &row);
         f.drag(Tool::Street, &[(1, 4), (2, 3), (3, 2), (4, 1), (5, 0)]);
-        assert!(f.world.road_node_at(GridCoord { x: 4, y: 1 }).is_some(), "the diagonal was not laid");
+        assert!(f.world.map.road_node_at(GridCoord { x: 4, y: 1 }).is_some(), "the diagonal was not laid");
         assert!(f.turn((4, 1), (5, 0), (6, 0)) && f.turn((6, 0), (5, 0), (4, 1)), "the shallow turns are not there");
         assert!(!f.turn((4, 1), (5, 0), (4, 0)) && !f.turn((4, 0), (5, 0), (4, 1)), "a car turns sharper than a right angle");
     }
@@ -432,7 +432,7 @@ mod tests {
         let mut f = Field::new();
         f.drag(Tool::OneWay, &[(2, -2), (2, -1), (2, 0), (1, 0), (0, 0)]);
         f.drag(Tool::OneWay, &[(0, 2), (1, 1), (2, 0), (3, -1), (4, -2)]);
-        assert!(f.world.road_node_at(GridCoord { x: 4, y: -2 }).is_some(), "the diagonal stopped at the bend");
+        assert!(f.world.map.road_node_at(GridCoord { x: 4, y: -2 }).is_some(), "the diagonal stopped at the bend");
         assert!(f.turn((1, 1), (2, 0), (3, -1)) && f.turn((2, -1), (2, 0), (1, 0)), "the two do not go on");
         assert!(!f.turn((1, 1), (2, 0), (1, 0)) && !f.turn((2, -1), (2, 0), (3, -1)), "the two turn into each other");
     }
@@ -445,15 +445,15 @@ mod tests {
         let mut f = Field::new();
         f.drag(Tool::OneWay, &[(8, 0), (7, 0), (6, 0), (5, 0), (4, 0), (4, 1), (4, 2), (4, 3)]);
         f.drag(Tool::OneWay, &[(4, 3), (4, 2), (4, 1), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0)]);
-        let pair = |f: &Field| f.world.nodes_on(GridCoord { x: 4, y: 0 }).len();
+        let pair = |f: &Field| f.world.map.nodes_on(GridCoord { x: 4, y: 0 }).len();
         assert_eq!(pair(&f), 2, "no pair round the bend");
         // The westbound one, outside the bend, drawn on west.
-        let outer = f.world.nodes_on(GridCoord { x: 4, y: 0 }).into_iter().map(|(_, id)| id).find(|&id| f.world.arms_of(id, false).len() == 1 || f.world.side_of(id)[1] < 0).unwrap();
-        let side = f.world.side_of(outer);
+        let outer = f.world.map.nodes_on(GridCoord { x: 4, y: 0 }).into_iter().map(|(_, id)| id).find(|&id| f.world.map.arms_of(id, false).len() == 1 || f.world.map.side_of(id)[1] < 0).unwrap();
+        let side = f.world.map.side_of(outer);
         f.id += 1;
         let spots = [(4, 0), (3, 0), (2, 0)].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-        draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side }) }, 0);
-        assert!(f.world.road_node_at(GridCoord { x: 2, y: 0 }).is_some(), "the outer road could not go on past the bend");
+        draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(model::Stand { h: 0, side }) }, 0);
+        assert!(f.world.map.road_node_at(GridCoord { x: 2, y: 0 }).is_some(), "the outer road could not go on past the bend");
         assert_eq!(pair(&f), 2, "the pair came apart");
     }
 
@@ -468,13 +468,13 @@ mod tests {
             let mut f = Field::new();
             f.drag(Tool::OneWay, &[(0, -4), (1, -4), (2, -4), (3, -4), (4, -4), (5, -4), (6, -4), (7, -4), (8, -4), (9, -4), (10, -4)]);
             f.drag(Tool::OneWay, &[(10, -4), (9, -4), (8, -4), (7, -4), (6, -4), (5, -4), (4, -4), (3, -4), (2, -4), (1, -4), (0, -4)]);
-            let westbound = f.world.nodes_on(GridCoord { x: 4, y: -4 }).into_iter().map(|(_, id)| f.world.side_of(id)).find(|s| s[1] < 0).unwrap();
+            let westbound = f.world.map.nodes_on(GridCoord { x: 4, y: -4 }).into_iter().map(|(_, id)| f.world.map.side_of(id)).find(|s| s[1] < 0).unwrap();
             let up = |f: &mut Field| {
                 f.id += 1;
                 let tiles = [(4, -4), (4, -5), (5, -5), (6, -5), (7, -5), (8, -5), (9, -5)];
                 for n in 2..=tiles.len() {
                     let spots = tiles[..n].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-                    draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side: westbound }) }, 0);
+                    draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(model::Stand { h: 0, side: westbound }) }, 0);
                 }
             };
             let down = |f: &mut Field| f.drag(Tool::OneWay, &[(9, -5), (8, -5), (7, -5), (6, -5), (5, -5), (4, -5), (3, -4)]);
@@ -486,7 +486,7 @@ mod tests {
                 up(&mut f);
             }
             for (x, y) in [(4, -5), (9, -5)] {
-                assert_eq!(f.world.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, up first: {up_first}");
+                assert_eq!(f.world.map.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, up first: {up_first}");
             }
         }
     }
@@ -503,9 +503,9 @@ mod tests {
             let back: Vec<(i32, i32)> = first.iter().rev().copied().collect();
             f.drag(Tool::OneWay, &back);
             for &(x, y) in &first[1..first.len() - 1] {
-                assert_eq!(f.world.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, turning {turn}");
+                assert_eq!(f.world.map.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, turning {turn}");
             }
-            assert!(f.world.clashing().is_empty(), "roads run into each other, turning {turn}");
+            assert!(f.world.map.clashing().is_empty(), "roads run into each other, turning {turn}");
         }
     }
 
@@ -523,14 +523,14 @@ mod tests {
                 f.drag(Tool::OneWay, path);
             }
             let end = f.node(6, -5);
-            let mut arms = f.world.arms_of(end, false);
+            let mut arms = f.world.map.arms_of(end, false);
             arms.sort_unstable();
             arms.dedup();
             assert_eq!(arms.len(), 3, "the street's end joins both, out first: {out_first}");
             for x in 7..=11 {
-                assert_eq!(f.world.nodes_on(GridCoord { x, y: -5 }).len(), 2, "({x}, -5) not a pair, out first: {out_first}");
+                assert_eq!(f.world.map.nodes_on(GridCoord { x, y: -5 }).len(), 2, "({x}, -5) not a pair, out first: {out_first}");
             }
-            assert!(f.world.clashing().is_empty(), "roads run into each other, out first: {out_first}");
+            assert!(f.world.map.clashing().is_empty(), "roads run into each other, out first: {out_first}");
         }
     }
 }

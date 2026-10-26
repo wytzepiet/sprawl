@@ -9,7 +9,7 @@
  *
  * A stack of its own beside the game's — server on 4811, client on 4810 — so
  * it never touches the running game or its world. The server builds
- * `server/fixtures/*.txt` fresh (see `server/src/fixtures.rs`), at noon and
+ * `server/fixtures/*.txt` fresh (see `server/map/src/fixtures.rs`), at noon and
  * paused; this points the camera at each and writes `.dev/shots/<name>.png`
  * and `.dev/shots/sheet.png`, every fixture on one page.
  */

@@ -354,7 +354,7 @@ the middle, which is why the sea became the door in the first place; and
 a player who can pan anywhere is exploring by looking, which is what the
 fog denied.
 
-**To bring back.** `revealed` and `reveal_around` in `world/mod.rs`, the
+**To bring back.** `revealed` and `reveal_around` in `map/src/lib.rs`, the
 chunk reveal in the game loop, `FogOfWar.ts` and the camera clamp. Only
 if the island is ever bigger than a player should see at once. Last lived
 at `df49b81`.

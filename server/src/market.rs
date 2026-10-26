@@ -26,14 +26,14 @@
 //! it, sell when it rises to it. It is read each hour, and booked as far
 //! as the deck and the treasury go.
 
+use model::market::{When, Quote, Prices};
 use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 use crate::economy::world_price;
-use crate::engine::GameTime;
-use crate::protocol::{Good, DAY_MS};
+use model::GameTime;
+use model::{Good, DAY_MS};
 use crate::world::World;
 
 /// The goods on the market, in the order the list shows them.
@@ -68,19 +68,6 @@ const LASTS: f64 = 0.85;
 const PUSH: f64 = 0.12;
 const BACK: f64 = 0.03;
 
-/// A "when" order: so many packages of a good, bought once the price falls
-/// to this, or sold once it rises to it.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct When {
-    #[ts(type = "number")]
-    pub id: u64,
-    pub good: Good,
-    pub out: bool,
-    pub packages: u32,
-    pub price: f64,
-}
-
 /// The market as the world keeps it, and saves it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Market {
@@ -96,34 +83,6 @@ pub struct Market {
     /// Something a client would draw changed since it was last sent.
     #[serde(skip)]
     pub changed: bool,
-}
-
-/// A good on the market as the clients are sent it: the price, the
-/// band, what the town pays and gets at its harbour, and the week.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Quote {
-    pub good: Good,
-    pub price: f64,
-    pub floor: f64,
-    pub ceiling: f64,
-    /// How far a package moves the price, a unit's: each is paid at the
-    /// price it moved to.
-    pub step: f64,
-    /// The price each hour kept, oldest first; the last is the hour just
-    /// gone.
-    pub history: Vec<f64>,
-}
-
-/// The market's part of what the clients are sent, when it changes.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Prices {
-    pub goods: Vec<Quote>,
-    pub orders: Vec<When>,
-    /// The hour the last price is for, from the world's start.
-    #[ts(type = "number")]
-    pub hour: u64,
 }
 
 impl Market {
@@ -211,10 +170,10 @@ fn noise(seed: u32, hour: u64, mayor: u64, good: u64) -> f64 {
 /// Every hour gone by since the market last stepped, stepped, and the
 /// orders whose price came read. Read each step of the game: no wake of
 /// its own, so a level or a replay with no market plays as it did.
-pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQueue, now: GameTime) {
+pub fn hour(world: &mut World, events: &mut traffic::event_queue::EventQueue, now: GameTime) {
     let mut traded = false;
     while (world.market.hour + 1) * HOUR <= now {
-        world.market.step(world.terrain_seed);
+        world.market.step(world.map.terrain_seed);
         // An order is read at the hour's price, and booked as far as it goes.
         for i in (0..world.market.orders.len()).rev() {
             let o = world.market.orders[i];
@@ -240,7 +199,7 @@ pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQue
 /// sell them, to wait at the harbour for a lorry: each at the price it
 /// moves to. How many were booked.
 pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
-    let Some(&harbour) = world.harbours.keys().next() else { return 0 };
+    let Some(&harbour) = world.map.harbours.keys().next() else { return 0 };
     for n in 0..packages {
         let price = world.market.next(good, out);
         if !crate::orders::book(world, harbour, good, out, None, price, None) {
@@ -256,7 +215,7 @@ pub fn order(world: &mut World, good: Good, out: bool, packages: u32, price: f64
     if packages == 0 || !price.is_finite() {
         return;
     }
-    let id = world.objects.reserve_id();
+    let id = world.map.objects.reserve_id();
     world.market.orders.push(When { id, good, out, packages, price });
     world.market.changed = true;
 }

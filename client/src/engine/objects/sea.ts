@@ -6,7 +6,7 @@ import type { Sail, Pose } from "../../generated";
 
 /**
  * What the harbour moves, shaped: the lorries' and vans' flatbeds, the
- * ferry, and how the ferry goes, by the server's clock (`world/sea.rs`).
+ * ferry, and how the ferry goes, by the server's clock (`map/sea.rs`).
  * Shapes alone; `CarObject.tsx` places them.
  */
 
@@ -105,7 +105,7 @@ export const LORRY_SHAPE = shape([
  * The ferry: a double-ended car ferry, as small islands' are, the same
  * at both ends, so it never turns. A white hull, dark at the waterline,
  * long and broad, bigger than true to the map (`FERRY_LENGTH` in
- * `world/sea.rs`); an open deck the pallets and the settlers' cars stand
+ * `map/sea.rs`); an open deck the pallets and the settlers' cars stand
  * on, between low bulwarks; and amidships its bridge on two towers,
  * high over the deck, its roof in the harbours' blue. Its middle on the
  * origin, ahead +y; the deck at z = 0.

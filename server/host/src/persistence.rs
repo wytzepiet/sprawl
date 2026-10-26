@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use sprawl::protocol::{GameObject, GameObjectEntry};
+use model::{GameObject, GameObjectEntry};
 
 /// Every object a row of its JSON, and the rest of the world one row more.
 const SCHEMA: &str = "
@@ -66,7 +66,7 @@ pub struct Meta {
     /// The mayor's coins.
     pub treasury: f64,
     /// The town's missions, open and finished, in order.
-    pub missions: Vec<sprawl::missions::Mission>,
+    pub missions: Vec<model::missions::Mission>,
     /// The market's prices, their week and the orders waiting.
     pub market: sprawl::market::Market,
 }
@@ -176,7 +176,7 @@ pub fn kept(entry: &GameObjectEntry) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sprawl::protocol::{Car, CarRole, GridCoord, Sail};
+    use model::{Car, CarRole, GridCoord, Sail};
 
     /// A save of its own, gone when the test is.
     struct Scratch(std::path::PathBuf);

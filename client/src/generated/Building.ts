@@ -36,7 +36,7 @@ stocks: { [key in Good]?: Stock },
 site: { [key in Good]?: Stock } | null, 
 /**
  * A harbour's quay: the packages standing on it, off the ferry for
- * the town or brought by a lorry for the ferry (`world/sea.rs`),
+ * the town or brought by a lorry for the ferry (`map/sea.rs`),
  * each in a slot of the pad the client lays out, in order.
  */
 pad: Array<Package>, 
@@ -59,7 +59,7 @@ lorries: number,
 /**
  * A farm's land: the grass it claimed when a street reached it, each
  * tile at a stage of the cycle the tractor drives it through
- * (`world/fields.rs`). A tile built over is dropped.
+ * (`map/fields.rs`). A tile built over is dropped.
  */
 land: Array<Tile>, 
 /**

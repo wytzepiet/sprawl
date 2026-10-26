@@ -381,7 +381,7 @@ What changes, in the order it can be built and seen:
    and `facing`.
    The rule lives only on the server.
 2. **The server.** A building is its tiles: `blueprint::plot`, facings
-   and the ring in `world/lots.rs` are deleted, its drive pairs and yards
+   and the ring in `map/lots.rs` are deleted, its drive pairs and yards
    kept; the yard is read off the building's shape by the rule `facts.ts`
    draws it with, ported (a yard must be what the grid draws, or the cars
    stand on the lawn).

@@ -1,0 +1,12 @@
+# The islands and their mountains, from a seed: what the world is built on.
+[package]
+name = "land"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fixed = { path = "../fixed" }
+serde = { version = "1", features = ["derive"] }
+ts-rs = { version = "10", features = ["serde-compat"] }
+rand = { version = "0.9", default-features = false, features = ["std"] }
+noise = "0.9"
