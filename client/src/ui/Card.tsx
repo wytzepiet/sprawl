@@ -147,7 +147,7 @@ function PileBody() {
     <Show when={pile()}>
       {(p) => (
         <Section title="Your lorry can bring it to">
-          <For each={destinations(p().at, p().good).slice(0, 5)} fallback={<text size={13} soft>Nowhere wants it yet</text>}>
+          <For each={destinations(p().at, p().good).slice(0, 5)} fallback={<text size={13} soft>Nowhere takes it yet: place a site</text>}>
             {(id) => (
               <Row label={named(id)}>
                 <Btn onTap={() => bring(id)}>Bring</Btn>
