@@ -37,6 +37,13 @@ fn island(world: &mut World) {
     println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
 }
 
+/// A new town: its harbour seated on the coast by the spawn, its first
+/// ferry on the way with the mayor's lorry.
+fn found(world: &mut World, now: GameTime) {
+    let at = sprawl::hand::seat_harbour(world, &mut sprawl::engine::event_queue::EventQueue::new(), now);
+    println!("harbour: seated at {at:?}");
+}
+
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 /// How far one tick may overrun before the loop says so: a quarter of a
 /// second is twenty-five ticks of lag, well past anything a debug build
@@ -57,7 +64,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             world.terrain_seed = new_seed();
         }
         island(&mut world);
-        if !world.objects.is_empty() {
+        if world.objects.is_empty() {
+            found(&mut world, sim_time);
+        } else {
             world.restore();
             println!("loaded {} objects from db", world.objects.len());
         }
@@ -69,6 +78,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         let mut world = World::new();
         world.terrain_seed = new_seed();
         island(&mut world);
+        found(&mut world, 0);
         println!("reset: world cleared, terrain regenerated");
         world
     });

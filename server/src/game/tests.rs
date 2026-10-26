@@ -1123,7 +1123,7 @@ fn the_opening_from_the_harbour() {
     use crate::world::sea::FIRST_CALL;
     let mut game = game(street());
     let harbour = harbour_of(&game.world);
-    assert_eq!(opening(&mut game), [true, false, false, false, false], "the harbour stands, and nothing else");
+    assert_eq!(opening(&mut game), [false, false, false, false], "the harbour stands, and nothing else is done");
     let lorry = crate::haul::mayors(&game.world).expect("the harbour has no lorry of the mayor's");
     assert_eq!(car_of(&game.world, lorry).owner, harbour);
     let world = &game.world;
@@ -1188,7 +1188,7 @@ fn the_opening_from_the_harbour() {
     assert!(car_of(&game.world, lorry).cargo.is_empty(), "timber left on the lorry");
     let yard = |w: &World| building_of(w, mill).stocks[&Good::Timber].level;
     assert_eq!(yard(&game.world), crate::haul::LOAD as f64 * Good::Timber.per_package(), "the first sawmill's yard is not a load");
-    assert_eq!(opening(&mut game), [true, true, false, false, false], "the sawmill stands");
+    assert_eq!(opening(&mut game), [true, false, false, false], "the sawmill stands");
 
     // Two houses beside it, of its own timber, a bundle each.
     let houses: Vec<EntityId> = [SAWMILL_X - 6, SAWMILL_X - 9]
@@ -1241,7 +1241,7 @@ fn the_opening_from_the_harbour() {
     let sold = game.world.town.on(game.now).sold.get(&Good::Timber).copied().unwrap_or(0.0);
     assert!(sold > 0.0 && sold <= Good::Timber.per_package() * crate::market::Market::ceiling(Good::Timber) + 1e-6, "the timber went out for {sold}");
     assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
-    assert_eq!(opening(&mut game), [true, true, true, true, false], "the settlers came and the timber sold");
+    assert_eq!(opening(&mut game), [true, true, true, false], "the settlers came and the timber sold");
 
     // A depot, the town's first, stands at once; its lorry fetches what
     // is left on the quay by itself.
@@ -1260,7 +1260,7 @@ fn the_opening_from_the_harbour() {
     assert!(game.world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
 
     // The opening done, and paid; the trunk opens on the market.
-    assert_eq!(opening(&mut game), [true; 5], "a depot stands");
+    assert_eq!(opening(&mut game), [true; 4], "a depot stands");
     let paid = game.world.lumps.iter().filter(|l| l.building == harbour && l.good.is_none()).map(|l| l.coins).sum::<f64>();
     assert!((paid - 100.0).abs() < 1e-9, "the opening paid {paid}");
     // The trunk alone: the market's orders come and go beside it.

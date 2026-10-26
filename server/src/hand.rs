@@ -108,6 +108,33 @@ fn place(world: &mut World, events: &mut EventQueue, kind: BuildingKind, at: Gri
     None
 }
 
+/// How far from a new town's harbour the woods must start, in tiles: its
+/// first sawmill's road is a short one.
+const WOODS: i32 = 24;
+
+/// A new town's harbour, seated by the spawn rather than the hand: on the
+/// coast nearest the island's origin where it fits and woods are near,
+/// placed as the hand would place it, its street and all. Where it went.
+pub fn seat_harbour(world: &mut World, events: &mut EventQueue, now: GameTime) -> Option<GridCoord> {
+    use crate::protocol::TerrainType::{Forest, Sea, Water};
+    let t = |x: i32, y: i32| world.terrain.get(&(x, y)).copied();
+    let mut coast: Vec<(i32, i32)> = world
+        .terrain
+        .iter()
+        .filter(|&(&(x, y), &v)| v == Sea && [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| t(x + dx, y + dy).is_some_and(|n| n != Sea && n != Water)))
+        .map(|(&k, _)| k)
+        .collect();
+    coast.sort_by_key(|&(x, y)| (x * x + y * y, x, y));
+    let woods = |x: i32, y: i32| (x - WOODS..=x + WOODS).any(|wx| (y - WOODS..=y + WOODS).any(|wy| t(wx, wy) == Some(Forest)));
+    let seat = coast.into_iter().find_map(|(x, y)| {
+        let at = GridCoord { x, y };
+        let facing = world.facing_for(BuildingKind::Harbour, at)?;
+        (world.fit(BuildingKind::Harbour, at, facing).is_ok() && woods(x, y)).then_some((at, facing))
+    })?;
+    place(world, events, BuildingKind::Harbour, seat.0, Some(seat.1), now);
+    Some(seat.0)
+}
+
 /// A step of the hand, built. Whether the step was taken.
 pub fn take_step(world: &mut World, events: &mut EventQueue, step: Build, now: GameTime) -> bool {
     let Build { tool, from, to, road, .. } = step;
@@ -372,6 +399,23 @@ mod tests {
             }
         }
         world
+    }
+
+    /// A new town's harbour is seated on the coast nearest the origin
+    /// where woods are near, whole, with its street.
+    #[test]
+    fn a_new_town_is_seated_on_the_coast() {
+        let mut world = bare_coast();
+        for x in 30..40 {
+            for y in -20..-10 {
+                world.terrain.insert((x, y), crate::protocol::TerrainType::Forest);
+            }
+        }
+        let at = seat_harbour(&mut world, &mut EventQueue::new(), 0).expect("no seat on a coast");
+        let id = world.occupied[&(at.x, at.y)];
+        assert!(world.door_of(id).is_some() && world.berth(id).is_some(), "it does not stand as the hand's");
+        assert!(30 - at.x <= super::WOODS && at.x > 0, "it is not the nearest seat by the woods: {at:?}");
+        assert!(seat_harbour(&mut World::new(), &mut EventQueue::new(), 0).is_none(), "seated with no coast");
     }
 
     /// A harbour is placed whole, its back to the sea, with a street of
