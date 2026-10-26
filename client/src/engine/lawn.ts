@@ -6,19 +6,20 @@
  * there a clover flower or three. On its own, for a worker to bake
  * (`bakeWorker.ts`).
  */
-export const LAWN_SIDE = 1024;
-export const LAWN_TILES = 16;
+export const LAWN_SIDE = 2048;
+export const LAWN_TILES = 8;
 
-/** A blade's length and half its width, in texels, a texel about a pixel
- *  at the usual zoom; and how many times over they cover the lawn. */
-const BLADE = [4, 8];
-const HALF_WIDTH = 1.2;
+/** A blade's length and half its width, in texels, four texels to a
+ *  pixel at the usual zoom, so the blades stay sharp zoomed in; and how
+ *  many times over they cover the lawn. */
+const BLADE = [8, 16];
+const HALF_WIDTH = 2.4;
 const COVER = 2.5;
 /** Clover: this many heads to a tile, of one to three flowers each this
  *  many texels across, this far apart. */
 const CLOVER = 0.6;
-const FLOWER = 3.6;
-const SPREAD = 7;
+const FLOWER = 14.4;
+const SPREAD = 28;
 
 /** Every texel's slope, across and up the square (red, green, from -1 to
  *  1 as 0 to 1), its height (blue, 0 in the deepest crease), and whether a
@@ -58,8 +59,8 @@ export function bakeLawn(): Uint8Array {
     for (let f = 0; f < flowers; f++) {
       const [cx, cy] = [hx + (random() - 0.5) * SPREAD, hy + (random() - 0.5) * SPREAD];
       const r = FLOWER / 2;
-      for (let dy = -3; dy <= 3; dy++) {
-        for (let dx = -3; dx <= 3; dx++) {
+      for (let dy = -Math.ceil(r); dy <= r; dy++) {
+        for (let dx = -Math.ceil(r); dx <= r; dx++) {
           const [x, y] = [Math.floor(cx) + dx, Math.floor(cy) + dy];
           const d2 = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) / (r * r);
           if (d2 >= 1) continue;
@@ -71,7 +72,8 @@ export function bakeLawn(): Uint8Array {
       }
     }
   }
-  const at = (x: number, y: number) => height[wrap(x, y)];
+  // A blade as tall as it is wide, whatever the texels.
+  const at = (x: number, y: number) => height[wrap(x, y)] * HALF_WIDTH;
   const out = new Uint8Array(n * n * 4);
   const byte = (u: number) => Math.round(Math.min(1, Math.max(0, u)) * 255);
   for (let y = 0; y < n; y++) {
