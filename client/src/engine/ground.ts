@@ -10,6 +10,8 @@ import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_SIDE, RIPPLE_TILES } from "./sand";
 import recipe from "./sand.ts?raw";
+import { LAWN_SIDE, LAWN_TILES } from "./lawn";
+import lawnRecipe from "./lawn.ts?raw";
 import { bakedTexture } from "./bakeCache";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
@@ -26,20 +28,21 @@ import { fillTriangles } from "./raster";
  * lying lower, so it turns its facing out as it nears them. Each chunk's
  * land is one draw.
  *
- * And a fine grain, so the land reads as a surface rather than one sheet
- * of plastic: one tiling texture of noise, read by where on the map a pixel
- * lies, its slope tilting the land's facing a little, as if it were bumps
- * that take the light.
+ * And the grass a lawn (`lawn.ts`), rather than one sheet of felt: one
+ * tiling texture of short blades, read by where on the map a pixel lies,
+ * its slope tilting the land's facing, each blade taking the light, its
+ * creases a little darker, in their own shade; and the grass alone has
+ * the clover flowers in it.
  */
 
-/** The grain's side, in texels, how many tiles it spans, and how far its
- *  slope tilts the land's facing. A texel is about a pixel at the usual
- *  zoom; further out the mipmaps smooth it away. */
+/** The grain's side, in texels, and how many tiles it spans. */
 const SIDE = 256;
 const SPAN = 4;
-const BUMP = 0.35;
-/** The bumps are finer than the glints: the grain over this many tiles. */
-const BUMP_SPAN = 6;
+/** How far the blades' slope tilts the land's facing, how much darker
+ *  their deepest creases are, and the clover's colour. */
+const BUMP = 0.45;
+const CREASE = 0.1;
+const CLOVER = [0.96, 0.95, 0.9];
 /** Grass is mottled, as a field is from the air: its colour lighter and a
  *  touch yellower in places, darker and a touch bluer in others, in broad
  *  patches this many tiles across and small ones this many, by up to this
@@ -139,6 +142,17 @@ export function grain(engine: EngineContext): Texture2D {
   return texture;
 }
 
+/** The lawn, an engine's: level until the worker has baked them,
+ *  or read back from the last bake (`bakeCache.ts`). */
+const lawn = (engine: EngineContext): Texture2D =>
+  bakedTexture(engine, "lawn", lawnRecipe, [LAWN_SIDE, LAWN_SIDE, () => new Uint8Array(LAWN_SIDE * LAWN_SIDE * 4).map((_, k) => [128, 128, 255, 0][k % 4])], {
+    mipmaps: true,
+    minFilter: "linear",
+    magFilter: "linear",
+    addressModeU: "repeat",
+    addressModeV: "repeat",
+  });
+
 /** The sand's ripples, an engine's: level until the worker has baked them,
  *  or read back from the last bake (`bakeCache.ts`). */
 const sand = (engine: EngineContext): Texture2D =>
@@ -205,7 +219,8 @@ const [slateSpan, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(PATCHES_IN)
 // How far up a beach the water runs, at most (`swashFn`); and wet sand,
 // this much darker.
 const [swash, wet] = [n(SWASH), n(0.18)];
-const [span, origin, slotSpan, bump, bumpSpan, step] = [n(SPAN), n(ORIGIN), n(SLOT / DENSITY), n(BUMP), n(BUMP_SPAN), n(BUMP_SPAN / SIDE)];
+const clover = CLOVER.map(n).join(", ");
+const [span, origin, slotSpan, bump, crease, lawnTiles] = [n(SPAN), n(ORIGIN), n(SLOT / DENSITY), n(BUMP), n(CREASE), n(LAWN_TILES)];
 // Two more random bytes of the same texel, a whole number of texels on.
 const [glints, glintTilt, glint, other1, other2] = [n(1 - GLINTS), n(GLINT_TILT), n(GLINT), `${n(97 / SIDE)}, ${n(41 / SIDE)}`, `${n(23 / SIDE)}, ${n(151 / SIDE)}`];
 // Half a texel in from the tile's edge: whether a pixel is on the share is
@@ -236,8 +251,8 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
       { name: "vGroundX", type: "vec2f" },
       { name: "vGroundY", type: "vec2f" },
     ],
-    getSamplers: () => ["groundGrain", "groundAtlas", "groundSlate", "groundRipple", "sandRipples"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: atlas.upload() }, { texture: slate(engine) }, { texture: ripples(engine) }, { texture: sand(engine) }),
+    getSamplers: () => ["groundGrain", "groundAtlas", "groundSlate", "groundRipple", "sandRipples", "groundLawn"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: atlas.upload() }, { texture: slate(engine) }, { texture: ripples(engine) }, { texture: sand(engine) }, { texture: lawn(engine) }),
     getUniforms: () => ({
       ubo: [
         { name: "groundGrid", type: "vec2<f32>" },
@@ -254,8 +269,7 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
         ? { CUSTOM_VERTEX_MAIN_END: `out.vGroundGrass = groundGrass; out.vGroundAt = position.xy; out.vGroundSlot = groundSlot; out.vGroundLook = groundLook; out.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash"),
-            CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundBump = vec2f(textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy + vec2f(${step}, 0.)) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy - vec2f(${step}, 0.)) / ${bumpSpan}).r,
-  textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy + vec2f(0., ${step})) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy - vec2f(0., ${step})) / ${bumpSpan}).r);
+            CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundLawn = textureSample(groundLawn, groundLawnSampler, input.worldPos.xy / ${lawnTiles});
 let groundGrainUv = input.worldPos.xy / ${span};
 let groundGlint = vec3f(textureSample(groundGrain, groundGrainSampler, groundGrainUv).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other1})).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other2})).r);
 let groundGlinting = input.vGroundSlot.w * step(${glints}, groundGlint.x);
@@ -290,9 +304,10 @@ var groundSwash = 0.;
 if (input.vGroundSlot.w > 0.) { groundSwash = input.vGroundSlot.w * ${swash} * groundWash(material.groundTime, input.worldPos.xy) * (0.6 + 0.8 * groundFrayBy); }
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * input.vGroundGrass.x * ${fray})) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., input.vGroundLook.a * ${glint} + groundGlinting);
-baseColor = baseColor * input.vGroundLook.rgb * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
+baseColor = baseColor * input.vGroundLook.rgb * (1. - ${crease} * input.vGroundSlot.z * (1. - groundLawn.b)) * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
+baseColor = mix(baseColor, vec3f(${clover}), groundLawn.a * input.vGroundGrass.y);
 roughness = mix(roughness, 1., input.vGroundGrass.w);
-N = normalize(N - vec3f(groundBump * ${bump} * input.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * input.vGroundGrass.z, 0.) - vec3f(groundRipple * smoothstep(${swash}, ${swash} * 1.6, groundD.g), 0.));
+N = normalize(N - vec3f((groundLawn.rg * 2. - 1.) * ${bump} * input.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * input.vGroundGrass.z, 0.) - vec3f(groundRipple * smoothstep(${swash}, ${swash} * 1.6, groundD.g), 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
   let groundTx = vec2f(groundTexel.x, 0.);
