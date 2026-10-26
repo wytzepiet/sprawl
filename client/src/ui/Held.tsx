@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { stocks } from "../state/market";
 import { aim } from "./buildMode";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { BAD, GOOD, onMap } from "./kit";
+import { BAD, GOOD, onMap, ROUND } from "./kit";
 import type { Good } from "../generated";
 
 /** What the town has of a good on its standing depots' shelves; or,
@@ -30,7 +30,7 @@ export default function Held() {
   const [size, setSize] = createSignal([0, 0]);
   return (
     <Show when={aim() && at()}>
-      <glass layer="toast" at={{ left: 0, top: 0 }} x={at()!.sx - size()[0] / 2} y={at()!.sy - size()[1]} round={16} pad={{ x: 14, y: 8 }} gap={2} onSize={(w, h) => setSize([w, h])}>
+      <glass layer="toast" at={{ left: 0, top: 0 }} x={at()!.sx - size()[0] / 2} y={at()!.sy - size()[1]} round={ROUND} pad={{ x: 14, y: 8 }} gap={2} onSize={(w, h) => setSize([w, h])}>
         <box dir="row" align="center" gap={10}>
           <text size={13} weight={600}>{BLUEPRINTS[aim()!.kind].label}</text>
           <For each={lines()}>

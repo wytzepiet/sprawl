@@ -1,7 +1,7 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createMemo, createSignal, For, onCleanup, untrack, type Accessor } from "solid-js";
 import { follow, type Feel } from "../engine/spring";
-import { Line, Press } from "./kit";
+import { Line, Press, ROUND } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 
 /**
@@ -119,7 +119,7 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
               setPull(0);
             };
             return (
-              <glass layer={`page:${s.page.key}`} round={30} at={{ left: 0, bottom: 0 }} w={props.width} h={Math.max(1, h())} y={y()} scale={sc()} origin={[0.5, 1]} clip onScroll={drag}>
+              <glass layer={`page:${s.page.key}`} round={ROUND} at={{ left: 0, bottom: 0 }} w={props.width} h={Math.max(1, h())} y={y()} scale={sc()} origin={[0.5, 1]} clip onScroll={drag}>
                 <box w={props.width} y={-scroll()} opacity={Math.max(0, Math.min(1, ink()))} onSize={(_, hh) => setOwn(hh)}>
                   <box at={{ left: props.width / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
                   {untrack(() => s.page.view())}

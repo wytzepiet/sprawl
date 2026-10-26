@@ -9,7 +9,7 @@ import Dock from "./Dock";
 import Board from "./Board";
 import Ring from "./Ring";
 import Newer from "./Newer";
-import { BEZEL, CORNER, view, wide } from "./kit";
+import { BEZEL, CORNER, view, wide, ROUND } from "./kit";
 
 /** Everything the GPU draws over the town, the first under the rest:
  *  what is pinned to the map; the bezel round the game, and grown out of
@@ -22,7 +22,7 @@ export default function Hud() {
       <Cargo />
       <Lumps />
       <Held />
-      <glass layer="bezel" hole at={{ left: BEZEL, right: BEZEL, top: BEZEL }} h={view().h - 2 * BEZEL} round={22} />
+      <glass layer="bezel" hole at={{ left: BEZEL, right: BEZEL, top: BEZEL }} h={view().h - 2 * BEZEL} round={ROUND} />
       <Clock />
       <Meter />
       <box at={{ left: 0, right: 0, top: BEZEL + CORNER + (wide() ? 14 : 12) }} align="center">

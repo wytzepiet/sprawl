@@ -26,8 +26,10 @@ import { SQUIRCLE_REACH, WGSL_SQUIRCLE, type Layer, type Palette, type Pane } fr
 /** The most panes, and runs of them, drawn. */
 const PANES = 64;
 const RUNS = 16;
-/** How far panes melt into each other, in CSS pixels: the fillet where an island leaves the bezel. */
-const MELT = 26;
+/** How far panes melt into each other, in CSS pixels: the fillet where
+ *  an island leaves the bezel, as wide as the black's corners reach
+ *  (kit's ROUND, squircled). */
+const MELT = 30 * SQUIRCLE_REACH;
 /** Room round a run, in CSS pixels, for its edge's softening. */
 const ROOM = 2;
 

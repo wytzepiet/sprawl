@@ -13,7 +13,7 @@ import { eye } from "../engine/Camera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
-import { Appear, BEZEL, Btn, COIN, coins, Crest, CORNER, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
+import { Appear, BEZEL, Btn, COIN, coins, Crest, CORNER, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide, ROUND } from "./kit";
 import { Stack } from "./stack";
 import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
@@ -54,7 +54,7 @@ export default function Feed() {
   createEffect(() => notes().length < 2 && setSpread(false));
   return (
     <box at={wide() ? { right: BEZEL + 14, top: TOP() } : { left: BEZEL + 10, right: BEZEL + 10, top: TOP() }} w={wide() ? 340 : undefined} gap={8} opacity={boardOpen() ? 0 : 1}>
-      <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={20}>
+      <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={ROUND}>
         {(n) => {
           const note = n();
           switch (note.kind) {

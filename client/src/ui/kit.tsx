@@ -30,6 +30,9 @@ export const BEZEL = 9;
 export const DROP = 40;
 /** How tall the corners are: the clock, the level and the purse. */
 export const CORNER = 40;
+/** The black's corner, everywhere but a pill: the dock's, the window's,
+ *  every card's. The melt between them is as wide (`glass.ts`, MELT). */
+export const ROUND = 30;
 
 /** Something to press: it rises under the pointer, gives under the finger and springs back,
  *  by a few pixels whatever its size: a button's twelfth, a row's hair. */

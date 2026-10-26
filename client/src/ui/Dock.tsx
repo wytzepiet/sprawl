@@ -12,7 +12,7 @@ import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsHead, take } fro
 import { BuildBody, BuildHead, info } from "./Build";
 import { MarketBody, MarketHead, setView } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
-import { BEZEL, DROP, Fade, Press, view, wide } from "./kit";
+import { BEZEL, DROP, Fade, Press, view, wide, ROUND } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "~ui/jsx-runtime";
 
@@ -133,7 +133,7 @@ export default function Dock() {
       <box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
         <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
-          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={30} clip>
+          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={ROUND} clip>
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>

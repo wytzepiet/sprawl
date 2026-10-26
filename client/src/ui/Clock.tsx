@@ -3,7 +3,7 @@ import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { dayLengthMs, simNow, simSpeed } from "../network/clock";
 import { useDayNight } from "../engine/DayNightCycle";
-import { BEZEL, CORNER, DROP, Line, Press, view, wide } from "./kit";
+import { BEZEL, CORNER, DROP, Line, Press, view, wide, ROUND } from "./kit";
 
 /** The world's speed and resets, for whoever builds the game: in
  *  development and on a branch's preview (`vite build --mode preview`),
@@ -38,7 +38,7 @@ export default function Clock() {
   };
   const time = () => <text serif size={19} w={52}>{clock(timeOfDay())}</text>;
   return (
-    <glass layer="bezel" at={{ left: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={19} pad={{ left: DROP + BEZEL + 12, right: 12, top: DROP + BEZEL }} dir="row" align="center" gap={3}>
+    <glass layer="bezel" at={{ left: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ left: DROP + BEZEL + 12, right: 12, top: DROP + BEZEL }} dir="row" align="center" gap={3}>
       <Show when={TOOLS && wide()} fallback={time()}>
         <Press onTap={() => setPicking(!picking())}>{time()}</Press>
         <box w={6} />

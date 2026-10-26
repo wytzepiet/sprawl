@@ -3,7 +3,7 @@ import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { follow } from "../engine/spring";
 import { setBoardOpen } from "./Board";
-import { BAD, BEZEL, CORNER, DROP, elapsed, GDP, GOOD, keys, view, wide } from "./kit";
+import { BAD, BEZEL, CORNER, DROP, elapsed, GDP, GOOD, keys, view, wide, ROUND } from "./kit";
 
 /** The level's ring, in its own 56-unit box, and how finely its arc is
  *  cut: each cut is a glyph of its own. */
@@ -53,7 +53,7 @@ export default function Meter() {
 
   return (
     <>
-      <glass layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={20} pad={{ right: DROP + BEZEL + 14, left: 10, top: DROP + BEZEL }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
+      <glass layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ right: DROP + BEZEL + 14, left: 10, top: DROP + BEZEL }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
         <box w={28} h={28} align="center" justify="center">
           <icon at={{ left: 0, top: 0 }} d={RING} view={56} size={28} stroke={4.5} ink="ink/0.16" />
           <Show when={cut() > 0}>

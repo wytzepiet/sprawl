@@ -6,7 +6,7 @@ import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
 import { SitePanel } from "./Site";
-import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
+import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link, ROUND } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingCard, CarCard, CarRole, ResidentCard } from "../generated";
 
@@ -111,7 +111,7 @@ export function Pane(props: { children: JSX.Element; layer: string; at: JSX.Box[
   const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - props.room, scroll() + by)));
   createEffect(() => tall() <= props.room && setScroll(0));
   return (
-    <glass layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={22} clip onScroll={roll}>
+    <glass layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={ROUND} clip onScroll={roll}>
       <box y={-scroll()} pad={{ bottom: 6 }} onSize={(_, h) => setTall(h)}>
         {props.children}
       </box>
