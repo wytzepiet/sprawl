@@ -81,7 +81,7 @@ function rgba(c: string | undefined, fade: number): [number, number, number, num
 }
 
 /** How much further a squircle's corner reaches than the circle it stands for. */
-export const SQUIRCLE_REACH = 1.3;
+export const SQUIRCLE_REACH = 1.8;
 
 /** The distance to a box of half size `half` round the origin, its corners
  *  squircles, not quarter circles: the corner's curve a superellipse (an
