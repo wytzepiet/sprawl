@@ -249,9 +249,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `rows.ts`, the blueprints' game columns the client reads; `cd client && bun
   run generate` also clears the ones whose type went and lists the rest
   in its `index.ts`.
-- **A branch in the browser:** every push gets its own fresh world at
+- **A branch in the browser:** every branch gets its own world at
   `https://<branch>.preview.sprawl.nl` (the branch lowercased, `/` as `-`),
-  and deleting the branch takes it away; a push to main deletes every
+  kept from push to push as any save is (a `MIGRATIONS` step, or it starts
+  over), and deleting the branch takes it away; a push to main deletes every
   branch whose last commit it holds (`.github/workflows/preview.yml`,
   the box's half in `preview/`). A world not pushed to for a week sleeps
   until the next push; the summary of the run has the link. When you push
