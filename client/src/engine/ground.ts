@@ -41,8 +41,8 @@ const SPAN = 4;
 /** How far the blades' slope tilts the land's facing, how much darker
  *  their deepest creases are, and the clover's colour. */
 const BUMP = 0.45;
-const CREASE = 0.1;
-const CLOVER = [0.96, 0.95, 0.9];
+const CREASE = 0.3;
+const CLOVER = [1, 0.97, 0.86];
 /** Grass is mottled, as a field is from the air: its colour lighter and a
  *  touch yellower in places, darker and a touch bluer in others, in broad
  *  patches this many tiles across and small ones this many, by up to this

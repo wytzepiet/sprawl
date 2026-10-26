@@ -5,7 +5,7 @@ export const theme = {
   // After a Scottish coast from the air, made light: sage pasture, a
   // slate-teal sea, pale taupe sand, off-white roads, and the trees the one
   // dark note on the ground, so the buildings carry the colour.
-  land: hex("#74A060"),
+  land: hex("#96D088"),
   water: hex("#76AAB2"),
   beach: hex("#E2DCCF"),
   // The floor between the crowns: the wood's shade, of the crowns' teal
