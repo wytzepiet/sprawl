@@ -13,6 +13,7 @@ import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { depot } from "./depot";
 import { shop } from "./shop";
+import { house } from "./house";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
@@ -131,9 +132,10 @@ export function mountBuilding(
     : null;
 
   // A depot too, its sheds round its bays, its gantry and its fence
-  // (`depot.ts`); and a shop round its courtyard (`shop.ts`), every other
-  // one the other way round.
-  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, entry.id % 2 ? 1 : -1) : null;
+  // (`depot.ts`); a shop round its courtyard (`shop.ts`), every other one
+  // the other way round; a house, one of a few (`house.ts`).
+  const side = entry.id % 2 ? 1 : -1;
+  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : null;
   const plot = model
     ? (() => {
         const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);

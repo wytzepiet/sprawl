@@ -177,6 +177,24 @@ N = normalize(N + (barkT * barkTilt.x + barkB * barkTilt.y) * barkInv);
 baseColor = baseColor * barkMap.b;
 roughness = 0.95;`, (engine) => ({ modelBark: bark(engine) }));
 
+/** A tiled roof's courses: how tall one is, up the roof, and how far
+ *  each tips the light down its slope and shades its foot. */
+export const COURSE = 0.022;
+const [COURSE_TIP, COURSE_SHADE] = [0.35, 0.18];
+/** Tiles: courses up a roof, each a step its foot lapped over the one
+ *  below, mapped by how many courses up it is (`tiled`); and the tiles
+ *  along a course, every other course staggered. */
+export const TILES = coat("ModelTiles", `${frame("tiles")}
+let tilesUp = fract(input.uv.x);
+let tilesAlong = fract(input.uv.y + 0.5 * floor(input.uv.x));
+let tilesFine = 1. - smoothstep(0.25, 0.5, fwidth(input.uv.x));
+N = normalize(N + tilesT * tilesInv * (tilesUp - 0.5) * ${f(COURSE_TIP)} * tilesFine);
+baseColor = baseColor * (1. - ${f(COURSE_SHADE)} * (1. - smoothstep(0., 0.3, tilesUp)) * tilesFine) * (1. - 0.1 * step(0.92, tilesAlong) * tilesFine);
+roughness = 0.85;`);
+/** A roof's solid tiled: mapped by its courses up from the ground, and
+ *  its tiles along x and y. */
+export const tiled = (solid: Manifold) => mesh(solid, (p) => [p[2] / COURSE, (p[0] + p[1]) / (COURSE * 1.4)]);
+
 /** How big the lumps of something loose are and their flecks, as the
  *  land's grain is read over them (`ground.ts`, 256 texels). */
 export const [LUMPS, FLECKS] = [3.5, 1.6];
