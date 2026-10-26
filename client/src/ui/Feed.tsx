@@ -80,7 +80,7 @@ export default function Feed() {
 
 /** A square of colour with a glyph on it: what a card is about. */
 const Tile = (props: { color: string; d: string; children?: JSX.Element }) => (
-  <box w={36} h={36} round={11} fill={props.color} align="center" justify="center">
+  <box w={36} h={36} round={14} fill={props.color} align="center" justify="center">
     <icon d={props.d} size={20} ink="white" />
     {props.children}
   </box>
