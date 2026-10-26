@@ -418,6 +418,22 @@ mod tests {
         assert!(seat_harbour(&mut World::new(), &mut EventQueue::new(), 0).is_none(), "seated with no coast");
     }
 
+    /// Every seed seats its town's harbour, near the origin and quickly.
+    #[test]
+    #[ignore]
+    fn every_seed_seats_a_harbour() {
+        for seed in 0..20 {
+            let mut world = World::new();
+            world.terrain = crate::terrain::generate(seed);
+            let started = std::time::Instant::now();
+            let at = seat_harbour(&mut world, &mut EventQueue::new(), 0);
+            let ms = started.elapsed().as_millis();
+            eprintln!("seed {seed}: {at:?} in {ms} ms");
+            let at = at.unwrap_or_else(|| panic!("seed {seed} seats no harbour"));
+            assert!(at.x.abs().max(at.y.abs()) <= 120, "seed {seed}: seated far out at {at:?}");
+        }
+    }
+
     /// A harbour is placed whole, its back to the sea, with a street of
     /// its own laid to its park. Inland it is refused, and why is said;
     /// taken down, it goes whole.

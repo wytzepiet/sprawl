@@ -263,6 +263,7 @@ impl World {
                 self.held.remove(&ferry);
                 self.cast_off(events, ferry, now);
             } else {
+                self.lorry_off(harbour);
                 self.roll_off(events, ferry, harbour, now);
                 self.work_deck(events, ferry, harbour, now);
                 // Held, it looks again every second whether it may go.
@@ -379,6 +380,17 @@ impl World {
         match self.objects.get(ferry).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.passengers.len(),
             _ => 0,
+        }
+    }
+
+    /// The mayor's lorry comes on the town's first ferry and stands on the
+    /// quay as it berths: the harbour's, which goes where the hand sends it
+    /// (`haul::send`).
+    fn lorry_off(&mut self, harbour: EntityId) {
+        if crate::haul::mayors(self).is_none() {
+            let at = self.objects.get(harbour).and_then(|e| e.position);
+            let car = self.insert_at(GameObject::Car(Car::new(harbour, CarRole::Truck)), at);
+            self.park_in_lot(harbour, car, 0);
         }
     }
 

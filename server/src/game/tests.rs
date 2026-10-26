@@ -229,19 +229,21 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
         }
     }
     // Section 6, the demand side. Nobody here wants for anything, and
-    // the office's books show what it received on the last whole day:
-    // eleven people, nine hours, less the lunches — and the lunch shop
-    // served them. The last day, not the second: a settled one.
+    // the office's books show what it received a day, over the settled
+    // days, the second on: eleven people, nine hours, less the lunches —
+    // and the lunch shop served them. A day's absences come in waves,
+    // so one day alone swings by a third either way.
     let (world, now) = (&game.world, game.now);
     if days >= 3 {
         wants_nothing(world, now);
         let sold = |b: EntityId, need| world.books[&b].before(now).served.get(&need).copied().unwrap_or(0.0);
-        let office = sold(office, crate::needs::Need::Work);
+        let worked = |d: u64| world.books[&office].before(d * DAY_MS as u64).served.get(&crate::needs::Need::Work).copied().unwrap_or(0.0);
+        let office = (2..=days).map(worked).sum::<f64>() / (days - 1) as f64;
         // Eleven at the office: fourteen people, two apartments of
         // seven, less the shop's two and the pump's one, nine hours
         // each, less the odd late morning, a lunch out, a dinner near
         // work, and the minute or two parking at the kerb.
-        assert!((70.0..=99.0).contains(&office), "office received {office}h");
+        assert!((70.0..=99.0).contains(&office), "office received {office}h a day");
         // Lunches over a whole day: the shops have no depot here, so
         // by the third day their shelves have run down some.
         assert!(sold(lunch, crate::needs::Need::Eat) > 1.5, "lunch shop sold {}h", sold(lunch, crate::needs::Need::Eat));
@@ -1124,8 +1126,7 @@ fn the_opening_from_the_harbour() {
     let mut game = game(street());
     let harbour = harbour_of(&game.world);
     assert_eq!(opening(&mut game), [false, false, false, false], "the harbour stands, and nothing else is done");
-    let lorry = crate::haul::mayors(&game.world).expect("the harbour has no lorry of the mayor's");
-    assert_eq!(car_of(&game.world, lorry).owner, harbour);
+    assert!(crate::haul::mayors(&game.world).is_none(), "the mayor's lorry came before the ferry");
     let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let starter: u32 = crate::world::sea::STARTER.iter().map(|&(_, n)| n).sum();
@@ -1154,6 +1155,10 @@ fn the_opening_from_the_harbour() {
     // Aboard, or already being lifted off onto the quay.
     let landed = car_of(&game.world, ferry).deck.iter().flatten().count() + building_of(&game.world, harbour).pad.len();
     assert_eq!(landed, starter as usize, "the starter pack is not aboard");
+    // The mayor's lorry is the first thing off the ramp, and parks on
+    // the quay.
+    let lorry = crate::haul::mayors(&game.world).expect("the mayor's lorry did not come with the first ferry");
+    assert_eq!(car_of(&game.world, lorry).owner, harbour);
     // The forklifts unload it onto the quay while it is in, and it
     // sails on time.
     let mut lifted = false;
@@ -1286,20 +1291,18 @@ fn the_opening_from_the_harbour() {
 #[test]
 fn the_ferry_waits_for_the_mayors_load() {
     let mut world = street();
-    for (tx, ty) in (SAWMILL_X - 5..SAWMILL_X + 7).flat_map(|tx| (5..14).map(move |ty| (tx, ty))) {
-        world.terrain.insert((tx, ty), TerrainType::Forest);
-    }
-    let mill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill);
+    let mill = build(&mut world, HARBOUR_X - 20, BuildingKind::Sawmill);
     let mut game = game(world);
     let harbour = harbour_of(&game.world);
     let ferry = game.world.ferry_of(harbour).unwrap();
-    let day = DAY_MS as u64;
-    // Sent before the first ferry is in: the lorry is loaded up the street
-    // as it berths, and sets out with the dwell nearly gone.
+    let day = 2 * DAY_MS as u64;
+    // The lorry comes on the first ferry; sent at once to the sawmill up
+    // the street, it is loaded and back with the dwell gone.
+    let berthed = |w: &World| car_of(w, ferry).spot.is_some();
+    while !berthed(&game.world) && game.step_to(day) {}
+    let lorry = crate::haul::mayors(&game.world).expect("the lorry did not come with the ferry");
     game.command(PLAYER, ClientMessage::Haul { from: mill, good: Good::Timber, packages: 2, to: harbour });
-    let lorry = crate::haul::mayors(&game.world).unwrap();
     assert!(car_of(&game.world, lorry).errand.is_some(), "the lorry was not sent");
-    while car_of(&game.world, ferry).spot.is_none() && game.step_to(day) {}
     let due = car_of(&game.world, ferry).due;
     let carrying = |w: &World| car_of(w, lorry).errand.is_some_and(|e| e.doing == crate::protocol::Doing::Carry);
     while !carrying(&game.world) && game.step_to(day) {}
@@ -1429,7 +1432,6 @@ fn half_hour_from(join: GameTime) -> Vec<(GameTime, String)> {
             beats.push((at.saturating_sub(join), what.to_string()));
         }
     };
-    let lorry = crate::haul::mayors(&game.world).expect("no lorry of the mayor's");
     let (mut depot, mut mill, mut sold) = (None, None, false);
     let mut houses: Vec<EntityId> = vec![];
     let mut last = join;
@@ -1442,7 +1444,12 @@ fn half_hour_from(join: GameTime) -> Vec<(GameTime, String)> {
         // The hand moves once it has thought, and the lorry only when it
         // is free.
         let ready = now >= last + think;
-        let idle = car_of(&game.world, lorry).errand.is_none() && car_of(&game.world, lorry).trip.is_none();
+        // The lorry comes on the first ferry.
+        let lorry = crate::haul::mayors(&game.world);
+        if lorry.is_some() {
+            beat(&mut beats, now, "your lorry on the quay");
+        }
+        let idle = lorry.is_some_and(|l| car_of(&game.world, l).errand.is_none() && car_of(&game.world, l).trip.is_none());
         let timber_on_quay = building_of(&game.world, harbour).pad.iter().filter(|t| t.good == Good::Timber && !t.outbound).count();
         if ready && mill.is_none() {
             mill = Some(sawmill(&mut game.world, SAWMILL_X));
