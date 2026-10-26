@@ -1,0 +1,8 @@
+# The game's chance and its maps, the same on every run and every machine.
+[package]
+name = "fixed"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand_xoshiro = "0.7"

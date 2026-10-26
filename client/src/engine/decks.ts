@@ -10,7 +10,7 @@ import { area } from "./town/footprint";
 import type { Casters } from "./DayNightCycle";
 
 /**
- * Roads above the ground (`server/src/world/decks.rs`). A deck's road is
+ * Roads above the ground (`server/map/src/decks.rs`). A deck's road is
  * a road tile like the ground's, drawn by the same hand (`roads.ts`), its
  * shape and paint its tile's, lifted to its height (`liftOf`); a slope's
  * up across its own tile, from the edge it comes in by at the level below

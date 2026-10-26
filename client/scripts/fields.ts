@@ -1,6 +1,6 @@
 /**
  * The tractor's runs over the fields in `server/fields/`, measured and
- * drawn (`server/src/world/fields/bench.rs`), and the drawings laid out
+ * drawn (`server/map/src/fields/bench.rs`), and the drawings laid out
  * on one sheet, `.dev/fields/sheet.png`, a field a row, ploughing then
  * harvesting. `bun run fields [name]` draws only the fields whose name has
  * that in it.
