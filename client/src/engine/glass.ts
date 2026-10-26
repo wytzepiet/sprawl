@@ -20,8 +20,8 @@ import type { Layer, Palette, Pane } from "~ui/paint";
  * Each frame the frame loop reads the panes (`read`), after the springs
  * have moved them, and again once the camera has moved, for what is
  * pinned to the map, before the frame is drawn. Then, after the scene,
- * this task draws each run of panes over it: black, a faint sheen just
- * inside its edge, and a soft shade on the town where it slips under.
+ * this task draws each run of panes over it: black, flat on the town,
+ * with a faint sheen just inside its edge.
  */
 
 /** The most panes, and runs of them, drawn. */
@@ -29,11 +29,8 @@ const PANES = 64;
 const RUNS = 16;
 /** How far panes melt into each other, in CSS pixels: the fillet where an island leaves the bezel. */
 const MELT = 26;
-/** How dark the shade is that the black lays on the town, and how far it reaches, in CSS pixels. */
-const SHADE = 0.24;
-const REACH = 10;
-/** Room round a run, in CSS pixels, for its shade. */
-const ROOM = 48;
+/** Room round a run, in CSS pixels, for its edge's softening. */
+const ROOM = 2;
 /** How far a press's light spreads through the black, in CSS pixels. */
 const GLOW = 40;
 
@@ -93,14 +90,6 @@ fn field(p: vec2f, run: Run) -> Field {
   let p = in.position.xy;
   let f = field(p, run);
   let dpr = black.size.z;
-
-  // Outside: the shade it lays on the town, a little below, as if the
-  // town lay just under it.
-  if (f.d > 0.5) {
-    let s = field(p - vec2f(0, 2 * dpr), run).d;
-    let shade = ${SHADE} * exp(-max(s, 0) / (${REACH} * dpr));
-    return vec4f(0, 0, 0, shade);
-  }
 
   var body = black.tint.rgb;
   // A dye is the colour itself, flat and bright on the black.

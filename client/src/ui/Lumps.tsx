@@ -48,7 +48,6 @@ function Rise(props: { lump: Lump }) {
           pad={big ? { left: 6, right: 10, y: 4 } : { x: 6, y: 2 }}
           round={12}
           fill={ink}
-          shadow
           onSize={(w, h) => setSize([w, h])}
         >
           <Show when={l.good}>{(g) => <icon d={GOODS[g()].glyph} size={big ? 18 : 11} ink="white" />}</Show>

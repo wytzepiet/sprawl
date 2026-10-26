@@ -124,7 +124,6 @@ export function Btn(props: { onTap: () => void; children: JSX.Element; color?: s
       round={22}
       fill={props.big ? props.color ?? SEA : undefined}
       stroke={props.big ? undefined : [1.5, "ink/0.18"]}
-      shadow={props.big}
       opacity={props.disabled ? 0.4 : 1}
       onTap={() => !props.disabled && props.onTap()}
     >

@@ -48,8 +48,7 @@ export default function Cargo() {
                 gap={2}
                 pad={2}
                 round={10}
-                fill="glass/0.85"
-                shadow
+                fill="glass"
                 onSize={(w, h) => setSize([w, h])}
                 onTap={() => goodsOn(id)[0] && track(goodsOn(id)[0].package)}
               >
