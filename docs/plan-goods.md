@@ -58,17 +58,19 @@ made readable and short, not avoided.
 
 ## The camera
 
-**One camera, no switch.** Wytze leans toward the tilted view, a little
-from the side (`OrthoCamera.tsx`, `TILT`, 25° today): it shows height,
-which the goods, mountains, overpasses and container stacks need, and
-night feels cosier in it; shadows alone proved a poor cue for height. It
-is being tried in play (F8) before the flat camera is deleted. The view
-never turns, so things need to look right from the front and sides only.
+**One camera, no switch.** The tilted view, a little from the side
+(`Camera.tsx`: `TILT` 25°, `FOV` 20°): it shows height, which the goods,
+mountains, overpasses and container stacks need, and night feels cosier
+in it; shadows alone proved a poor cue for height. The view never turns,
+so things need to look right from the south, east and west only. Built
+2026-10-24; the flat camera and its F8 switch are gone, F9 still flies.
 
-If the tilt stays: mountains and coast cliffs become real meshes with
-walls, the cliff texture on them, instead of flat planes with cliffs
-painted on; faces turned from the camera are drawn short so they hide
-little. Loading and culling follow the tilted view's real footprint.
+Mountains are terraces, each layer a flat top on a slate wall, and the
+coast's cliff is a wall from its lip into the water; both break along
+the slate. Faces turned from the camera are hidden behind the tops in
+front of them, so they hide nothing more and are not drawn short.
+Loading follows the tilted view's real footprint. With a tool in hand,
+tall things between the eye and the ground under the pointer fade.
 
 ## Goods you can see
 
@@ -204,7 +206,6 @@ Talked through with Wytze, 2026-10-25; direction, nothing built.
 
 ## Open
 
-- The camera, after a few days of play in the tilt.
 - One forklift a pad as a building's capacity.
 - How pressure grows: letters and demand rising by themselves (leaning)
   or only when the player expands.

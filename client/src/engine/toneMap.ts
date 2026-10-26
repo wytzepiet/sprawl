@@ -3,7 +3,7 @@ import type { ToneMapping } from "@babylonjs/lite";
 /**
  * How the scene's light, unbounded, is brought into what a screen can show:
  * AgX, Troy Sobotka's, as film takes light, in Benjamin Wrensch's fit, with
- * its punchy look. Laid into every material where Lite's own curve would
+ * a richer punchy look. Laid into every material where Lite's own curve would
  * go, after the exposure and before the colour is put into gamma.
  *
  * The light is leant a little toward grey, so a saturated light (a red sun)
@@ -12,23 +12,26 @@ import type { ToneMapping } from "@babylonjs/lite";
  * rather than to yellow or magenta; then given more contrast and colour, the
  * punchy look; and leant back.
  */
-/** The curve, `toneMap`, for a shader of the town's own. */
-export const toneMapWGSL = `const toneIn = mat3x3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0784335999999992, 0.878468636469772, 0.0784336, 0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+/** The curve, `toneMap`, with its look: this much more colour, and contrast. */
+const agx = (colour: number, contrast: number) => `const toneIn = mat3x3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0784335999999992, 0.878468636469772, 0.0784336, 0.0792237451477643, 0.0791661274605434, 0.879142973793104);
 const toneOut = mat3x3f(1.19687900512017, -0.0528968517574562, -0.0529716355144438, -0.0980208811401368, 1.15190312990417, -0.0980434501171241, -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
 fn toneMap(c0: vec3f) -> vec3f {
 var c = (clamp(log2(max(toneIn * c0, vec3f(1e-10))), vec3f(-12.47393), vec3f(4.026069)) + 12.47393) / 16.5;
 let c2 = c * c;
 let c4 = c2 * c2;
 c = 15.5 * c4 * c2 - 40.14 * c4 * c + 31.96 * c4 - 6.868 * c2 * c + 0.4298 * c2 + 0.1191 * c - 0.00232;
+c = pow(max(c, vec3f(0.)), vec3f(${contrast}));
 let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
-c = luma + 1.4 * (pow(max(c, vec3f(0.)), vec3f(1.35)) - luma);
+c = luma + ${colour} * (c - luma);
 return pow(max(toneOut * c, vec3f(0.)), vec3f(2.2));
 }`;
 
 /** The town's tone mapping, set on the scene (`DayNightCycle.tsx`); the
- *  exposure, the eye's, applied first. */
-export const AGX_PUNCHY: ToneMapping = {
-  id: "agx-punchy",
-  helpersWGSL: toneMapWGSL,
+ *  exposure, the eye's, applied first. Richer than Wrensch's punchy, whose
+ *  colour is 1.4: AgX takes the colour out of a bright light, and a noon
+ *  in full sun came out pale. */
+export const TONE: ToneMapping = {
+  id: "agx-rich",
+  helpersWGSL: agx(1.7, 1.35),
   callWGSL: "color = toneMap(color * scene.vImageInfos.x);",
 };

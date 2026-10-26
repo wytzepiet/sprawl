@@ -183,3 +183,34 @@ export function bakeSlate(size = SIDE): Slate {
   for (let k = 0; k < height.length; k++) height[k] = (height[k] - lo) / (hi - lo);
   return { size, height, texels };
 }
+
+/** The slate's side, baked small for the edges the rock breaks along: its
+ *  plates, not its grit. */
+const EDGE_SIDE = 128;
+let small: Float32Array | null = null;
+const [TURN_C, TURN_S] = [Math.cos(SECOND[1]), Math.sin(SECOND[1])];
+
+/** The small slate at (u, v) of its texture, blended as a sampler does,
+ *  wrapping; -1 to 1. */
+function smallAt(u: number, v: number): number {
+  const h = (small ??= bakeSlate(EDGE_SIDE).height);
+  const [tx, ty] = [u * EDGE_SIDE - 0.5, v * EDGE_SIDE - 0.5];
+  const [fi, fj] = [Math.floor(tx), Math.floor(ty)];
+  const [fx, fy] = [tx - fi, ty - fj];
+  const i = ((fi % EDGE_SIDE) + EDGE_SIDE) % EDGE_SIDE, j = ((fj % EDGE_SIDE) + EDGE_SIDE) % EDGE_SIDE;
+  const i1 = (i + 1) % EDGE_SIDE, j1 = (j + 1) % EDGE_SIDE;
+  const top = h[j * EDGE_SIDE + i] + (h[j * EDGE_SIDE + i1] - h[j * EDGE_SIDE + i]) * fx;
+  const bottom = h[j1 * EDGE_SIDE + i] + (h[j1 * EDGE_SIDE + i1] - h[j1 * EDGE_SIDE + i]) * fx;
+  return (top + (bottom - top) * fy) * 2 - 1;
+}
+
+/** The slate's height at a point of the map, -1 to 1, as the edges of the
+ *  rock break along it (`terrainGeometry.ts`): read where the shader reads
+ *  its texture (`peaks.ts`), and, `turned`, mixed with the bigger, turned
+ *  read as the mountains' is. */
+export function slateHeight(x: number, y: number, turned = false): number {
+  const a = smallAt(x / SPAN, y / SPAN);
+  if (!turned) return a;
+  const b = smallAt((x * TURN_C - y * TURN_S) / (SPAN * SECOND[0]), (x * TURN_S + y * TURN_C) / (SPAN * SECOND[0]));
+  return a + (b - a) * SECOND[2];
+}

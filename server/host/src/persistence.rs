@@ -1,17 +1,32 @@
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use sprawl::protocol::{GameObject, GameObjectEntry};
 
 /// Every object a row of its JSON, and the rest of the world one row more.
-/// A save is this build's: a change to either shape means starting over
-/// (`rm sprawl.db`), and a row this build cannot read says so.
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS objects (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS meta (id INTEGER PRIMARY KEY CHECK (id = 0), data TEXT NOT NULL);
 ";
+
+/// One step of a save from its version to the next, its objects' JSON and
+/// its meta's rewritten in place; `None` where an old save is not worth
+/// keeping, and starts over. A change that makes old saves wrong or
+/// unreadable pushes one, and the save's version is how many there are,
+/// stamped in SQLite's own `user_version` by every save. A save that
+/// cannot be brought up to date is set aside beside the file as
+/// `<file>.v<version>.bak`, and so is one before it is.
+type Migration = Option<fn(&mut [Value], &mut Value)>;
+
+const MIGRATIONS: &[Migration] = &[
+    // Saves from before the stamp are version 0, and already today's.
+    Some(|_, _| {}),
+];
+
+pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
 
 /// Everything about a world that is not one of its objects.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,25 +65,55 @@ impl Db {
         Db { conn, path: path.display().to_string() }
     }
 
-    /// What was saved: none of it for a new file.
-    pub fn load(&self) -> (Vec<GameObjectEntry>, Meta) {
-        // Dropping a row this build cannot read would leave a world with
-        // roads and no buildings, which reveals nothing and shows as fog to
-        // the horizon.
-        let unreadable = |e: &dyn std::fmt::Display| -> ! { panic!("{} was written by another build ({e}); delete it to start over", self.path) };
-        let mut stmt = self.conn.prepare("SELECT data FROM objects").expect("failed to prepare select");
-        let entries: Vec<GameObjectEntry> = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .expect("failed to query objects")
-            .map(|json| serde_json::from_str(&json.expect("failed to read a row")).unwrap_or_else(|e| unreadable(&e)))
-            .collect();
-        let meta = self.conn.query_row("SELECT data FROM meta", [], |row| row.get::<_, String>(0)).optional().expect("failed to read meta");
-        let meta = match meta {
-            Some(json) => serde_json::from_str(&json).unwrap_or_else(|e| unreadable(&e)),
-            None if entries.is_empty() => Meta::default(),
-            None => unreadable(&"objects and no meta"),
+    /// What was saved, brought up to date: none of it for a new file, or
+    /// for one that cannot be.
+    pub fn load(&mut self) -> (Vec<GameObjectEntry>, Meta) {
+        let version: u32 = self.conn.pragma_query_value(None, "user_version", |r| r.get(0)).expect("failed to read the save's version");
+        match self.read(version) {
+            Ok(save) if version == SAVE_VERSION => save,
+            Ok((entries, meta)) => {
+                let backup = self.set_aside(version);
+                self.save(&entries.iter().collect::<Vec<_>>(), &[], &meta);
+                println!("{} migrated from save version {version} to {SAVE_VERSION}, the old one set aside as {backup}", self.path);
+                (entries, meta)
+            }
+            Err(why) => {
+                let backup = self.set_aside(version);
+                self.clear();
+                println!("{} {why}: set aside as {backup}, starting over", self.path);
+                (Vec::new(), Meta::default())
+            }
+        }
+    }
+
+    /// The save, if this build can read all of it. Dropping only the rows
+    /// it cannot read would leave a world with roads and no buildings.
+    fn read(&self, version: u32) -> Result<(Vec<GameObjectEntry>, Meta), String> {
+        let rows = |sql| -> Vec<String> {
+            let mut stmt = self.conn.prepare(sql).expect("failed to prepare select");
+            stmt.query_map([], |row| row.get(0)).expect("failed to query").map(|r| r.expect("failed to read a row")).collect()
         };
-        (entries, meta)
+        let (objects, meta) = (rows("SELECT data FROM objects"), rows("SELECT data FROM meta"));
+        if objects.is_empty() && meta.is_empty() {
+            return Ok((Vec::new(), Meta::default()));
+        }
+        let unreadable = |e: serde_json::Error| format!("holds what this build cannot read ({e}); push a migration with such a change");
+        let mut objects = objects.iter().map(|json| serde_json::from_str(json)).collect::<Result<Vec<Value>, _>>().map_err(unreadable)?;
+        let mut meta = serde_json::from_str(meta.first().ok_or("has objects and no meta")?).map_err(unreadable)?;
+        let steps = MIGRATIONS.get(version as usize..).ok_or(format!("is save version {version}, newer than this build's {SAVE_VERSION}"))?;
+        for (v, step) in (version..).zip(steps) {
+            step.ok_or(format!("is save version {v}, which version {} does not keep", v + 1))?(&mut objects, &mut meta);
+        }
+        let entries = objects.into_iter().map(serde_json::from_value).collect::<Result<_, _>>().map_err(unreadable)?;
+        Ok((entries, serde_json::from_value(meta).map_err(unreadable)?))
+    }
+
+    /// A copy of the save as it stands, beside it.
+    fn set_aside(&self, version: u32) -> String {
+        let backup = format!("{}.v{version}.bak", self.path);
+        let _ = std::fs::remove_file(&backup);
+        self.conn.execute("VACUUM INTO ?1", [&backup]).expect("failed to set the save aside");
+        backup
     }
 
     /// The objects changed and removed since the last save, and the rest
@@ -84,6 +129,7 @@ impl Db {
         }
         let json = serde_json::to_string(meta).expect("failed to serialize");
         tx.execute("INSERT OR REPLACE INTO meta (id, data) VALUES (0, ?1)", [json]).expect("failed to save meta");
+        tx.pragma_update(None, "user_version", SAVE_VERSION).expect("failed to stamp the save");
         tx.commit().expect("failed to commit");
     }
 
@@ -164,5 +210,35 @@ mod tests {
         db.clear();
         let (entries, loaded) = Db::open(&scratch.0).load();
         assert!(entries.is_empty() && loaded.next_id == 1);
+    }
+
+    /// An old save is brought up to date and kept, the old one set aside
+    /// beside it; one that cannot be, newer or unreadable, is set aside
+    /// whole and the world starts over.
+    #[test]
+    fn an_old_save_is_migrated_or_set_aside() {
+        let scratch = Scratch::new("old");
+        let backup = |v: u32| std::path::PathBuf::from(format!("{}.v{v}.bak", scratch.0.display()));
+        let meta = Meta { next_id: 40, ..Meta::default() };
+        let version = |db: &Db| db.conn.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0)).unwrap();
+        let mut db = Db::open(&scratch.0);
+        db.save(&[], &[], &meta);
+        db.conn.pragma_update(None, "user_version", 0).unwrap();
+        let (_, loaded) = Db::open(&scratch.0).load();
+        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
+        assert_eq!(version(&db), SAVE_VERSION);
+        assert!(backup(0).exists());
+        db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
+        let (_, loaded) = Db::open(&scratch.0).load();
+        assert_eq!(loaded.next_id, 1, "a newer save was loaded");
+        assert!(backup(SAVE_VERSION + 1).exists());
+        db.save(&[], &[], &meta);
+        db.conn.execute("INSERT INTO objects (id, data) VALUES (1, '{}')", []).unwrap();
+        let (entries, loaded) = Db::open(&scratch.0).load();
+        assert!(entries.is_empty() && loaded.next_id == 1, "an unreadable save was loaded");
+        assert!(backup(SAVE_VERSION).exists());
+        for v in [0, SAVE_VERSION, SAVE_VERSION + 1] {
+            let _ = std::fs::remove_file(backup(v));
+        }
     }
 }
