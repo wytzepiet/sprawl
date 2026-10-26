@@ -312,7 +312,7 @@ pub fn send(world: &mut World, letter: u64, packages: u32) -> u32 {
 /// already coming is paid for; or one going out, for a partner or the
 /// market, to wait at the harbour for a lorry. Whether it was booked.
 pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner: Option<Mayor>, price: f64, letter: Option<u64>) -> bool {
-    let deck = crate::world::sea::DECK;
+    let deck = map::sea::DECK;
     let id = world.map.objects.reserve_id();
     let t = Package { id, good, to: None, outbound: out, order: letter.unwrap_or(id), partner, price };
     if out {

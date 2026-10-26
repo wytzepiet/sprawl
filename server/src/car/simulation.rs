@@ -4,10 +4,11 @@ use model::CRUISE_SPEED;
 use model::Cause;
 use model::GameTime;
 use crate::engine::event_queue::EventQueue;
-use crate::intersection::{IntersectionRegistry, TRACK_POINTS};
+use map::intersection::{IntersectionRegistry, TRACK_POINTS};
 use model::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
-use crate::world::{World, chunk_of};
-use crate::world::bezier::LANE_OFFSET;
+use crate::world::World;
+use map::chunk_of;
+use map::bezier::LANE_OFFSET;
 
 /// End a car's trip and leave it parked at a building: road bookkeeping
 /// cleaned up, trip gone, position at the building it now sits by.
@@ -461,7 +462,7 @@ struct Gate {
     id: EntityId,
     from: (i32, i32),
     to: (i32, i32),
-    track: crate::intersection::Track,
+    track: map::intersection::Track,
     /// How far before the node its track begins.
     start: f64,
     past: f64,
@@ -469,7 +470,7 @@ struct Gate {
 
 impl Gate {
     fn crossing(&self) -> bool {
-        self.id >= crate::world::decks::CROSSINGS
+        self.id >= map::decks::CROSSINGS
     }
 }
 
@@ -486,7 +487,7 @@ fn gates(world: &World, trip: &Trip, k: usize) -> [Option<Gate>; 2] {
         // Across the corner, straight, in its lane; seen from the corner.
         let (dx, dy) = ((b[0] - a[0]).signum() as i32, (b[1] - a[1]).signum() as i32);
         let corner = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0].map(f64::round);
-        let track = crate::intersection::straight([a[0] - corner[0], a[1] - corner[1]], [b[0] - corner[0], b[1] - corner[1]], lane_offset(world, prev, at, lanes[k]));
+        let track = map::intersection::straight([a[0] - corner[0], a[1] - corner[1]], [b[0] - corner[0], b[1] - corner[1]], lane_offset(world, prev, at, lanes[k]));
         let seg = world.map.segment_length(prev, at);
         out[0] = Some(Gate { id, from: (-dx, -dy), to: (dx, dy), track, start: seg, past: -seg / 2.0 });
     }
@@ -495,7 +496,7 @@ fn gates(world: &World, trip: &Trip, k: usize) -> [Option<Gate>; 2] {
         && let (Some(p), Some(j), Some(n)) = (world.map.node_pos(prev), world.map.node_pos(at), world.map.node_pos(route[k + 1]))
         && let (Some(from), Some(to)) = (arm(world, at, prev), arm(world, at, route[k + 1]))
     {
-        let track = crate::intersection::track(p, j, n, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]));
+        let track = map::intersection::track(p, j, n, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]));
         out[1] = Some(Gate { id: at, from, to, track, start: world.map.segment_length(prev, at) / 2.0, past: 0.0 });
     }
     out
@@ -893,7 +894,7 @@ fn lots(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip) -> (b
                     *t = now;
                 }
             }
-        } else if now >= since + crate::intersection::PATIENCE {
+        } else if now >= since + map::intersection::PATIENCE {
             let_go(world, events, car_id);
             lapsed = true;
         }
@@ -1051,7 +1052,7 @@ fn book(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, gates
                     along[i] = along[i - 1] + ((t[i][0] - t[i - 1][0]) as f64).hypot((t[i][1] - t[i - 1][1]) as f64);
                 }
                 let begins = to_k - g.start;
-                let claim = crate::intersection::Claim {
+                let claim = map::intersection::Claim {
                     from: g.from,
                     to: g.to,
                     track: Some(g.track),
@@ -1100,7 +1101,7 @@ fn book(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, gates
         let new = !world.map.streets.knows(g.id, car_id);
         if lit.is_some() {
             world.map.streets.get_or_create(g.id).set_signal(lit.as_deref(), now);
-            events.wake(crate::intersection::SIGNAL_TICK, g.id);
+            events.wake(map::intersection::SIGNAL_TICK, g.id);
         }
         held.push(g.id);
         for woken_id in world.map.streets.claim(g.id, car_id, claim, now) {

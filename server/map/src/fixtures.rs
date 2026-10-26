@@ -32,7 +32,7 @@ use serde::Serialize;
 use model::blueprint::blueprint;
 use model::{BuildingKind, GameObject, Good, GridCoord, Package};
 use land::TerrainType;
-use crate::world::Map;
+use crate::Map;
 
 /// Grass left between one fixture and the next, and round them all.
 const GAP: i32 = 8;
@@ -217,7 +217,6 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
 
 /// One fixture from its text alone, standing as written: a world for
 /// whatever has no files to read.
-#[cfg(test)]
 pub fn build_text(world: &mut Map, text: &str) {
     lay(world, text, 0, "fixture");
     finish_sites(world);
@@ -233,7 +232,7 @@ pub const NOON: model::GameTime = model::DAY_MS as model::GameTime * 5 / 2;
 /// tractor half way through a harvest, and through ploughing the stubble.
 fn till_farms(world: &mut Map) {
     use model::Job::*;
-    use crate::world::fields::RIPEN;
+    use crate::fields::RIPEN;
     let now = NOON;
     let sown = |k: f64| now - (RIPEN as f64 * k) as model::GameTime;
     let mut farms: Vec<(i32, model::EntityId)> = world.objects.iter().filter_map(|e| match e.object {
@@ -333,7 +332,7 @@ mod tests {
     /// stands up, and a fixture made from the game builds as it stood.
     #[test]
     fn every_fixture_builds_letter_for_letter() {
-        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures"));
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../fixtures"));
         let mut world = Map::new();
         build(&mut world, dir);
         let mut wrong = Vec::new();

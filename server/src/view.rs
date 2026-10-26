@@ -5,7 +5,7 @@ use fixed::{HashMap, HashSet};
 use crate::game::ClientId;
 use model::{ChunkBounds, Clock, EntityId, GameObjectEntry, Lump, Operation, OwnerId, ServerMessage, StateUpdate};
 use land::ChunkCoord;
-use crate::world::chunk_of;
+use map::chunk_of;
 use crate::world::World;
 
 /// What the game knows of one who is watching: who they are and what they

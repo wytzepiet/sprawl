@@ -4,7 +4,7 @@ mod network;
 mod persistence;
 
 use model::{blueprint, needs};
-use sprawl::world::fixtures;
+use map::fixtures;
 use axum::Router;
 use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};

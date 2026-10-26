@@ -66,8 +66,6 @@ impl Segment {
     pub fn key(&self) -> SegmentKey {
         (self.nodes[0], self.nodes[1])
     }
-
-    #[cfg(test)]
     pub fn ends(&self) -> (EntityId, EntityId) {
         (self.nodes[0], self.nodes[self.nodes.len() - 1])
     }
@@ -150,8 +148,6 @@ impl RoadNetwork {
             _ => false,
         }
     }
-
-    #[cfg(test)]
     pub fn component_of(&self, node: EntityId) -> Option<ComponentId> {
         self.component.get(&node).copied()
     }
@@ -360,7 +356,6 @@ impl RoadNetwork {
 
     /// What driving that run is reckoned to cost, in milliseconds. The search
     /// costs a run it already holds; this is for asking about one you do not.
-    #[cfg(test)]
     pub fn travel_via(&self, at: EntityId, next: EntityId, cruise_speed: f64) -> Option<f64> {
         let (seg, forward) = self.run_from(at, next)?;
         Some(self.run_cost_ms(seg, forward, cruise_speed))
@@ -390,7 +385,6 @@ impl RoadNetwork {
 
     /// What that run has actually been taking. `None` where nobody has driven
     /// it yet.
-    #[cfg(test)]
     pub fn passage_via(&self, at: EntityId, next: EntityId) -> Option<f64> {
         let (seg, forward) = self.run_from(at, next)?;
         let seen = self.passage.get(&seg.key())?[usize::from(!forward)];
@@ -406,8 +400,6 @@ impl RoadNetwork {
             .flatten()
             .filter_map(|id| self.segments.get(id))
     }
-
-    #[cfg(test)]
     pub fn segment_count(&self) -> usize {
         self.segments.len()
     }

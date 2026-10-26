@@ -26,8 +26,6 @@ impl EdgeSegment {
     pub fn car_position(&self, car_id: EntityId) -> Option<usize> {
         self.find(car_id).map(|(_, i)| i)
     }
-
-    #[cfg(test)]
     pub fn lane_of(&self, car_id: EntityId) -> Option<usize> {
         self.find(car_id).map(|(lane, _)| lane)
     }

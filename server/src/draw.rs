@@ -15,7 +15,7 @@
 //! side it is on. Of these, the first the world allows (`hand::may_step`),
 //! judged with the drag's next step where it is drawn (`plan`); where
 //! nothing may, the drag stops there. Where roads may stand is the world's
-//! one rule of their shapes (`world/clear.rs`), not the plan's.
+//! one rule of their shapes (`map/clear.rs`), not the plan's.
 //!
 //! Wherever the drag meets a road on its level, it joins it: a junction,
 //! with every turn its angles allow. A road to cross with no turns goes
@@ -25,8 +25,8 @@ use crate::engine::event_queue::EventQueue;
 use model::GameTime;
 use model::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
-use crate::world::decks::{across, other, toward, Side, MIDDLE};
-use crate::world::clear::End;
+use map::decks::{across, other, toward, Side, MIDDLE};
+use map::clear::End;
 use crate::world::World;
 
 /// Where on its tile a drag stands: how high, in half-levels, and on which
@@ -349,7 +349,7 @@ mod tests {
 
     impl Field {
         fn new() -> Field {
-            let mut world = World::from(crate::world::Map::meadow(-10..16, -10..10));
+            let mut world = World::from(map::Map::meadow(-10..16, -10..10));
             world.treasury = 1e9;
             Field { world, events: EventQueue::new(), id: 0 }
         }
@@ -367,7 +367,7 @@ mod tests {
         }
 
         fn turn(&self, a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> bool {
-            crate::world::pathfinding::may_turn(&self.world.map, self.node(a.0, a.1), self.node(b.0, b.1), self.node(c.0, c.1))
+            map::pathfinding::may_turn(&self.world.map, self.node(a.0, a.1), self.node(b.0, b.1), self.node(c.0, c.1))
         }
     }
 

@@ -29,7 +29,8 @@ use model::GameTime;
 use model::needs::{Need, Stock};
 use model::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS};
 use land::TerrainType;
-use crate::world::{Map, World};
+use crate::world::World;
+use map::Map;
 
 /// What the world beyond the border reckons a unit of a good is worth,
 /// in coins. Tuned so that one farm's crates, sold abroad, keep a small
@@ -86,7 +87,7 @@ pub const LEAD_MS: GameTime = DAY_MS as GameTime / 12;
 /// meanwhile (`hiring`).
 pub fn lump(kind: BuildingKind) -> f64 {
     if farm(kind) {
-        crop(kind, crate::world::fields::capacity(kind) as usize)
+        crop(kind, map::fields::capacity(kind) as usize)
     } else if blueprint(kind).makes.is_some() {
         blueprint(kind).jobs as f64 * HANDS
     } else {
@@ -609,7 +610,7 @@ mod tests {
         assert!(!depot(Farm) && makes(Farm, Good::Crates) && shelves(Farm) == [Good::Crates], "the farm is not a maker of crates");
         assert!(!makes(Depot, Good::Crates));
         assert!(super::farm(Farm) && !super::farm(Office));
-        assert!((crop(Farm, 200) - 2600.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 2600.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
+        assert!((crop(Farm, 200) - 2600.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 2600.0 / map::fields::capacity(Farm)).abs() < 1e-9);
         assert_eq!(shelf(&world, farm, Good::Crates).level, 0.0, "the yard is founded with a harvest");
         assert!(hiring(&world, farm), "an empty yard offers no work");
         assert!(!buys(Farm, Good::Crates) && buys(Shop, Good::Crates) && buys(Depot, Good::Crates) && !buys(House, Good::Crates), "the rows buy the wrong things");

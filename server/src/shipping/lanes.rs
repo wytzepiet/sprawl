@@ -14,11 +14,12 @@
 
 use fixed::HashMap;
 
-use crate::intersection::{paths_conflict, Dir, Rule};
+use map::intersection::{paths_conflict, Dir, Rule};
 use model::{Lane, LaneKind};
 
-use super::water::{Water, BERTH, NARROW};
-use crate::world::sea::FERRY_LENGTH;
+use super::water::{Water, NARROW};
+use map::sea::BERTH;
+use map::sea::FERRY_LENGTH;
 
 /// The eight ways off a tile, clockwise on the map (y runs down): a way's
 /// right is two on, its opposite four, its left six.
@@ -380,7 +381,8 @@ impl Lanes {
 mod tests {
     use super::*;
     use model::GridCoord;
-    use crate::shipping::water::{Berth, End};
+    use crate::shipping::water::End;
+    use map::sea::Berth;
 
     fn rows(spec: &[(&str, usize)]) -> Vec<String> {
         spec.iter().flat_map(|&(r, n)| std::iter::repeat_n(r.to_string(), n)).collect()

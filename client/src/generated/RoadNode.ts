@@ -21,7 +21,7 @@ laid: boolean,
 /**
  * How high it stands, in half-levels: 0 the ground, 2 a level up, 4
  * two, 6 three; odd, a slope between the level below and the one
- * above (`world/decks.rs`).
+ * above (`map/decks.rs`).
  */
 height: number, 
 /**
@@ -37,6 +37,6 @@ wide: Array<number>,
 /**
  * Which side of its tile it stands: the step across its road it is
  * moved by, or none, the middle. Two one-ways share a tile side by
- * side, each a thin road beside the other (`world/decks.rs`).
+ * side, each a thin road beside the other (`map/decks.rs`).
  */
 side: [number, number], };

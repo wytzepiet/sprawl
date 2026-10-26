@@ -1,5 +1,5 @@
 use model::{EntityId, GameObject, GridCoord};
-use crate::world::Map;
+use crate::Map;
 use super::decks::MIDDLE;
 
 impl Map {
@@ -234,7 +234,6 @@ impl Map {
     /// May a road be laid from one tile to the next: the one rule, which the
     /// mayor's hand is refused by and the map of where a road may go is
     /// drawn from.
-    #[cfg(test)]
     pub fn may_lay(&self, from: GridCoord, to: GridCoord, one_way: bool) -> bool {
         self.may_lay_on(from, to, one_way, None)
     }
@@ -302,13 +301,11 @@ impl Map {
 
     /// Lay a street along a path, both ways, with no player-input checks:
     /// test worlds.
-    #[cfg(test)]
     pub fn place_road_path(&mut self, path: &[GridCoord]) {
         self.place_road_path_of(path, false);
     }
 
     /// A test's world: grass over these tiles, nothing on it.
-    #[cfg(test)]
     pub fn meadow(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> Map {
         let mut world = Map::new();
         for (x, y) in xs.flat_map(|x| ys.clone().map(move |y| (x, y))) {
@@ -318,7 +315,6 @@ impl Map {
     }
 
     /// And a street along y = 0 over these tiles.
-    #[cfg(test)]
     pub fn street(mut self, xs: std::ops::Range<i32>) -> Map {
         self.place_road_path(&xs.map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         self
@@ -519,7 +515,7 @@ pub(super) mod tests {
         assert!(world.may_lay_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, SOUTH, false));
         world.place_road_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, SOUTH, false, false);
         let street = world.road_node_at(at(5, 3)).unwrap();
-        let route = |w: &Map, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
+        let route = |w: &Map, from, to| crate::pathfinding::Routes::from(w, from).route_to(to);
         assert!(route(&world, east(&world, 0), street).is_some(), "right off it");
         assert!(route(&world, street, east(&world, 9)).is_some(), "right onto it");
         assert!(route(&world, west(&world, 9), street).is_none(), "the far side has no way to it");
@@ -551,7 +547,7 @@ pub(super) mod tests {
         }
         assert!(bend.road_node_at(at(3, 0)).is_none(), "the corner is two roads");
         assert!(bend.node_in(at(3, 0), 0, [-1, 1]).is_some(), "the first inside the bend");
-        let r = |w: &Map, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
+        let r = |w: &Map, from, to| crate::pathfinding::Routes::from(w, from).route_to(to);
         assert!(r(&bend, bend.node_in(at(3, 3), 0, east).unwrap(), bend.node_in(at(0, 0), 0, NORTH).unwrap()).is_some(), "the way back drives");
         assert!(r(&bend, bend.node_in(at(0, 0), 0, SOUTH).unwrap(), bend.node_in(at(3, 3), 0, [-1, 0]).unwrap()).is_some(), "and the way out");
         // On the wrong side: a pair that keeps left is still a pair.
@@ -570,7 +566,7 @@ pub(super) mod tests {
     /// The reachability index is maintained edit by edit rather than rebuilt,
     /// so the thing worth testing is that it never drifts from the graph it
     /// claims to describe. Brute-forces the answer and demands agreement.
-    pub(in crate::world) fn agrees_with_the_edges(world: &Map) {
+    pub(crate) fn agrees_with_the_edges(world: &Map) {
         let mut adj: fixed::HashMap<EntityId, Vec<EntityId>> =
             fixed::HashMap::default();
         for &(a, b) in world.edges.keys() {
@@ -599,7 +595,7 @@ pub(super) mod tests {
     }
 
     /// Demolition as the game loop does it: edges first, then the node.
-    pub(in crate::world) fn lift_road(world: &mut Map, at: GridCoord) {
+    pub(crate) fn lift_road(world: &mut Map, at: GridCoord) {
         let Some(id) = world.road_node_at(at) else { return };
         world.demolish_node(id);
     }

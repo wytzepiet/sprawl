@@ -4,7 +4,7 @@
 use crate::engine::event_queue::EventQueue;
 use model::GameTime;
 use model::{Build, BuildingKind, ClientMessage, EntityId, GameObject, GridCoord, News, OwnerId, Tool};
-use crate::world::decks::MIDDLE;
+use map::decks::MIDDLE;
 use crate::world::World;
 
 /// What a player asked of the town, done. What it has to say back to
@@ -171,7 +171,7 @@ pub fn may_step(world: &World, step: Build) -> bool {
 /// `may_step`, a drag going on from `to` that way, if it does
 /// (`Map::leads_nowhere`), and on to the road's next end, if it is known
 /// (`Map::may_lay_at_on`).
-pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }: Build, on: Option<(i32, i32)>, then: Option<crate::world::clear::End>) -> bool {
+pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }: Build, on: Option<(i32, i32)>, then: Option<map::clear::End>) -> bool {
     let [hf, ht] = up.unwrap_or_default();
     let [sf, st] = sides.unwrap_or_default();
     let (a, b) = (world.map.node_in(from, hf, sf), world.map.node_in(to, ht, st));

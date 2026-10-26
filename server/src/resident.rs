@@ -5,7 +5,7 @@ use model::GameTime;
 use model::blueprint::blueprint;
 use crate::economy;
 use model::needs::{Bucket, Need, Tap};
-use crate::world::pathfinding::Routes;
+use map::pathfinding::Routes;
 use model::{EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
@@ -40,7 +40,7 @@ pub fn handle_resident_wake(
     let Some(r) = world.map.resident(id).cloned() else { return };
 
     // Beyond the sea: someone who has not come yet. They come the way
-    // everyone comes, on the ferry, car and all (`world/sea.rs`), and the
+    // everyone comes, on the ferry, car and all (`map/sea.rs`), and the
     // ferry sets them driving.
     let Some(mut at) = r.at else { return };
 
@@ -119,7 +119,7 @@ pub fn handle_resident_wake(
     // Not yet time to set out, or already there: stay put. Staying restates
     // how long the car's spot is held.
     if at == there {
-        world.map.restate(r.car, leave.saturating_add(crate::world::lots::SLACK));
+        world.map.restate(r.car, leave.saturating_add(map::lots::SLACK));
     }
     if departure > now || at == there {
         events.wake(alarm.max(now) - now, id);
@@ -568,7 +568,7 @@ pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: E
         hired = r.work == Some(place);
     }
     // A hand arriving is a change at the workplace: a farm's tractor goes
-    // out with someone to drive it (`world/fields.rs`).
+    // out with someone to drive it (`map/fields.rs`).
     if hired {
         crate::calls::turn(world, events, place, now);
     }
@@ -650,7 +650,7 @@ mod bench {
     #[test]
     #[ignore]
     fn how_dear_an_estimate_is() {
-        let mut world = World::from(crate::world::Map::meadow(-4..40, -6..6).street(-2..38));
+        let mut world = World::from(map::Map::meadow(-4..40, -6..6).street(-2..38));
         world.map.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
         let shop = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
         world.map.settle();

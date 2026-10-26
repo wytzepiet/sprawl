@@ -1,6 +1,6 @@
 use model::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing};
 use land::TerrainType;
-use crate::world::Map;
+use crate::Map;
 
 /// What lies behind a harbour's back, best first.
 #[derive(Clone, Copy)]
@@ -340,7 +340,6 @@ impl Map {
     /// not one of them; it stands where the map stops. Only tests still want
     /// the world flattened like this; the simulation itself always knows
     /// which building it means.
-    #[cfg(test)]
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
             .iter()
@@ -351,7 +350,6 @@ impl Map {
 
     /// A kind's smallest plot with its corner at `pos`, this way round, on
     /// open land, road or no road: dormant till one comes.
-    #[cfg(test)]
     pub fn place_building(&mut self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<EntityId> {
         let tiles: Vec<GridCoord> = Self::footprint(pos, model::blueprint::plot(kind, facing).size).collect();
         let quay = model::blueprint::blueprint(kind).quay;
@@ -444,7 +442,6 @@ impl Map {
 
     /// The first way round a kind's plot with its corner at `pos` stands
     /// on open land with a street before it.
-    #[cfg(test)]
     pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<u8> {
         (0..4).find(|&f| {
             let tiles: Vec<GridCoord> = Self::footprint(pos, model::blueprint::plot(kind, f).size).collect();
@@ -457,7 +454,6 @@ impl Map {
     /// A building that can be driven to, or nothing: its corner at `pos`,
     /// the first way round it fits with a street before it. Standing, and
     /// stocked, as a town written by hand is.
-    #[cfg(test)]
     pub fn place_on_street(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
         let id = self.place_building(pos, kind, self.site_for(pos, kind)?)?;
         self.finish(id);
@@ -523,7 +519,7 @@ impl Map {
         }
         // A building that parks at the kerb needs a street all along one
         // side, where its bays go (`kerb_bays`).
-        use crate::world::lots::{kerbed, side_of, SIDES};
+        use crate::lots::{kerbed, side_of, SIDES};
         match self.driveway_for(&tiles, kind, facing) {
             Some(_) if kerbed(kind) && !SIDES.iter().any(|&d| self.street_along(&side_of(&tiles, d), d)) => Err("No street along a whole side, for its parking"),
             Some(_) => Ok(tiles),
@@ -712,8 +708,8 @@ impl Map {
     /// indexed, so it is seen from any of them.
     fn occupy(&mut self, id: EntityId, t: GridCoord) {
         self.occupied.insert((t.x, t.y), id);
-        self.spatial.entry(crate::world::chunk_of(t)).or_default().insert(id);
-        self.built.insert(crate::world::chunk_of(t));
+        self.spatial.entry(crate::chunk_of(t)).or_default().insert(id);
+        self.built.insert(crate::chunk_of(t));
     }
 
     /// The one way a building leaves.
@@ -724,11 +720,11 @@ impl Map {
         let tiles = b.tiles.clone();
         // Its fleet goes with it: what stands in the yard now, and what is
         // out when it gets back (`park_car`). Its people go at `settle`.
-        let chunks: Vec<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
+        let chunks: Vec<_> = tiles.iter().map(|&t| crate::chunk_of(t)).collect();
         let yard: Vec<EntityId> = self
             .objects
             .fleet(id)
-            .filter(|&car| matches!(self.objects.get(car), Some(e) if e.position.is_some_and(|p| chunks.contains(&crate::world::chunk_of(p))) && matches!(e.object, GameObject::Car(ref c) if c.trip.is_none())))
+            .filter(|&car| matches!(self.objects.get(car), Some(e) if e.position.is_some_and(|p| chunks.contains(&crate::chunk_of(p))) && matches!(e.object, GameObject::Car(ref c) if c.trip.is_none())))
             .collect();
         for car in yard {
             self.despawn_car(car);
@@ -781,8 +777,8 @@ impl Map {
             let GameObject::Building(ref b) = e.object else { continue };
             for &tile in &b.tiles {
                 self.occupied.insert((tile.x, tile.y), e.id);
-                self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(e.id);
-                self.built.insert(crate::world::chunk_of(tile));
+                self.spatial.entry(crate::chunk_of(tile)).or_default().insert(e.id);
+                self.built.insert(crate::chunk_of(tile));
             }
         }
     }
@@ -792,7 +788,7 @@ impl Map {
 mod tests {
     use super::*;
     use super::super::roads::tests::{agrees_with_the_edges, lift_road};
-    use crate::world::decks::MIDDLE;
+    use crate::decks::MIDDLE;
 
     /// A world with nothing in it but grass and the given road path.
     fn world_with_road(path: &[(i32, i32)]) -> Map {
@@ -979,7 +975,7 @@ mod tests {
         let from = world.street_of(buildings[0].0).unwrap();
         let to = world.street_of(buildings[1].0).unwrap();
         assert!(
-            crate::world::pathfinding::Routes::from(&world, from).route_to(to).is_some(),
+            crate::pathfinding::Routes::from(&world, from).route_to(to).is_some(),
             "a road runs between them, so a car must be able to drive it",
         );
     }

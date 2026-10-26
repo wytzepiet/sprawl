@@ -310,7 +310,7 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
     let cargo = world.map.car(lorry).map_or(Vec::new(), |c| c.cargo.clone());
     let quay = world.map.building(harbour).map_or(0, |b| b.pad.len());
     let (mut dropped, mut kept): (Vec<Package>, Vec<Package>) = cargo.into_iter().partition(|t| t.outbound);
-    let space = crate::world::sea::QUAY.saturating_sub(quay);
+    let space = map::sea::QUAY.saturating_sub(quay);
     kept.extend(dropped.split_off(space.min(dropped.len())));
     let mut taken = Vec::new();
     if let Some(b) = world.map.building(harbour) {
@@ -326,7 +326,7 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
     }
     if dropped.is_empty() && taken.is_empty() {
         if kept.iter().any(|t| t.outbound) {
-            return events.wake(crate::world::HANDLE_MS * LOAD as GameTime, lorry);
+            return events.wake(map::HANDLE_MS * LOAD as GameTime, lorry);
         }
         return go_home(world, events, lorry, harbour, now);
     }
@@ -400,7 +400,7 @@ pub fn sea(world: &World) -> Sea {
                 berthed,
                 packages: c.deck.iter().flatten().count() as u32,
                 settlers: c.passengers.len() as u32,
-                deck: crate::world::sea::DECK as u32,
+                deck: map::sea::DECK as u32,
                 booked: c.booked.len() as u32,
                 waiting: world.waiting_settlers(harbour).len() as u32,
                 lands: world.next_ferry(harbour).and_then(|f| world.next_call(f))?,

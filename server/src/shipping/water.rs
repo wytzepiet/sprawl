@@ -13,13 +13,10 @@ use super::lanes::{Lanes, WAYS};
 use std::collections::BinaryHeap;
 use fixed::HashMap;
 
-use model::{GridCoord, Pose};
+use model::GridCoord;
 use land::TerrainType;
-use crate::world::sea::FERRY_LENGTH;
+use map::sea::{Berth, BERTH, FERRY_LENGTH};
 
-/// Tiles of sea in a line behind a harbour: the ferry's length at the
-/// berth, and room to come straight in.
-pub const BERTH: i32 = 6;
 /// Clearance is counted to here: further out is open water all the same.
 const FAR: u8 = 15;
 /// What a step costs, in tenths of a tile: straight, diagonal, and more on
@@ -43,32 +40,6 @@ pub const TURN: f64 = FERRY_LENGTH / 2.0;
 /// Water this close to land, under about two ships' widths each side, is
 /// narrow: the only water where a lane may run both ways.
 pub const NARROW: u8 = 2;
-
-/// The berth of a harbour: its quay tile and the way out to sea from it.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Berth {
-    pub quay: GridCoord,
-    pub out: (i32, i32),
-}
-
-impl Berth {
-    pub fn tile(&self, n: i32) -> GridCoord {
-        GridCoord { x: self.quay.x + self.out.0 * n, y: self.quay.y + self.out.1 * n }
-    }
-    /// The middle of the quay's edge, where the ramp comes down.
-    pub fn ramp(&self) -> [f64; 2] {
-        [self.quay.x as f64 + 0.5 - self.out.0 as f64 * 0.5, self.quay.y as f64 + 0.5 - self.out.1 as f64 * 0.5]
-    }
-    /// Toward the land, from the sea.
-    pub fn landward(&self) -> f64 {
-        (-self.out.1 as f64).atan2(-self.out.0 as f64)
-    }
-    /// The ferry at the berth: its land end on the ramp, facing the land.
-    pub fn moored(&self) -> Pose {
-        let d = FERRY_LENGTH / 2.0;
-        Pose { at: [self.ramp()[0] + self.out.0 as f64 * d, self.ramp()[1] + self.out.1 as f64 * d], heading: self.landward() }
-    }
-}
 
 /// Where a way ends: at a berth, or off the map's edge, to the world.
 #[derive(Debug, Clone, Copy, PartialEq)]

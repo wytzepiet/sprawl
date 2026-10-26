@@ -27,7 +27,7 @@
 use model::blueprint::FACINGS;
 use model::{BuildingKind, EntityId, GameObject, GridCoord, Pose};
 use land::TerrainType;
-use crate::world::Map;
+use crate::Map;
 /// The ferry, in tiles: long and broad, bigger than true to the map, as
 /// `FERRY` in the client's `dressing.ts`.
 pub const FERRY_LENGTH: f64 = 3.2;
@@ -64,7 +64,36 @@ pub fn deck_pose(ship: Pose, k: usize) -> Pose {
     Pose { at: plus(along, across), heading: ship.heading }
 }
 
-pub use crate::shipping::water::{Berth, BERTH};
+/// Tiles of sea in a line behind a harbour: the ferry's length at the
+/// berth, and room to come straight in.
+pub const BERTH: i32 = 6;
+
+/// The berth of a harbour: its quay tile and the way out to sea from it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Berth {
+    pub quay: GridCoord,
+    pub out: (i32, i32),
+}
+
+impl Berth {
+    pub fn tile(&self, n: i32) -> GridCoord {
+        GridCoord { x: self.quay.x + self.out.0 * n, y: self.quay.y + self.out.1 * n }
+    }
+    /// The middle of the quay's edge, where the ramp comes down.
+    pub fn ramp(&self) -> [f64; 2] {
+        [self.quay.x as f64 + 0.5 - self.out.0 as f64 * 0.5, self.quay.y as f64 + 0.5 - self.out.1 as f64 * 0.5]
+    }
+    /// Toward the land, from the sea.
+    pub fn landward(&self) -> f64 {
+        (-self.out.1 as f64).atan2(-self.out.0 as f64)
+    }
+    /// The ferry at the berth: its land end on the ramp, facing the land.
+    pub fn moored(&self) -> Pose {
+        let d = FERRY_LENGTH / 2.0;
+        Pose { at: [self.ramp()[0] + self.out.0 as f64 * d, self.ramp()[1] + self.out.1 as f64 * d], heading: self.landward() }
+    }
+}
+
 
 /// Where a settler's car stands in deck bay `k`, two to a bay, one
 /// either side of its middle along it, facing the land (`aboard` in the
@@ -82,7 +111,7 @@ impl Berth {
     /// gate.
     pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, [f64; 2])>) {
         let side = self.landward() + std::f64::consts::FRAC_PI_2;
-        crate::world::lots::park(|s, out| plus(plus(self.ramp(), ahead(self.landward(), s)), ahead(side, out)), &[1.0])
+        crate::lots::park(|s, out| plus(plus(self.ramp(), ahead(self.landward(), s)), ahead(side, out)), &[1.0])
     }
 }
 

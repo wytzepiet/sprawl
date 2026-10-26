@@ -51,7 +51,7 @@ use model::GameTime;
 use crate::game::Game;
 use model::{Build, Car, CarRole, EntityId, GameObject, GridCoord, Tool};
 use crate::world::World;
-use crate::world::decks::MIDDLE;
+use map::decks::MIDDLE;
 
 /// How long a test runs, in simulated time.
 pub const TEST_MS: GameTime = 4 * 60_000;
@@ -64,7 +64,7 @@ const JAM_STILL_MS: GameTime = 40_000;
 /// The solve's overlay of priority tiles, as its rows are read.
 const PRIORITY: u8 = u8::MAX;
 /// The highest a road stands (`decks.rs`).
-const TOP_H: u8 = crate::world::decks::TOP;
+const TOP_H: u8 = map::decks::TOP;
 /// What a junction's lights cost, in tiles of road.
 pub const LIGHT_COST: u32 = 4;
 /// How far a gate's stub runs past the map's edge.
@@ -276,7 +276,7 @@ impl Level {
             .filter(|r| !r.is_empty())
             .collect();
         let plain: String = map.iter().map(|l| if l.starts_with('#') { l.to_string() } else { l.chars().map(|c| if c.is_ascii_digit() { '.' } else { c }).collect() }).collect::<Vec<_>>().join("\n");
-        let (w, h, title) = crate::world::fixtures::lay(&mut world.map, &plain, 0, name);
+        let (w, h, title) = map::fixtures::lay(&mut world.map, &plain, 0, name);
         let at = |col: i32, row: i32| GridCoord { x: w - 1 - col, y: -row };
 
         let mut gates = Vec::new();
@@ -538,7 +538,7 @@ impl Level {
         let w = &self.wants[i];
         let from = world.map.road_node_at(self.gates[w.from].end)?;
         let to = world.map.road_node_at(self.gates[w.to].end)?;
-        crate::world::pathfinding::Routes::from(&world.map, from).route_to(to)
+        map::pathfinding::Routes::from(&world.map, from).route_to(to)
     }
 
     /// Before each step of time: count who arrived, set off who is due, and

@@ -15,7 +15,7 @@ use crate::engine::event_queue::EventQueue;
 use model::GameTime;
 use model::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
-use crate::world::decks::Side;
+use map::decks::Side;
 
 /// How long an action may be taken back: five minutes of play, a quarter
 /// of the town's day. Long enough to see a slip for what it is; short

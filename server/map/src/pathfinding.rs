@@ -4,8 +4,8 @@ use fixed::{HashMap, HashSet};
 
 use model::CRUISE_SPEED;
 use model::{EntityId, GridCoord};
-use crate::world::network::Segment;
-use crate::world::Map;
+use crate::network::Segment;
+use crate::Map;
 
 /// Where a search stands: at a junction, come in from the node before it
 /// (the junction itself where the search began). Turns are made at

@@ -8,7 +8,7 @@
 //! the same way. A depot's lorry fetches from makers' yards of its own
 //! accord, and what the town has to buy comes by sea (`haul`). A farm's
 //! tractor is no call at all: it runs over the farm's own land
-//! (`world/fields.rs`). A van stands at its depot while the forklift loads
+//! (`map/fields.rs`). A van stands at its depot while the forklift loads
 //! it, drives to the caller, stands while the caller's unloads it
 //! (`Map::lift`), and goes home. Empty pads serve nothing, and nothing a
 //! van carries crosses the border, so nothing it carries is paid for.
@@ -18,7 +18,7 @@ use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use model::GameTime;
 use model::{CarRole, EntityId, GameObject, Good, DAY_MS};
-use crate::world::pathfinding::Routes;
+use map::pathfinding::Routes;
 use crate::world::World;
 
 /// A call raised and not yet resolved.

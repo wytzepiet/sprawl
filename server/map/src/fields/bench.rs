@@ -88,8 +88,8 @@ fn svg(text: &str, land: &[GridCoord], head: &HashSet<(i32, i32)>, path: &[GridC
 
 #[test]
 fn sweeps() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fields");
-    let draw = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.dev/fields");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fields");
+    let draw = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.dev/fields");
     std::fs::create_dir_all(&draw).unwrap();
     let only = std::env::var("FIELD").ok();
     let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect();
@@ -102,7 +102,7 @@ fn sweeps() {
         }
         let text = std::fs::read_to_string(&file).unwrap();
         let mut world = Map::new();
-        crate::world::fixtures::build_text(&mut world, &text);
+        crate::fixtures::build_text(&mut world, &text);
         let farm = world.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm)).map(|e| e.id).expect("a farm");
         // What was built on its land after it claimed it is land no more.
         world.tend(farm);

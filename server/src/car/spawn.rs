@@ -68,7 +68,7 @@ pub fn depart(
     // claimed, and the one here let go of: booked from the earliest the car
     // could be there, on empty roads, to when the driver plans to leave.
     let free_ms = ((ways.street.len() - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
-    let Some((path, to_lot)) = world.map.way_in(dest_building, car_id, &ways, now + free_ms, until.saturating_add(crate::world::lots::SLACK)) else { return false };
+    let Some((path, to_lot)) = world.map.way_in(dest_building, car_id, &ways, now + free_ms, until.saturating_add(map::lots::SLACK)) else { return false };
     let backs_in = world.map.reverse_tail(car_id);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
@@ -246,7 +246,7 @@ pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, b
 /// How far along the route each change of gear is, as its physics measures
 /// it: where a vehicle stops and pulls away the other way.
 pub fn cusps(backing: &[[usize; 2]], along: &[f64]) -> Vec<f64> {
-    crate::world::geometry::parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
+    map::geometry::parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
 }
 
 /// How far along a route each node of it is, from its segments' lengths:
@@ -261,7 +261,7 @@ pub fn along(segment_lengths: &[f64]) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::Map;
+    use map::Map;
     use model::{BuildingKind, GameObject, GridCoord};
 
     /// A house's car drives onto its driveway nose first, stands facing the

@@ -27,7 +27,7 @@ use fixed::HashSet;
 
 use model::GameTime;
 use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
-use crate::world::Map;
+use crate::Map;
 
 /// How long the tractor takes to cross a tile, working it: two and a
 /// half minutes of the game's clock, two seconds watched at full speed,
@@ -755,7 +755,7 @@ mod tests {
         world.finish(farm);
         assert!(world.street_of(farm).is_none(), "served before any door");
         world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
-        world.place_road_at(GridCoord { x: 61, y: 44 }, 0, crate::world::decks::MIDDLE, GridCoord { x: 61, y: 45 }, 0, crate::world::decks::MIDDLE, false, false);
+        world.place_road_at(GridCoord { x: 61, y: 44 }, 0, crate::decks::MIDDLE, GridCoord { x: 61, y: 45 }, 0, crate::decks::MIDDLE, false, false);
         let t = tractor(&world, farm);
         assert!(matches!(world.objects.get(t).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()), "the tractor has no spot");
         let land = tiles(&world, farm);

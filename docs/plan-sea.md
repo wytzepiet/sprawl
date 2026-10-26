@@ -202,7 +202,7 @@ never names `World` or `EventQueue`:
   invertible in closed form, which the client reads the same way.
 - `water.rs`: `Water { x0, y0, w, h, clearance: Vec<u8> }` from any
   terrain map (`Water::of`), clearance being steps to land, eight ways,
-  capped at 15. `Berth` moved here from `world/sea.rs`.
+  capped at 15. `Berth` moved here from `map/sea.rs`.
   `route(&Water, from: &Berth, to: End::Berth | End::Edge)` is A* over
   tiles (eight ways, no corner cutting, +3 tiles a step at clearance 1,
   +1 at 2), pulled tight (until grid lanes, stage 5) along lines of sight that keep as far off land
@@ -731,7 +731,7 @@ ferry on a real course, from the real edge.
   but not the land side.
   - The `world` calibration and `the_outpost` assert the same metrics in
     both.
-  - No decision may live in `world/sea.rs` that is not a call into
+  - No decision may live in `map/sea.rs` that is not a call into
     `shipping/`.
 - **Voyages are long.** Even at `SEA_PACE`, a box to the world and back
   is a game day. That may be right (order ahead), or a chore. Tune

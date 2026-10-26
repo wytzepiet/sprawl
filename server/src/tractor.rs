@@ -5,7 +5,7 @@
 
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
-use crate::world::fields::{PACE, RIPEN};
+use map::fields::{PACE, RIPEN};
 use crate::world::World;
 use model::{CarRole, EntityId, GameObject, GameTime, Job, Run, Stage};
 
@@ -127,7 +127,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::Map;
+    use map::Map;
     use model::{BuildingKind, GridCoord, Tile, DAY_MS};
 
     fn farm_at(world: &mut World, x: i32) -> (EntityId, Vec<Tile>) {

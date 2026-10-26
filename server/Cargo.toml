@@ -7,13 +7,14 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["fixed", "land", "model", "host", "web"]
-default-members = [".", "fixed", "land", "model", "host"]
+members = ["fixed", "land", "model", "map", "host", "web"]
+default-members = [".", "fixed", "land", "model", "map", "host"]
 
 [dependencies]
 fixed = { path = "fixed" }
 land = { path = "land" }
 model = { path = "model" }
+map = { path = "map" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }

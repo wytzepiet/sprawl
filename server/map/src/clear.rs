@@ -42,7 +42,7 @@ const TOUCH: f64 = 0.02;
 const EPS: f64 = 1e-6;
 
 /// One end of a link: a tile, a height, a side.
-pub(crate) type End = (GridCoord, u8, Side);
+pub type End = (GridCoord, u8, Side);
 
 /// What a change would do to where roads stand: links laid between ends,
 /// any of which may be new, each as wide as its `half` each side; and the
@@ -330,7 +330,7 @@ impl Map {
     /// laid on this side at this height: those in the middle less than a
     /// level from it, narrow enough to share their tile, a lane beside a
     /// lane, where the other side at their height is free.
-    pub(crate) fn moving_over(&self, at: GridCoord, height: u8, side: Side) -> Vec<(EntityId, Side)> {
+    pub fn moving_over(&self, at: GridCoord, height: u8, side: Side) -> Vec<(EntityId, Side)> {
         if side == MIDDLE {
             return Vec::new();
         }

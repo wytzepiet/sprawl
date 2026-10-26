@@ -1,6 +1,6 @@
 use model::EntityId;
-use crate::world::Map;
-use crate::world::bezier;
+use crate::Map;
+use crate::bezier;
 
 /// The lane a route is measured on: not `bezier::LANE_OFFSET`, the lane
 /// it is driven and drawn on, but the old lanes' 0.15. On the true one the

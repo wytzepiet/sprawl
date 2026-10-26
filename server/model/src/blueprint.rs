@@ -45,14 +45,14 @@ pub struct Blueprint {
     /// shelves and vehicles delivers them (`economy::depot`).
     pub vehicles: &'static [CarRole],
     /// Stands with its back to the sea: the world's ferry berths at the
-    /// quay behind it (`world/sea.rs`).
+    /// quay behind it (`map/sea.rs`).
     pub quay: bool,
     /// Forklifts working its pad: how many vehicles it loads or unloads
     /// at once (`World::lift`). One, but a harbour's, which works the
     /// ferry's deck and the lorries both.
     pub forklifts: u8,
     /// A farm: its land is what its tractor ploughs in a shift, and its
-    /// yard holds a harvest, the cycle's make (`world/fields.rs`).
+    /// yard holds a harvest, the cycle's make (`map/fields.rs`).
     pub farm: bool,
 }
 
@@ -218,7 +218,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // the ramp, kept clear for what comes off the ferry; on one side
         // of it the docks lorries back into, on the other the quay's pad,
         // the pallets standing on it; in the corner on the quay the
-        // terminal (`world/sea.rs`). Two hands work the ramp and its three
+        // terminal (`map/sea.rs`). Two hands work the ramp and its three
         // forklifts, dawn to late. Built from nothing: it is where timber
         // first comes in.
         (Harbour, Blueprint {

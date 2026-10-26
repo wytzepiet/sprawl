@@ -4,7 +4,7 @@ use fixed::HashSet;
 use model::blueprint::blueprint;
 use model::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
 use land::{ChunkCoord, CHUNK_SIZE};
-use crate::world::Map;
+use crate::Map;
 
 impl Map {
     /// Everything as if it had just been built: at startup, for a world
@@ -148,7 +148,7 @@ impl Map {
         // (the drive to this line, who)
         let mut offers: Vec<(f64, EntityId)> = self.staff(line).into_iter().filter_map(|id| Some((self.commute(id, line)?, id))).collect();
         let mut seen = HashSet::default();
-        for (k, ring) in self.rings_from(crate::world::chunk_of(at)).enumerate() {
+        for (k, ring) in self.rings_from(crate::chunk_of(at)).enumerate() {
             // The nearest a home in this ring stands, and so the shortest
             // drive anyone there could have.
             let floor = tiles_h((k as i32 - 1).max(0) * CHUNK_SIZE);

@@ -26,9 +26,9 @@ use model::blueprint::FACINGS;
 use model::GameTime;
 use model::{EntityId, GameObject, GridCoord, Pose};
 use serde_json::{json, Value};
-use crate::world::Map;
-use crate::world::bezier::LANE_OFFSET;
-use crate::world::segments::EdgeSegment;
+use crate::Map;
+use crate::bezier::LANE_OFFSET;
+use crate::segments::EdgeSegment;
 
 /// A driveway spot: how far out from the plot's centre a car's centre
 /// stands, wholly before the house's front wall and short of the road, and
@@ -560,19 +560,19 @@ impl Map {
         let mut seats = Vec::new();
         if let Some(berth) = self.berth_at(tiles, kind, facing) {
             let ship = berth.moored();
-            let ends: Vec<EntityId> = (0..crate::world::sea::LANES)
+            let ends: Vec<EntityId> = (0..crate::sea::LANES)
                 .map(|l| {
-                    let p = crate::world::sea::deck_pose(ship, l);
+                    let p = crate::sea::deck_pose(ship, l);
                     let id = node(self, [p.at[0] + p.heading.cos() * 0.35, p.at[1] + p.heading.sin() * 0.35]);
                     edge(self, id, *lane.last().unwrap());
                     id
                 })
                 .collect();
-            for k in 0..crate::world::sea::BAYS {
-                for at in crate::world::sea::seats(ship, k) {
+            for k in 0..crate::sea::BAYS {
+                for at in crate::sea::seats(ship, k) {
                     let id = node(self, at.at);
-                    edge(self, id, ends[k % crate::world::sea::LANES]);
-                    seats.push([id, ends[k % crate::world::sea::LANES]]);
+                    edge(self, id, ends[k % crate::sea::LANES]);
+                    seats.push([id, ends[k % crate::sea::LANES]]);
                 }
             }
         }
@@ -900,7 +900,7 @@ impl Map {
             Some(Way::Kerb { bays, .. }) => bays.iter().flat_map(|b| b.sides.iter().map(|s| s.entry)).collect(),
             _ => Vec::new(),
         };
-        let mut routes = crate::world::pathfinding::Routes::from(self, from);
+        let mut routes = crate::pathfinding::Routes::from(self, from);
         let street = routes.route_to(to).filter(|r| r.len() >= 2)?;
         let bays = entries.into_iter().filter_map(|e| Some((e, routes.route_to(e).filter(|r| r.len() >= 2)?))).collect();
         Some(Ways { street, bays })

@@ -46,7 +46,7 @@ pub const SIDE_OFFSET: f64 = 0.17;
 
 /// How far a step goes toward a side: positive toward it, zero across it,
 /// along the run of a road on that side.
-pub(crate) fn toward((dx, dy): (i32, i32), side: Side) -> i32 {
+pub fn toward((dx, dy): (i32, i32), side: Side) -> i32 {
     dx * side[0] as i32 + dy * side[1] as i32
 }
 
@@ -59,7 +59,7 @@ pub fn other(side: Side) -> Side {
 /// its next tile): across the way from the one's edge to the other's,
 /// straight on or round a bend; one arm, across it. In small whole steps,
 /// either way round.
-pub(crate) fn across(arms: &[(i32, i32)]) -> Option<Side> {
+pub fn across(arms: &[(i32, i32)]) -> Option<Side> {
     let (x, y) = match arms {
         [a] => (-a.1, a.0),
         [a, b] => (-(b.1 - a.1), b.0 - a.0),
@@ -119,7 +119,7 @@ impl Map {
     }
 
     /// The steps from a node to each of these, by their tiles.
-    pub(crate) fn steps_to(&self, id: EntityId, arms: &[EntityId]) -> Option<Vec<(i32, i32)>> {
+    pub fn steps_to(&self, id: EntityId, arms: &[EntityId]) -> Option<Vec<(i32, i32)>> {
         let at = self.objects.get(id)?.position?;
         arms.iter().map(|&n| self.objects.get(n)?.position.map(|p| (p.x - at.x, p.y - at.y))).collect()
     }
@@ -187,7 +187,6 @@ impl Map {
     /// May a road be laid from one tile at one height and side to the next
     /// at another: the ground's rule (`may_lay`) where both ends are in the
     /// ground's middles.
-    #[cfg(test)]
     pub fn may_lay_at(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool) -> bool {
         self.may_lay_at_on(from, hf, sf, to, ht, st, if one_way { Tool::OneWay } else { Tool::Street }, None, None)
     }
@@ -361,7 +360,7 @@ mod tests {
         assert_eq!(world.nodes_on(at(5, 0)).len(), 2, "the ground road and the deck over it");
         let ground = world.road_node_at(at(5, 0)).unwrap();
         assert_eq!(world.arms_of(ground, false).len(), 2, "the road below is not joined to it");
-        let route = crate::world::pathfinding::Routes::from(&world, world.road_node_at(at(5, -3)).unwrap()).route_to(world.road_node_at(at(5, 3)).unwrap()).unwrap();
+        let route = crate::pathfinding::Routes::from(&world, world.road_node_at(at(5, -3)).unwrap()).route_to(world.road_node_at(at(5, 3)).unwrap()).unwrap();
         assert_eq!(route.len(), 7, "straight over");
     }
 
@@ -391,7 +390,7 @@ mod tests {
         let mut world = grass();
         world.place_road_path(&(0..12).map(|x| at(x, 0)).collect::<Vec<_>>());
         lay(&mut world, &[(5, -4, 0), (5, -3, 1), (5, -2, 3), (5, -1, 4), (5, 0, 4), (5, 1, 4), (5, 2, 3), (5, 3, 1), (5, 4, 0)]);
-        let route = crate::world::pathfinding::Routes::from(&world, world.road_node_at(at(5, -4)).unwrap()).route_to(world.road_node_at(at(5, 4)).unwrap()).unwrap();
+        let route = crate::pathfinding::Routes::from(&world, world.road_node_at(at(5, -4)).unwrap()).route_to(world.road_node_at(at(5, 4)).unwrap()).unwrap();
         assert_eq!(route.len(), 9, "up two levels, over, down two");
     }
 

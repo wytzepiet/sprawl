@@ -200,7 +200,7 @@ pub struct RoadNode {
     pub laid: bool,
     /// How high it stands, in half-levels: 0 the ground, 2 a level up, 4
     /// two, 6 three; odd, a slope between the level below and the one
-    /// above (`world/decks.rs`).
+    /// above (`map/decks.rs`).
     #[serde(default)]
     pub height: u8,
     /// Traffic lights, if the junction has them: which phase is green
@@ -214,7 +214,7 @@ pub struct RoadNode {
     pub wide: Vec<EntityId>,
     /// Which side of its tile it stands: the step across its road it is
     /// moved by, or none, the middle. Two one-ways share a tile side by
-    /// side, each a thin road beside the other (`world/decks.rs`).
+    /// side, each a thin road beside the other (`map/decks.rs`).
     #[serde(default)]
     pub side: [i8; 2],
 }
@@ -246,7 +246,7 @@ pub enum BuildingKind {
     /// mayor.
     Farm,
     /// The door: a ramp on the coast and a quay, where the world's ferry
-    /// lands settlers and pallets and takes pallets away (`world/sea.rs`).
+    /// lands settlers and pallets and takes pallets away (`map/sea.rs`).
     /// Placed by the mayor, with its back to the sea.
     Harbour,
     /// Where timber comes from: hands felling the forest round it and
@@ -302,7 +302,7 @@ pub struct Building {
     #[serde(default)]
     pub site: Option<std::collections::BTreeMap<Good, crate::needs::Stock>>,
     /// A harbour's quay: the packages standing on it, off the ferry for
-    /// the town or brought by a lorry for the ferry (`world/sea.rs`),
+    /// the town or brought by a lorry for the ferry (`map/sea.rs`),
     /// each in a slot of the pad the client lays out, in order.
     #[serde(default)]
     pub pad: Vec<Package>,
@@ -321,7 +321,7 @@ pub struct Building {
     pub lorries: u8,
     /// A farm's land: the grass it claimed when a street reached it, each
     /// tile at a stage of the cycle the tractor drives it through
-    /// (`world/fields.rs`). A tile built over is dropped.
+    /// (`map/fields.rs`). A tile built over is dropped.
     #[serde(default)]
     pub land: Vec<Tile>,
     /// Where the tractor last drove: one run's path, which the client
@@ -493,7 +493,7 @@ pub struct Car {
     /// landed at the end; on the vehicle, so it is seen.
     #[serde(default)]
     pub load: Option<(Good, f64)>,
-    /// A ferry's deck, by place (`world/sea.rs` DECK): a pallet each.
+    /// A ferry's deck, by place (`map/sea.rs` DECK): a pallet each.
     /// Settlers' cars ride in the bays with none.
     #[serde(default)]
     pub deck: Vec<Option<Package>>,

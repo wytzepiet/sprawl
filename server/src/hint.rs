@@ -43,7 +43,7 @@ fn starts_at(world: &World, hand: Holding, at: GridCoord) -> bool {
         // What a tap takes, or a drag cuts.
         Holding::Tool { tool: Tool::Demolish, .. } => {
             let tap = |h: u8, side| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to: at, up: Some([h, h]), sides: Some([side, side]), road: false });
-            tap(0, crate::world::decks::MIDDLE)
+            tap(0, map::decks::MIDDLE)
                 || world.map.nodes_on(at).into_iter().any(|(h, id)| {
                     let stand = Stand { h, side: world.map.side_of(id) };
                     tap(h, stand.side) || erase_from(world, at, stand).iter().any(Option::is_some)
@@ -92,7 +92,7 @@ mod tests {
 
     /// Grass, and a street along y = 0.
     fn street() -> World {
-        World::from(crate::world::Map::meadow(-6..20, -6..6).street(-6..20))
+        World::from(map::Map::meadow(-6..20, -6..6).street(-6..20))
     }
 
     fn area(x0: i32, y0: i32, x1: i32, y1: i32) -> Area {
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!((id, len), (9, 1));
         assert!(ways[2].is_some(), "off the street");
         assert!(ways[1].is_none(), "into the water");
-        let ground = Stand { h: 0, side: crate::world::decks::MIDDLE };
+        let ground = Stand { h: 0, side: map::decks::MIDDLE };
         let Hint::Reach { ways, .. } = answer(&world, 1, Ask::Reach(stroke(Tool::Demolish, Some(ground)))) else { unreachable!() };
         assert_eq!(ways.iter().map(Option::is_some).collect::<Vec<_>>(), [true, false, false, false, true, false, false, false]);
     }
@@ -182,7 +182,7 @@ mod bench {
     #[test]
     #[ignore]
     fn starts_over_a_view() {
-        let mut world = World::from(crate::world::Map::meadow(-60..60, -40..40));
+        let mut world = World::from(map::Map::meadow(-60..60, -40..40));
         for k in -5..5 {
             world.map.place_road_path(&(-60..60).map(|x| GridCoord { x, y: k * 8 }).collect::<Vec<_>>());
             world.map.place_road_path(&(-40..40).map(|y| GridCoord { x: k * 12, y }).collect::<Vec<_>>());

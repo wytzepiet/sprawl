@@ -120,7 +120,7 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
     for (dest_x, from_x) in [(40, 2), (0, 30)] {
         for start in (0..14_000).step_by(400) {
             // Fifty tiles of street are all the two trips need.
-            let mut world = World::from(crate::world::Map::meadow(-4..50, -4..12).street(-4..50));
+            let mut world = World::from(map::Map::meadow(-4..50, -4..12).street(-4..50));
             let home = build(&mut world, 10, BuildingKind::House);
             let from = build(&mut world, from_x, BuildingKind::House);
             let shop = build(&mut world, dest_x, BuildingKind::Shop);
@@ -603,8 +603,8 @@ fn a_build_costs_the_same_in_a_town_twice_the_size() {
 #[ignore]
 fn a_town_of_every_fixture_settles() {
     let mut world = World::new();
-    crate::world::fixtures::build(&mut world.map, &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"));
-    let mut game = Game::new(world, crate::world::fixtures::NOON, 1, Box::new(World::new));
+    map::fixtures::build(&mut world.map, &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures"));
+    let mut game = Game::new(world, map::fixtures::NOON, 1, Box::new(World::new));
     let (mut settles, mut others) = (Vec::new(), Vec::new());
     for _ in 0..DAY_MS as GameTime / 4 / STEP_MS {
         let settling = game.now % SETTLE_MS == 0 || !game.world.map.unsettled.is_empty();
@@ -964,7 +964,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     let yard = |world: &World| world.map.building(farm).unwrap().stocks[&Good::Crates].level;
     let stages = |world: &World| -> Vec<Stage> { world.map.building(farm).unwrap().land.iter().map(|t| t.stage).collect() };
     let world = &game.world;
-    let wanted = crate::world::fields::capacity(BuildingKind::Farm) as usize;
+    let wanted = map::fields::capacity(BuildingKind::Farm) as usize;
     assert!(stages(world).len() <= wanted && stages(world).len() > wanted * 9 / 10, "the farm claimed {} tiles of {wanted}", stages(world).len());
     assert_eq!(yard(world), 0.0, "the yard is founded with a make");
     let hands = world.map.resident_ids().into_iter().filter(|&id| world.map.resident(id).is_some_and(|r| r.work == Some(farm))).count();
@@ -1245,7 +1245,7 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
         match (c.trip.is_none() && game.world.map.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
             (false, Some(at)) => {
-                assert!(now - at <= (crate::haul::LOAD as u64 + 1) * crate::world::HANDLE_MS, "the lorry stood {} ms at home", now - at);
+                assert!(now - at <= (crate::haul::LOAD as u64 + 1) * map::HANDLE_MS, "the lorry stood {} ms at home", now - at);
                 parked_home = None;
             }
             _ => {}

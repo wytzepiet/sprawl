@@ -7,6 +7,7 @@ edition = "2024"
 [dependencies]
 sprawl = { path = ".." }
 model = { path = "../model" }
+map = { path = "../map" }
 land = { path = "../land" }
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }

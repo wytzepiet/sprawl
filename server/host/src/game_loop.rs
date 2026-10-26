@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use tokio::time::{Instant, interval, Duration};
 
 use model::GameTime;
-use sprawl::engine::tracked::Tracked;
+use map::tracked::Tracked;
 use sprawl::game::{Game, STEP_MS};
 use model::{DAY_MS, ServerMessage};
 use sprawl::world::World;
@@ -49,9 +49,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::world::fixtures::NOON) } else { load_world(&mut db) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), map::fixtures::NOON) } else { load_world(&mut db) };
     if let Some(dir) = &fixtures {
-        sprawl::world::fixtures::build(&mut world.map, Path::new(dir));
+        map::fixtures::build(&mut world.map, Path::new(dir));
     } else {
         if world.map.objects.is_empty() {
             world.map.terrain_seed = new_seed();
@@ -130,7 +130,7 @@ fn inspect(game: &mut Game, query: Debug) -> String {
         Debug::Lot(id) => world.map.inspect_lot(id, now),
         Debug::Town => sprawl::economy::town(world, now),
         Debug::Sea => sprawl::haul::inspect(world, now),
-        Debug::Map { x, y, r } => sprawl::world::fixtures::draw(&world.map, x, y, r).into(),
+        Debug::Map { x, y, r } => map::fixtures::draw(&world.map, x, y, r).into(),
     };
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }

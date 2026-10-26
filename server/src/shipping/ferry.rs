@@ -11,7 +11,7 @@ use crate::shipping::lines::Line;
 use crate::shipping::DWELL;
 use crate::shipping::voyage::Voyage;
 use crate::shipping::water::{End, Water};
-use crate::world::sea::{seats, BAYS, DECK, PER_BAY, QUAY};
+use map::sea::{seats, BAYS, DECK, PER_BAY, QUAY};
 use crate::world::World;
 
 /// The first call at a new harbour: half an hour after it is built.
@@ -419,7 +419,7 @@ impl World {
             let good = run[0].1.good;
             // Only what is done before it sails: a run that is not, cut short.
             let ends = self.map.lift(harbour, ferry, good, run.len() as u32, true, now);
-            let late = (ends.saturating_sub(due)).div_ceil(crate::world::HANDLE_MS) as usize;
+            let late = (ends.saturating_sub(due)).div_ceil(map::HANDLE_MS) as usize;
             let n = run.len().saturating_sub(late);
             if late > 0
                 && let Some(l) = self.map.building_mut(harbour).and_then(|b| b.lifts.last_mut())
@@ -490,7 +490,7 @@ mod tests {
         world.commission(harbour, 0);
         let way = &world.lines[&harbour].legs[0];
         assert_eq!(way[0], berth.moored().at);
-        assert_eq!(way[1][0], berth.tile(crate::world::sea::BERTH - 1).x as f64 + 0.5, "it turned off the berth's line: {way:?}");
+        assert_eq!(way[1][0], berth.tile(map::sea::BERTH - 1).x as f64 + 0.5, "it turned off the berth's line: {way:?}");
         assert!(world.water.get().unwrap().afloat(way), "the ship sailed over land");
         assert_eq!(way.last().unwrap()[1], 41.0, "it did not sail off the map's edge: {way:?}");
     }
