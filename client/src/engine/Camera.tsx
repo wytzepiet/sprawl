@@ -39,6 +39,10 @@ const LEVEL_MARGIN = 5;
 /** Chunks loaded past the ground in view, so it is there before it is seen. */
 const PAD = 2;
 
+/** Where the island's camera was when the page was left: each world is
+ *  served from its own origin, so the browser keeps one per world. */
+const KEPT = "sprawl.camera";
+
 /**
  * Keep `v` inside [lo, hi] allowing for a viewport of half-width `half`. When
  * the surveyed world is narrower than the viewport there is nothing to pan
@@ -84,9 +88,11 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   scene.camera = camera;
   const aspect = () => canvas.clientWidth / Math.max(1, canvas.clientHeight);
 
-  let half = 15;
-  let at = { x: 0, y: 0 };
-  let target = { half, x: 0, y: 0 };
+  // Back where the player left it; a stale place is clamped onto the island.
+  const kept = (!props.bounds && JSON.parse(localStorage.getItem(KEPT) ?? "null")) || { x: 0, y: 0, half: 15 };
+  let half: number = kept.half;
+  let at = { x: kept.x as number, y: kept.y as number };
+  let target = { half, ...at };
   let flying = false;
   let lastChunks = "";
   let lastWelcome = 0;
@@ -293,14 +299,21 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
     }
   };
 
+  const keep = () => {
+    if (!props.bounds) localStorage.setItem(KEPT, JSON.stringify({ ...at, half }));
+  };
+  const onHide = () => document.visibilityState === "hidden" && keep();
+
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", preventContextMenu);
   window.addEventListener("keydown", onKeyDown);
+  document.addEventListener("visibilitychange", onHide);
 
   onCleanup(() => {
+    keep();
     stopBefore();
     detachFlying();
     canvas.removeEventListener("pointerdown", onPointerDown);
@@ -309,6 +322,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
     canvas.removeEventListener("wheel", onWheel);
     canvas.removeEventListener("contextmenu", preventContextMenu);
     window.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("visibilitychange", onHide);
     if (scene.camera === camera) scene.camera = null;
   });
 
