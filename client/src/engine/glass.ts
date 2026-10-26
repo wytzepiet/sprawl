@@ -70,9 +70,11 @@ fn field(p: vec2f, run: Run) -> Field {
     let pane = black.panes[i];
     if (pane.round.y <= 0.002) { continue; }
     let d = box(p, pane);
-    // Smooth union (Inigo Quilez's polynomial): melt within k.
+    // A round union, melting within k: where two edges meet, the fillet
+    // is a squircle's corner too (an L4 circle, as in \`squircle\`).
     let h = clamp(0.5 + 0.5 * (f.d - d) / k, 0, 1);
-    f.d = mix(f.d, d, h) - k * h * (1 - h);
+    let u = max(vec2f(k - f.d, k - d), vec2f(0)) * max(vec2f(k - f.d, k - d), vec2f(0));
+    f.d = max(k, min(f.d, d)) - sqrt(sqrt(dot(u, u)));
     // The dye melts as the shapes do: a pane's colour to its edge,
     // blended only where it runs into another.
     f.dye = mix(f.dye, pane.dye, h);
