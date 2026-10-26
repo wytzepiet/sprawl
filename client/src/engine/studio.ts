@@ -28,12 +28,10 @@ const COLUMNS = 4;
 const NOON = 0.5;
 /** The lens: narrow, so a picture is nearly the plan, with a little depth. */
 const FOV = 0.35;
-/** Frames drawn before the first picture, while what it draws is built. */
-const WARM = 10;
 /** How far the street runs each way, in tiles: off any picture. */
 const STREET = 12;
-/** Room round a plot in its picture, in tiles. */
-const MARGIN = 0.4;
+/** Room round a plot in its picture, in tiles: as far as the street. */
+const MARGIN = 0.9;
 /** The grass's layer of the land, and a tile of it with grass all round. */
 const GRASS = 2;
 const INSIDE = shapeKey({ base: "+", corners: [null, null, null, null], across: Array(8).fill("+"), near: Array(8).fill(null) });
@@ -99,12 +97,12 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
     await registerSceneWithShadowSupport(scene);
     town = new TownLayer(ctx, lit.casters, (f) => entries.forEach(f), () => "Grass", () => SOLID);
     lawn();
-    let first = true;
-    for (const [i, kind] of KINDS.entries()) {
+    // A harbour is its piers on the sea, which the town grid does not
+    // draw: it keeps its icon. The first picture is taken twice: what the
+    // scene draws, its light and sky, is still being built the first time.
+    const kinds = KINDS.flatMap((kind, i) => (BLUEPRINTS[kind].quay ? [] : [{ kind, i }]));
+    for (const [n, { kind, i }] of [kinds[0], ...kinds].entries()) {
       if (stopped) return;
-      // A harbour is its piers on the sea, which the town grid does not
-      // draw: it keeps its icon.
-      if (BLUEPRINTS[kind].quay) continue;
       const { at, half } = stage(kind);
       // Asked to draw, then drawn: the chunks come in a frame at a time.
       while (!town.settled && !stopped) await idle();
@@ -118,11 +116,8 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
       // The shadow pass waits for a new set of casters to load, and a
       // frame drawn before it is all in shade.
       while (lit.shadows._preloadPending && !stopped) await idle();
-      // What the scene draws first is built over a few frames, and shows
-      // nothing until it is.
-      for (let n = 0; first && n < WARM; n++) renderFrame(main, 16, [surface]), await idle();
-      first = false;
       renderFrame(main, 16, [surface]);
+      if (n === 0) continue;
       const [x, y] = [(i % COLUMNS) * CELL, Math.floor(i / COLUMNS) * CELL];
       device.queue.copyExternalImageToTexture({ source: canvas }, { texture: sheet, origin: [x, y], premultipliedAlpha: true }, [CELL, CELL]);
       setTaken((s) => new Set([...s, kind]));
@@ -162,9 +157,10 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
     };
     entries = [{ id: 1, position: tiles[0], object: { kind: "Building", data: building } }, ...road];
     for (const e of old.slice(0, 1).concat(entries.slice(0, 1))) for (const t of (e.object.data as Building).tiles) town!.touch(t.x, t.y);
-    // The plot and the street before it, a little round them.
-    const half = Math.max(w, h + 1) / 2 + MARGIN;
-    return { at: [x0 + w / 2, (h + 1) / 2] as [number, number], half };
+    // The plot as near the middle as the street along the bottom lets
+    // it, a little round it.
+    const half = Math.max(w, h) / 2 + MARGIN;
+    return { at: [x0 + w / 2, half - 0.1] as [number, number], half };
   };
 
   const timer = setTimeout(() => void shoot(), 4000);
