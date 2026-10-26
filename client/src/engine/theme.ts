@@ -8,10 +8,10 @@ export const theme = {
   land: hex("#A4DA90"),
   water: hex("#76AAB2"),
   beach: hex("#E2DCCF"),
-  // The floor between the crowns: the wood's shade, of the crowns' teal
-  // greens, darker than them as the ground under a canopy is, so a forest
-  // reads as one even zoomed out past its trees.
-  forest: hex("#4A6461"),
+  // The floor between the crowns: the wood's shade, the grass darker and
+  // bending toward the crowns' teal, so a forest reads as one zoomed out
+  // past its trees without standing stark against the open land.
+  forest: hex("#5F8466"),
   // Tree crowns, dark to light: deep teal-greens, the dark note, light
   // enough that a forest reads as a wood and not a hole.
   crowns: [hex("#325E57"), hex("#3F705E"), hex("#52846A")],

@@ -52,8 +52,8 @@ const SPECKS = 0.5;
 const MOTTLE = 0.06;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
- *  (the wood floor's, the grain's specks and tufts) beat how far in it is,
- *  so it thins to its edge instead of stopping clean. */
+ *  beat how far in it is, so it thins to its edge instead of stopping
+ *  clean; the wood floor the same way, further, and wandering. */
 const FRAY = 0.3;
 /** And near its edge the rock under it breaks through in patches, the
  *  slate's plates (`slate.ts`) standing out of it: within this far of the
@@ -64,8 +64,9 @@ const PATCHED = 0.35;
 /** The slate read for them this many times smaller than it lies on the
  *  rock, sharp: patches the size of the photos' outcrops. */
 const PATCH_SCALE = 0.4;
-/** The fray's specks, the grain over this many tiles, and how many times
- *  coarser its tufts are. */
+/** How far the swash reaches up a beach is ragged by the grain's specks,
+ *  over this many tiles, and its tufts, this many times coarser; the
+ *  tufts wander the wood floor's edge too. */
 const FRAY_SPAN = 2;
 const TUFT = 8;
 /** Sand glints instead: of its grains, this share each tilted its own way
@@ -102,7 +103,7 @@ const LOOKS = [
   // Grass rounds over onto the rock more tightly, half as far, and stops
   // short of the cliff, as the wood floor does.
   { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0, matte: 0 },
-  // The wood floor frays into the grass, thinning plate by plate, and
+  // The wood floor frays into the grass, thinning blade by blade, and
   // further in than the grass does: it lies under the trees, not past them.
   // Needle litter in shade: fully matte.
   { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 1.6, mottle: 0, slate: 0, matte: 1 },
@@ -278,7 +279,8 @@ let groundGlinting = input.vGroundSlot.w * step(${glints}, groundGlint.x);
 let groundRipple = (textureSample(sandRipples, sandRipplesSampler, input.worldPos.xy / ${n(RIPPLE_TILES)}).rg * 2. - 1.) * ${n(RIPPLE_TILT)} * input.vGroundSlot.w
   * smoothstep(0.15, 0.35, textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${n(RIPPLE_PATCH * SIDE)} + vec2f(0.37, 0.71)).r);
 let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${specks}).r - 0.5;
-let groundFrayBy = 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${fraySpan}).r + 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${tuftSpan}).r;
+let groundTufts = textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${tuftSpan}).r;
+let groundFrayBy = 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${fraySpan}).r + 0.5 * groundTufts;
 let groundSlotN = floor(input.vGroundSlot.x + 0.5);
 let groundBevel = input.vGroundSlot.y;
 let groundCell = vec2f(groundSlotN - material.groundGrid.x * floor(groundSlotN / material.groundGrid.x), floor(groundSlotN / material.groundGrid.x));
@@ -303,8 +305,10 @@ if (input.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && 
 // A beach draws back from each wave as it breaks, and is wet where they reach.
 var groundSwash = 0.;
 if (input.vGroundSlot.w > 0.) { groundSwash = input.vGroundSlot.w * ${swash} * groundWash(material.groundTime, input.worldPos.xy) * (0.6 + 0.8 * groundFrayBy); }
-// Grass frays blade by blade, its gaps going first, then its shorter blades.
-let groundFrays = mix(groundFrayBy, 1. - groundLawn.b, input.vGroundGrass.y);
+// Grass frays blade by blade, the gaps going first, then the shorter
+// blades; the wood floor by them and by the grain's tufts, so its edge
+// wanders off its tiles' outline even where the blades are too fine to see.
+let groundFrays = mix(0.5 * (1. - groundLawn.b) + 0.5 * groundTufts, 1. - groundLawn.b, input.vGroundGrass.y);
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrays * input.vGroundGrass.x * ${fray})) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., input.vGroundLook.a * ${glint} + groundGlinting);
 baseColor = baseColor * input.vGroundLook.rgb * (1. - ${crease} * input.vGroundSlot.z * (1. - groundLawn.b)) * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
