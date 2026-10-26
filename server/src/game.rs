@@ -28,6 +28,8 @@ pub struct Game {
     pub events: EventQueue,
     pub now: GameTime,
     pub speed: u32,
+    /// Where a `RunTo` stops and speed goes back to 1.
+    until: Option<GameTime>,
     /// How many times a resident has thought, all told: what a day of
     /// town costs (`a_town_thinks_within_budget`).
     pub thoughts: u64,
@@ -49,6 +51,7 @@ impl Game {
             events: EventQueue::new(),
             now,
             speed,
+            until: None,
             thoughts: 0,
             clients: HashMap::default(),
             outbox: Vec::new(),
@@ -111,17 +114,8 @@ impl Game {
     /// A message from a client, done.
     pub fn command(&mut self, client_id: ClientId, message: ClientMessage) {
         match message {
-            ClientMessage::SetSpeed(s) => {
-                self.speed = s.min(MAX_SPEED);
-                // Paused, nothing goes dirty and no update would ever be
-                // sent — so clients would keep extrapolating cars against
-                // a stopped world. Push the new clock instead of waiting.
-                let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
-                let ids: Vec<ClientId> = self.clients.keys().copied().collect();
-                for id in ids {
-                    self.send(id, update.clone());
-                }
-            }
+            ClientMessage::SetSpeed(s) => self.set_speed(s, None),
+            ClientMessage::RunTo(t) => self.set_speed(MAX_SPEED, Some(t)),
             ClientMessage::SetChunks(bounds) => {
                 let mut shared = Shared::new(&self.world, self.clock());
                 handle_set_chunks(&mut shared, &mut self.clients, &mut self.outbox, client_id, bounds);
@@ -151,6 +145,19 @@ impl Game {
                     }
                 }
             }
+        }
+    }
+
+    fn set_speed(&mut self, speed: u32, until: Option<GameTime>) {
+        self.speed = speed.min(MAX_SPEED);
+        self.until = until;
+        // Paused, nothing goes dirty and no update would ever be sent — so
+        // clients would keep extrapolating cars against a stopped world.
+        // Push the new clock instead of waiting.
+        let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
+        let ids: Vec<ClientId> = self.clients.keys().copied().collect();
+        for id in ids {
+            self.send(id, update.clone());
         }
     }
 
@@ -197,6 +204,10 @@ impl Game {
     pub fn tick_with(&mut self, mut before: impl FnMut(&mut Game)) -> u32 {
         let mut wakes = 0;
         for _ in 0..self.speed {
+            if self.until.is_some_and(|t| self.now >= t) {
+                self.set_speed(1, None);
+                break;
+            }
             before(self);
             wakes += self.step();
         }

@@ -87,7 +87,8 @@ jobs:
         if: github.event_name == 'push'
         run: |
           (cd Babylon-Lite && pnpm install --frozen-lockfile)
-          (cd sprawl/client && bun install --frozen-lockfile && bun run build)
+          # Preview, not production: the clock keeps its speeds and resets (`ui/Clock.tsx`).
+          (cd sprawl/client && bun install --frozen-lockfile && bun run build --mode preview)
           (cd sprawl/server && cargo build --release -p sprawl-server)
 
       - name: Key

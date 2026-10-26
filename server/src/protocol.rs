@@ -1028,6 +1028,9 @@ pub enum ClientMessage {
     Card(#[ts(type = "number")] EntityId),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
+    /// As fast as the game goes until this sim time, then speed 1: a time
+    /// of day reached by living through the hours between. Dev-only.
+    RunTo(#[ts(type = "number")] u64),
     ResetWorld,
     SetChunks(ChunkBounds),
 }

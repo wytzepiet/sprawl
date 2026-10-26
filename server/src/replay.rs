@@ -105,7 +105,7 @@ impl Session {
     /// that only asks or looks is not.
     pub fn command(&mut self, msg: ClientMessage) {
         match msg {
-            ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::SetSpeed(_) => self.game.command(ME, msg),
+            ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::SetSpeed(_) | ClientMessage::RunTo(_) => self.game.command(ME, msg),
             msg => self.input(Input::Do(msg)),
         }
     }

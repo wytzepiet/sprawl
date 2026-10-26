@@ -1281,3 +1281,16 @@ fn a_lorry_scrapped_on_its_way_leaves_its_load() {
     while going(&game.world).is_none() && game.step_to(until) {}
     assert!(going(&game.world).is_some(), "no lorry went for the starter pack after one was scrapped");
 }
+
+#[test]
+fn a_run_to_an_hour_stops_there_at_speed_one() {
+    let mut game = Game::new(World::new(), 0, 1, Box::new(World::new));
+    let noon = DAY_MS as GameTime / 2;
+    game.command(0, ClientMessage::RunTo(noon));
+    while game.speed > 1 {
+        game.tick();
+    }
+    assert!((noon..noon + MAX_SPEED as GameTime * STEP_MS).contains(&game.now), "stopped at {}", game.now);
+    game.tick();
+    assert_eq!(game.speed, 1);
+}
