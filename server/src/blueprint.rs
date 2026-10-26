@@ -207,12 +207,15 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // tile's crop landing in the yard as it is cut (§12.8). A depot's
         // lorry fetches from it. Its yard is a harvest: four days of four
         // hands' nine hours at eighteen crates an hour, a hundred and four
-        // crates on its pad.
+        // crates on its pad. Two docks by the barn, one for the lorry that
+        // takes them and one the tractor stands in: the rest of the yard
+        // is the farm's own.
         (Farm, Blueprint {
             shelves: &[(Good::Crates, 2600)],
             makes: Some(Good::Crates),
             vehicles: &[CarRole::Tractor],
             farm: true,
+            docks: 2,
             ..row((3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
         }),
         // The door: all yard, three tiles along the quay and two in, no

@@ -35,6 +35,9 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Sawmill: { family: "industry", yard: { fill: "docks" } },
   // A quarry's yard is its heaps of broken stone, a lorry backed to them.
   Quarry: { family: "industry", yard: { fill: "docks" } },
+  // A farm is a farmyard, a model of its own (`objects/farm.ts`), its
+  // fence its own: no hedge round it.
+  Farm: { family: "farm", yard: { fill: "docks" } },
   // A supermarket is a big box, its customers parked at the kerb.
   Supermarket: { family: "box" },
   GasStation: { family: "box" },

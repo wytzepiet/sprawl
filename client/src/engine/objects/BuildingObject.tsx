@@ -14,8 +14,9 @@ import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { depot } from "./depot";
 import { shop } from "./shop";
 import { house } from "./house";
-import { GLASS, glow, glowing } from "./model";
-import { farm } from "./farm";
+import { GLASS, glow, glowing, planted } from "./model";
+import { stand } from "../trees";
+import { farm, FARM_TREES } from "./farm";
 import { quarry } from "./quarry";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
@@ -157,6 +158,9 @@ export function mountBuilding(
         return it;
       })
     : [];
+
+  // A farm's trees, the town's own kind (`trees.ts`), round its yard.
+  const grove = data.kind === "Farm" && !data.site ? stand(ctx, `farm_${entry.id}`, planted(FARM_TREES, middle, [dx, dy], side), theme, pool.casters) : () => {};
 
   // A shop's front: at the far end from its crates, a tub of flowers by
   // its awning and, through lunch, a table out under a parasol.
@@ -307,5 +311,6 @@ export function mountBuilding(
     for (const { key, id } of placed) pool.removeInstance(key, id);
     for (const it of [...stood.flat(), ...(mill?.model ?? []), ...plot, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
+    grove();
   };
 }

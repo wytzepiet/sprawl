@@ -320,8 +320,8 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][]; lamps: 
         const [x, y] = [c + 0.5 + fx * GATE_LAMP.in + px * side * GATE_LAMP.out, r + 0.5 + fy * GATE_LAMP.in + py * side * GATE_LAMP.out];
         lamps.push({ x, y, hx: x - px * side * ARM, hy: y - py * side * ARM });
       }
-      // A sawmill's yard is its model's (`objects/sawmill.ts`), its one dock unpainted.
-      if (town.tile(c, r).kind === "Sawmill") continue;
+      // A sawmill's yard and a farm's are their models' (`objects/`), their one dock unpainted.
+      if (["Sawmill", "Farm"].includes(town.tile(c, r).kind)) continue;
       for (const side of (fill === "park" ? [1] : [1, -1]).filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
         const [nx, ny] = [px * side, py * side];
         for (const s of [...DOCK_ROWS.map((s) => s - 0.15), DOCK_ROWS[DOCK_ROWS.length - 1] + 0.15]) lines.push(strip(ox, oy, fx, fy, s - 0.008, s + 0.008, nx, ny, 0.45, TAIL));
