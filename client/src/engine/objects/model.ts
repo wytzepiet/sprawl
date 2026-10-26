@@ -230,17 +230,51 @@ export const tiled = (solid: Manifold) => mesh(solid, (p) => [p[2] / COURSE, (p[
 export const [LUMPS, FLECKS] = [3.5, 1.6];
 /** Something loose on the ground, sawdust or chips: lumpy by the land's
  *  grain, gone where `gone` says, its edge frayed by the same grain, and
- *  as `look` has it; `looseSlope` the grain's slope read at a size. */
+ *  as `look` has it; `looseSlope` the grain's slope read at a size,
+ *  `looseCell` three numbers the same for the same cell. */
 export function loose(name: string, gone: string, look: string): Coat {
   const read = (at: string, span: string) => `textureSample(looseGrain, looseGrainSampler, (${at}) / ${span})`;
   return coat(name, `let looseAt = input.worldPos.xy;
 let looseLump = 0.6 * ${read("looseAt", f(LUMPS))}.r + 0.4 * ${read("looseAt", f(FLECKS))}.r;
 if (${gone}) { discard; }${look}
-roughness = 1.;`, (engine) => ({ looseGrain: grain(engine) }), `fn looseSlope(at: vec2f, span: f32) -> vec2f {
+roughness = 1.;`, (engine) => ({ looseGrain: grain(engine) }), `fn looseCell(c: vec2f) -> vec3f {
+  let k = bitcast<vec2u>(vec2i(c));
+  var x = k.x * 1664525u + k.y * 1013904223u;
+  x = (x ^ (x >> 16u)) * 0x7feb352du;
+  x = (x ^ (x >> 15u)) * 0x846ca68bu;
+  x = x ^ (x >> 16u);
+  return vec3f(f32(x & 1023u), f32((x >> 10u) & 1023u), f32((x >> 20u) & 1023u)) / 1023.;
+}
+fn looseSlope(at: vec2f, span: f32) -> vec2f {
   return vec2f(${read("at + vec2f(0.004, 0.)", "span")}.r - ${read("at - vec2f(0.004, 0.)", "span")}.r,
     ${read("at + vec2f(0., 0.004)", "span")}.r - ${read("at - vec2f(0., 0.004)", "span")}.r);
 }`);
 }
+
+/** A heap of something loose, sawdust or gravel, at (x, y), its foot `r` out and its top `h` up, on
+ *  ground `z` up: lobed, lumpy, a thin spill of it round its foot out to
+ *  `SPILL` of its reach, mapped by how far out it is, its edge at 1. */
+export const SPILL = 1.45;
+const RINGS = [0.2, 0.4, 0.58, 0.72, 0.84, 0.93, 1, 1.12, 1.28, SPILL];
+export const heap = (x: number, y: number, r: number, h: number, z: number, seed: number): MeshGeometry => {
+  const segs = 28;
+  const [p1, p2, p3] = [seed * 1.7, seed * 2.9, seed * 4.3];
+  const reach = (t: number) => r * (1 + 0.16 * Math.sin(2 * t + p1) + 0.09 * Math.sin(3 * t + p2) + 0.05 * Math.sin(5 * t + p3));
+  const rise = (f: number, t: number) => (f < 1 ? h * (1 - f * f) ** 1.4 * (1 + 0.18 * Math.sin(4 * t + p2) * f) : 0) + 0.0015;
+  const out: MeshGeometry = { positions: [x, y, z + rise(0, 0)], normals: [], uvs: [0, 0], indices: [] };
+  for (const f of RINGS)
+    for (let k = 0; k < segs; k++) {
+      const t = (2 * Math.PI * k) / segs;
+      out.positions.push(x + Math.cos(t) * reach(t) * f, y + Math.sin(t) * reach(t) * f, z + rise(f, t));
+      out.uvs!.push(f, 0);
+    }
+  const at = (ring: number, k: number) => 1 + ring * segs + (k % segs);
+  for (let k = 0; k < segs; k++) {
+    out.indices.push(0, at(0, k + 1), at(0, k));
+    for (let ring = 0; ring + 1 < RINGS.length; ring++) out.indices.push(at(ring, k), at(ring, k + 1), at(ring + 1, k + 1), at(ring, k), at(ring + 1, k + 1), at(ring + 1, k));
+  }
+  return smooth(out);
+};
 
 /** Bark (`bark.ts`), an engine's: smooth until the worker has baked it,
  *  or read back from the last bake (`bakeCache.ts`). */

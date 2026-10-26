@@ -15,6 +15,7 @@ import { depot } from "./depot";
 import { shop } from "./shop";
 import { house } from "./house";
 import { GLASS, glow, glowing } from "./model";
+import { quarry } from "./quarry";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
@@ -120,14 +121,19 @@ export function mountBuilding(
     at("roof", [0.4, 0.3, 0.025], TOWER, -(wide / 2 - 0.32), -0.18, KERB_Z + 0.17);
   }
 
+  // A model's plot's middle (`model.ts`).
+  const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
+  const middle: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
+  /** Which way a model on its plot is turned: its +x the gate's side,
+   *  across the way it faces. */
+  const gate: 1 | -1 = !data.door || (data.door.tile.x + 0.5 - middle[0]) * dy - (data.door.tile.y + 0.5 - middle[1]) * dx >= 0 ? 1 : -1;
+
   // A sawmill is a model of its own, hall, wing and yard (`sawmill.ts`),
-  // on its whole plot, its front to the street; the town grid leaves it.
+  // on its whole plot, its front to the street, its wing on the gate's
+  // side; the town grid leaves it.
   const mill = data.kind === "Sawmill" && !data.site
     ? (() => {
-        const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
-        const at: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
-        // Its wing on the gate's side: the model's +x, across the way it faces.
-        const side = !data.door || (data.door.tile.x + 0.5 - at[0]) * dy - (data.door.tile.y + 0.5 - at[1]) * dx >= 0 ? 1 : -1;
+        const [at, side] = [middle, gate];
         const [x, y] = [BARN_DOOR[0] * side, BARN_DOOR[1]];
         return {
           model: sawmill(ctx.engine, side).map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012)),
@@ -139,19 +145,16 @@ export function mountBuilding(
 
   // A depot too, its sheds round its bays, its gantry and its fence
   // (`depot.ts`); a shop round its courtyard (`shop.ts`), every other one
-  // the other way round; a house, one of a few (`house.ts`).
+  // the other way round; a house, one of a few (`house.ts`); a quarry, its
+  // hut on the gate's side (`quarry.ts`).
   const side = entry.id % 2 ? 1 : -1;
-  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : null;
+  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : null;
   const plot = model
-    ? (() => {
-        const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
-        const at: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
-        return model.map((finish) => {
-          const it = placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
-          if (finish.coat === GLASS(ctx.engine)) glowing(pool.finish(finish.key)!.material), lights(ctx);
-          return it;
-        });
-      })()
+    ? model.map((finish) => {
+        const it = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
+        if (finish.coat === GLASS(ctx.engine)) glowing(pool.finish(finish.key)!.material), lights(ctx);
+        return it;
+      })
     : [];
 
   // A shop's front: at the far end from its crates, a tub of flowers by

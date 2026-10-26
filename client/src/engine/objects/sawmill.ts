@@ -4,7 +4,7 @@ import type { MeshGeometry } from "../geometry";
 import { mesh, Solid, solids } from "../solid";
 import { shape, type Part } from "./sea";
 import type { RGB } from "../rgb";
-import { add, BARK, barnX, barnY, box, f, FLECKS, golf, hull, loose, LUMPS, placing, ribbed, scale, smooth, WOOD, ZINC, ZINC_COLOUR, type V } from "./model";
+import { add, BARK, barnX, barnY, box, f, FLECKS, golf, heap, hull, loose, LUMPS, placing, ribbed, scale, SPILL, WOOD, ZINC, ZINC_COLOUR, type V } from "./model";
 
 /**
  * A sawmill, whole: the hall, its wing, its yard and all that stands in
@@ -88,31 +88,6 @@ const stack = (x: number, y: number, along: "x" | "y", l: number, n: number, r =
   return out;
 };
 
-/** A heap of sawdust at (x, y), its foot `r` out and its top `h` up, on
- *  ground `z` up: lobed, lumpy, a thin spill of it round its foot out to
- *  `SPILL` of its reach, mapped by how far out it is, its edge at 1. */
-const SPILL = 1.45;
-const RINGS = [0.2, 0.4, 0.58, 0.72, 0.84, 0.93, 1, 1.12, 1.28, SPILL];
-const heap = (x: number, y: number, r: number, h: number, z: number, seed: number): MeshGeometry => {
-  const segs = 28;
-  const [p1, p2, p3] = [seed * 1.7, seed * 2.9, seed * 4.3];
-  const reach = (t: number) => r * (1 + 0.16 * Math.sin(2 * t + p1) + 0.09 * Math.sin(3 * t + p2) + 0.05 * Math.sin(5 * t + p3));
-  const rise = (f: number, t: number) => (f < 1 ? h * (1 - f * f) ** 1.4 * (1 + 0.18 * Math.sin(4 * t + p2) * f) : 0) + 0.0015;
-  const out: MeshGeometry = { positions: [x, y, z + rise(0, 0)], normals: [], uvs: [0, 0], indices: [] };
-  for (const f of RINGS)
-    for (let k = 0; k < segs; k++) {
-      const t = (2 * Math.PI * k) / segs;
-      out.positions.push(x + Math.cos(t) * reach(t) * f, y + Math.sin(t) * reach(t) * f, z + rise(f, t));
-      out.uvs!.push(f, 0);
-    }
-  const at = (ring: number, k: number) => 1 + ring * segs + (k % segs);
-  for (let k = 0; k < segs; k++) {
-    out.indices.push(0, at(0, k + 1), at(0, k));
-    for (let ring = 0; ring + 1 < RINGS.length; ring++) out.indices.push(at(ring, k), at(ring, k + 1), at(ring + 1, k + 1), at(ring, k), at(ring + 1, k + 1), at(ring + 1, k));
-  }
-  return smooth(out);
-};
-
 /** The dust over the yard's left half, x and y from and to; its edge to
  *  the lane wandering, and bitten back from the dock's mouth (`lots.rs`)
  *  to the fence, whose side the dock's flatbed lies over. Mapped by
@@ -141,13 +116,7 @@ const [CHIP_TIP, CHIP_SHADES] = [1.4, 0.55];
  *  finer than the pixels. */
 const CHIPPED = loose("MillChips", `input.uv.x > 0.94 + ${f(SPILL - 0.94)} * looseLump * looseLump`, `
 let chipQ = mat2x2f(0.8, 0.6, -0.6, 0.8) * looseAt / vec2f(${f(CHIP[0])}, ${f(CHIP[1])});
-let chipC = floor(vec2f(chipQ.x + 0.5 * floor(chipQ.y), chipQ.y));
-var chipK = bitcast<vec2u>(vec2i(chipC));
-var chipX = chipK.x * 1664525u + chipK.y * 1013904223u;
-chipX = (chipX ^ (chipX >> 16u)) * 0x7feb352du;
-chipX = (chipX ^ (chipX >> 15u)) * 0x846ca68bu;
-chipX = chipX ^ (chipX >> 16u);
-let chipH = vec3f(f32(chipX & 1023u), f32((chipX >> 10u) & 1023u), f32((chipX >> 20u) & 1023u)) / 1023.;
+let chipH = looseCell(floor(vec2f(chipQ.x + 0.5 * floor(chipQ.y), chipQ.y)));
 let chipFine = 1. - smoothstep(0.35, 0.9, max(fwidth(chipQ.x), fwidth(chipQ.y)));
 N = normalize(N + vec3f((chipH.xy - 0.5) * ${f(CHIP_TIP)} * chipFine, 0.));
 baseColor = baseColor * mix(0.95 + 0.1 * looseLump, ${f(1 - CHIP_SHADES / 2)} + ${f(CHIP_SHADES)} * chipH.z, chipFine);`);
