@@ -46,10 +46,10 @@ use rand::{Rng, SeedableRng};
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::car::CRUISE_SPEED;
-use crate::engine::GameTime;
+use model::CRUISE_SPEED;
+use model::GameTime;
 use crate::game::Game;
-use crate::protocol::{Build, Car, CarRole, EntityId, GameObject, GridCoord, Tool};
+use model::{Build, Car, CarRole, EntityId, GameObject, GridCoord, Tool};
 use crate::world::World;
 use crate::world::decks::MIDDLE;
 
@@ -748,7 +748,7 @@ mod tests {
         .join("\n");
         let (mut level, world) = Level::parse("cross", &text);
         let mut game = Game::new(world, 0, 1, Box::new(World::new));
-        let at = |x: i32, y: i32| crate::protocol::Spot { at: GridCoord { x, y }, want: 0 };
+        let at = |x: i32, y: i32| model::Spot { at: GridCoord { x, y }, want: 0 };
         // 1 to 2 along the middle row (the map is read mirrored, 1 on the
         // west), up over the corner and back; 3 to 4
         // down the middle column, across the same corner the other way.
@@ -757,7 +757,7 @@ mod tests {
             (2, vec![at(4, 0), at(4, -1), at(4, -2), at(3, -3), at(4, -4), at(4, -5), at(4, -6), at(4, -7), at(4, -8)]),
         ] {
             for n in 2..=tiles.len() {
-                let stroke = crate::protocol::Stroke { id, tool: Tool::OneWay, road: false, tiles: tiles[..n].to_vec(), start: None };
+                let stroke = model::Stroke { id, tool: Tool::OneWay, road: false, tiles: tiles[..n].to_vec(), start: None };
                 crate::draw::draw(&mut game.world, &mut game.events, 1, stroke, 0);
             }
         }
@@ -1026,7 +1026,7 @@ mod tests {
     }
 
     /// The cars on the road, with their trips.
-    fn trips(game: &Game) -> Vec<(EntityId, crate::protocol::Trip)> {
+    fn trips(game: &Game) -> Vec<(EntityId, model::Trip)> {
         game.world.objects.iter().filter_map(|e| match &e.object {
             GameObject::Car(c) => c.trip.clone().map(|t| (e.id, t)),
             _ => None,

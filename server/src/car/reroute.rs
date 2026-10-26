@@ -3,8 +3,8 @@
 
 use crate::car::simulation::park_at_home;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{EntityId, GameObject, Trip};
+use model::GameTime;
+use model::{EntityId, GameObject, Trip};
 use crate::world::World;
 
 /// Take a road out of the world, rerouting or despawning whatever was on it.

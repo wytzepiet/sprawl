@@ -22,9 +22,9 @@ use rand::{Rng, SeedableRng};
 use fixed::SmallRng;
 use fixed::HashMap;
 
-use crate::blueprint::FACINGS;
-use crate::engine::GameTime;
-use crate::protocol::{EntityId, GameObject, GridCoord, Pose};
+use model::blueprint::FACINGS;
+use model::GameTime;
+use model::{EntityId, GameObject, GridCoord, Pose};
 use serde_json::{json, Value};
 use crate::world::World;
 use crate::world::bezier::LANE_OFFSET;
@@ -290,7 +290,7 @@ impl World {
         self.lots.get_mut(&building)
     }
 
-    fn building_of(&self, id: EntityId) -> Option<(Vec<GridCoord>, crate::protocol::BuildingKind, u8)> {
+    fn building_of(&self, id: EntityId) -> Option<(Vec<GridCoord>, model::BuildingKind, u8)> {
         match self.objects.get(id)?.object {
             GameObject::Building(ref b) => Some((b.tiles.clone(), b.kind, b.facing)),
             _ => None,
@@ -387,9 +387,9 @@ impl World {
         Some((s.x - tile.x, s.y - tile.y)).filter(|&(dx, dy)| dx == 0 || dy == 0)
     }
 
-    pub fn kerb_bays(&self, tiles: &[GridCoord], kind: crate::protocol::BuildingKind, door: Option<(i32, i32)>) -> Vec<KerbBay> {
-        let square = kind != crate::protocol::BuildingKind::Apartment;
-        let (w, h) = crate::blueprint::blueprint(kind).size;
+    pub fn kerb_bays(&self, tiles: &[GridCoord], kind: model::BuildingKind, door: Option<(i32, i32)>) -> Vec<KerbBay> {
+        let square = kind != model::BuildingKind::Apartment;
+        let (w, h) = model::blueprint::blueprint(kind).size;
         let need = bays_along(w.max(h) as usize, square);
         let mut sides: Vec<(bool, bool, Vec<KerbBay>)> = SIDES
             .iter()
@@ -511,7 +511,7 @@ impl World {
         gate: (GridCoord, EntityId),
         door: EntityId,
         tiles: &[GridCoord],
-        kind: crate::protocol::BuildingKind,
+        kind: model::BuildingKind,
         facing: u8,
         mut node: impl FnMut(&mut World, [f64; 2]) -> EntityId,
         mut edge: impl FnMut(&mut World, EntityId, EntityId),
@@ -770,7 +770,7 @@ impl World {
 
     /// A depot's own vehicle, lorry or van: what takes a dock.
     fn is_lorry(&self, car: EntityId) -> bool {
-        matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != crate::protocol::CarRole::Private)
+        matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != model::CarRole::Private)
     }
 
     /// Let go of whatever the car holds.
@@ -832,7 +832,7 @@ impl World {
             if t == GameTime::MAX {
                 "open".to_string()
             } else {
-                let day = crate::protocol::DAY_MS as u64;
+                let day = model::DAY_MS as u64;
                 format!("d{} {:02}:{:02}", t / day, (t % day) / (day / 24), (t % (day / 24)) / (day / 24 / 60))
             }
         };
@@ -1030,7 +1030,7 @@ impl World {
             .iter()
             .filter_map(|e| match e.object {
                 // A ferry at its berth stands where it stands: it is in no lot.
-                GameObject::Car(ref c) if c.trip.is_none() && c.role != crate::protocol::CarRole::Ferry => Some((e.id, c.spot, e.position?)),
+                GameObject::Car(ref c) if c.trip.is_none() && c.role != model::CarRole::Ferry => Some((e.id, c.spot, e.position?)),
                 _ => None,
             })
             .collect();
@@ -1060,14 +1060,14 @@ impl World {
 }
 
 /// A kind with a yard (`Blueprint::lot`): its lorries' docks.
-fn is_yard(kind: crate::protocol::BuildingKind) -> bool {
-    crate::blueprint::blueprint(kind).lot.1 > 0
+fn is_yard(kind: model::BuildingKind) -> bool {
+    model::blueprint::blueprint(kind).lot.1 > 0
 }
 
 /// A kind that parks at the kerb: anything with neither a yard nor a
 /// house's drive.
-pub fn kerbed(kind: crate::protocol::BuildingKind) -> bool {
-    kind != crate::protocol::BuildingKind::House && !is_yard(kind)
+pub fn kerbed(kind: model::BuildingKind) -> bool {
+    kind != model::BuildingKind::House && !is_yard(kind)
 }
 
 fn dist(a: Pose, b: Option<Pose>) -> f64 {
@@ -1083,7 +1083,7 @@ pub type Lots = HashMap<EntityId, Lot>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::BuildingKind;
+    use model::BuildingKind;
 
     /// Open land with one street along y = 0.
     fn street() -> World {
@@ -1098,7 +1098,7 @@ mod tests {
         let mut world = street();
         let house = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::House).unwrap();
         assert_eq!(world.lot_mut(house).unwrap().spots.len(), 2);
-        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
+        let car = |world: &mut World| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
         assert!(matches!(world.claim_spot(house, a, 10_000, 12_000, |_| true), Some(Claim::Spot(_))));
         assert!(matches!(world.claim_spot(house, b, 10_000, 12_000, |_| true), Some(Claim::Spot(_))));
@@ -1126,7 +1126,7 @@ mod tests {
         assert!(world.lot_mut(flats).unwrap().spots.iter().all(|s| s.pose.heading.abs() < 1e-9), "facing east, the way the lane on that side runs");
         let shop = flats;
 
-        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
+        let car = |world: &mut World| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let (west, east) = (world.road_node_at(GridCoord { x: -2, y: 0 }).unwrap(), world.road_node_at(GridCoord { x: 20, y: 0 }).unwrap());
         // From the west, along the lane beside the bays: into each, from
         // the street node behind it. The far bay is pulled into, along the
@@ -1196,7 +1196,7 @@ mod tests {
         for (bay, x) in at.iter().zip([2.365, 2.635]) {
             assert!((bay[0] - x).abs() < 1e-9 && (bay[1] - (0.5 + SQUARE)).abs() < 1e-9, "a bay at {bay:?}");
         }
-        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
+        let car = |world: &mut World| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         for (from, sign) in [(GridCoord { x: -2, y: 0 }, 1.0), (GridCoord { x: 20, y: 0 }, -1.0)] {
             let a = car(&mut world);
             let ways = world.ways_to(shop, world.road_node_at(from).unwrap()).unwrap();
@@ -1259,7 +1259,7 @@ mod tests {
         assert_eq!(world.door_of(depot).map(|d| d.0), World::gate_of(&b.tiles, b.kind, b.facing), "the door is the gate");
         world.lot_mut(shop).unwrap();
         // One of the depot's own lorries, in its dock since the depot was reached.
-        let lorry = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).unwrap();
+        let lorry = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == model::CarRole::Truck)).map(|e| e.id).unwrap();
         world.release_spot(lorry);
         let ways = world.ways_to(depot, world.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
         let (way, _) = world.way_in(depot, lorry, &ways, 0, GameTime::MAX).unwrap();
@@ -1279,7 +1279,7 @@ mod tests {
         assert_eq!(world.stretch(lorry), vec![out[out.len() - 2]], "one lorry in the lane at a time: it holds the yard's door");
         assert_eq!(world.reverse_tail(lorry), 1);
         // Staff at a depot stop at the door: a yard has no car spots.
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
+        let car = world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         assert_eq!(world.claim_spot(depot, car, 0, GameTime::MAX, |_| true), Some(Claim::Door));
     }
 
@@ -1291,7 +1291,7 @@ mod tests {
         let mut world = street();
         let house = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
         let depot = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Depot).unwrap();
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
+        let car = world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let ways = world.ways_to(house, world.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
         let (way, _) = world.way_in(house, car, &ways, 0, GameTime::MAX).unwrap();
         let door = world.door_of(house).unwrap().0;

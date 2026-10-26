@@ -3,7 +3,7 @@
 
 use fixed::{HashMap, HashSet};
 use crate::game::ClientId;
-use crate::protocol::{ChunkBounds, Clock, EntityId, GameObjectEntry, Lump, Operation, OwnerId, ServerMessage, StateUpdate};
+use model::{ChunkBounds, Clock, EntityId, GameObjectEntry, Lump, Operation, OwnerId, ServerMessage, StateUpdate};
 use land::ChunkCoord;
 use crate::world::chunk_of;
 use crate::world::World;

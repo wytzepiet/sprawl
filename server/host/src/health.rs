@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 
 use crate::network::{AppState, Command, Debug};
-use sprawl::protocol::EntityId;
+use model::EntityId;
 
 /// Simulated time, as of the last tick. Published here rather than asked for
 /// over the command channel: the question this answers is "is the game loop

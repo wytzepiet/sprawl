@@ -1,4 +1,5 @@
-use super::{ACCELERATION, CRUISE_SPEED, DECELERATION, FOLLOW_S, HALT, MIN_TURN_SPEED, Obstacle};
+use model::CRUISE_SPEED;
+use super::{ACCELERATION, DECELERATION, FOLLOW_S, HALT, MIN_TURN_SPEED, Obstacle};
 
 /// Max speed allowed at a node given the cosine of the turn angle.
 pub fn turn_speed(cos_angle: f64) -> f64 {
@@ -6,33 +7,6 @@ pub fn turn_speed(cos_angle: f64) -> f64 {
     MIN_TURN_SPEED + factor * (CRUISE_SPEED - MIN_TURN_SPEED)
 }
 
-/// Advance kinematics by dt seconds with constant acceleration.
-///
-/// Braking stops the car rather than reversing it, and accelerating stops at
-/// the cruising speed rather than sailing past it. Nothing else held that
-/// ceiling: acceleration is only recomputed when a car wakes, so between two
-/// wakes it simply kept gaining, and cars were driving stretches of road
-/// faster than the road allows.
-pub fn catch_up(progress: f64, speed: f64, accel: f64, dt: f64) -> (f64, f64) {
-    if accel < 0.0 {
-        let dt = dt.min(-speed / accel);
-        return (
-            progress + speed * dt + 0.5 * accel * dt * dt,
-            (speed + accel * dt).max(0.0),
-        );
-    }
-    // Pulling away up to the ceiling, then holding it for what is left.
-    let to_ceiling = if accel > 0.0 { (CRUISE_SPEED - speed) / accel } else { f64::INFINITY };
-    if to_ceiling >= dt {
-        return (progress + speed * dt + 0.5 * accel * dt * dt, speed + accel * dt);
-    }
-    // A car already over the ceiling settles back onto it.
-    let t = to_ceiling.max(0.0);
-    (
-        progress + speed * t + 0.5 * accel * t * t + CRUISE_SPEED * (dt - t),
-        CRUISE_SPEED,
-    )
-}
 
 /// When a car travelling like this passes `target`, in seconds from now.
 ///
@@ -219,6 +193,7 @@ impl Obstacle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use model::catch_up;
 
     #[test]
     fn pulling_away_stops_at_the_cruising_speed() {

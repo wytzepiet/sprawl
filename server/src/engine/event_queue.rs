@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use fixed::HashMap;
 
-use crate::protocol::EntityId;
-use crate::engine::GameTime;
+use model::EntityId;
+use model::GameTime;
 
 /// An entity and the moment it next thinks.
 struct Scheduled {

@@ -3,7 +3,6 @@ pub mod reroute;
 pub mod simulation;
 pub mod spawn;
 
-pub const CRUISE_SPEED: f64 = 1.5;
 /// What a vehicle drives in a lot: a manoeuvring pace, under twenty
 /// kilometres an hour.
 pub const LOT_SPEED: f64 = 0.4;
@@ -31,51 +30,22 @@ pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
 /// tractor with a semi-trailer behind it, 0.67 tiles in all, and the point
 /// is the tractor. Following distance and the hold on a junction are by
 /// the vehicle's own length.
-pub fn nose(role: crate::protocol::CarRole) -> f64 {
+pub fn nose(role: model::CarRole) -> f64 {
     match role {
-        crate::protocol::CarRole::Private => 0.145,
-        crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.185,
-        crate::protocol::CarRole::Truck => 0.085,
+        model::CarRole::Private => 0.145,
+        model::CarRole::Van | model::CarRole::Tractor => 0.185,
+        model::CarRole::Truck => 0.085,
         // Never on a road; the water has no queue.
-        crate::protocol::CarRole::Ferry => 0.5,
+        model::CarRole::Ferry => 0.5,
     }
 }
-pub fn tail(role: crate::protocol::CarRole) -> f64 {
+pub fn tail(role: model::CarRole) -> f64 {
     match role {
-        crate::protocol::CarRole::Private => 0.145,
-        crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.185,
-        crate::protocol::CarRole::Truck => 0.58,
-        crate::protocol::CarRole::Ferry => 0.5,
+        model::CarRole::Private => 0.145,
+        model::CarRole::Van | model::CarRole::Tractor => 0.185,
+        model::CarRole::Truck => 0.58,
+        model::CarRole::Ferry => 0.5,
     }
-}
-
-/// What a car slows or stops for (`World::why`): read by a replay, to
-/// say what a car was doing, never by the game.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Cause {
-    /// The car ahead in its lane.
-    Ahead(crate::protocol::EntityId),
-    /// A car coming into its lane at the junction ahead from another arm.
-    Merging(crate::protocol::EntityId),
-    /// A car in the other lane it lets in ahead of it.
-    LettingIn(crate::protocol::EntityId),
-    /// The lane its way out asks for, not yet got into: the car in the way
-    /// there, if it has tried.
-    GettingIn(Option<crate::protocol::EntityId>),
-    /// A junction or crossing it has no passage at yet.
-    Junction(crate::protocol::EntityId),
-    /// A car turning into or out of a lot across its way.
-    Turn(crate::protocol::EntityId),
-    /// Its give-way line out of a lot, with no gap yet.
-    Line,
-    /// About to turn into a lot across the oncoming lane.
-    TurningIn,
-    /// A bend.
-    Bend,
-    /// A lot, or backing.
-    Slow,
-    /// A stop it plans: where the gear changes, or its way's end.
-    Stop,
 }
 
 #[derive(Clone, Copy)]
@@ -100,14 +70,3 @@ pub enum Obstacle {
     },
 }
 
-impl crate::protocol::Trip {
-    /// How far along its route it is now, and how fast it goes.
-    pub fn at(&self, now: crate::engine::GameTime) -> (f64, f64) {
-        physics::catch_up(self.progress, self.speed, self.acceleration, (now - self.updated_at) as f64 / 1000.0)
-    }
-
-    /// How far along its route an edge of it starts.
-    pub fn start_of(&self, edge: crate::protocol::EdgeKey) -> Option<f64> {
-        (1..self.route.len()).find(|&i| (self.route[i - 1], self.route[i]) == edge).map(|i| self.along[i - 1])
-    }
-}

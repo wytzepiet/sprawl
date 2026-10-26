@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use fixed::{HashMap, HashSet};
 
-use crate::protocol::EntityId;
+use model::EntityId;
 
 pub type ComponentId = u32;
 pub type SegmentId = u32;

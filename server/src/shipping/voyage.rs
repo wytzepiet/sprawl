@@ -10,9 +10,9 @@
 //! it has sailed out again; a ship early for its berth stands at the
 //! approach's mouth, the anchorage, until its time, and asks then.
 
-use crate::engine::GameTime;
+use model::GameTime;
 use crate::intersection::IntersectionRegistry;
-use crate::protocol::{EntityId, Sail};
+use model::{EntityId, Sail};
 
 use super::lanes::{Gate, Kind};
 use super::{covered, length, point_at, GATHER, SEA_PACE};

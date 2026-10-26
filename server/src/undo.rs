@@ -12,8 +12,8 @@
 //! process.
 
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
+use model::GameTime;
+use model::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
 use crate::world::decks::Side;
 
@@ -372,7 +372,7 @@ fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: Build
     let mut materials: Vec<(Good, f64)> = match site {
         Some(site) => site.iter().map(|(&g, s)| (g, s.level)).collect(),
         None if free => Vec::new(),
-        None => crate::blueprint::takes(kind),
+        None => model::blueprint::takes(kind),
     };
     // The van arrives empty.
     let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();

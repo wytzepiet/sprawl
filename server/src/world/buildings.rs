@@ -1,4 +1,4 @@
-use crate::protocol::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing};
+use model::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing};
 use land::TerrainType;
 use crate::world::World;
 
@@ -111,7 +111,7 @@ impl World {
         match Self::yard_of(tiles, kind, facing) {
             Some(_) if Self::gate_of(tiles, kind, facing) != Some(to) => false,
             Some(yard) => {
-                let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
+                let (fx, fy) = model::blueprint::FACINGS[facing as usize % 4];
                 yard.contains(&to) && dx * fx + dy * fy > 0
             }
             None => true,
@@ -123,7 +123,7 @@ impl World {
     /// way first, which keeps its shape; a harbour stays with its back to
     /// the sea; anything else has no front, its door on any side.
     fn facings(kind: BuildingKind, facing: u8) -> Vec<u8> {
-        if crate::blueprint::blueprint(kind).quay || crate::blueprint::blueprint(kind).lot.1 == 0 {
+        if model::blueprint::blueprint(kind).quay || model::blueprint::blueprint(kind).lot.1 == 0 {
             return vec![facing];
         }
         [0, 2, 1, 3].iter().map(|k| (facing + k) % 4).collect()
@@ -172,9 +172,9 @@ impl World {
 
     /// How a building on these tiles lies facing this way, laid out by its
     /// bounds: their corner, and the plot (`blueprint::lie`).
-    pub fn lie(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> (GridCoord, crate::blueprint::Plot) {
+    pub fn lie(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> (GridCoord, model::blueprint::Plot) {
         let (origin, size) = Self::bounds(tiles);
-        (origin, crate::blueprint::lie(kind, facing, size))
+        (origin, model::blueprint::lie(kind, facing, size))
     }
 
     /// A building's yard tiles, lying this way, if its kind keeps a yard
@@ -197,7 +197,7 @@ impl World {
         }
         let (o, (w, h)) = Self::bounds(tiles);
         let (w, h) = (w as i32, h as i32);
-        Some(match crate::blueprint::FACINGS[facing as usize % 4] {
+        Some(match model::blueprint::FACINGS[facing as usize % 4] {
             (0, -1) => GridCoord { x: o.x + w / 2, y: o.y },
             (0, _) => GridCoord { x: o.x + w / 2, y: o.y + h - 1 },
             (-1, _) => GridCoord { x: o.x, y: o.y + h / 2 },
@@ -210,7 +210,7 @@ impl World {
     /// one always does; one a fixture draws short of it stands, with no
     /// door and no yard, as if no road reached it.
     fn works(tiles: &[GridCoord], kind: BuildingKind) -> bool {
-        let (w, h) = crate::blueprint::plot(kind, 0).size;
+        let (w, h) = model::blueprint::plot(kind, 0).size;
         [(w, h), (h, w)].iter().any(|&size| tiles.iter().any(|&t| Self::footprint(t, size).all(|f| tiles.contains(&f))))
     }
 
@@ -237,7 +237,7 @@ impl World {
 
     /// A building's door and the way it faces, which lays its yard out:
     /// set together, so the yard is always on its door's side.
-    pub(super) fn set_door(&mut self, id: EntityId, facing: u8, door: Option<crate::protocol::Door>) {
+    pub(super) fn set_door(&mut self, id: EntityId, facing: u8, door: Option<model::Door>) {
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
             b.facing = facing;
             b.door = door;
@@ -280,7 +280,7 @@ impl World {
     pub(super) fn door_through(&mut self, id: EntityId, from: GridCoord, to: GridCoord) {
         let street = self.road_node_at(from).is_some_and(|s| self.is_street(s) && self.driveway_reaches(from, to));
         if let Some(facing) = self.facing_through(from, to).filter(|_| street) {
-            self.set_door(id, facing, Some(crate::protocol::Door { tile: to, street: from }));
+            self.set_door(id, facing, Some(model::Door { tile: to, street: from }));
         }
     }
 
@@ -301,8 +301,8 @@ impl World {
     /// open land, road or no road: dormant till one comes.
     #[cfg(test)]
     pub fn place_building(&mut self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<EntityId> {
-        let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
-        let quay = crate::blueprint::blueprint(kind).quay;
+        let tiles: Vec<GridCoord> = Self::footprint(pos, model::blueprint::plot(kind, facing).size).collect();
+        let quay = model::blueprint::blueprint(kind).quay;
         (self.may_stand_on(&tiles, kind, facing) && (!quay || self.berth_at(&tiles, kind, facing).is_some())).then(|| self.raise(kind, tiles, facing))
     }
 
@@ -350,13 +350,13 @@ impl World {
             _ => false,
         };
         if !stands {
-            let quay = crate::blueprint::blueprint(kind).quay;
+            let quay = model::blueprint::blueprint(kind).quay;
             let found = Self::facings(kind, facing).into_iter().find_map(|f| {
                 if quay && self.berth_at(&tiles, kind, f).is_none() {
                     return None;
                 }
                 let (street, tile) = self.driveway_for(&tiles, kind, f)?;
-                Some((f, crate::protocol::Door { tile, street: self.objects.get(street)?.position? }))
+                Some((f, model::Door { tile, street: self.objects.get(street)?.position? }))
             });
             match found {
                 Some((f, door)) => self.set_door(id, f, Some(door)),
@@ -395,9 +395,9 @@ impl World {
     #[cfg(test)]
     pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<u8> {
         (0..4).find(|&f| {
-            let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, f).size).collect();
+            let tiles: Vec<GridCoord> = Self::footprint(pos, model::blueprint::plot(kind, f).size).collect();
             self.may_stand_on(&tiles, kind, f)
-                && (!crate::blueprint::blueprint(kind).quay || self.berth_at(&tiles, kind, f).is_some())
+                && (!model::blueprint::blueprint(kind).quay || self.berth_at(&tiles, kind, f).is_some())
                 && self.driveway_for(&tiles, kind, f).is_some()
         })
     }
@@ -432,7 +432,7 @@ impl World {
     /// whole footprint, building and yard, laid round the tile as the
     /// hand holds it (`World::placing`).
     pub fn plot_at(kind: BuildingKind, at: GridCoord, facing: u8) -> Vec<GridCoord> {
-        let (w, h) = crate::blueprint::plot(kind, facing).size;
+        let (w, h) = model::blueprint::plot(kind, facing).size;
         Self::footprint(GridCoord { x: at.x - w as i32 / 2, y: at.y - h as i32 / 2 }, (w, h)).collect()
     }
 
@@ -461,7 +461,7 @@ impl World {
                 _ => return Err("Not on open land"),
             }
         }
-        if crate::blueprint::blueprint(kind).quay {
+        if model::blueprint::blueprint(kind).quay {
             return match self.behind(&tiles, kind, facing) {
                 Behind::Berth => Ok(tiles),
                 Behind::Sea => Err("The water behind is too narrow: the ferry needs 6 tiles of open sea straight out"),
@@ -475,7 +475,7 @@ impl World {
         match self.driveway_for(&tiles, kind, facing) {
             Some(_) if kerbed(kind) && !SIDES.iter().any(|&d| self.street_along(&side_of(&tiles, d), d)) => Err("No street along a whole side, for its parking"),
             Some(_) => Ok(tiles),
-            None if crate::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
+            None if model::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
             None => Err("No street beside it"),
         }
     }
@@ -501,7 +501,7 @@ impl World {
     /// row on the sea, or on the diagonal, the shore across it
     /// (`berth_at`).
     fn pier(tiles: &[GridCoord], kind: BuildingKind, facing: u8, t: GridCoord) -> bool {
-        crate::blueprint::blueprint(kind).quay && Self::gate_of(tiles, kind, facing) != Some(t)
+        model::blueprint::blueprint(kind).quay && Self::gate_of(tiles, kind, facing) != Some(t)
     }
 
     /// The street a harbour placed on these tiles brings with it, from the
@@ -519,7 +519,7 @@ impl World {
         if self.driveway_for(tiles, kind, facing).is_some() {
             return Vec::new();
         }
-        let ahead = crate::blueprint::FACINGS[facing as usize];
+        let ahead = model::blueprint::FACINGS[facing as usize];
         let (o, size) = Self::bounds(tiles);
         let mid = GridCoord { x: o.x + size.0 as i32 / 2, y: o.y + size.1 as i32 / 2 };
         // One tile out from its front.
@@ -555,7 +555,7 @@ impl World {
                 path.reverse();
                 return steps(&path);
             }
-            for (nd, &(dx, dy)) in crate::blueprint::FACINGS.iter().enumerate() {
+            for (nd, &(dx, dy)) in model::blueprint::FACINGS.iter().enumerate() {
                 let next = (x + dx, y + dy, nd);
                 let t = GridCoord { x: next.0, y: next.1 };
                 let nc = c + 2 + if nd == d { 0 } else { 5 };
@@ -577,7 +577,7 @@ impl World {
             return Behind::Berth;
         }
         let Some(gate) = World::gate_of(tiles, kind, facing) else { return Behind::Land };
-        let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
+        let (dx, dy) = model::blueprint::FACINGS[facing as usize % 4];
         let (_, (w, h)) = World::bounds(tiles);
         let deep = if dx == 0 { h } else { w } as i32 - 1;
         match self.terrain.get(&(gate.x - dx * deep, gate.y - dy * deep)) {
@@ -607,7 +607,7 @@ impl World {
         if let Some(ok) = all.iter().find(|p| p.why.is_none()) {
             return ok.clone();
         }
-        let quay = crate::blueprint::blueprint(kind).quay;
+        let quay = model::blueprint::blueprint(kind).quay;
         let rank = |p: &Placing| if quay { self.behind(&p.tiles, kind, p.facing) as u32 } else { self.nearest_street(Self::front(&p.tiles, p.facing)) };
         all.into_iter().min_by_key(rank).expect("four ways round")
     }
@@ -625,7 +625,7 @@ impl World {
     /// The tile one out from the middle of a plot's front.
     fn front(tiles: &[GridCoord], facing: u8) -> GridCoord {
         let (o, (w, h)) = Self::bounds(tiles);
-        let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
+        let (dx, dy) = model::blueprint::FACINGS[facing as usize % 4];
         let (mx, my) = (o.x as f64 + (w as f64 - 1.0) / 2.0, o.y as f64 + (h as f64 - 1.0) / 2.0);
         let (hw, hh) = ((w as f64 - 1.0) / 2.0 + 1.0, (h as f64 - 1.0) / 2.0 + 1.0);
         GridCoord { x: (mx + dx as f64 * hw).round() as i32, y: (my + dy as f64 * hh).round() as i32 }

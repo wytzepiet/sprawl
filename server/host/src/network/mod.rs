@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use sprawl::protocol::{
+use model::{
     ClientMessage, EntityId, OwnerId, ServerMessage, StateUpdate,
 };
 
@@ -137,7 +137,7 @@ fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sprawl::protocol::{Clock, Operation, DAY_MS};
+    use model::{Clock, Operation, DAY_MS};
     use land::ChunkCoord;
 
     /// A chunk unloaded between two updates goes out between them: merged

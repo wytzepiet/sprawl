@@ -1,12 +1,12 @@
 use crate::car::spawn::start_trip;
-use crate::car::CRUISE_SPEED;
+use model::CRUISE_SPEED;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::blueprint::blueprint;
+use model::GameTime;
+use model::blueprint::blueprint;
 use crate::economy;
-use crate::needs::{Bucket, Need, Tap};
+use model::needs::{Bucket, Need, Tap};
 use crate::world::pathfinding::Routes;
-use crate::protocol::{EntityId, GameObject, Resident, HOUR};
+use model::{EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
 use std::collections::BinaryHeap;
@@ -180,7 +180,6 @@ fn fit(buckets: &[Bucket]) -> bool {
     buckets.iter().all(|b| b.need.constant() || b.stock.level > 0.0)
 }
 
-
 /// The ways out from where a resident stands, searched once for the whole
 /// decision. `None` where no road reaches the building.
 fn routes_from(world: &World, at: EntityId) -> Option<Routes<'_>> {
@@ -295,7 +294,6 @@ impl Ord for Candidate {
             .then(other.id.cmp(&self.id))
     }
 }
-
 
 /// What one place offers one bucket.
 #[derive(Clone, Copy, Serialize)]
@@ -498,18 +496,10 @@ fn headcount(world: &World) -> Crowd {
     crowd
 }
 
-impl Tap {
-    /// The rate each of `company` present is served at: full up to the
-    /// slots, then shared.
-    fn serving(&self, slots: u32, company: u32) -> f64 {
-        self.rate * (slots as f64 / company.max(1) as f64).min(1.0)
-    }
-}
-
 /// What a tap serves at once at this building (`blueprint::seats`).
 fn seats_at(world: &World, building: EntityId, tap: &Tap) -> u32 {
     match world.objects.get(building).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => crate::blueprint::seats(b.kind, tap),
+        Some(GameObject::Building(b)) => model::blueprint::seats(b.kind, tap),
         _ => tap.slots,
     }
 }
@@ -534,7 +524,7 @@ fn drive(
 /// where each would be met right now. The model's failure mode is quiet,
 /// and this is the only way to watch it think. Read-only — the buckets as
 /// they stood at the last wake, not settled. Nothing while off the map.
-pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<crate::card::NeedLine> {
+pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<model::card::NeedLine> {
     let Some((r, at)) = world.resident(id).and_then(|r| Some((r, r.at?))) else { return Vec::new() };
     let crowd = headcount(world);
     let buckets = buckets(world, r);
@@ -542,7 +532,7 @@ pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<crate::card::Nee
     buckets
         .iter()
         .zip(&verdicts)
-        .map(|(b, v)| crate::card::NeedLine {
+        .map(|(b, v)| model::card::NeedLine {
             need: b.need,
             full: 1.0 - b.stock.weight(),
             option: match *v {
@@ -653,7 +643,7 @@ fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
 #[cfg(test)]
 mod bench {
     use super::*;
-    use crate::protocol::{BuildingKind, GridCoord};
+    use model::{BuildingKind, GridCoord};
 
     /// Not an assertion: what one cheap evaluation costs, for whoever is
     /// sizing a survey over many tiles. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
@@ -672,7 +662,7 @@ mod bench {
         let started = std::time::Instant::now();
         let mut hits = 0u32;
         for i in 0..n {
-            let now = (i as u64 * 977) % crate::protocol::DAY_MS as u64;
+            let now = (i as u64 * 977) % model::DAY_MS as u64;
             let mut bucket = b.clone();
             bucket.stock.take((i % 100) as f64 * 1000.0);
             if let Verdict::Go { .. } = evaluate(&world, shop, tap, &bucket, now, 1, 60_000, false) {

@@ -1,7 +1,8 @@
-use crate::car::{nose, tail, ACCELERATION, CRUISE_SPEED, LOT_SPEED, MIN_GAP};
+use crate::car::{nose, tail, ACCELERATION, LOT_SPEED, MIN_GAP};
+use model::CRUISE_SPEED;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{EntityId, GameObject, Trip};
+use model::GameTime;
+use model::{EntityId, GameObject, Trip};
 use crate::world::World;
 
 /// Send a parked car out to a spot at a building, owner aboard. It leaves
@@ -38,7 +39,7 @@ pub fn depart(
     events: &mut EventQueue,
     car_id: EntityId,
     out: Vec<EntityId>,
-    leaves: Option<crate::protocol::Pose>,
+    leaves: Option<model::Pose>,
     from_node: EntityId,
     dest_building: EntityId,
     now: GameTime,
@@ -92,7 +93,7 @@ pub(crate) fn trip(
     to_lot: usize,
     backing: Vec<[usize; 2]>,
     stretches: [Vec<EntityId>; 2],
-    leaves: Option<crate::protocol::Pose>,
+    leaves: Option<model::Pose>,
     now: GameTime,
 ) -> Trip {
     let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot, &backing);
@@ -171,7 +172,7 @@ pub(crate) fn set_off(world: &mut World, events: &mut EventQueue, car_id: Entity
 
 /// Is the start of this edge clear of the last car to set off along it, by
 /// a car's length and a gap?
-fn room_at_start(world: &World, first_edge: (EntityId, EntityId), lane: usize, role: crate::protocol::CarRole, now: GameTime) -> bool {
+fn room_at_start(world: &World, first_edge: (EntityId, EntityId), lane: usize, role: model::CarRole, now: GameTime) -> bool {
     if let Some(seg) = world.edges.get(&first_edge)
         && let Some(last_id) = seg.back(lane)
         && let Some(entry) = world.objects.get(last_id)
@@ -231,7 +232,7 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
 
 /// A manoeuvre within a lot, by a way given, all of it lot nodes, its last
 /// `backs` edges backed: a lorry from one dock of a yard to another.
-pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<crate::protocol::Pose>, now: GameTime) -> bool {
+pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<model::Pose>, now: GameTime) -> bool {
     let n = route.len();
     if !matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n) {
         return false;

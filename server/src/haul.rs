@@ -14,12 +14,12 @@
 
 use std::collections::BTreeMap;
 
-use crate::blueprint::blueprint;
+use model::blueprint::blueprint;
 
 use crate::economy::whole;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{CarRole, EntityId, GameObject, Good, Leg, Package, Sailing, Sea, Shipment};
+use model::GameTime;
+use model::{CarRole, EntityId, GameObject, Good, Leg, Package, Sailing, Sea, Shipment};
 use crate::world::World;
 
 /// Packages a lorry's flatbed carries.
@@ -215,7 +215,7 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
             if let Some(s) = world.building_mut(depot).and_then(|b| b.stocks.get_mut(&good)) {
                 s.level += left;
             }
-            world.lumps.push(crate::protocol::Lump { building: depot, coins: 0.0, gdp: 0.0, at: now, good: Some(good), units });
+            world.lumps.push(model::Lump { building: depot, coins: 0.0, gdp: 0.0, at: now, good: Some(good), units });
             world.lift(depot, lorry, good, n, false, now);
         }
         crate::calls::turn(world, events, depot, now);

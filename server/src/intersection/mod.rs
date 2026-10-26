@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 use fixed::HashMap;
 
-use crate::engine::GameTime;
-use crate::protocol::EntityId;
+use model::GameTime;
+use model::EntityId;
 
 pub type Dir = (i32, i32);
 

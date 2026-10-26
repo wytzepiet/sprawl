@@ -21,11 +21,11 @@ use std::hash::Hasher;
 use serde::{Deserialize, Serialize};
 
 use crate::car::{nose, tail};
-use crate::engine::GameTime;
+use model::GameTime;
 use fixed::{HashMap, HashSet};
 use crate::game::Game;
 use crate::level::Level;
-use crate::protocol::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId};
+use model::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId};
 
 /// The one player a session has.
 const ME: u64 = 1;
@@ -249,16 +249,16 @@ impl Watch {
             // Standing, and not behind one on its way.
             let standing = |o: EntityId| {
                 speed(o) < 0.01
-                    && !matches!(world.why(o), Some((crate::car::Cause::Ahead(a) | crate::car::Cause::Merging(a), _)) if speed(a) >= 0.01)
+                    && !matches!(world.why(o), Some((model::Cause::Ahead(a) | model::Cause::Merging(a), _)) if speed(a) >= 0.01)
             };
             let held = match world.why(e.id) {
-                Some((crate::car::Cause::Junction(j), a)) => Some((j, a, game.world.streets.who(j).0)),
-                Some((crate::car::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.streets.has_passage(j, e.id) && game.world.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
+                Some((model::Cause::Junction(j), a)) => Some((j, a, game.world.streets.who(j).0)),
+                Some((model::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.streets.has_passage(j, e.id) && game.world.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
                 _ => None,
             };
             if let Some((j, a, them)) = held
                 && a < -0.3
-                && t.at(game.now).1 < crate::car::CRUISE_SPEED / 4.0
+                && t.at(game.now).1 < model::CRUISE_SPEED / 4.0
                 && on_priority(world, e.id, j) == Some(true)
             {
                 // Not one in the junction already, past its line, held up on
@@ -294,11 +294,11 @@ impl Watch {
                     break;
                 }
                 match waits.and_then(|w| world.why(w)) {
-                    Some((crate::car::Cause::Junction(j), _)) => {
+                    Some((model::Cause::Junction(j), _)) => {
                         at_junction = Some(j);
                         break;
                     }
-                    Some((crate::car::Cause::Ahead(o) | crate::car::Cause::Merging(o), _)) => waits = Some(o),
+                    Some((model::Cause::Ahead(o) | model::Cause::Merging(o), _)) => waits = Some(o),
                     _ => break,
                 }
             }

@@ -5,7 +5,7 @@
 //! and as a building is held; it waits for the answer.
 
 use crate::draw::{self, STEPS};
-use crate::protocol::{Area, Ask, Build, GridCoord, Hint, Holding, OwnerId, Stand, Stroke, Tool};
+use model::{Area, Ask, Build, GridCoord, Hint, Holding, OwnerId, Stand, Stroke, Tool};
 use crate::world::World;
 
 /// The most tiles an area asked about may hold: a view zoomed far out.
@@ -83,7 +83,7 @@ fn erase_from(world: &World, at: GridCoord, stand: Stand) -> Vec<Option<Stand>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::BuildingKind;
+    use model::BuildingKind;
     use land::TerrainType;
 
     const fn at(x: i32, y: i32) -> GridCoord {
@@ -125,7 +125,7 @@ mod tests {
     fn a_drag_is_told_where_it_may_go_on() {
         let mut world = street();
         world.terrain.insert((6, 1), TerrainType::Water);
-        let stroke = |tool, start| Stroke { id: 9, tool, road: false, tiles: vec![crate::protocol::Spot { at: at(5, 0), want: 0 }], start };
+        let stroke = |tool, start| Stroke { id: 9, tool, road: false, tiles: vec![model::Spot { at: at(5, 0), want: 0 }], start };
         let Hint::Reach { id, len, ways } = answer(&world, 1, Ask::Reach(stroke(Tool::Street, None))) else { unreachable!() };
         assert_eq!((id, len), (9, 1));
         assert!(ways[2].is_some(), "off the street");
@@ -189,7 +189,7 @@ mod bench {
         }
         let view = Area { x0: -50, y0: -30, x1: 50, y1: 30 };
         let hands = [Tool::Street, Tool::OneWay, Tool::Demolish].map(|tool| Holding::Tool { tool, road: false, want: 0 });
-        for hand in hands.into_iter().chain([Holding::Building { kind: crate::protocol::BuildingKind::House, facing: None }]) {
+        for hand in hands.into_iter().chain([Holding::Building { kind: model::BuildingKind::House, facing: None }]) {
             let t = std::time::Instant::now();
             let n = starts(&world, hand, view).len();
             eprintln!("{hand:?}: {n} tiles in {:?}", t.elapsed());

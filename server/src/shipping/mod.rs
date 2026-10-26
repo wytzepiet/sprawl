@@ -9,12 +9,12 @@ pub mod voyage;
 pub mod water;
 pub mod lines;
 
-use crate::engine::GameTime;
-use crate::protocol::{Pose, Sail};
+use model::GameTime;
+use model::{Pose, Sail};
 use land::CHUNK_SIZE;
 
 /// An hour of the clock, as the sea counts time.
-pub const HOUR: GameTime = crate::protocol::HOUR as GameTime;
+pub const HOUR: GameTime = model::HOUR as GameTime;
 /// How long a ship at full speed takes to cross a tile of open water: a
 /// fifth of a second, five tiles a second at speed one. The map's sea is
 /// compressed (islands thirty-odd tiles apart), and so are its ships: at
@@ -68,26 +68,24 @@ pub fn sail_ms(len: f64, ease: [bool; 2]) -> GameTime {
     ms.round() as GameTime
 }
 
-impl Sail {
-    /// Where the ferry is at `t`, and which way its land end points: the
-    /// way it goes, or back the way it came going out (`astern`), since it
-    /// never turns.
-    pub fn pose(&self, t: GameTime) -> Pose {
-        let len = length(&self.path);
-        let (at, way) = point_at(&self.path, covered(len, self.ease, t.saturating_sub(self.started)));
-        Pose { at, heading: if self.astern { way + std::f64::consts::PI } else { way } }
-    }
+/// Where the ferry is at `t`, and which way its land end points: the
+/// way it goes, or back the way it came going out (`astern`), since it
+/// never turns.
+pub fn pose(sail: &Sail, t: GameTime) -> Pose {
+    let len = length(&sail.path);
+    let (at, way) = point_at(&sail.path, covered(len, sail.ease, t.saturating_sub(sail.started)));
+    Pose { at, heading: if sail.astern { way + std::f64::consts::PI } else { way } }
+}
 
-    /// The first moment after `now` the ship is in another chunk, or the
-    /// end of the leg: when the views that watch a chunk must hear of it.
-    pub fn next_crossing(&self, now: GameTime) -> GameTime {
-        let chunk = |t: GameTime| {
-            let p = self.pose(t).at;
-            ((p[0].floor() as i32).div_euclid(CHUNK_SIZE), (p[1].floor() as i32).div_euclid(CHUNK_SIZE))
-        };
-        let here = chunk(now);
-        (1..).map(|k| now + k * 250).find(|&t| t >= self.ends || chunk(t) != here).unwrap().min(self.ends)
-    }
+/// The first moment after `now` the ship is in another chunk, or the
+/// end of the leg: when the views that watch a chunk must hear of it.
+pub fn next_crossing(sail: &Sail, now: GameTime) -> GameTime {
+    let chunk = |t: GameTime| {
+        let p = pose(sail, t).at;
+        ((p[0].floor() as i32).div_euclid(CHUNK_SIZE), (p[1].floor() as i32).div_euclid(CHUNK_SIZE))
+    };
+    let here = chunk(now);
+    (1..).map(|k| now + k * 250).find(|&t| t >= sail.ends || chunk(t) != here).unwrap().min(sail.ends)
 }
 
 /// A polyline's length.

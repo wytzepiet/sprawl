@@ -37,6 +37,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
     machine.
   - `server/land/` — the islands and mountains a seed raises; knows nothing
     of what is built on them.
+  - `server/model/` — what everything is: every type the game keeps and
+    sends (the client's are generated from them), and the fixed rules of
+    each kind (`blueprint`, `needs`). Nothing here knows the world.
   - `server/` itself, the `sprawl` library: the game (DES, world, cars,
     town) as `game::Game`, with no clock on the wall and no IO.
   - `server/host/` — the server binary: `Game` on a tokio loop, over

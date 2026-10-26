@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use super::*;
-use crate::protocol::{BuildingKind, GameObject};
+use model::{BuildingKind, GameObject};
 
 /// What a run comes to: steps for each tile worked, tiles driven again,
 /// turns, and steps on the diagonal.

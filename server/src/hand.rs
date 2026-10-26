@@ -2,8 +2,8 @@
 //! where it may go (`may_step`), which the hand's dots are drawn by too.
 
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{Build, BuildingKind, ClientMessage, EntityId, GameObject, GridCoord, News, OwnerId, Tool};
+use model::GameTime;
+use model::{Build, BuildingKind, ClientMessage, EntityId, GameObject, GridCoord, News, OwnerId, Tool};
 use crate::world::decks::MIDDLE;
 use crate::world::World;
 
@@ -224,7 +224,7 @@ mod tests {
     use crate::game::tests::*;
     use crate::game::tests::build;
     use crate::game::settle_and_wake;
-    use crate::protocol::Good;
+    use model::Good;
     use land::TerrainType;
 
     /// May the mayor's hand take this step with this tool.
@@ -282,8 +282,8 @@ mod tests {
         let mut said = Vec::new();
         // A drag as the hand sends it: the whole of it so far, a tile on each time.
         for n in 1..=5 {
-            let tiles = (0..n).map(|y| crate::protocol::Spot { at: at(10, y), want: 0 }).collect();
-            said.extend(hand(&mut world, ClientMessage::Draw(crate::protocol::Stroke { id: 1, tool: Tool::Street, road: false, tiles, start: None })));
+            let tiles = (0..n).map(|y| model::Spot { at: at(10, y), want: 0 }).collect();
+            said.extend(hand(&mut world, ClientMessage::Draw(model::Stroke { id: 1, tool: Tool::Street, road: false, tiles, start: None })));
         }
         assert_eq!(world.roads.len(), roads + 4, "the side street was not laid");
         assert!(world.treasury < treasury, "the third and fourth tiles were not bought express");

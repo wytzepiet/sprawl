@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, interval, Duration};
 
-use sprawl::engine::GameTime;
+use model::GameTime;
 use sprawl::engine::tracked::Tracked;
 use sprawl::game::{Game, STEP_MS};
-use sprawl::protocol::{DAY_MS, ServerMessage};
+use model::{DAY_MS, ServerMessage};
 use sprawl::world::World;
 
 use crate::network::{ClientId, Command, Debug};

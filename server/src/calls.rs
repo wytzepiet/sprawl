@@ -13,11 +13,11 @@
 //! (`World::lift`), and goes home. Empty pads serve nothing, and nothing a
 //! van carries crosses the border, so nothing it carries is paid for.
 
-use crate::blueprint::blueprint;
+use model::blueprint::blueprint;
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{Car, CarRole, EntityId, GameObject, Good, DAY_MS};
+use model::GameTime;
+use model::{Car, CarRole, EntityId, GameObject, Good, DAY_MS};
 use crate::world::pathfinding::Routes;
 use crate::world::World;
 
@@ -44,7 +44,7 @@ pub const RETRY_MS: GameTime = DAY_MS as GameTime / 24;
 /// A hand on shift at the building: a tractor goes only with someone to
 /// drive it.
 pub fn staffed(world: &World, building: EntityId) -> bool {
-    world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at == Some(building) && r.selected == Some(crate::needs::Need::Work)))
+    world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at == Some(building) && r.selected == Some(model::needs::Need::Work)))
 }
 
 /// What a building is short of and calls for: a site, each material not
@@ -294,7 +294,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
 mod tests {
     use super::*;
     use crate::game::tests::*;
-    use crate::protocol::{BuildingKind, Good, DAY_MS};
+    use model::{BuildingKind, Good, DAY_MS};
     use crate::engine::event_queue::EventQueue;
 
     /// Sell `units` off a shop's shelf, as visits would, and let it call.

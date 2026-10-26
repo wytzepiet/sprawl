@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use fixed::{HashMap, HashSet};
 
-use crate::protocol::{BuildingKind, EntityId, GameObjectEntry, GameObject, GridCoord};
+use model::{BuildingKind, EntityId, GameObjectEntry, GameObject, GridCoord};
 
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,

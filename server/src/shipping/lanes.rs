@@ -15,7 +15,7 @@
 use fixed::HashMap;
 
 use crate::intersection::{paths_conflict, Dir, Rule};
-use crate::protocol::{Lane, LaneKind};
+use model::{Lane, LaneKind};
 
 use super::water::{Water, BERTH, NARROW};
 use crate::world::sea::FERRY_LENGTH;
@@ -379,7 +379,7 @@ impl Lanes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::GridCoord;
+    use model::GridCoord;
     use crate::shipping::water::{Berth, End};
 
     fn rows(spec: &[(&str, usize)]) -> Vec<String> {

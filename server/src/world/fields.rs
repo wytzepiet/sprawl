@@ -28,8 +28,8 @@ use fixed::HashSet;
 
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
+use model::GameTime;
+use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
 use crate::world::World;
 
 /// How long the tractor takes to cross a tile, working it: two and a
@@ -42,8 +42,8 @@ pub const RIPEN: GameTime = DAY_MS as GameTime * 3 / 2;
 /// The tiles a shift's ploughing makes a farm of, on open ground: the
 /// shift over the pace, less the ground driven between rows. What a
 /// farm's land comes to at capacity, and what its yard is divided by.
-pub fn capacity(kind: crate::protocol::BuildingKind) -> f64 {
-    (economy::shift_hours(kind) * crate::protocol::HOUR as f64 / PACE as f64 * 0.9).round()
+pub fn capacity(kind: model::BuildingKind) -> f64 {
+    (economy::shift_hours(kind) * model::HOUR as f64 / PACE as f64 * 0.9).round()
 }
 
 /// The eight ways off a tile: straight first, then the diagonals.
@@ -191,7 +191,7 @@ impl World {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
+            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -234,7 +234,7 @@ impl World {
         // shift: a job finished late in the day leaves the next for the
         // morning.
         let half = now + batch.len() as GameTime * PACE / 2;
-        let on_shift = crate::blueprint::blueprint(kind).taps.iter().any(|t| t.need == crate::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0 && t.curve.integral(half, half + 1_000) > 0.0);
+        let on_shift = model::blueprint::blueprint(kind).taps.iter().any(|t| t.need == model::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0 && t.curve.integral(half, half + 1_000) > 0.0);
         if !on_shift || !crate::calls::staffed(self, farm) {
             return;
         }
@@ -594,7 +594,7 @@ impl World {
                 (Job::Plough, Stage::Grass | Stage::Cut) => (tile.stage, tile.since) = (Stage::Ploughed, now),
                 (Job::Seed, Stage::Ploughed) => (tile.stage, tile.since) = (Stage::Sown, now),
                 (Job::Harvest, Stage::Sown) => {
-                    let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
+                    let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
                     if room {
                         (tile.stage, tile.since) = (Stage::Cut, now);
                         cut = crop.unwrap_or(0.0);
@@ -723,7 +723,7 @@ mod bench;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::BuildingKind;
+    use model::BuildingKind;
     use land::TerrainType;
 
     /// Grass either side of a street along y = 0, deep enough for a farm
@@ -925,7 +925,7 @@ mod tests {
         let mut events = EventQueue::new();
         let tractor = tractor(&world, farm);
         let yard = |world: &World| match world.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.stocks[&crate::protocol::Good::Crates].level,
+            GameObject::Building(ref b) => b.stocks[&model::Good::Crates].level,
             _ => unreachable!(),
         };
         let stages = |world: &World| -> Vec<Stage> { self::tiles(world, farm).iter().map(|t| t.stage).collect() };
@@ -984,7 +984,7 @@ mod tests {
             for t in b.land.iter_mut() {
                 (t.stage, t.since) = (Stage::Sown, 0);
             }
-            let s = b.stocks.get_mut(&crate::protocol::Good::Crates).unwrap();
+            let s = b.stocks.get_mut(&model::Good::Crates).unwrap();
             s.level = s.cap;
         }
         assert!(world.batch(farm, now).is_none(), "a harvest with no room in the yard");

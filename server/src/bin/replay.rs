@@ -10,10 +10,10 @@
 //! for. `--car` follows one car up to then: each time what it slowed for
 //! changed.
 
-use sprawl::car::Cause;
-use sprawl::engine::GameTime;
+use model::Cause;
+use model::GameTime;
 use sprawl::game::Game;
-use sprawl::protocol::{DAY_MS, EntityId, GameObject};
+use model::{DAY_MS, EntityId, GameObject};
 use sprawl::replay::{Playback, Replay, Session, Watch, clock};
 
 fn main() {
@@ -69,7 +69,7 @@ fn main() {
     let s = &play.session;
     let state = s.level.state(&s.game);
     println!("\n{} at {}: {:?} {}", s.level.name, clock(s.game.now), state.phase, state.message);
-    let near = |p: Option<sprawl::protocol::GridCoord>| match (&at, p) {
+    let near = |p: Option<model::GridCoord>| match (&at, p) {
         (None, _) => true,
         (Some(a), Some(p)) => (p.x - a[0]).abs().max((p.y - a[1]).abs()) <= *a.get(2).unwrap_or(&3),
         _ => false,

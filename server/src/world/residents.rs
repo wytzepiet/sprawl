@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 use fixed::HashSet;
 
-use crate::blueprint::blueprint;
+use model::blueprint::blueprint;
 use crate::economy;
-use crate::protocol::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
+use model::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
 use land::{ChunkCoord, CHUNK_SIZE};
 use crate::world::World;
 
@@ -21,7 +21,7 @@ impl World {
         let mut carless = Vec::new();
         for id in self.resident_ids() {
             let Some(GameObject::Resident(r)) = self.objects.get_mut(id).map(|e| &mut e.object) else { continue };
-            crate::needs::Bucket::top_up(&mut r.buckets);
+            model::needs::Bucket::top_up(&mut r.buckets);
             let (home, work, car) = (r.home, r.work, r.car);
             self.tie(id, home);
             if let Some(w) = work {
@@ -231,7 +231,7 @@ impl World {
 
     /// A household, carless until the settle ends (`issue_car`).
     fn move_in(&mut self, home: EntityId) -> EntityId {
-        let id = self.objects.insert(GameObject::Resident(Resident { home, work: None, at: None, car: 0, buckets: crate::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
+        let id = self.objects.insert(GameObject::Resident(Resident { home, work: None, at: None, car: 0, buckets: model::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
         self.tie(id, home);
         id
     }
@@ -346,13 +346,13 @@ fn commute_h(a: GridCoord, b: GridCoord) -> f64 {
 
 fn tiles_h(tiles: i32) -> f64 {
     let hour_s = DAY_MS as f64 / 1000.0 / 24.0;
-    tiles as f64 * 1.4 / crate::car::CRUISE_SPEED / hour_s
+    tiles as f64 * 1.4 / model::CRUISE_SPEED / hour_s
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::BuildingKind;
+    use model::BuildingKind;
 
     /// Grass, one long street, and whatever gets built beside it.
     fn town() -> World {
@@ -381,7 +381,7 @@ mod tests {
         let mut world = town();
         let home = build(&mut world, 0, BuildingKind::House);
 
-        assert_eq!(world.settle().len(), crate::blueprint::blueprint(BuildingKind::House).homes as usize);
+        assert_eq!(world.settle().len(), model::blueprint::blueprint(BuildingKind::House).homes as usize);
         assert!(residents(&world).iter().all(|r| r.home == home));
 
         // Run again: nothing is standing that was not standing before, so

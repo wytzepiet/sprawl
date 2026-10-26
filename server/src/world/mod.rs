@@ -17,9 +17,9 @@ pub mod segments;
 use std::collections::BTreeSet;
 use fixed::{HashMap, HashSet};
 
-use crate::engine::GameTime;
+use model::GameTime;
 
-use crate::protocol::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, Resident, TerrainChunk};
+use model::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, Resident, TerrainChunk};
 use land::{CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, TILE_ABSENT, TerrainType};
 use crate::engine::tracked::Tracked;
 use crate::world::network::RoadNetwork;
@@ -53,7 +53,7 @@ pub struct World {
     /// found a gap until its tail is clear of the node; turning in, from
     /// leaving the street there until it is parked. The street waits for it
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
-    pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
+    pub manoeuvres: HashMap<EntityId, (EntityId, model::GameTime)>,
     pub terrain_seed: u32,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
@@ -68,10 +68,10 @@ pub struct World {
     pub treasury: f64,
     /// Coins and GDP that landed on buildings since the last flush, for
     /// the clients looking at them.
-    pub lumps: Vec<crate::protocol::Lump>,
+    pub lumps: Vec<model::Lump>,
     /// What the town bought of its own accord since the last flush, said
     /// to every player.
-    pub news: Vec<crate::protocol::News>,
+    pub news: Vec<model::News>,
     /// Tiles of road the mayor has laid, which `hand::lay` counts to price.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
@@ -137,7 +137,7 @@ pub struct World {
     /// still waiting call for their timber (`game::settle_and_wake`).
     pub sites: BTreeSet<EntityId>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
-    pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
+    pub undo: HashMap<model::OwnerId, Vec<crate::undo::Done>>,
     /// The buildings placed lately, for razing to give back (`undo::raze`).
     /// Not saved.
     pub placed: Vec<crate::undo::Placed>,
@@ -147,7 +147,7 @@ pub struct World {
     pub market: crate::market::Market,
 }
 
-use crate::protocol::GridCoord;
+use model::GridCoord;
 
 pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
     ChunkCoord {
@@ -351,7 +351,7 @@ impl World {
 
     /// What a car on its way last slowed or stopped for, and how hard
     /// (`Trip::why`).
-    pub fn why(&self, car_id: EntityId) -> Option<(crate::car::Cause, f64)> {
+    pub fn why(&self, car_id: EntityId) -> Option<(model::Cause, f64)> {
         match self.objects.get(car_id)?.object {
             GameObject::Car(ref c) => c.trip.as_ref()?.why,
             _ => None,

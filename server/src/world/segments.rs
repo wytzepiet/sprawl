@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::protocol::EntityId;
+use model::EntityId;
 
 /// The cars on one directed edge, a queue a lane. A car changing lanes
 /// stands in both for as long as it takes (`car::simulation`'s shifts), so

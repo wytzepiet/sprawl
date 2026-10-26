@@ -524,6 +524,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "model"
+version = "0.1.0"
+dependencies = [
+ "land",
+ "serde",
+ "serde_bytes",
+ "ts-rs",
+]
+
+[[package]]
 name = "noise"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -882,6 +892,7 @@ version = "0.1.0"
 dependencies = [
  "fixed",
  "land",
+ "model",
  "rand 0.9.2",
  "serde",
  "serde_bytes",
@@ -896,6 +907,7 @@ dependencies = [
  "axum",
  "futures",
  "land",
+ "model",
  "rand 0.9.2",
  "rmp-serde",
  "rusqlite",
@@ -911,6 +923,7 @@ name = "sprawl-web"
 version = "0.1.0"
 dependencies = [
  "js-sys",
+ "model",
  "rmp-serde",
  "serde_json",
  "sprawl",

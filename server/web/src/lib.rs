@@ -3,7 +3,7 @@
 //! socket carries, so the client draws it as it draws the town.
 
 use sprawl::level::Phase;
-use sprawl::protocol::ClientMessage;
+use model::ClientMessage;
 use sprawl::replay::{Input, Session};
 use wasm_bindgen::prelude::*;
 
@@ -82,7 +82,7 @@ impl Web {
 
     /// Roads written down by `layout`, laid again.
     pub fn load(&mut self, json: &str) {
-        let steps: Vec<sprawl::protocol::Build> = serde_json::from_str(json).unwrap_or_default();
+        let steps: Vec<model::Build> = serde_json::from_str(json).unwrap_or_default();
         for step in steps {
             self.session.command(ClientMessage::Build(step));
         }

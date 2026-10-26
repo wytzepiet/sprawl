@@ -3,7 +3,8 @@ mod health;
 mod network;
 mod persistence;
 
-use sprawl::{blueprint, fixtures, needs};
+use model::{blueprint, needs};
+use sprawl::fixtures;
 use axum::Router;
 use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};

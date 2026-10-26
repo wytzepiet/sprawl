@@ -1,4 +1,4 @@
-use crate::protocol::{EntityId, GameObject, GridCoord};
+use model::{EntityId, GameObject, GridCoord};
 use crate::world::World;
 use super::decks::MIDDLE;
 
@@ -455,7 +455,7 @@ impl World {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::protocol::BuildingKind;
+    use model::BuildingKind;
 
     /// Grass, and a one-way street east along y = 0.
     fn eastward() -> World {

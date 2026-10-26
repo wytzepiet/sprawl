@@ -1,12 +1,11 @@
 use crate::car::physics;
-use crate::car::{
-    nose, tail, Cause, ACCELERATION, CRUISE_SPEED, CUSP_MS, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
-    REVERSE_SPEED,
-};
-use crate::engine::GameTime;
+use crate::car::{nose, tail, ACCELERATION, CUSP_MS, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle, REVERSE_SPEED};
+use model::CRUISE_SPEED;
+use model::Cause;
+use model::GameTime;
 use crate::engine::event_queue::EventQueue;
 use crate::intersection::{IntersectionRegistry, TRACK_POINTS};
-use crate::protocol::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
+use model::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
 use crate::world::{World, chunk_of};
 use crate::world::bezier::LANE_OFFSET;
 
@@ -553,7 +552,7 @@ pub fn lights(world: &mut World, events: &mut EventQueue, junction: EntityId, no
     let manager = world.streets.get_or_create(junction);
     manager.set_signal(arms.as_deref(), now);
     let (woken, next) = manager.tick(now);
-    let shown = manager.signal().map(|s| if s.clearing() { crate::protocol::ALL_RED } else { s.phase as u8 });
+    let shown = manager.signal().map(|s| if s.clearing() { model::ALL_RED } else { s.phase as u8 });
     for car in woken {
         events.wake(0, car);
     }

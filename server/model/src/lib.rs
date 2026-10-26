@@ -1,6 +1,20 @@
+//! What everything in the game is: every thing it keeps and sends, and
+//! the fixed rules of what each kind of thing does (`blueprint`, `needs`).
+//! Nothing here knows the world they are in.
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use land::ChunkCoord;
+
+pub mod blueprint;
+pub mod card;
+pub mod market;
+pub mod missions;
+pub mod needs;
+pub mod orders;
+
+/// Game time in milliseconds (monotonic, starts at 0).
+pub type GameTime = u64;
 
 pub type EntityId = u64;
 pub type EdgeKey = (EntityId, EntityId);
@@ -818,7 +832,7 @@ pub struct Trip {
     /// for a replay to read, never the game.
     #[serde(skip)]
     #[ts(skip)]
-    pub why: Option<(crate::car::Cause, f64)>,
+    pub why: Option<(crate::Cause, f64)>,
     /// The street nodes either side of the stretch a kerb bay is turned
     /// across, at the trip's start and its end: the street waits at both
     /// while the car turns (`car::simulation`).
@@ -834,6 +848,49 @@ pub struct Trip {
     #[serde(default)]
     #[ts(skip)]
     pub signal: Option<u8>,
+}
+
+impl Trip {
+    /// How far along its route it is now, and how fast it goes.
+    pub fn at(&self, now: GameTime) -> (f64, f64) {
+        catch_up(self.progress, self.speed, self.acceleration, (now - self.updated_at) as f64 / 1000.0)
+    }
+
+    /// How far along its route an edge of it starts.
+    pub fn start_of(&self, edge: EdgeKey) -> Option<f64> {
+        (1..self.route.len()).find(|&i| (self.route[i - 1], self.route[i]) == edge).map(|i| self.along[i - 1])
+    }
+}
+
+/// Tiles a second on an open road: the most any car goes.
+pub const CRUISE_SPEED: f64 = 1.5;
+
+/// Advance kinematics by dt seconds with constant acceleration.
+///
+/// Braking stops the car rather than reversing it, and accelerating stops at
+/// the cruising speed rather than sailing past it. Nothing else held that
+/// ceiling: acceleration is only recomputed when a car wakes, so between two
+/// wakes it simply kept gaining, and cars were driving stretches of road
+/// faster than the road allows.
+pub fn catch_up(progress: f64, speed: f64, accel: f64, dt: f64) -> (f64, f64) {
+    if accel < 0.0 {
+        let dt = dt.min(-speed / accel);
+        return (
+            progress + speed * dt + 0.5 * accel * dt * dt,
+            (speed + accel * dt).max(0.0),
+        );
+    }
+    // Pulling away up to the ceiling, then holding it for what is left.
+    let to_ceiling = if accel > 0.0 { (CRUISE_SPEED - speed) / accel } else { f64::INFINITY };
+    if to_ceiling >= dt {
+        return (progress + speed * dt + 0.5 * accel * dt * dt, speed + accel * dt);
+    }
+    // A car already over the ceiling settles back onto it.
+    let t = to_ceiling.max(0.0);
+    (
+        progress + speed * t + 0.5 * accel * t * t + CRUISE_SPEED * (dt - t),
+        CRUISE_SPEED,
+    )
 }
 
 /// A change of lanes: from one to the other, from `at` until `until`, in
@@ -1127,4 +1184,31 @@ pub struct News {
     pub at: EntityId,
 }
 
-
+/// What a car slows or stops for (`World::why`): read by a replay, to
+/// say what a car was doing, never by the game.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Cause {
+    /// The car ahead in its lane.
+    Ahead(crate::EntityId),
+    /// A car coming into its lane at the junction ahead from another arm.
+    Merging(crate::EntityId),
+    /// A car in the other lane it lets in ahead of it.
+    LettingIn(crate::EntityId),
+    /// The lane its way out asks for, not yet got into: the car in the way
+    /// there, if it has tried.
+    GettingIn(Option<crate::EntityId>),
+    /// A junction or crossing it has no passage at yet.
+    Junction(crate::EntityId),
+    /// A car turning into or out of a lot across its way.
+    Turn(crate::EntityId),
+    /// Its give-way line out of a lot, with no gap yet.
+    Line,
+    /// About to turn into a lot across the oncoming lane.
+    TurningIn,
+    /// A bend.
+    Bend,
+    /// A lot, or backing.
+    Slow,
+    /// A stop it plans: where the gear changes, or its way's end.
+    Stop,
+}

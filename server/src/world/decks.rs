@@ -27,7 +27,7 @@
 //! everything the town does with a tile's road is theirs. The rest, above
 //! the ground or beside the middle, are `decks`.
 
-use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode, Tool};
+use model::{EntityId, GameObject, GridCoord, RoadNode, Tool};
 use land::TerrainType;
 
 use super::clear::End;

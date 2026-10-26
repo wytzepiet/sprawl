@@ -2,7 +2,7 @@
 //! map's edge and back in, its round timed on a clock face so its
 //! ferries keep their places on it.
 
-use crate::engine::GameTime;
+use model::GameTime;
 
 use super::{length, sail_ms, DWELL, HOUR, WORLD_STAY};
 

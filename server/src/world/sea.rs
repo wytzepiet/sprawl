@@ -24,10 +24,10 @@
 //! ferries are: it never turns, it sails in one end first and out the
 //! other.
 
-use crate::blueprint::FACINGS;
+use model::blueprint::FACINGS;
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Package, Pose, DAY_MS};
+use model::GameTime;
+use model::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Package, Pose, DAY_MS};
 use land::TerrainType;
 use crate::shipping::lanes::{Gate, Kind, Lanes};
 use crate::shipping::lines::Line;
@@ -400,7 +400,7 @@ impl World {
             events.wake(0, w);
         }
         let tile = |t: GameTime| {
-            let p = sail.pose(t).at;
+            let p = crate::shipping::pose(&sail, t).at;
             GridCoord { x: p[0].floor() as i32, y: p[1].floor() as i32 }
         };
         if !done {
@@ -410,7 +410,7 @@ impl World {
                 c.sail = Some(sail.clone());
             }
             self.update_position(ferry, tile(now));
-            let next = voyage.wake(&sail).min(if now < sail.ends { sail.next_crossing(now) } else { GameTime::MAX });
+            let next = voyage.wake(&sail).min(if now < sail.ends { crate::shipping::next_crossing(&sail, now) } else { GameTime::MAX });
             if next < GameTime::MAX {
                 events.wake(next.saturating_sub(now).max(1), ferry);
             }
@@ -421,7 +421,7 @@ impl World {
         c.sail = None;
         let harbour = c.owner;
         if !sail.astern {
-            c.spot = Some(sail.pose(sail.ends));
+            c.spot = Some(crate::shipping::pose(&sail, sail.ends));
             c.due = now + DWELL;
             self.update_position(ferry, tile(sail.ends));
             // The post comes with it.

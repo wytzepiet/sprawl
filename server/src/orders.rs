@@ -20,50 +20,13 @@
 //! started with, a point for each filled and half one off for each that
 //! lapsed. Nothing else about a mayor is kept.
 
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use model::orders::{Mayor, Compass, Neighbour, Letter};
 
-use crate::blueprint::blueprint;
-use crate::engine::GameTime;
-use crate::missions::{Goal, Key, Mission, Reward, Step};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Leg, News, Package, DAY_MS};
+use model::blueprint::blueprint;
+use model::GameTime;
+use model::missions::{Goal, Key, Mission, Reward, Step};
+use model::{BuildingKind, EntityId, GameObject, Good, Leg, News, Package, DAY_MS};
 use crate::world::World;
-
-/// Who writes: in the order they come to trust the town.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub enum Mayor {
-    Tam,
-    Mira,
-    Bess,
-    Aldra,
-}
-
-/// Which way a town lies, beyond which edge of the map.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub enum Compass {
-    North,
-    East,
-    South,
-    West,
-}
-
-/// A mayor as the clients are sent one: who, where, how they look, and
-/// how they stand with the town.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Neighbour {
-    pub mayor: Mayor,
-    pub name: String,
-    pub town: String,
-    pub toward: Compass,
-    /// The town's colour, the crest's ground.
-    pub colour: String,
-    pub standing: f64,
-    /// Writes to the town yet.
-    pub writes: bool,
-}
 
 struct Who {
     mayor: Mayor,
@@ -314,19 +277,6 @@ pub fn sailed(world: &mut World, t: &Package) {
     world.missions.stir();
 }
 
-/// A letter's packages still wanted, not yet booked, and what its mayor
-/// pays a unit: what the town can send them.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Letter {
-    #[ts(type = "number")]
-    pub letter: u64,
-    pub good: Good,
-    pub partner: Mayor,
-    pub price: f64,
-    pub packages: u32,
-}
-
 /// What each mayor's town wants and makes: what pushes the market
 /// (`market.rs`).
 pub fn trades() -> impl Iterator<Item = (&'static [Good], &'static [Good])> {
@@ -389,25 +339,25 @@ pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner
 mod tests {
     use super::*;
     use crate::game::tests::*;
-    use crate::protocol::{BuildingKind, Good, DAY_MS};
+    use model::{BuildingKind, Good, DAY_MS};
 
     /// A letter written and opened, as a ferry brings it.
-    fn letter(world: &mut World, now: GameTime) -> crate::missions::Mission {
+    fn letter(world: &mut World, now: GameTime) -> model::missions::Mission {
         let m = crate::orders::write(world, now).expect("nobody wrote");
         world.missions.list.push(m.clone());
         m
     }
 
     /// The good an order asks for.
-    fn asked(m: &crate::missions::Mission) -> Good {
+    fn asked(m: &model::missions::Mission) -> Good {
         match m.steps[0].goal {
-            crate::missions::Goal::Delivered { good, .. } => good,
+            model::missions::Goal::Delivered { good, .. } => good,
             _ => panic!("{} is not an order", m.title),
         }
     }
 
     /// An order finished: filled, or lapsed.
-    fn close(world: &mut World, key: crate::missions::Key, filled: bool, now: GameTime) {
+    fn close(world: &mut World, key: model::missions::Key, filled: bool, now: GameTime) {
         let m = world.missions.list.iter_mut().find(|m| m.key == key).unwrap();
         m.steps[0].done = filled;
         m.finished = Some(now);
@@ -451,13 +401,14 @@ mod tests {
     /// to nothing.
     #[test]
     fn orders_come_three_at_most_and_lapse_without_harm() {
-        use crate::orders::{post, standing, Mayor, GAP, LASTS, OPEN};
+        use crate::orders::{post, standing, GAP, LASTS, OPEN};
+        use model::orders::Mayor;
         let mut world = street();
         let harbour = harbour_of(&world);
         post(&mut world, harbour, 0);
-        assert!(world.missions.list.iter().all(|m| !matches!(m.key, crate::missions::Key::Order(_))), "a letter came before the opening was done");
+        assert!(world.missions.list.iter().all(|m| !matches!(m.key, model::missions::Key::Order(_))), "a letter came before the opening was done");
         opening_done(&mut world);
-        let open = |w: &World| w.missions.list.iter().filter(|m| matches!(m.key, crate::missions::Key::Order(_)) && m.finished.is_none()).count();
+        let open = |w: &World| w.missions.list.iter().filter(|m| matches!(m.key, model::missions::Key::Order(_)) && m.finished.is_none()).count();
         let mut most = 0;
         // A ferry every tenth of a day, for three days.
         for call in 0..30 {
@@ -466,7 +417,7 @@ mod tests {
             assert!(open(&world) <= OPEN, "{} open at call {call}", open(&world));
         }
         assert_eq!(most, OPEN, "the board never filled");
-        let opened: Vec<GameTime> = world.missions.list.iter().filter(|m| matches!(m.key, crate::missions::Key::Order(_))).map(|m| m.opened).collect();
+        let opened: Vec<GameTime> = world.missions.list.iter().filter(|m| matches!(m.key, model::missions::Key::Order(_))).map(|m| m.opened).collect();
         assert!(opened.windows(2).all(|w| w[1] - w[0] >= GAP), "letters came closer than a third of a day: {opened:?}");
         // Tam's first lapsed after its two days, nothing filled: standing
         // fell from where it started, and the news said so.
@@ -475,18 +426,19 @@ mod tests {
         assert!(standing(&world, Mayor::Tam) < 1.0, "a lapsed order cost no standing");
         assert!(world.news.iter().any(|n| n.text.contains("gave up")), "no news of it");
         // A package booked for it sails after all.
-        let crate::missions::Key::Order(id) = tam.key else { unreachable!() };
-        let t = crate::protocol::Package { id: 1, good: asked(&tam), to: None, outbound: true, order: id, partner: Some(Mayor::Tam), price: 1.0 };
+        let model::missions::Key::Order(id) = tam.key else { unreachable!() };
+        let t = model::Package { id: 1, good: asked(&tam), to: None, outbound: true, order: id, partner: Some(Mayor::Tam), price: 1.0 };
         crate::orders::sailed(&mut world, &t);
         let tam = world.missions.list.iter().find(|m| m.key == tam.key).unwrap();
-        assert!(matches!(tam.steps[0].goal, crate::missions::Goal::Delivered { sailed, .. } if sailed == 0.0), "a lapsed order took a package");
+        assert!(matches!(tam.steps[0].goal, model::missions::Goal::Delivered { sailed, .. } if sailed == 0.0), "a lapsed order took a package");
     }
 
     /// Port Aldra writes only once the town stands well with someone
     /// else: until then, the letters are Tam's, Mira's and Bess's.
     #[test]
     fn port_aldra_is_silent_until_the_town_stands_well() {
-        use crate::orders::{standing, Mayor, GAP, GOOD};
+        use crate::orders::{standing, GAP, GOOD};
+        use model::orders::Mayor;
         let mut world = street();
         opening_done(&mut world);
         build(&mut world, 20, BuildingKind::Farm);
@@ -517,8 +469,9 @@ mod tests {
     /// harbour as it casts off, once; the mayor's standing rises, once.
     #[test]
     fn an_order_filled_pays_coins_and_standing_once() {
-        use crate::missions::Reward;
-        use crate::orders::{post, standing, Mayor};
+        use model::missions::Reward;
+        use crate::orders::{post, standing};
+        use model::orders::Mayor;
         let mut world = street();
         let harbour = harbour_of(&world);
         build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
@@ -528,7 +481,7 @@ mod tests {
         post(world, harbour, 0);
         let order = world.missions.list.last().unwrap().clone();
         assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Crates), "Tam's letter, for crates");
-        let (crate::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
+        let (model::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
         let before = (world.treasury, standing(world, Mayor::Tam));
         let n = crate::orders::letters(world).iter().find(|l| l.letter == id).unwrap().packages;
         assert_eq!(crate::orders::send(world, id, n), n, "no room for Tam's crates");

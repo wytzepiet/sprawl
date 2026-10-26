@@ -24,10 +24,10 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
-use crate::blueprint::blueprint;
-use crate::engine::GameTime;
-use crate::needs::{Need, Stock, Tap};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS, HOUR};
+use model::blueprint::blueprint;
+use model::GameTime;
+use model::needs::{Need, Stock, Tap};
+use model::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS, HOUR};
 use land::TerrainType;
 use crate::world::World;
 
@@ -150,7 +150,7 @@ pub fn reach(world: &World, building: EntityId) -> f64 {
     let mut n = 0;
     for y in o.y - 5..o.y + h as i32 + 5 {
         for x in o.x - 5..o.x + w as i32 + 5 {
-            if world.terrain.get(&(x, y)) == Some(&ground) && !world.occupied.contains_key(&(x, y)) && world.road_node_at(crate::protocol::GridCoord { x, y }).is_none() {
+            if world.terrain.get(&(x, y)) == Some(&ground) && !world.occupied.contains_key(&(x, y)) && world.road_node_at(model::GridCoord { x, y }).is_none() {
                 n += 1;
             }
         }
@@ -203,7 +203,7 @@ pub fn hiring(world: &World, building: EntityId) -> bool {
 /// of stocks running low.
 pub fn depot(kind: BuildingKind) -> bool {
     let bp = blueprint(kind);
-    !bp.shelves.is_empty() && bp.vehicles.contains(&crate::protocol::CarRole::Van)
+    !bp.shelves.is_empty() && bp.vehicles.contains(&model::CarRole::Van)
 }
 
 /// A building saved before it had its shelves or its yard gets them the
@@ -246,7 +246,7 @@ pub fn reorder(world: &World, building: EntityId, good: Good) -> f64 {
     let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(LEAD_MS);
     // A full house is everyone the taps seat at once: two bays with seven
     // cars at the door is a rush of seven.
-    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(|t| crate::blueprint::seats(kind, t)).sum();
+    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(|t| model::blueprint::seats(kind, t)).sum();
     rated(kind, good) * lead as f64 / DAY_MS as f64 + seats as f64
 }
 
@@ -388,7 +388,7 @@ pub const EXPRESS: f64 = 2.0;
 /// lorry; what they lack the world sends on the spot, express, paid at
 /// the harbour. A town with no harbour yet has no border to pay at, and
 /// lays its first road for nothing.
-pub fn paved(world: &mut World, at: crate::protocol::GridCoord, tiles: u32, now: GameTime) {
+pub fn paved(world: &mut World, at: model::GridCoord, tiles: u32, now: GameTime) {
     let mut owed = tiles as f64 * ROAD_STONE;
     if owed <= 0.0 {
         return;
@@ -621,12 +621,12 @@ mod tests {
                 world.terrain.insert((x, y), land::TerrainType::Grass);
             }
         }
-        world.place_road_path(&(-2..300).map(|x| crate::protocol::GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        world.place_road_path(&(-2..300).map(|x| model::GridCoord { x, y: 0 }).collect::<Vec<_>>());
         world
     }
 
-    fn at(x: i32) -> crate::protocol::GridCoord {
-        crate::protocol::GridCoord { x, y: 1 }
+    fn at(x: i32) -> model::GridCoord {
+        model::GridCoord { x, y: 1 }
     }
 
     fn shelf(world: &World, id: EntityId, good: Good) -> Stock {
@@ -736,7 +736,7 @@ mod tests {
     fn a_fleet_vehicle_is_refilled_in_the_yard() {
         let mut world = town();
         let depot = world.place_on_street(at(20), Depot).unwrap();
-        let van = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Van)).map(|e| e.id).expect("a van in the yard");
+        let van = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == model::CarRole::Van)).map(|e| e.id).expect("a van in the yard");
         world.treasury = 100.0;
         crate::resident::drove(&mut world, van, 250.0);
         let fuel = shelf(&world, depot, Good::Fuel).level;

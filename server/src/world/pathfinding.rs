@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use fixed::{HashMap, HashSet};
 
-use crate::car::CRUISE_SPEED;
-use crate::protocol::{EntityId, GridCoord};
+use model::CRUISE_SPEED;
+use model::{EntityId, GridCoord};
 use crate::world::network::Segment;
 use crate::world::World;
 
@@ -337,7 +337,7 @@ fn run_length(world: &World, nodes: &[EntityId]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{GameObject, GridCoord};
+    use model::{GameObject, GridCoord};
 
     fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
         Routes::from(world, start).route_to(end)

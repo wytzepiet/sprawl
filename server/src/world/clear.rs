@@ -28,7 +28,7 @@ use fixed::HashMap;
 use super::decks::{spot, Side, MIDDLE};
 use super::World;
 use crate::intersection::{track, TRACK_POINTS};
-use crate::protocol::{EntityId, GridCoord};
+use model::{EntityId, GridCoord};
 
 /// Half a road's width as drawn, in tiles: a one-way's one lane, and
 /// anything wider (`surface.ts`'s `THIN`, `HALF_W`).

@@ -1,5 +1,5 @@
-use crate::engine::GameTime;
-use crate::protocol::DAY_MS;
+use crate::GameTime;
+use crate::DAY_MS;
 
 const DAY: f64 = DAY_MS as f64;
 

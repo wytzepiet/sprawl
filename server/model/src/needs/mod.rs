@@ -3,8 +3,8 @@ pub mod curve;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::engine::GameTime;
-use crate::protocol::{Good, DAY_MS, HOUR};
+use crate::GameTime;
+use crate::{Good, DAY_MS, HOUR};
 use curve::Curve;
 
 /// Something a resident has to do: what a tap serves, some of it drawn
@@ -256,6 +256,12 @@ pub struct Tap {
 }
 
 impl Tap {
+    /// The rate each of `company` present is served at: full up to the
+    /// slots, then shared.
+    pub fn serving(&self, slots: u32, company: u32) -> f64 {
+        self.rate * (slots as f64 / company.max(1) as f64).min(1.0)
+    }
+
     /// Units it could sell in a day with every slot busy: what "sold out"
     /// is measured against.
     pub fn rated(&self) -> f64 {

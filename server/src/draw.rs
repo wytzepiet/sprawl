@@ -22,8 +22,8 @@
 //! over or under. A drag is one action to undo (`undo::Act::Drawn`).
 
 use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
+use model::GameTime;
+use model::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
 use crate::world::decks::{across, other, toward, Side, MIDDLE};
 use crate::world::clear::End;
@@ -337,7 +337,7 @@ fn dedup<T: PartialEq>(v: Vec<T>) -> Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::Spot;
+    use model::Spot;
 
     /// Open grass, and a hand that draws on it as the brush does: the
     /// whole drag so far, a tile on each time.
@@ -452,7 +452,7 @@ mod tests {
         let side = f.world.side_of(outer);
         f.id += 1;
         let spots = [(4, 0), (3, 0), (2, 0)].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-        draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side }) }, 0);
+        draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(model::Stand { h: 0, side }) }, 0);
         assert!(f.world.road_node_at(GridCoord { x: 2, y: 0 }).is_some(), "the outer road could not go on past the bend");
         assert_eq!(pair(&f), 2, "the pair came apart");
     }
@@ -474,7 +474,7 @@ mod tests {
                 let tiles = [(4, -4), (4, -5), (5, -5), (6, -5), (7, -5), (8, -5), (9, -5)];
                 for n in 2..=tiles.len() {
                     let spots = tiles[..n].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
-                    draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side: westbound }) }, 0);
+                    draw(&mut f.world, &mut f.events, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(model::Stand { h: 0, side: westbound }) }, 0);
                 }
             };
             let down = |f: &mut Field| f.drag(Tool::OneWay, &[(9, -5), (8, -5), (7, -5), (6, -5), (5, -5), (4, -5), (3, -4)]);

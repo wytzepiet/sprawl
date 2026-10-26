@@ -11,99 +11,11 @@
 //! a town beyond the edge is a mission too, written by its mayor
 //! (`orders.rs`).
 
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use model::missions::{Key, Goal, Reward, Step, Mission};
 
-use crate::engine::GameTime;
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
+use model::GameTime;
+use model::{BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
 use crate::world::World;
-
-/// Which mission this is: each opens once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub enum Key {
-    Opening,
-    Book,
-    Sell,
-    Pump,
-    Quarry,
-    Sawmill,
-    Farm,
-    /// An order from a town beyond the edge, by its number: the number
-    /// its boxes carry as their shipment's.
-    Order(#[ts(type = "number")] u64),
-}
-
-/// What a step asks of the town: a fact read off the world.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(tag = "kind", content = "data")]
-pub enum Goal {
-    /// A building of this kind stands, built and reached by a street.
-    Stands(BuildingKind),
-    /// A depot's street joined to the harbour's.
-    Joined,
-    /// Something on a depot's shelf: a box fetched and unloaded.
-    Fetched,
-    /// Settlers in town: someone has driven off the ferry.
-    Settled,
-    /// A box booked to come in on the deck.
-    Booked,
-    /// Something sold over the sea.
-    Sold,
-    /// So many units of a good sailed for an order's town: counted by the
-    /// ferry as it casts off (`orders::sailed`).
-    Delivered { good: Good, units: f64, sailed: f64 },
-}
-
-/// What finishing a mission pays. Coins for now; XP once the level means
-/// something.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(tag = "kind", content = "data")]
-pub enum Reward {
-    Coins(f64),
-    /// An order's: its coins paid a box at a time as each sails, and
-    /// standing with its mayor once the last has.
-    Order { coins: f64, standing: f64 },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Step {
-    pub goal: Goal,
-    /// What it asks, in a line.
-    pub title: String,
-    /// How, paragraphs apart by a blank line.
-    pub text: String,
-    pub done: bool,
-    /// The building the step's button acts on: the depot, for a depot's
-    /// goal.
-    #[ts(type = "number | null")]
-    pub at: Option<EntityId>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Mission {
-    pub key: Key,
-    pub title: String,
-    pub steps: Vec<Step>,
-    pub reward: Reward,
-    #[ts(type = "number")]
-    pub opened: GameTime,
-    /// Finished, its steps done; or, for an order, given up on with a
-    /// step not done.
-    #[ts(type = "number | null")]
-    pub finished: Option<GameTime>,
-    /// Who asked, for an order.
-    #[serde(default)]
-    pub from: Option<crate::orders::Mayor>,
-    /// When an order lapses.
-    #[serde(default)]
-    #[ts(type = "number | null")]
-    pub due: Option<GameTime>,
-}
 
 /// When a mission opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,7 +244,7 @@ mod tests {
     use crate::calls;
     use crate::resident::handle_resident_wake;
     use crate::game::settle_and_wake;
-    use crate::protocol::{BuildingKind, Good, GridCoord};
+    use model::{BuildingKind, Good, GridCoord};
     use land::TerrainType;
     use crate::engine::event_queue::EventQueue;
 
@@ -350,7 +262,7 @@ mod tests {
     /// and pays.
     #[test]
     fn a_site_short_of_stone_asks_for_a_quarry_once() {
-        use crate::missions::Key;
+        use model::missions::Key;
         let mut world = street();
         for x in QUARRY_X - 5..QUARRY_X + 7 {
             for y in 5..14 {
@@ -403,8 +315,8 @@ mod tests {
     /// station, once the opening is done; a full tank does not.
     #[test]
     fn a_car_running_dry_asks_for_a_gas_station() {
-        use crate::missions::Key;
-        use crate::needs::Need;
+        use model::missions::Key;
+        use model::needs::Need;
         let mut world = street();
         let house = build(&mut world, 10, BuildingKind::House);
         let mut events = EventQueue::new();

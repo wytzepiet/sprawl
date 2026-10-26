@@ -12,9 +12,9 @@
 //! the server simulates of it; the forklift driving to and fro is the
 //! client's, from the run (`Lift`).
 
-use crate::blueprint::blueprint;
-use crate::engine::GameTime;
-use crate::protocol::{CarRole, EntityId, Good, Lift};
+use model::blueprint::blueprint;
+use model::GameTime;
+use model::{CarRole, EntityId, Good, Lift};
 
 use super::World;
 

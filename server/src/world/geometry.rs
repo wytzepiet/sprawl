@@ -1,4 +1,4 @@
-use crate::protocol::EntityId;
+use model::EntityId;
 use crate::world::World;
 use crate::world::bezier;
 

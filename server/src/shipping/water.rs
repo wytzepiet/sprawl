@@ -13,7 +13,7 @@ use super::lanes::{Lanes, WAYS};
 use std::collections::BinaryHeap;
 use fixed::HashMap;
 
-use crate::protocol::{GridCoord, Pose};
+use model::{GridCoord, Pose};
 use land::TerrainType;
 use crate::world::sea::FERRY_LENGTH;
 
@@ -637,7 +637,7 @@ mod tests {
                 // ferry's 6.4 a day, with as many ferries as that takes.
                 if end == End::Edge {
                     let ferry = crate::shipping::lines::Line { legs: [way.clone(), back.clone()] };
-                    let calls = ferry.every_call() as f64 * crate::protocol::DAY_MS as f64 / ferry.cycle() as f64;
+                    let calls = ferry.every_call() as f64 * model::DAY_MS as f64 / ferry.cycle() as f64;
                     line += &format!(" {} ferries, {calls:.1} calls a day;", ferry.every_call());
                     if calls < 6.0 {
                         wrong.push(format!("seed {seed}: {calls:.1} calls a day"));
