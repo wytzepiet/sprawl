@@ -14,5 +14,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 // The puzzle: interchanges between the roads at a map's edges, run in the
 // browser (`interchange/`).
 const Interchange = lazy(() => import("./interchange/Interchange"));
+// The opening, played in the browser, fresh on every load (`opening/`).
+const Opening = lazy(() => import("./opening/Opening"));
 const path = location.pathname;
-render(() => (path.startsWith("/interchange") ? <Interchange /> : <App />), root!);
+render(() => (path.startsWith("/interchange") ? <Interchange /> : path.startsWith("/opening") ? <Opening /> : <App />), root!);

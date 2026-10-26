@@ -135,3 +135,49 @@ impl Web {
         self.session.json()
     }
 }
+
+/// A new town for the browser's opening (`/opening`): a seed's island, its
+/// harbour seated, at nine in the morning, the first ferry on its way. The
+/// same game the server runs, for one mayor, fresh on every load.
+#[wasm_bindgen]
+pub struct Town {
+    game: sprawl::game::Game,
+}
+
+#[wasm_bindgen]
+impl Town {
+    #[wasm_bindgen(constructor)]
+    pub fn new(seed: u32) -> Town {
+        let nine = sprawl::protocol::DAY_MS as u64 * 9 / 24;
+        let world = sprawl::hand::town(seed, nine);
+        world.raise_mountains();
+        let mut game = sprawl::game::Game::new(world, nine, 1, Box::new(move || sprawl::hand::town(seed, 0)));
+        game.connect(ME, 0);
+        Town { game }
+    }
+
+    /// A message from the client, as the socket would carry it.
+    pub fn send(&mut self, bytes: &[u8]) {
+        if let Ok(msg) = rmp_serde::from_slice::<ClientMessage>(bytes) {
+            self.game.command(ME, msg);
+        }
+    }
+
+    /// One tick, as the server's loop ticks it. How many wakes.
+    pub fn tick(&mut self) -> u32 {
+        self.game.tick()
+    }
+
+    /// What the game said since last asked, a message each.
+    pub fn drain(&mut self) -> js_sys::Array {
+        self.game
+            .take_outbox()
+            .into_iter()
+            .filter_map(|(_, msg)| rmp_serde::to_vec_named(&msg).ok())
+            .map(|bytes| JsValue::from(js_sys::Uint8Array::from(bytes.as_slice())))
+            .collect()
+    }
+}
+
+/// The one client a browser's town has.
+const ME: sprawl::game::ClientId = 1;

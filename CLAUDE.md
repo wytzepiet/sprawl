@@ -130,6 +130,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--live x,y[,r]` the running game round a tile (from `/map`), numbered
   in the game's own tiles and drawn as the town grid will draw it. Most
   layout questions need only this; photographs are for light and height.
+- **The opening, played again:** `/opening` on any client runs a new
+  town in the browser on the sim compiled to wasm (`server/web` `Town`,
+  `client/src/opening/`), no server: every load is the ferry sailing in
+  again, on `?seed=` (7 by default). `bun run wasm` after changing the
+  server. A preview has it too, at `<branch>.preview.sprawl.nl/opening`.
 - **The tractor's runs:** `bun run fields [name]` drives the sweep over
   the fields in `server/fields/*.txt` (fixture text, each a farm on a
   street with something awkward round it: forest, coast, a pond, houses,

@@ -135,6 +135,18 @@ pub fn seat_harbour(world: &mut World, events: &mut EventQueue, now: GameTime) -
     Some(seat.0)
 }
 
+/// A new town on a seed's island: the bare land, since no road is born
+/// with the map, and its harbour seated by the spawn, the first ferry on
+/// its way with the mayor's lorry. The server's fresh world and the
+/// browser's opening (`web`) alike.
+pub fn town(seed: u32, now: GameTime) -> World {
+    let mut world = World::new();
+    world.terrain_seed = seed;
+    world.terrain = crate::terrain::generate(seed);
+    seat_harbour(&mut world, &mut EventQueue::new(), now);
+    world
+}
+
 /// A step of the hand, built. Whether the step was taken.
 pub fn take_step(world: &mut World, events: &mut EventQueue, step: Build, now: GameTime) -> bool {
     let Build { tool, from, to, road, .. } = step;

@@ -26,22 +26,20 @@ fn new_seed() -> u32 {
         .unwrap_or_else(rand::random::<u32>)
 }
 
-/// The bare island a seed makes: no road is born with the map. Terrain is
-/// derived from the seed, so it is made again on every start rather than
-/// saved.
-fn island(world: &mut World) {
-    world.terrain = sprawl::terrain::generate(world.terrain_seed);
-    println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
+/// A new town on a fresh seed (`hand::town`).
+fn found(now: GameTime) -> World {
+    let world = sprawl::hand::town(new_seed(), now);
+    println!("town: seed {}", world.terrain_seed);
+    world
+}
+
+/// The mountains, worn in at startup so no player waits on them. Terrain
+/// is derived from the seed, so it is made again on every start rather
+/// than saved.
+fn raise(world: &World) {
     let started = std::time::Instant::now();
     world.raise_mountains();
     println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
-}
-
-/// A new town: its harbour seated on the coast by the spawn, its first
-/// ferry on the way with the mayor's lorry.
-fn found(world: &mut World, now: GameTime) {
-    let at = sprawl::hand::seat_harbour(world, &mut sprawl::engine::event_queue::EventQueue::new(), now);
-    println!("harbour: seated at {at:?}");
 }
 
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
@@ -59,27 +57,23 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&mut db) };
     if let Some(dir) = &fixtures {
         sprawl::fixtures::build(&mut world, Path::new(dir));
+    } else if world.objects.is_empty() {
+        // A fresh world keeps its stake (`SPRAWL_ALL`).
+        let treasury = world.treasury;
+        world = found(sim_time);
+        world.treasury = treasury;
     } else {
-        if world.objects.is_empty() {
-            world.terrain_seed = new_seed();
-        }
-        island(&mut world);
-        if world.objects.is_empty() {
-            found(&mut world, sim_time);
-        } else {
-            world.restore();
-            println!("loaded {} objects from db", world.objects.len());
-        }
+        world.terrain = sprawl::terrain::generate(world.terrain_seed);
+        world.restore();
+        println!("loaded {} objects from db", world.objects.len());
     }
+    raise(&world);
     let speed = if fixtures.is_some() { 0 } else { 1 };
     let fresh_db = db_path.clone();
     let fresh = Box::new(move || {
         persistence::Db::open(&fresh_db).clear();
-        let mut world = World::new();
-        world.terrain_seed = new_seed();
-        island(&mut world);
-        found(&mut world, 0);
-        println!("reset: world cleared, terrain regenerated");
+        let world = found(0);
+        raise(&world);
         world
     });
     let mut game = Game::new(world, sim_time, speed, fresh);
