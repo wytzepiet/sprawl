@@ -61,19 +61,31 @@ jobs:
           ref: sprawl
           path: Babylon-Lite
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The game crate is half the build, and most pushes leave it as it was:
+      # its binary and its wasm are kept by the tree they were built from,
+      # and a push that did not touch server/ builds neither.
+      - name: The game, built from this server/ before?
+        id: game
         if: github.event_name == 'push'
+        uses: actions/cache@v4
+        with:
+          path: |
+            sprawl/server/target/release/sprawl-server
+            sprawl/client/src/wasm
+          key: game-${{ hashFiles('sprawl/server/**') }}
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         with:
           workspaces: sprawl/server
       - name: wasm-bindgen, the version Cargo.lock asks for
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         run: echo "BINDGEN=$(grep -A1 '^name = "wasm-bindgen"$' sprawl/server/Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')" >> $GITHUB_ENV
       - uses: taiki-e/install-action@v2
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         with:
           tool: wasm-bindgen@${{ env.BINDGEN }}
       - uses: pnpm/action-setup@v4
@@ -91,10 +103,15 @@ jobs:
           VITE_BRANCH: ${{ github.ref_name }}
           VITE_SHA: ${{ github.sha }}
         run: |
-          (cd Babylon-Lite && pnpm install --frozen-lockfile)
+          # Lite is read from its source: its own tools and tests are not needed.
+          (cd Babylon-Lite && pnpm install --frozen-lockfile --prod)
+          cd sprawl/client && bun install --frozen-lockfile
+          if [ "${{ steps.game.outputs.cache-hit }}" != true ]; then
+            bun run wasm
+            (cd ../server && cargo build --release -p sprawl-server)
+          fi
           # Preview, not production: the clock keeps its speeds and resets (`ui/Clock.tsx`).
-          (cd sprawl/client && bun install --frozen-lockfile && bun run build --mode preview)
-          (cd sprawl/server && cargo build --release -p sprawl-server)
+          bunx vite build --mode preview
 
       - name: Key
         run: |
