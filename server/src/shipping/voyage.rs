@@ -11,7 +11,7 @@
 //! approach's mouth, the anchorage, until its time, and asks then.
 
 use model::GameTime;
-use map::intersection::IntersectionRegistry;
+use crate::intersection::IntersectionRegistry;
 use model::{EntityId, Sail};
 
 use super::lanes::{Gate, Kind};

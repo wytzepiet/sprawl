@@ -415,7 +415,6 @@ impl Map {
         }
 
         let middle = self.height_of(id) == 0 && self.side_of(id) == MIDDLE;
-        self.streets.remove_node(id);
         self.objects.remove(id);
         self.unindex(id, pos);
         if middle {
@@ -665,7 +664,6 @@ pub(super) mod tests {
         let mut world = Map::new();
         world.terrain = land::terrain::generate(7);
         world.restore();
-        world.resettle();
         assert!(world.objects.roads().next().is_none(), "a road was born with the map");
         assert!(world.all_buildings().is_empty() && world.resident_ids().is_empty(), "something stood on the island");
     }

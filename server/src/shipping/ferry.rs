@@ -54,7 +54,7 @@ impl World {
     fn set_out(&mut self, events: &mut EventQueue, ferry: EntityId, way: Vec<[f64; 2]>, astern: bool, now: GameTime) {
         let ease = if astern { [true, false] } else { [false, true] };
         let Some(gates) = self.lanes.as_ref().map(|l| l.gates(&way)) else { return };
-        let (voyage, sail, woken) = Voyage::new(ferry, way, ease, astern, gates, [0, self.berth_free(ferry)], now, &mut self.map.junctions);
+        let (voyage, sail, woken) = Voyage::new(ferry, way, ease, astern, gates, [0, self.berth_free(ferry)], now, &mut self.junctions);
         for w in woken {
             events.wake(0, w);
         }
@@ -142,7 +142,7 @@ impl World {
         let Some(c) = self.map.car(ferry) else { return };
         let (harbour, due, sail, moored) = (c.owner, c.due, c.sail.clone(), c.spot.is_some());
         if self.map.objects.get(harbour).is_none() {
-            self.map.junctions.remove_car_from_all(ferry, now);
+            self.junctions.remove_car_from_all(ferry, now);
             self.voyages.remove(&ferry);
             self.map.despawn_car(ferry);
             return;
@@ -153,8 +153,8 @@ impl World {
         } else if moored {
             // At the ramp it holds the berth's approach: asked again after
             // a load, when nothing remembers it.
-            if let Some(g) = self.berth_gate(harbour).filter(|g| !self.map.junctions.has_passage(g.id, ferry)) {
-                self.map.junctions.get_or_create_with(g.id, g.kind.rule()).register(ferry, g.from, g.to, now);
+            if let Some(g) = self.berth_gate(harbour).filter(|g| !self.junctions.has_passage(g.id, ferry)) {
+                self.junctions.get_or_create_with(g.id, g.kind.rule()).register(ferry, g.from, g.to, now);
             }
             if now >= due {
                 self.cast_off(events, ferry, now);
@@ -294,7 +294,7 @@ impl World {
     fn sailing(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
         let Some(mut sail) = self.map.car(ferry).and_then(|c| c.sail.clone()) else { return };
         let Some(mut voyage) = self.voyages.remove(&ferry) else { return };
-        let (woken, done) = voyage.step(ferry, &mut sail, self.berth_free(ferry), now, &mut self.map.junctions);
+        let (woken, done) = voyage.step(ferry, &mut sail, self.berth_free(ferry), now, &mut self.junctions);
         for w in woken {
             events.wake(0, w);
         }

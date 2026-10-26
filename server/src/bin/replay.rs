@@ -115,7 +115,7 @@ fn why(game: &Game, car: EntityId) -> Option<String> {
         Cause::Merging(o) => format!("car {o} merging in ahead"),
         Cause::LettingIn(o) => format!("letting car {o} in"),
         Cause::Junction(j) => {
-            let (through, waiting) = game.world.map.streets.who(j);
+            let (through, waiting) = game.world.streets.who(j);
             format!("no passage at {} (through {through:?}, waiting {waiting:?})", pos(j))
         }
         Cause::Turn(o) => format!("car {o} turning across"),

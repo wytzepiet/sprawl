@@ -2,7 +2,7 @@
 //! the one rule of where a road may stand that is about its shape.
 //!
 //! A node's road is the lane curves through it, as cars drive them and the
-//! client draws them (`intersection::track`, `surface.ts`'s `laneOf`): from
+//! client draws them (`track::track`, `surface.ts`'s `laneOf`): from
 //! the seam with each arm, halfway to where that arm's node stands, round
 //! through where it stands, to the seam with each other arm; a dead end,
 //! from where it stands to its one seam. As wide as it is drawn: a one-way
@@ -27,7 +27,7 @@ use fixed::HashMap;
 
 use super::decks::{spot, Side, MIDDLE};
 use super::Map;
-use crate::intersection::{track, TRACK_POINTS};
+use crate::track::{track, TRACK_POINTS};
 use model::{EntityId, GridCoord};
 
 /// Half a road's width as drawn, in tiles: a one-way's one lane, and

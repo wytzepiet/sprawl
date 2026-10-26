@@ -143,7 +143,7 @@ fn reroute(
     // whole run ahead of it, not just the tile it is on.
     world.map.unregister_car_route(car_id, &old.route);
     world.map.remove_car_from_edges(car_id);
-    for (_node, woken_id) in world.map.streets.remove_car_from_all(car_id, now) {
+    for (_node, woken_id) in world.streets.remove_car_from_all(car_id, now) {
         events.wake(0, woken_id);
     }
 

@@ -1,5 +1,5 @@
 pub mod bezier;
-pub mod intersection;
+pub mod track;
 pub mod tracked;
 mod buildings;
 pub mod clear;
@@ -70,10 +70,6 @@ pub struct Map {
     /// The mountains' heights, eroded, made from the terrain the first time
     /// a chunk of it is sent (`mountains.rs`).
     pub peaks: std::sync::OnceLock<land::mountains::Peaks>,
-    pub junctions: crate::intersection::IntersectionRegistry,
-    /// Who goes first at each road junction and crossing: its cars'
-    /// claims, keyed by node or crossing. Never saved: trips are not.
-    pub streets: crate::intersection::IntersectionRegistry,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -103,12 +99,6 @@ pub struct Map {
     /// Buildings placed, reached, cut off or taken away since the last
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
-    /// Every line that may have a desk free: each one settled, and each
-    /// that lost a worker. Some are full; `settle` sees which, by id.
-    pub vacancies: BTreeSet<EntityId>,
-    /// Every building settled as a site, standing or not since: those
-    /// still waiting call for their timber (`game::settle_and_wake`).
-    pub sites: BTreeSet<EntityId>,
 }
 
 use model::GridCoord;
@@ -210,8 +200,6 @@ impl Map {
             frame: None,
             terrain: HashMap::default(),
             peaks: Default::default(),
-            junctions: crate::intersection::IntersectionRegistry::new(),
-            streets: crate::intersection::IntersectionRegistry::new(),
             chunk_crossings: Vec::new(),
             built: HashSet::default(),
             occupied: HashMap::default(),
@@ -220,8 +208,6 @@ impl Map {
             harbours: Default::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
-            vacancies: BTreeSet::new(),
-            sites: BTreeSet::new(),
         }
     }
 

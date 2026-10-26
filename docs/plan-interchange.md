@@ -498,7 +498,7 @@ What runs, and where; the rest of the order above is still to come.
   traffic. The junction is drawn with the shallow turns only. A drive
   still meets its street square or not at all.
 - **Where roads may stand is one rule** (`map/clear.rs`): a node's
-  road is its lane curves as cars drive them (`intersection::track`), as
+  road is its lane curves as cars drive them (`track::track`), as
   wide as they are drawn and as high as the node and its seams, and a
   road may be laid where everything it touches stays its width apart on
   the map or a level apart in height; links that meet at a node are a
@@ -543,7 +543,7 @@ What runs, and where; the rest of the order above is still to come.
   ends. No paint says which turns a junction has: the
   asphalt is worn, two wheel tracks down each lane along the curve its
   cars drive (`wearOf`), and a corner no car goes round is square.
-- **Right of way from the lanes' shapes** (`intersection::track`): a car
+- **Right of way from the lanes' shapes** (`track::track`): a car
   at a junction gives its way through, its lane's curve from seam to seam
   as the client draws it (`laneOf`), and gives way to those whose ways
   come within a car's width of its own; from one arm they follow, to one

@@ -49,6 +49,17 @@ pub struct World {
     pub placed: Vec<crate::undo::Placed>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
+    /// Who goes first at each sea junction and berth: its ships' claims.
+    pub junctions: crate::intersection::IntersectionRegistry,
+    /// Who goes first at each road junction and crossing: its cars'
+    /// claims, keyed by node or crossing. Never saved: trips are not.
+    pub streets: crate::intersection::IntersectionRegistry,
+    /// Every line that may have a desk free: each one settled, and each
+    /// that lost a worker. Some are full; `settle` sees which, by id.
+    pub vacancies: std::collections::BTreeSet<EntityId>,
+    /// Every building settled as a site, standing or not since: those
+    /// still waiting call for their timber (`game::settle_and_wake`).
+    pub sites: std::collections::BTreeSet<EntityId>,
     /// The market's prices and the orders waiting on them (`market.rs`). Saved.
     pub market: crate::market::Market,
 }
@@ -78,6 +89,10 @@ impl World {
             undo: HashMap::default(),
             placed: Vec::new(),
             missions: Default::default(),
+            junctions: crate::intersection::IntersectionRegistry::new(),
+            streets: crate::intersection::IntersectionRegistry::new(),
+            vacancies: Default::default(),
+            sites: Default::default(),
             market: Default::default(),
         }
     }

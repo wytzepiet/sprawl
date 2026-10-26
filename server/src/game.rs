@@ -69,7 +69,7 @@ impl Game {
     /// wake that was not saved: one standing at a door it delivered to would
     /// stand there for good, holding its place and never free for a call.
     fn wake_all(&mut self) {
-        self.world.map.resettle();
+        self.world.resettle();
         settle_and_wake(&mut self.world, &mut self.events);
         for id in self.world.map.resident_ids() {
             wake_resident(&self.world, &mut self.events, id);
@@ -320,7 +320,7 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     if changed {
         world.missions.stir();
     }
-    for id in world.map.settle() {
+    for id in world.settle() {
         wake_resident(world, events, id);
     }
     // A harbour reached, or cut off: the town's way out, and its ferry.
@@ -330,8 +330,8 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
         world.commission(h, events.now());
     }
     // A site reached, and not calling: it calls for its timber.
-    world.map.sites.retain(|&id| matches!(world.map.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
-    let waiting: Vec<EntityId> = world.map.sites.iter().copied().filter(|&id| world.map.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
+    world.sites.retain(|&id| matches!(world.map.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
+    let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.map.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
     for id in waiting {
         crate::calls::turn(world, events, id, events.now());
     }

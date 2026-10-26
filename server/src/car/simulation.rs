@@ -4,7 +4,8 @@ use model::CRUISE_SPEED;
 use model::Cause;
 use model::GameTime;
 use crate::engine::event_queue::EventQueue;
-use map::intersection::{IntersectionRegistry, TRACK_POINTS};
+use crate::intersection::IntersectionRegistry;
+use map::track::TRACK_POINTS;
 use model::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
 use crate::world::World;
 use map::chunk_of;
@@ -44,7 +45,7 @@ pub fn park_car(
             }
         }
     }
-    let woken = world.map.streets.remove_car_from_all(car_id, events.now());
+    let woken = world.streets.remove_car_from_all(car_id, events.now());
     for (_node_id, woken_id) in woken {
         events.wake(0, woken_id);
     }
@@ -107,7 +108,7 @@ pub fn park_at_home(
         // No owner to speak of: scrap it.
         None => {
             events.clear_dedup(car_id);
-            let _ = world.map.streets.remove_car_from_all(car_id, events.now());
+            let _ = world.streets.remove_car_from_all(car_id, events.now());
             world.map.despawn_car(car_id);
         }
     }
@@ -462,7 +463,7 @@ struct Gate {
     id: EntityId,
     from: (i32, i32),
     to: (i32, i32),
-    track: map::intersection::Track,
+    track: map::track::Track,
     /// How far before the node its track begins.
     start: f64,
     past: f64,
@@ -487,7 +488,7 @@ fn gates(world: &World, trip: &Trip, k: usize) -> [Option<Gate>; 2] {
         // Across the corner, straight, in its lane; seen from the corner.
         let (dx, dy) = ((b[0] - a[0]).signum() as i32, (b[1] - a[1]).signum() as i32);
         let corner = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0].map(f64::round);
-        let track = map::intersection::straight([a[0] - corner[0], a[1] - corner[1]], [b[0] - corner[0], b[1] - corner[1]], lane_offset(world, prev, at, lanes[k]));
+        let track = map::track::straight([a[0] - corner[0], a[1] - corner[1]], [b[0] - corner[0], b[1] - corner[1]], lane_offset(world, prev, at, lanes[k]));
         let seg = world.map.segment_length(prev, at);
         out[0] = Some(Gate { id, from: (-dx, -dy), to: (dx, dy), track, start: seg, past: -seg / 2.0 });
     }
@@ -496,7 +497,7 @@ fn gates(world: &World, trip: &Trip, k: usize) -> [Option<Gate>; 2] {
         && let (Some(p), Some(j), Some(n)) = (world.map.node_pos(prev), world.map.node_pos(at), world.map.node_pos(route[k + 1]))
         && let (Some(from), Some(to)) = (arm(world, at, prev), arm(world, at, route[k + 1]))
     {
-        let track = map::intersection::track(p, j, n, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]));
+        let track = map::track::track(p, j, n, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]));
         out[1] = Some(Gate { id: at, from, to, track, start: world.map.segment_length(prev, at) / 2.0, past: 0.0 });
     }
     out
@@ -550,7 +551,7 @@ fn light_arms(world: &World, junction: EntityId) -> Option<Vec<(i32, i32)>> {
 /// woken; the phase shown; and the next look, while anyone is there.
 pub fn lights(world: &mut World, events: &mut EventQueue, junction: EntityId, now: GameTime) {
     let arms = light_arms(world, junction);
-    let manager = world.map.streets.get_or_create(junction);
+    let manager = world.streets.get_or_create(junction);
     manager.set_signal(arms.as_deref(), now);
     let (woken, next) = manager.tick(now);
     let shown = manager.signal().map(|s| if s.clearing() { model::ALL_RED } else { s.phase as u8 });
@@ -732,7 +733,7 @@ pub fn handle_car_wake_up(
     // on the way ahead would hold up the street it waits for a gap in.
     let look = if waiting { None } else { book(world, events, &h, &trip, &gates, &mut held) };
     // Whatever else it held, it no longer asks for.
-    for woken_id in world.map.streets.keep(car_id, &held, now) {
+    for woken_id in world.streets.keep(car_id, &held, now) {
         events.wake(0, woken_id);
     }
 
@@ -740,7 +741,7 @@ pub fn handle_car_wake_up(
     // granted; and out of it again, passage given back, or whoever comes
     // through behind it would queue behind a car that is not there.
     if h.ri + 1 < trip.route.len() {
-        if gates.at(world, &trip, h.ri).filter(|g| !g.crossing() || !reached).all(|g| world.map.streets.has_passage(g.id, car_id)) {
+        if gates.at(world, &trip, h.ri).filter(|g| !g.crossing() || !reached).all(|g| world.streets.has_passage(g.id, car_id)) {
             join_run(world, car_id, &trip, h.ri + 1, h.progress, now, !waiting);
         } else {
             for k in h.ri + 1..trip.route.len() {
@@ -894,7 +895,7 @@ fn lots(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip) -> (b
                     *t = now;
                 }
             }
-        } else if now >= since + map::intersection::PATIENCE {
+        } else if now >= since + crate::intersection::PATIENCE {
             let_go(world, events, car_id);
             lapsed = true;
         }
@@ -950,7 +951,7 @@ fn clear_behind(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Tri
     for k in (1..=ri).rev().take(5) {
         for g in gates(world, trip, k).into_iter().flatten().filter(|g| k < ri || g.crossing()) {
             if cur_progress - node_dist >= g.past + tail(role) {
-                for woken_id in world.map.streets.clear_car(g.id, car_id, now) {
+                for woken_id in world.streets.clear_car(g.id, car_id, now) {
                     events.wake(0, woken_id);
                 }
             } else {
@@ -960,7 +961,7 @@ fn clear_behind(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Tri
                 // Standing with its tail in the box: after a few seconds it
                 // waves the others through, as it would at the line.
                 if cur_speed < 0.01 {
-                    for woken_id in world.map.streets.lapse(g.id, car_id, now) {
+                    for woken_id in world.streets.lapse(g.id, car_id, now) {
                         events.wake(0, woken_id);
                     }
                 }
@@ -1052,7 +1053,7 @@ fn book(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, gates
                     along[i] = along[i - 1] + ((t[i][0] - t[i - 1][0]) as f64).hypot((t[i][1] - t[i - 1][1]) as f64);
                 }
                 let begins = to_k - g.start;
-                let claim = map::intersection::Claim {
+                let claim = crate::intersection::Claim {
                     from: g.from,
                     to: g.to,
                     track: Some(g.track),
@@ -1092,19 +1093,19 @@ fn book(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, gates
         let (k, _, _, ref g, mut claim) = wants[made];
         // Still behind a give-way line short of it, it is not on the
         // priority road yet, and comes to the next junction as anyone does.
-        claim.major &= !wants[..made].iter().any(|w| !w.4.major && !world.map.streets.has_passage(w.3.id, car_id));
-        if waits(made, &world.map.streets) {
+        claim.major &= !wants[..made].iter().any(|w| !w.4.major && !world.streets.has_passage(w.3.id, car_id));
+        if waits(made, &world.streets) {
             waiting.push(made);
             claim.tail = [GameTime::MAX; TRACK_POINTS];
         }
         let lit = light_arms(world, g.id);
-        let new = !world.map.streets.knows(g.id, car_id);
+        let new = !world.streets.knows(g.id, car_id);
         if lit.is_some() {
-            world.map.streets.get_or_create(g.id).set_signal(lit.as_deref(), now);
-            events.wake(map::intersection::SIGNAL_TICK, g.id);
+            world.streets.get_or_create(g.id).set_signal(lit.as_deref(), now);
+            events.wake(crate::intersection::SIGNAL_TICK, g.id);
         }
         held.push(g.id);
-        for woken_id in world.map.streets.claim(g.id, car_id, claim, now) {
+        for woken_id in world.streets.claim(g.id, car_id, claim, now) {
             if woken_id != car_id {
                 events.wake(0, woken_id);
             }
@@ -1119,16 +1120,16 @@ fn book(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, gates
         // is a crawl under a hundredth of a tile a second, since a
         // car held at a gap never quite reads zero.
         if cur_speed < 0.01 {
-            for woken_id in world.map.streets.lapse(g.id, car_id, now) {
+            for woken_id in world.streets.lapse(g.id, car_id, now) {
                 events.wake(0, woken_id);
             }
         }
     }
     // Let through where it waited after all, it says when it will be out
     // of each it no longer waits for, as far as that lets it.
-    while let Some(i) = waiting.iter().position(|&i| !waits(i, &world.map.streets)) {
+    while let Some(i) = waiting.iter().position(|&i| !waits(i, &world.streets)) {
         let i = waiting.remove(i);
-        for woken_id in world.map.streets.claim(wants[i].3.id, car_id, wants[i].4, now) {
+        for woken_id in world.streets.claim(wants[i].3.id, car_id, wants[i].4, now) {
             if woken_id != car_id {
                 events.wake(0, woken_id);
             }
@@ -1206,12 +1207,12 @@ fn leads(world: &World, h: &Here, trip: &Trip, gates: &Gates) -> Vec<(Obstacle, 
     // follows one ahead of it in as if both were on the road out already.
     'gates: for k in ri..trip.route.len().saturating_sub(1).min(ri + LOOKAHEAD) {
         for g in gates.at(world, trip, k).filter(|g| !g.crossing()) {
-            if !world.map.streets.has_passage(g.id, car_id) {
+            if !world.streets.has_passage(g.id, car_id) {
                 break 'gates;
             }
             let out = (trip.route[k], trip.route[k + 1]);
             let Some(mine) = trip.start_of(out).map(|s| cur_progress - s) else { continue };
-            for l in world.map.streets.merging(g.id, car_id) {
+            for l in world.streets.merging(g.id, car_id) {
                 if position_on(world, l, out, now).is_some_and(|p| p > mine) {
                     // The gap is wanted at the merge, not yet: short of it, it
                     // drops back over the way there, braking as it would for
@@ -1281,7 +1282,7 @@ fn road_ahead(world: &World, h: &Here, trip: &Trip, gates: &Gates, reached: bool
     // Held to the stop line the same way, and for the same reason: dropping it
     // once the car reached the line meant a car in the last half edge before a
     // junction it has no claim on had nothing left telling it to wait.
-    if let Some(g) = gates.at(world, trip, ri).filter(|g| !g.crossing() || !reached).find(|g| !world.map.streets.has_passage(g.id, car_id)) {
+    if let Some(g) = gates.at(world, trip, ri).filter(|g| !g.crossing() || !reached).find(|g| !world.streets.has_passage(g.id, car_id)) {
         obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::Junction(g.id)));
     }
     if let Some(holder) = held(world, car_id, trip.route[ri]) {
@@ -1300,7 +1301,7 @@ fn road_ahead(world: &World, h: &Here, trip: &Trip, gates: &Gates, reached: bool
 
         // A trip that ends on a junction stops there; it never registered
         // for passage, so waiting for it would be waiting for ever.
-        if let Some(g) = gates.at(world, trip, k).find(|g| !world.map.streets.has_passage(g.id, car_id)) {
+        if let Some(g) = gates.at(world, trip, k).find(|g| !world.streets.has_passage(g.id, car_id)) {
             obstacles.push((Obstacle::MustStop { distance: line_k }, Cause::Junction(g.id)));
             break;
         }
@@ -1534,8 +1535,8 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     // junction for a wait behind them.
     let moved = Trip { lanes: trip.lanes.iter().enumerate().map(|(k, &l)| if (ri..=carry).contains(&k) { 1 - l } else { l }).collect(), ..trip.clone() };
     let ways = |t: &Trip, k: usize| gates(world, t, k).into_iter().flatten().map(|g| (g.id, g.crossing(), g.track));
-    let clear_there = (ri..carry).all(|k| ways(&moved, k).all(|(j, _, t)| !world.map.streets.meets(j, car_id, &t, false)));
-    let joining = ways(trip, end).any(|(j, crossing, t)| !crossing && world.map.streets.meets(j, car_id, &t, true));
+    let clear_there = (ri..carry).all(|k| ways(&moved, k).all(|(j, _, t)| !world.streets.meets(j, car_id, &t, false)));
+    let joining = ways(trip, end).any(|(j, crossing, t)| !crossing && world.streets.meets(j, car_id, &t, true));
     let merging = |l: u8| to_end < MAKE_ROOM && end + 1 < len && trip.lanes[end + 1] == l && joining;
     let ahead = |l: u8| near[l as usize][0];
     let slow = ahead(lane).filter(|&(d, vo, ..)| d < OVERTAKE && vo < v - 0.1);
@@ -1558,7 +1559,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     // Nor into a lane someone is still to come out into at the junction it
     // has just come through, in by another arm: not behind it on this car's
     // way, it is not seen there, and came on it braking hard, or into it.
-    if gates(world, &moved, ri - 1).into_iter().flatten().any(|g| !g.crossing() && world.map.streets.joins(g.id, car_id, &g.track, g.from)) {
+    if gates(world, &moved, ri - 1).into_iter().flatten().any(|g| !g.crossing() && world.streets.joins(g.id, car_id, &g.track, g.from)) {
         return short;
     }
     if let Some(blocker) = in_the_way(role, v, near[to as usize]) {

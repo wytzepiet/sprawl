@@ -653,7 +653,7 @@ mod bench {
         let mut world = World::from(map::Map::meadow(-4..40, -6..6).street(-2..38));
         world.map.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
         let shop = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
-        world.map.settle();
+        world.settle();
         let id = world.map.resident_ids()[0];
         let r = world.map.resident(id).unwrap().clone();
         let b = r.buckets.iter().find(|b| b.need == Need::Eat).unwrap().clone();

@@ -252,8 +252,8 @@ impl Watch {
                     && !matches!(world.map.why(o), Some((model::Cause::Ahead(a) | model::Cause::Merging(a), _)) if speed(a) >= 0.01)
             };
             let held = match world.map.why(e.id) {
-                Some((model::Cause::Junction(j), a)) => Some((j, a, game.world.map.streets.who(j).0)),
-                Some((model::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.map.streets.has_passage(j, e.id) && game.world.map.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
+                Some((model::Cause::Junction(j), a)) => Some((j, a, game.world.streets.who(j).0)),
+                Some((model::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.streets.has_passage(j, e.id) && game.world.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
                 _ => None,
             };
             if let Some((j, a, them)) = held
@@ -306,7 +306,7 @@ impl Watch {
             let moving = at_junction.map_or(since, |j| {
                 // Who, not in what order: cars let through, giving it back
                 // and let through again, go nowhere.
-                let mut now_through = game.world.map.streets.who(j).0;
+                let mut now_through = game.world.streets.who(j).0;
                 now_through.sort_unstable();
                 let seen = self.through.entry(j).or_insert((now_through.clone(), game.now));
                 if seen.0 != now_through {

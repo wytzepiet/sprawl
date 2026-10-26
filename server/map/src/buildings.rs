@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use model::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing};
 use land::TerrainType;
 use crate::Map;
@@ -378,6 +379,19 @@ impl Map {
         if standing {
             self.stand(id);
         }
+    }
+
+    /// Every building placed, reached, cut off or taken away since last
+    /// asked, each with its door settled first: where it is decides
+    /// whether it is reached at all, and a door that moves can cut off
+    /// another.
+    pub fn changed(&mut self) -> BTreeSet<EntityId> {
+        let mut changed = std::mem::take(&mut self.unsettled);
+        for &b in &changed {
+            self.orient(b);
+        }
+        changed.append(&mut self.unsettled);
+        changed
     }
 
     /// Where a building's door is, and so which way it faces and where
@@ -1047,13 +1061,13 @@ mod tests {
         let yard = |w: &Map| Map::yard_of(&tiles, BuildingKind::Depot, facing(w)).unwrap();
         // A street along its back: the door it has stands, so nothing turns.
         world.place_road_path(&(-6..=6).map(|x| GridCoord { x, y: 5 }).collect::<Vec<_>>());
-        world.settle();
+        world.changed();
         assert_eq!(facing(&world), 0);
         // Its own street taken up: it turns about, its yard to the back.
         for x in -6..=6 {
             lift_road(&mut world, GridCoord { x, y: 0 });
         }
-        world.settle();
+        world.changed();
         assert_eq!(facing(&world), 2, "it turned to the street behind");
         assert!(yard(&world).iter().all(|t| t.y >= 3), "its yard is at the back: {:?}", yard(&world));
         let (door, street) = world.door_of(id).expect("reached from behind");
@@ -1064,13 +1078,13 @@ mod tests {
             lift_road(&mut world, GridCoord { x, y: 5 });
         }
         world.place_road_path(&(-2..=7).map(|y| GridCoord { x: 2, y }).collect::<Vec<_>>());
-        world.settle();
+        world.changed();
         assert_eq!(facing(&world), 1, "it turned to the side street");
         // And none at all: no door, and so no yard to drive to.
         for y in -2..=7 {
             lift_road(&mut world, GridCoord { x: 2, y });
         }
-        world.settle();
+        world.changed();
         assert!(world.door_of(id).is_none() && world.street_of(id).is_none());
     }
 

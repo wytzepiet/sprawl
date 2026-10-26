@@ -605,7 +605,7 @@ mod tests {
         let mut world = town();
         world.map.place_on_street(at(4), House).unwrap();
         let farm = world.map.place_on_street(at(8), Farm).unwrap();
-        world.map.settle();
+        world.settle();
         world.treasury = 100.0;
         assert!(!depot(Farm) && makes(Farm, Good::Crates) && shelves(Farm) == [Good::Crates], "the farm is not a maker of crates");
         assert!(!makes(Depot, Good::Crates));

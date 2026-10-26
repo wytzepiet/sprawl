@@ -14,7 +14,7 @@
 
 use fixed::HashMap;
 
-use map::intersection::{paths_conflict, Dir, Rule};
+use crate::intersection::{paths_conflict, Dir, Rule};
 use model::{Lane, LaneKind};
 
 use super::water::{Water, NARROW};

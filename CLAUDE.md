@@ -42,10 +42,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
     each kind (`blueprint`, `needs`). Nothing here knows the world.
   - `server/map/` — what is where: the land as built on, roads, lots,
     buildings, the cars on them and who lives and works where (`Map`).
-    It runs nothing.
-  - `server/` itself, the `sprawl` library: the sim, the town run over its
-    map (`world::World`: the map, and its books, calls, market, missions
-    and ferries) as `game::Game`, with no clock on the wall and no IO.
+    It keeps itself whole and decides nothing.
+  - `server/` itself, the `sprawl` library: the sim, what happens on the
+    map (`world::World`: the map, and who moves in and is hired, who goes
+    first at a junction, the books, calls, market, missions and ferries)
+    as `game::Game`, with no clock on the wall and no IO.
   - `server/host/` — the server binary: `Game` on a tokio loop, over
     WebSocket, saved to SQLite. `cargo run` in `server/` runs it.
   - `server/web/` — `Game` for a Web Worker, built for wasm
@@ -83,7 +84,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   much again;
   and it runs the server's own loop over every fixture for six hours and
   prints what a settle step costs against the steps between.
-  A build costs what it changed: `Map::settle` reads only the buildings
+  A build costs what it changed: `World::settle` reads only the buildings
   marked `unsettled`, and `resettle`, the whole world, runs at startup.
 - **Does the town still keep?** `cargo test season -- --ignored
   --nocapture` runs the same town for thirty days and asserts that its
