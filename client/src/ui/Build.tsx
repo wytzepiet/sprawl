@@ -1,12 +1,12 @@
 /** @jsxImportSource ~ui */
-import { createEffect, createRoot, createSignal, For, Index, Show } from "solid-js";
+import { createSignal, For, Index, Show } from "solid-js";
 import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { shapes, type Shape } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
 import { BAD, Fade, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
-import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
+import { road, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
 
@@ -45,15 +45,15 @@ const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materi
 
 /** The kinds of building opened, by the menu's own groups. */
 const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
-/** The group shown: the roads, or a group of buildings. */
-const [group, setGroup] = createSignal<Tab | "roads">("roads");
-// A road taken up, by a key or the head's row, shows the roads.
-createRoot(() => createEffect(() => inHand() && setGroup("roads")));
+/** The group of buildings shown. */
+const [group, setGroup] = createSignal<Tab>(groups[0].tab);
+
+/** A road tool's or a building's page. */
+export const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
 
 /**
- * The build tab's head: the roads and the menu's groups, a tap on one
- * drawing it up. While a road is in hand, the road tools; while a
- * building is, a place to let it go and put it back.
+ * The build tab's head: the menu's groups, a tap on one drawing it up.
+ * While a building is in hand, a place to let it go and put it back.
  */
 export function BuildHead() {
   const [over, setOver] = createSignal(false);
@@ -61,9 +61,7 @@ export function BuildHead() {
     <Show
       when={held()}
       fallback={
-        <Show when={!inHand()} fallback={<RoadsHead />}>
-          <Tabs tabs={["roads" as const, ...groups.map((g) => g.tab)]} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
-        </Show>
+        <Tabs tabs={groups.map((g) => g.tab)} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
       }
     >
       <box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
@@ -76,8 +74,7 @@ export function BuildHead() {
 }
 
 /**
- * The build menu, drawn up: the road tools, or every kind of building
- * in the group, a picture of it as it stands, its name and what it is
+ * The build menu, drawn up: every kind of building in the group, a picture of it as it stands, its name and what it is
  * built of. Press on one and drag it onto the map: the sheet sinks to
  * its head, a place to let it go and put it back. A tap takes it up to
  * place with a click; its i opens its page.
@@ -86,13 +83,11 @@ export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
   const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
-  const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
   return (
     <Show when={group()} keyed>
       {(g) => (
         <Fade>
-          <Show when={g !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
-            <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
+          <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
               <For each={kinds()}>
                 {(kind) => (
                   <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
@@ -106,7 +101,6 @@ export function BuildBody() {
                 )}
               </For>
             </box>
-          </Show>
         </Fade>
       )}
     </Show>

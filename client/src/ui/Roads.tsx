@@ -1,9 +1,9 @@
 /** @jsxImportSource ~ui */
-import { createEffect, createRoot, createSignal, For, Show } from "solid-js";
+import { createEffect, createRoot, createSignal, For } from "solid-js";
 import { priority, setPriority, setTool, tool } from "./buildMode";
 import { BAD, Info, Press } from "./kit";
 
-/** The road tools, first in the build menu: a road is a street with priority. */
+/** The road tools, the roads tab: a road is a street with priority. */
 export const ROAD_KINDS = [
   { id: "Street", label: "Street", about: "Two ways, a lane each. Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price.", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
   { id: "OneWay", label: "One-way", about: "One lane, the way you drag it. A stone a tile.", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
@@ -37,12 +37,11 @@ export const lastRoad = createRoot(() => {
   return last;
 });
 
-/** The road tools in a row, the one in hand in its colour: the build
- *  tab's head while one is in hand, and its roads; there, each with an
- *  i for its page. */
-export function RoadsHead(props: { info?: (k: RoadKind) => void }) {
+/** The roads tab, all head: the road tools in a row, the one in hand
+ *  in its colour, each with an i for its page. */
+export function RoadsHead(props: { info: (k: RoadKind) => void }) {
   return (
-    <box dir="row" gap={6} pad={{ x: 12, top: props.info ? 0 : 14, bottom: 12 }}>
+    <box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
       <For each={[...ROAD_KINDS]}>
         {(r) => {
           const on = () => inHand() === r.id;
@@ -51,7 +50,7 @@ export function RoadsHead(props: { info?: (k: RoadKind) => void }) {
               <icon d={r.glyph} size={20} ink={on() ? "white" : r.id === "Demolish" ? r.color : "ink/0.72"} />
               <box dir="row" align="center" gap={4}>
                 <text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</text>
-                <Show when={props.info}>{(info) => <Info onTap={() => info()(r.id)} />}</Show>
+                <Info onTap={() => props.info(r.id)} />
               </box>
             </Press>
           );

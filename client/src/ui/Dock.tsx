@@ -8,13 +8,14 @@ import { BLUEPRINTS } from "../blueprints";
 import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
 import { setBoardOpen } from "./Board";
-import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, take } from "./Roads";
-import { BuildBody, BuildHead } from "./Build";
+import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsHead, take } from "./Roads";
+import { BuildBody, BuildHead, info } from "./Build";
 import { MarketBody, MarketHead, setView } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { BEZEL, DROP, Fade, Press, view, wide } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "~ui/jsx-runtime";
+import { SQUIRCLE_REACH } from "~ui/paint";
 
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A hammer. */
@@ -27,10 +28,14 @@ const SLOT = 52;
 const BAR = 60;
 const WIDTH = SLOT * TABS.length + 8;
 const cx = (j: number) => 30 + SLOT * j;
+/** The black's corner, round its pills by the room between: the tab bar's
+ *  (19, and 12 in from the edge), and the bar's buttons' (22, and 8). */
+const ROUND = 31;
 
 /** Each tab's sheet: its head, peeking over the bar, and what is drawn up under it. */
 const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> = {
   select: { head: InspectHead, body: InspectBody },
+  roads: { head: () => <RoadsHead info={(k) => info({ road: k })} />, body: () => <></> },
   build: { head: BuildHead, body: BuildBody },
   market: { head: MarketHead, body: MarketBody },
 };
@@ -42,8 +47,8 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
  * (`sheet.ts`): its head peeking, drawn up by a finger or a tap, the
  * rest under it as tall as it is up to its room, and taller scrolls;
  * dragged down from its top, it sinks again. The bare hand, whose
- * sheet is the card of what it tapped; the build menu, roads and the
- * demolisher first; the market, the town's stock and its orders.
+ * sheet is the card of what it tapped; the road tools and the
+ * demolisher; the build menu; the market, the town's stock and its orders.
  *
  * What is in hand, in its colour, rides under its tab as dyed glass.
  */
@@ -57,7 +62,7 @@ export default function Dock() {
 
   /** A tab pressed: shown, or, shown already, drawn up or sunk. The bare
    *  hand puts down what it holds. */
-  const press = (t: Tab) => show(t, tab() === t ? !open() : t !== "select");
+  const press = (t: Tab) => show(t, tab() === t ? !open() : t !== "select" && t !== "roads");
   const onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
@@ -93,7 +98,8 @@ export default function Dock() {
 
   const glyph = (t: Tab) =>
     t === "select" ? SELECT
-    : t === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : roadInHand() ? road(roadInHand()!).glyph : BUILD)
+    : t === "roads" ? road(roadInHand() ?? "Street").glyph
+    : t === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD)
     : MARKET;
 
   // The sheet's content, its height and the room it may take; with
@@ -131,7 +137,7 @@ export default function Dock() {
       <box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
         <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
-          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={30} clip>
+          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={ROUND / SQUIRCLE_REACH} clip>
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
