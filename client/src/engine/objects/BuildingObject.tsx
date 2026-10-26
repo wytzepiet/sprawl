@@ -10,7 +10,8 @@ import { storeysOf } from "../town/grid";
 import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
-import { FORKLIFT, FORKS, HUT, itemOf, ITEMS } from "./goods";
+import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
+import { depot } from "./depot";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
@@ -41,9 +42,6 @@ const SLAB = hex("#BDB2A0");
 const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
 const CRANE = hex("#E9B530");
-/** A depot's fence: how far in from its plot's edge, on its asphalt inside the kerb, how high, its rail's
- *  and its posts' breadth and how far apart, its gate's width; painted green. */
-const FENCE = { in: 0.13, high: 0.1, rail: 0.02, post: 0.028, every: 0.25, gate: 1.0, colour: hex("#4F7A5C") };
 /** A shop's tub, its flowers, its parasol and table. */
 const TUB = hex("#8A6A4A");
 const BLOOM = hex("#E5A24A");
@@ -131,31 +129,15 @@ export function mountBuilding(
       })()
     : null;
 
-  // A depot's office hut in the middle of its yard, between its back bays,
-  // where its sign would be painted,
-  // and a low fence round the whole plot, a gap at the gate.
-  const hut = data.kind === "Depot" && !data.site
-    ? [placeShape(pool, HUT, { at: [mx - dx * 0.25, my - dy * 0.25], heading: Math.atan2(dy, dx) }, KERB_Z)]
+  // A depot too, its sheds round its bays, its gantry and its fence
+  // (`depot.ts`).
+  const plot = data.kind === "Depot" && !data.site
+    ? (() => {
+        const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
+        const at: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
+        return depot(ctx.engine, 1).map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012));
+      })()
     : [];
-  if (data.kind === "Depot" && !data.site) {
-    const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
-    const [x0, y0, x1, y1] = [Math.min(...xs) + FENCE.in, Math.min(...ys) + FENCE.in, Math.max(...xs) + 1 - FENCE.in, Math.max(...ys) + 1 - FENCE.in];
-    const corners: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-    corners.forEach((p, i) => {
-      const q = corners[(i + 1) % 4];
-      const [ux, uy] = [q[0] - p[0], q[1] - p[1]];
-      const len = Math.hypot(ux, uy);
-      const [ex, ey] = [ux / len, uy / len];
-      // The front, the side the facing points out of, keeps its gate open in the middle.
-      const mid: [number, number] = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-      const front = (mid[0] - mx) * dx + (mid[1] - my) * dy > 0 && Math.abs(ex * dx + ey * dy) < 0.5;
-      const runs: [number, number][] = front ? [[0, len / 2 - FENCE.gate / 2], [len / 2 + FENCE.gate / 2, len]] : [[0, len]];
-      for (const [a, b] of runs) {
-        put("fenceRail", [FENCE.rail, b - a, FENCE.rail], FENCE.colour, [p[0] + ex * (a + b) / 2, p[1] + ey * (a + b) / 2], [ex, ey], 0, 0, KERB_Z + FENCE.high - FENCE.rail);
-        for (let t = a; t <= b + 1e-6; t += FENCE.every) put("fencePost", [FENCE.post, FENCE.post, FENCE.high], FENCE.colour, [p[0] + ex * t, p[1] + ey * t], [ex, ey], 0, 0, KERB_Z);
-      }
-    });
-  }
 
   // A shop's front: at the far end from its crates, a tub of flowers by
   // its awning and, through lunch, a table out under a parasol.
@@ -304,7 +286,7 @@ export function mountBuilding(
     stop();
     lunch();
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const it of [...stood.flat(), ...(mill?.model ?? []), ...hut, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    for (const it of [...stood.flat(), ...(mill?.model ?? []), ...plot, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
   };
 }
