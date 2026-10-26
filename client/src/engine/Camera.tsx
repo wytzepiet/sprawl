@@ -20,7 +20,7 @@ const FOV = (20 * Math.PI) / 180;
  * It never turns, so a thing is only ever seen from the south, east and west:
  * it shows height, which shadows alone did not.
  */
-const TILT = (25 * Math.PI) / 180;
+export const TILT = (25 * Math.PI) / 180;
 
 /** How far the camera stands from the ground it looks at, for `half` tiles
  *  of ground between the screen's middle and either edge, top and bottom, on

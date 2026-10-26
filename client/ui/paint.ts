@@ -58,7 +58,9 @@ export interface Palette {
 }
 let palette: Palette = { tint: [1, 1, 1], text: [0, 0, 0], ink: [0, 0, 0] };
 
-const BOX_FLOATS = 24;
+const BOX_FLOATS = 28;
+/** A box with no photo: its fill's colour. */
+const NO_PHOTO = [0, 0, 0, 0];
 const GLYPH_FLOATS = 16;
 
 /** A colour as premultiplied 0–1: "#rgb[a]", "#rrggbb[aa]", "white", or the glass's "ink" and "glass", with "/share". */
@@ -112,15 +114,19 @@ const CORNERS = /* wgsl */ `var corners = array<vec2f, 6>(vec2f(-1, -1), vec2f(1
 const BOX_WGSL = /* wgsl */ `
 struct U { size: vec4f, shade: vec4f }
 @group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var sheet: texture_2d<f32>;
+@group(0) @binding(2) var smooth: sampler;
 struct I {
   @location(0) rect: vec4f, @location(1) form: vec4f, @location(2) fill: vec4f,
   @location(3) line: vec4f, @location(4) cb: vec4f, @location(5) cr: vec4f,
+  @location(6) photo: vec4f,
 }
 struct V {
   @builtin(position) pos: vec4f, @location(0) p: vec2f,
   @location(1) @interpolate(flat) rect: vec4f, @location(2) @interpolate(flat) form: vec4f,
   @location(3) @interpolate(flat) fill: vec4f, @location(4) @interpolate(flat) line: vec4f,
   @location(5) @interpolate(flat) cb: vec4f, @location(6) @interpolate(flat) cr: vec4f,
+  @location(7) @interpolate(flat) photo: vec4f,
 }
 @vertex fn vert(in: I, @builtin(vertex_index) i: u32) -> V {
   ${CORNERS}
@@ -130,7 +136,7 @@ struct V {
   let p = in.rect.xy + in.rect.zw * 0.5 + c * (in.rect.zw * 0.5 + room);
   var v: V;
   v.pos = vec4f(p.x / u.size.x * 2 - 1, 1 - p.y / u.size.y * 2, 0, 1);
-  v.p = p; v.rect = in.rect; v.form = in.form; v.fill = in.fill; v.line = in.line; v.cb = in.cb; v.cr = in.cr;
+  v.p = p; v.rect = in.rect; v.form = in.form; v.fill = in.fill; v.line = in.line; v.cb = in.cb; v.cr = in.cr; v.photo = in.photo;
   return v;
 }
 ${WGSL_CLIP}
@@ -140,14 +146,17 @@ fn dist(p: vec2f, rect: vec4f, r: f32) -> f32 {
 @fragment fn frag(v: V) -> @location(0) vec4f {
   let r = min(v.form.x, min(v.rect.z, v.rect.w) * 0.5);
   let d = dist(v.p, v.rect, r);
-  var col = v.fill * clamp(0.5 - d, 0, 1);
+  // A photo: its texel, faded by the fill's alpha.
+  let t = textureSampleLevel(sheet, smooth, mix(v.photo.xy, v.photo.zw, (v.p - v.rect.xy) / v.rect.zw), 0);
+  let fill = select(v.fill, t * v.fill.a, v.photo.z > 0);
+  var col = fill * clamp(0.5 - d, 0, 1);
   if (v.form.y > 0) {
     let a = clamp(0.5 - d, 0, 1) * clamp(0.5 + d + v.form.y, 0, 1);
     col = v.line * a + col * (1 - v.line.a * a);
   }
   if (v.form.z > 0) {
     let s = dist(v.p - vec2f(0, v.form.w), v.rect, r);
-    let shade = u.shade.a * v.fill.a * exp(-max(s, 0) / v.form.z) * clamp(0.5 + d, 0, 1);
+    let shade = u.shade.a * fill.a * exp(-max(s, 0) / v.form.z) * clamp(0.5 + d, 0, 1);
     col = col + vec4f(u.shade.rgb * shade, shade) * (1 - col.a);
   }
   return col * clipped(v.p, v.cb, v.cr.x);
@@ -204,15 +213,24 @@ export function createPaint(engine: EngineContext, colours: Palette) {
   };
 
   const boxModule = device.createShaderModule({ label: "ui-box", code: BOX_WGSL });
-  const boxLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } }] });
+  const boxLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+      { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+    ],
+  });
   const boxPipeline = device.createRenderPipeline({
     label: "ui-box",
     layout: device.createPipelineLayout({ bindGroupLayouts: [boxLayout] }),
-    vertex: { module: boxModule, entryPoint: "vert", buffers: [attrs([4, 4, 4, 4, 4, 4])] },
+    vertex: { module: boxModule, entryPoint: "vert", buffers: [attrs([4, 4, 4, 4, 4, 4, 4])] },
     fragment: { module: boxModule, entryPoint: "frag", targets: [{ format: surface.format, blend }] },
   });
   const boxU = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const boxGroup = device.createBindGroup({ layout: boxLayout, entries: [{ binding: 0, resource: { buffer: boxU } }] });
+  // The pictures the boxes may show, one sheet of them; a texel until it comes.
+  const smooth = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+  const groupOf = (t: GPUTexture) => device.createBindGroup({ layout: boxLayout, entries: [{ binding: 0, resource: { buffer: boxU } }, { binding: 1, resource: t.createView() }, { binding: 2, resource: smooth }] });
+  let boxGroup = groupOf(device.createTexture({ size: [1, 1], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING }));
 
   // Letters and icons: Lite's Slug fragment shader, with the clip laid into its coverage.
   const slug = composeSlugShader({
@@ -260,14 +278,14 @@ export function createPaint(engine: EngineContext, colours: Palette) {
     return device.createBuffer({ size: Math.max(1024, 2 ** Math.ceil(Math.log2(bytes))), usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
   };
 
-  const box = (x: number, y: number, w: number, h: number, r: number, fill: number[], line: number[], lineW: number, shadow: boolean, clip: Clip, k: number) => {
+  const box = (x: number, y: number, w: number, h: number, r: number, fill: number[], line: number[], lineW: number, shadow: boolean, clip: Clip, k: number, photo = NO_PHOTO) => {
     if (boxes.length < (boxCount + 1) * BOX_FLOATS) {
       const more = new Float32Array(boxes.length * 2);
       more.set(boxes);
       boxes = more;
     }
     const o = boxCount++ * BOX_FLOATS;
-    boxes.set([x * k, y * k, w * k, h * k, r * k, lineW * k, shadow ? 5 * k : 0, shadow ? 2 * k : 0, ...fill, ...line, clip[0] * k, clip[1] * k, clip[2] * k, clip[3] * k, clip[4] * k, 0, 0, 0], o);
+    boxes.set([x * k, y * k, w * k, h * k, r * k, lineW * k, shadow ? 5 * k : 0, shadow ? 2 * k : 0, ...fill, ...line, clip[0] * k, clip[1] * k, clip[2] * k, clip[3] * k, clip[4] * k, 0, 0, 0, ...photo], o);
   };
   const glyph = (x: number, y: number, unit: number, slot: number, col: number[], clip: Clip, k: number) => {
     if (glyphs.length < (glyphCount + 1) * GLYPH_FLOATS) {
@@ -304,7 +322,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
         }
         l.panes.push({ x, y, w, h, r, fade: f, dye: p.dye, hole: p.hole });
       }
-      if (c.tag === "box" && (p.fill || p.stroke)) box(x, y, w, h, r, rgba(p.fill, f), rgba(p.stroke?.[1], f), (p.stroke?.[0] ?? 0) * cs, !!p.shadow, clip, k);
+      if (c.tag === "box" && (p.fill || p.stroke)) box(x, y, w, h, r, rgba(p.fill, f), rgba(p.stroke?.[1], f), (p.stroke?.[0] ?? 0) * cs, !!p.shadow, clip, k, p.photo);
       if (c.tag === "text") {
         const laid = (c.lines as { laid: Laid } | undefined)?.laid;
         const spare = c.w - (laid?.w ?? 0);
@@ -375,6 +393,11 @@ export function createPaint(engine: EngineContext, colours: Palette) {
         }
       }
       return layers;
+    },
+    /** The sheet the boxes' photos are cut from, its texels premultiplied. */
+    sheet(t: GPUTexture) {
+      boxGroup = groupOf(t);
+      dirt.paint++;
     },
     /** Changes whenever the UI is drawn anew: the frame loop runs fast while it does. */
     key: () => seen,

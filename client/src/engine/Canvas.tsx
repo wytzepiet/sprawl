@@ -26,6 +26,7 @@ import { theme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
 import { createGlass, palette } from "./glass";
+import { createStudio } from "./studio";
 import { createPaint, root } from "~ui/paint";
 import { dirt } from "~ui";
 import { createHand } from "~ui/hand";
@@ -146,6 +147,10 @@ export default function Canvas(props: ParentProps) {
     const glass = createGlass(engine, scene, paint);
     const stopHand = createHand(el, paint.hits);
     setRegistered(true);
+    // The build menu's pictures, taken off the page once the town is in.
+    const stopStudio = createStudio(engine, paint.sheet);
+    // The page's canvas alone: the studio's is drawn when it takes a picture.
+    const page = [engine.surfaces[0]] as const;
 
     // Ticks that come much sooner than a frame are skipped. Ticks jitter,
     // a fraction early or late: one counts if three quarters of a frame
@@ -178,7 +183,7 @@ export default function Canvas(props: ParentProps) {
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
       resizeEngine(engine);
-      renderFrame(engine, delta);
+      renderFrame(engine, delta, page);
       after.run();
       seen = where();
       if (seen !== was) lastMoved = now;
@@ -198,6 +203,7 @@ export default function Canvas(props: ParentProps) {
 
     stop = () => {
       running = false;
+      stopStudio();
       stopHand();
       stopResizing();
       disposeEngine(engine);

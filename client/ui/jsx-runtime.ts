@@ -67,6 +67,9 @@ export declare namespace JSX {
     /** Along it. */
     justify?: "start" | "center" | "end" | "between";
     fill?: string;
+    /** A picture cut from the sheet (`paint.sheet`), its corners there
+     *  0–1, in place of the fill's colour; the fill's alpha fades it. */
+    photo?: [number, number, number, number];
     round?: number;
     /** A line round it: how wide, in what. */
     stroke?: [number, string];

@@ -1,45 +1,18 @@
 /** @jsxImportSource ~ui */
-import { createSignal, For, Index, Show } from "solid-js";
-import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
-import { LETTERS } from "../engine/town/grid";
-import { shapes, type Shape } from "../../scripts/planDraw";
+import { createSignal, For, Show } from "solid-js";
+import { BLUEPRINTS, GOODS, KINDS, TABS, type Tab } from "../blueprints";
 import { held, hold } from "./buildMode";
 import { BAD, Fade, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
 import { road, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
+import { photo as photoOf } from "../engine/studio";
 
 /** A picture's side, a cell's least width and the room between cells. */
 const PIC = 76;
 const CELL = 96;
 const GAP = 6;
-
-/** Each kind as the town grid draws it, its plot on a street, the sea
- *  behind a harbour: a picture made once, from the same code as the map
- *  (`scripts/planDraw.ts`), in shapes, with the corner of the map it
- *  shows. A kind with no letter in a fixture, none. */
-const pictures = new Map<BuildingKind, { shapes: Shape[]; x: number; y: number; side: number } | null>();
-function picture(kind: BuildingKind) {
-  if (pictures.has(kind)) return pictures.get(kind)!;
-  const letter = Object.entries(LETTERS).find(([, k]) => k === kind)?.[0];
-  let pic = null;
-  if (letter) {
-    // A square at most five tiles across: the plot, its yard to the
-    // street along the bottom, which runs on past the picture's edges,
-    // grass round it; a harbour's sea behind. Five tiles in from the
-    // fixture's corner, so no fifth tile's number is written on it.
-    const [w, d] = plot(kind, 2).size;
-    const side = Math.min(5, Math.max(w + 2, d + 1, 3));
-    const left = 5 + Math.floor((side - w) / 2);
-    const row = (mid: string) => ".".repeat(left) + mid + ".".repeat(16 - left - mid.length);
-    const behind = (BLUEPRINTS[kind].quay ? "≈" : ".").repeat(16);
-    const rows = [...Array.from({ length: side - 1 - d }, () => behind), ...Array.from({ length: d }, () => row(letter.repeat(w))), "=".repeat(16), ".".repeat(16)];
-    pic = { shapes: shapes(rows.join("\n"), { px: 18, crop: [5, 0, 5 + side, side] }), x: 5, y: 0, side };
-  }
-  pictures.set(kind, pic);
-  return pic;
-}
 
 const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materials) as [Good, number][];
 
@@ -160,19 +133,14 @@ function Page(p: About) {
   );
 }
 
-/** A kind's picture, cut to its rounded square; with none, its glyph on its colour. */
+/** A kind's picture: its photograph as the game draws it, on its street
+ *  at noon (`engine/studio.ts`); until it is taken, its glyph on its colour. */
 function Picture(props: { kind: BuildingKind }) {
-  const pic = picture(props.kind);
-  const unit = pic ? PIC / pic.side : 0;
-  const reach = pic ? Math.max(pic.x, pic.y) + pic.side : 0;
+  const photo = () => photoOf(props.kind);
   return (
-    <box w={PIC} h={PIC} round={12} clip fill={BLUEPRINTS[props.kind].color} align="center" justify="center">
-      <Show when={pic} fallback={<icon d={BLUEPRINTS[props.kind].glyph} size={40} ink="white" />}>
-        {(p) => (
-          <Index each={p().shapes}>
-            {(s) => <icon at={{ left: -p().x * unit, top: -p().y * unit }} d={s().d} view={reach} size={reach * unit} stroke={s().stroke} ink={s().ink} />}
-          </Index>
-        )}
+    <box w={PIC} h={PIC} round={12} fill={photo() ? "white" : BLUEPRINTS[props.kind].color} photo={photo()} align="center" justify="center">
+      <Show when={!photo()}>
+        <icon d={BLUEPRINTS[props.kind].glyph} size={40} ink="white" />
       </Show>
     </box>
   );

@@ -78,8 +78,8 @@ try {
   const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 2 });
   await page.goto(`http://localhost:${CLIENT_PORT}`);
   await page.waitForFunction(() => "sprawlCamera" in window);
-  // The map alone: no toolbar, dials or pins over it.
-  await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
+  // The map alone: no toolbar, dials or pins over it, nor the bezel round it.
+  await page.waitForFunction(() => (window as any).sprawlLite?.hideUi() ?? false);
   // The first look waits for the socket and the terrain as well.
   await page.evaluate(([x, y]) => (window as any).sprawlCamera.look(x, y, 10), [fixtures[0].x, fixtures[0].y]);
   await page.waitForTimeout(SETTLE_MS * 2);
@@ -94,7 +94,7 @@ try {
     const half = Math.max(f.h / 2, f.w / 2 / aspect) + MARGIN;
     await page.evaluate(([x, y, h]) => (window as any).sprawlCamera.look(x, y, h), [cx, cy, half]);
     await page.waitForTimeout(SETTLE_MS);
-    await page.screenshot({ path: `${OUT}/${f.name}.png` });
+    await page.screenshot({ path: `${OUT}/${f.name}.png`, timeout: 180_000 });
   }
 
   const png = async (name: string) => Buffer.from(await Bun.file(`${OUT}/${name}.png`).arrayBuffer()).toString("base64");

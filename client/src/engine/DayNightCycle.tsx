@@ -15,7 +15,9 @@ import {
   setShadowGeneratorBounds,
   setShadowGeneratorEnabled,
   setShadowTaskCasterMeshes,
+  type EngineContext as Engine,
   type Mesh,
+  type SceneContext,
 } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { TONE } from "./toneMap";
@@ -324,15 +326,15 @@ export function DayNightProvider(props: ParentProps) {
 // Lights — Babylon lights + render loop (must be inside Canvas)
 // ---------------------------------------------------------------------------
 
-export default function DayNightLights(props: ParentProps) {
-  const ctx = useEngine();
-  const { engine, scene, canvas, beforeRender, prepare } = ctx;
-  const { _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setCasters: setCasters } = useDayNight();
-
-  // --- Lights ---
-  // The sun by day and the moon by night, one light that casts; the sky's
-  // light from all round is the environment (`sky.ts`). All made before the
-  // scene is registered (`Canvas.tsx`), as Lite builds its shaders for them then.
+/**
+ * A scene lit as the town is, made before the scene is registered
+ * (`Canvas.tsx`), as Lite builds its shaders for its lights then: the sun
+ * by day and the moon by night, one light that casts; the sky's light
+ * from all round, the environment (`sky.ts`); and the eye. `at` lights it
+ * for a time of day, its shadows over a box of ground. The game's scene
+ * (`DayNightLights`) and the build menu's studio (`studio.ts`).
+ */
+export function daylight(engine: Engine, scene: SceneContext, mapSize: number) {
   const sunLight = createDirectionalLight(sunDirection(0.35));
   sunLight.specular = [0, 0, 0];
   addToScene(scene, sunLight);
@@ -341,17 +343,12 @@ export default function DayNightLights(props: ParentProps) {
   // Tree trunks are cylinders, so most of their surface sits at a grazing angle
   // to a low sun — the case a constant bias cannot cover without detaching the
   // shadows from the flat ground. Slope-scaled bias handles it per-fragment.
-  //
-  // What stands still is drawn into the map only when the sun has turned a
-  // little, some six times a second in a two-minute day; what moves, the
-  // cars, is drawn over a copy of that every frame (Lite's static cache).
   // One cascade: a view from above has no distance to grade.
-  const shadows = createCsmDirectionalShadowGenerator(engine, sunLight, { mapSize: shadowMapSize(canvas), numCascades: 1, bias: 0.001, cascadeBlendPercentage: 0 });
+  const shadows = createCsmDirectionalShadowGenerator(engine, sunLight, { mapSize, numCascades: 1, bias: 0.001, cascadeBlendPercentage: 0 });
   sunLight.shadowGenerator = shadows;
-  prepare(enableCsmStaticCache(engine, shadows, { refitAngle: 0.008 }));
   const casting = new Set<Mesh>();
   let castersChanged = false;
-  setCasters({
+  const casters: Casters = {
     add(mesh) {
       if (casting.has(mesh)) return;
       casting.add(mesh);
@@ -360,7 +357,7 @@ export default function DayNightLights(props: ParentProps) {
     remove(mesh) {
       if (casting.delete(mesh)) castersChanged = true;
     },
-  });
+  };
 
   const skyAt = (t: number, sun: Rgb): SkyLight => {
     const amb = ramp(ambientStops, t, lerp3);
@@ -385,16 +382,76 @@ export default function DayNightLights(props: ParentProps) {
   scene.imageProcessing.toneMapping = TONE;
   scene.imageProcessing.exposure = EYE;
 
-  // --- Per-frame update ---
   let lastColorStep = -1;
-  let lastMinute = -1;
   let shadowing = true;
-  const stop = beforeRender(() => {
-    if (castersChanged) {
-      castersChanged = false;
-      setShadowTaskCasterMeshes(shadows, [...casting]);
-    }
+  return {
+    shadows,
+    casters,
+    /** Lit for time of day `t`, its shadows over the ground round
+     *  (cx, cy), `radius` each way. The sky's colour now, when it changed. */
+    at(t: number, cx: number, cy: number, radius: number): Rgb | null {
+      if (castersChanged) {
+        castersChanged = false;
+        setShadowTaskCasterMeshes(shadows, [...casting]);
+      }
+      const night = isNight(t);
+      const elev = night ? moonElevation(t) : sunElevation(t);
+      const [dx, dy, dz] = night ? moonDirection(t) : sunDirection(t);
+      sunLight.direction.set(dx, dy, dz);
+      const sun = night ? moonLightAt(elev) : sunLightAt(elev);
+      const light = linearLight(sun.colour, sun.strength);
+      sunLight.specular = tuple(light);
+      setLightDiffuseColor(sunLight, tuple(light));
 
+      // The sky is redrawn, and the flat things' tint walked over every
+      // bucket, only when the quantized time moves: 1/1024 of a day is below
+      // the 8-bit colour step, invisible, and ~8 times a second, not 60.
+      const colorStep = Math.floor(t * 1024);
+      let ambient: Rgb | null = null;
+      if (colorStep !== lastColorStep) {
+        lastColorStep = colorStep;
+        const qt = colorStep / 1024;
+        ambient = ramp(ambientStops, qt, lerp3);
+        const clear = ramp(skyStops, qt, lerp3);
+        scene.clearColor = { r: clear.r, g: clear.g, b: clear.b, a: scene.clearColor.a };
+        sky.draw(skyAt(qt, light));
+      }
+
+      // Up to as high as the box is wide, so nothing tall casts in from
+      // outside it. The box is a size in quarter octaves, a quarter again
+      // the radius at least, laid on a grid of its own eighths: a pan or a
+      // zoom inside it leaves it, and the static shadows drawn into it,
+      // where they are.
+      const half = 2 ** (Math.ceil(Math.log2(radius * 1.25) * 4) / 4);
+      const step = half / 4;
+      const bx = Math.round(cx / step) * step;
+      const by = Math.round(cy / step) * step;
+      setShadowGeneratorBounds(shadows, [bx - half, by - half, -1], [bx + half, by + half, half]);
+
+      // Zoomed out far enough that shadows are sub-pixel, or the sun down and
+      // its light at zero: skip the whole shadow pass rather than draw every
+      // caster into a map nobody can read.
+      const shadow = radius < SHADOW_MAX_RADIUS && elev > 0;
+      if (shadow !== shadowing) setShadowGeneratorEnabled(shadows, (shadowing = shadow));
+      return ambient;
+    },
+  };
+}
+
+export default function DayNightLights(props: ParentProps) {
+  const ctx = useEngine();
+  const { engine, scene, canvas, beforeRender, prepare } = ctx;
+  const { _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setCasters: setCasters } = useDayNight();
+
+  const lit = daylight(engine, scene, shadowMapSize(canvas));
+  // What stands still is drawn into the map only when the sun has turned a
+  // little, some six times a second in a two-minute day; what moves, the
+  // cars, is drawn over a copy of that every frame (Lite's static cache).
+  prepare(enableCsmStaticCache(engine, lit.shadows, { refitAngle: 0.008 }));
+  setCasters(lit.casters);
+
+  let lastMinute = -1;
+  const stop = beforeRender(() => {
     // The sun follows the simulation, not the render loop — so fast-forwarding
     // moves the light with the traffic, and a reconnect resumes the same hour.
     // In development `?t=` holds the light at a time of day (0 midnight,
@@ -406,47 +463,11 @@ export default function DayNightLights(props: ParentProps) {
       lastMinute = minute;
       setTimeOfDay(t);
     }
-
-    const night = isNight(t);
-    const elev = night ? moonElevation(t) : sunElevation(t);
-    const [dx, dy, dz] = night ? moonDirection(t) : sunDirection(t);
-    sunLight.direction.set(dx, dy, dz);
-    const sun = night ? moonLightAt(elev) : sunLightAt(elev);
-    const light = linearLight(sun.colour, sun.strength);
-    sunLight.specular = tuple(light);
-    setLightDiffuseColor(sunLight, tuple(light));
-
-    // The sky is redrawn, and the flat things' tint walked over every
-    // bucket, only when the quantized time moves: 1/1024 of a day is below
-    // the 8-bit colour step, invisible, and ~8 times a second, not 60.
-    const colorStep = Math.floor(t * 1024);
-    if (colorStep !== lastColorStep) {
-      lastColorStep = colorStep;
-      const qt = colorStep / 1024;
-      setAmbient(ramp(ambientStops, qt, lerp3));
-      const clear = ramp(skyStops, qt, lerp3);
-      scene.clearColor = { r: clear.r, g: clear.g, b: clear.b, a: 1 };
-      sky.draw(skyAt(qt, light));
-    }
-
     // Round the ground in view, not round the camera: leaning back, the
-    // camera stands well behind what it looks at. Up to as high as the view
-    // is wide, so nothing tall casts in from outside the box. The box is a
-    // size in quarter octaves, a quarter again the view at least, laid on a
-    // grid of its own eighths: a pan or a zoom inside it leaves it, and the
-    // static shadows drawn into it, where they are.
+    // camera stands well behind what it looks at.
     const { cx, cy, radius } = groundCover(scene, canvas);
-    const half = 2 ** (Math.ceil(Math.log2(radius * 1.25) * 4) / 4);
-    const step = half / 4;
-    const bx = Math.round(cx / step) * step;
-    const by = Math.round(cy / step) * step;
-    setShadowGeneratorBounds(shadows, [bx - half, by - half, -1], [bx + half, by + half, half]);
-
-    // Zoomed out far enough that shadows are sub-pixel, or the sun down and
-    // its light at zero: skip the whole shadow pass rather than draw every
-    // caster into a map nobody can read.
-    const shadow = radius < SHADOW_MAX_RADIUS && elev > 0;
-    if (shadow !== shadowing) setShadowGeneratorEnabled(shadows, (shadowing = shadow));
+    const ambient = lit.at(t, cx, cy, radius);
+    if (ambient) setAmbient(ambient);
   });
 
   onCleanup(stop);
