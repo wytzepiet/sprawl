@@ -10,7 +10,7 @@ import { InspectBody, InspectHead } from "./Card";
 import { setBoardOpen } from "./Board";
 import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsHead, take } from "./Roads";
 import { BuildBody, BuildHead, info } from "./Build";
-import { MarketBody, MarketHead, setView } from "./Market";
+import { MarketBody, MarketHead } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { BEZEL, DROP, Fade, Press, view, wide, ROUND } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
@@ -69,7 +69,6 @@ export default function Dock() {
     if (key === "X") return take("Demolish");
     if (key === "B") return press("build");
     if (key === "M") return press("market");
-    if (key === "S") return setView("stock"), show("market", true);
     if (key !== "R") return;
     // Again: the next road.
     const roads = ROAD_KINDS.filter((r) => r.id !== "Demolish");
