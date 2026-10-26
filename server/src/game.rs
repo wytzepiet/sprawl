@@ -1,10 +1,10 @@
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
-use crate::car::simulation::handle_car_wake_up;
 use crate::resident::handle_resident_wake;
-use crate::engine::event_queue::EventQueue;
-use crate::engine::GameTime;
-use crate::protocol::{CarRole, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
+use traffic::event_queue::EventQueue;
+use model::GameTime;
+use model::{CarRole, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
+use land::ChunkCoord;
 use crate::view::{flush_dirty, handle_set_chunks, ClientState, Shared};
 use crate::world::World;
 
@@ -28,6 +28,8 @@ pub struct Game {
     pub events: EventQueue,
     pub now: GameTime,
     pub speed: u32,
+    /// Where a `RunTo` stops and speed goes back to 1.
+    until: Option<GameTime>,
     /// How many times a resident has thought, all told: what a day of
     /// town costs (`a_town_thinks_within_budget`).
     pub thoughts: u64,
@@ -49,6 +51,7 @@ impl Game {
             events: EventQueue::new(),
             now,
             speed,
+            until: None,
             thoughts: 0,
             clients: HashMap::default(),
             outbox: Vec::new(),
@@ -67,11 +70,11 @@ impl Game {
     fn wake_all(&mut self) {
         self.world.resettle();
         settle_and_wake(&mut self.world, &mut self.events);
-        for id in self.world.resident_ids() {
+        for id in self.world.map.resident_ids() {
             wake_resident(&self.world, &mut self.events, id);
         }
         let standing: Vec<EntityId> = self
-            .world
+            .world.map
             .objects
             .iter()
             .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none()))
@@ -111,17 +114,8 @@ impl Game {
     /// A message from a client, done.
     pub fn command(&mut self, client_id: ClientId, message: ClientMessage) {
         match message {
-            ClientMessage::SetSpeed(s) => {
-                self.speed = s.min(MAX_SPEED);
-                // Paused, nothing goes dirty and no update would ever be
-                // sent — so clients would keep extrapolating cars against
-                // a stopped world. Push the new clock instead of waiting.
-                let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
-                let ids: Vec<ClientId> = self.clients.keys().copied().collect();
-                for id in ids {
-                    self.send(id, update.clone());
-                }
-            }
+            ClientMessage::SetSpeed(s) => self.set_speed(s, None),
+            ClientMessage::RunTo(t) => self.set_speed(MAX_SPEED, Some(t)),
             ClientMessage::SetChunks(bounds) => {
                 let mut shared = Shared::new(&self.world, self.clock());
                 handle_set_chunks(&mut shared, &mut self.clients, &mut self.outbox, client_id, bounds);
@@ -151,6 +145,19 @@ impl Game {
                     }
                 }
             }
+        }
+    }
+
+    fn set_speed(&mut self, speed: u32, until: Option<GameTime>) {
+        self.speed = speed.min(MAX_SPEED);
+        self.until = until;
+        // Paused, nothing goes dirty and no update would ever be sent — so
+        // clients would keep extrapolating cars against a stopped world.
+        // Push the new clock instead of waiting.
+        let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
+        let ids: Vec<ClientId> = self.clients.keys().copied().collect();
+        for id in ids {
+            self.send(id, update.clone());
         }
     }
 
@@ -197,6 +204,10 @@ impl Game {
     pub fn tick_with(&mut self, mut before: impl FnMut(&mut Game)) -> u32 {
         let mut wakes = 0;
         for _ in 0..self.speed {
+            if self.until.is_some_and(|t| self.now >= t) {
+                self.set_speed(1, None);
+                break;
+            }
             before(self);
             wakes += self.step();
         }
@@ -219,14 +230,14 @@ impl Game {
     /// ticks: a tick is as many steps as the clock's speed, and what the
     /// game does must not depend on how fast it is watched (`replay.rs`).
     pub fn step(&mut self) -> u32 {
-        if std::mem::take(&mut self.stirred) || !self.world.unsettled.is_empty() || self.now % SETTLE_MS == 0 {
+        if std::mem::take(&mut self.stirred) || !self.world.map.unsettled.is_empty() || self.now % SETTLE_MS == 0 {
             settle_and_wake(&mut self.world, &mut self.events);
         }
         self.now += STEP_MS;
         self.events.set_now(self.now);
         let mut wakes = 0;
         while let Some(id) = self.events.pop_due() {
-            if self.world.resident(id).is_some() {
+            if self.world.map.resident(id).is_some() {
                 self.thoughts += 1;
             }
             handle_wake(&mut self.world, &mut self.events, id, self.now);
@@ -249,7 +260,7 @@ impl Game {
         if self.now >= to {
             return false;
         }
-        if !self.stirred && self.world.unsettled.is_empty() {
+        if !self.stirred && self.world.map.unsettled.is_empty() {
             let due = self.events.next_due().into_iter().chain([(self.world.market.hour + 1) * crate::market::HOUR]).min().unwrap_or(GameTime::MAX);
             let next = due.saturating_sub(STEP_MS).min(self.now.next_multiple_of(SETTLE_MS)).max(self.now).next_multiple_of(STEP_MS);
             if next >= to {
@@ -277,13 +288,15 @@ fn handle_wake(
     id: EntityId,
     now: GameTime,
 ) {
-    match world.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Car(_)) => handle_car_wake_up(world, events, id, now),
+    match world.map.objects.get(id).map(|e| &e.object) {
+        // A parked one's is the game's: what it does next.
+        Some(GameObject::Car(c)) if c.trip.is_none() => crate::calls::car_idle(world, events, id, now),
+        Some(GameObject::Car(_)) => world.drive(events, |t, e| traffic::car::simulation::handle_car_wake_up(t, e, id, now)),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened.
         Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
         // A junction's is its lights looking again.
-        Some(GameObject::RoadNode(_)) => crate::car::simulation::lights(world, events, id, now),
+        Some(GameObject::RoadNode(_)) => world.drive(events, |t, e| traffic::car::simulation::lights(t, e, id, now)),
         // Midnight: every building takes its turn, and every line reads
         // the labour market again.
         None if id == MIDNIGHT => {
@@ -304,7 +317,7 @@ pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 /// Population follows what changed, and whoever's situation changed gets to
 /// think about it. And the day is always due to turn.
 pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
-    let changed = !world.unsettled.is_empty();
+    let changed = !world.map.unsettled.is_empty();
     if changed {
         world.missions.stir();
     }
@@ -312,17 +325,21 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
         wake_resident(world, events, id);
     }
     // A harbour reached, or cut off: the town's way out, and its ferry.
-    world.mark_harbours(events.now());
+    world.map.mark_harbours();
+    let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();
+    for h in standing {
+        world.commission(h, events.now());
+    }
     // A site reached, and not calling: it calls for its timber.
-    world.sites.retain(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
-    let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
+    world.sites.retain(|&id| matches!(world.map.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
+    let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.map.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
     for id in waiting {
         crate::calls::turn(world, events, id, events.now());
     }
     // A harbour built, or its line changed: its ferries look
     // again. Not at every settle: a moored ferry woken rolls its next
     // settler off at once, not ROLL_MS after the last.
-    let harbours: Vec<EntityId> = if changed { world.harbours.keys().copied().collect() } else { Vec::new() };
+    let harbours: Vec<EntityId> = if changed { world.map.harbours.keys().copied().collect() } else { Vec::new() };
     for h in harbours {
         for id in world.ferries_of(h) {
             events.wake(0, id);
@@ -340,7 +357,7 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
 fn wake_resident(world: &World, events: &mut EventQueue, id: EntityId) {
     const TRICKLE_MS: u64 = 3 * (DAY_MS as u64) / 24;
     let off_map = matches!(
-        world.objects.get(id).map(|e| &e.object),
+        world.map.objects.get(id).map(|e| &e.object),
         Some(GameObject::Resident(r)) if r.at.is_none()
     );
     let delay = if off_map {

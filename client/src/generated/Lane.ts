@@ -2,7 +2,7 @@
 import type { LaneKind } from "./LaneKind";
 
 /**
- * A stretch of a line's way as it lies on the map (`shipping::lanes`):
+ * A stretch of a line's way as it lies on the map (`traffic::sea::lanes`):
  * a lane, one way, the way the points run; or a junction between lanes.
  */
 export type Lane = { path: Array<[number, number]>, kind: LaneKind, };

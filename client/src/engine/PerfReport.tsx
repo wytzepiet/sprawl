@@ -1,6 +1,7 @@
 import { onCleanup } from "solid-js";
 import { isGpuTimingSupported, setGpuTimingEnabled } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
+import { groundCover } from "./view";
 
 /** Things the game counts as it goes, by name, for the next report. */
 const counts = new Map<string, number>();
@@ -144,7 +145,7 @@ export default function PerfReport() {
       canvas: [canvas.width, canvas.height],
       dpr: devicePixelRatio,
       visible: document.visibilityState,
-      camera: { x: +scene.camera!.worldMatrix[12].toFixed(0), y: +scene.camera!.worldMatrix[13].toFixed(0), half: +(scene.camera!.ortho?.halfHeight ?? 0).toFixed(1) },
+      camera: (({ cx, cy, halfH }) => ({ x: +cx.toFixed(0), y: +cy.toFixed(0), half: +halfH.toFixed(1) }))(groundCover(scene, canvas)),
       meshes: { total: scene.meshes.length },
       draws: engine.drawCallCount,
       long: long.sort((a, b) => b.ms - a.ms).slice(0, 6),

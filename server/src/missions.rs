@@ -11,99 +11,11 @@
 //! a town beyond the edge is a mission too, written by its mayor
 //! (`orders.rs`).
 
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use model::missions::{Key, Goal, Reward, Step, Mission};
 
-use crate::engine::GameTime;
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
+use model::GameTime;
+use model::{BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
 use crate::world::World;
-
-/// Which mission this is: each opens once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub enum Key {
-    Opening,
-    Book,
-    Sell,
-    Pump,
-    Quarry,
-    Sawmill,
-    Farm,
-    /// An order from a town beyond the edge, by its number: the number
-    /// its boxes carry as their shipment's.
-    Order(#[ts(type = "number")] u64),
-}
-
-/// What a step asks of the town: a fact read off the world.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(tag = "kind", content = "data")]
-pub enum Goal {
-    /// A building of this kind stands, built and reached by a street.
-    Stands(BuildingKind),
-    /// A depot's street joined to the harbour's.
-    Joined,
-    /// Something on a depot's shelf: a box fetched and unloaded.
-    Fetched,
-    /// Settlers in town: someone has driven off the ferry.
-    Settled,
-    /// A box booked to come in on the deck.
-    Booked,
-    /// Something sold over the sea.
-    Sold,
-    /// So many units of a good sailed for an order's town: counted by the
-    /// ferry as it casts off (`orders::sailed`).
-    Delivered { good: Good, units: f64, sailed: f64 },
-}
-
-/// What finishing a mission pays. Coins for now; XP once the level means
-/// something.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(tag = "kind", content = "data")]
-pub enum Reward {
-    Coins(f64),
-    /// An order's: its coins paid a box at a time as each sails, and
-    /// standing with its mayor once the last has.
-    Order { coins: f64, standing: f64 },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Step {
-    pub goal: Goal,
-    /// What it asks, in a line.
-    pub title: String,
-    /// How, paragraphs apart by a blank line.
-    pub text: String,
-    pub done: bool,
-    /// The building the step's button acts on: the depot, for a depot's
-    /// goal.
-    #[ts(type = "number | null")]
-    pub at: Option<EntityId>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Mission {
-    pub key: Key,
-    pub title: String,
-    pub steps: Vec<Step>,
-    pub reward: Reward,
-    #[ts(type = "number")]
-    pub opened: GameTime,
-    /// Finished, its steps done; or, for an order, given up on with a
-    /// step not done.
-    #[ts(type = "number | null")]
-    pub finished: Option<GameTime>,
-    /// Who asked, for an order.
-    #[serde(default)]
-    pub from: Option<crate::orders::Mayor>,
-    /// When an order lapses.
-    #[serde(default)]
-    #[ts(type = "number | null")]
-    pub due: Option<GameTime>,
-}
 
 /// When a mission opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,10 +156,10 @@ fn open(row: &Row, now: GameTime) -> Mission {
 /// Is the fact true of the town now.
 fn met(world: &World, goal: Goal) -> bool {
     match goal {
-        Goal::Stands(kind) => world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.street_of(e.id).is_some()),
-        Goal::Joined => world.depots().into_iter().any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
-        Goal::Fetched => world.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
-        Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
+        Goal::Stands(kind) => world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.map.street_of(e.id).is_some()),
+        Goal::Joined => world.map.depots().into_iter().any(|(id, _)| world.map.street_of(id).and_then(|s| world.map.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
+        Goal::Fetched => world.map.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
+        Goal::Settled => world.map.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
         Goal::Booked => crate::haul::packages(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
         Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
@@ -259,8 +171,8 @@ fn at(world: &World, goal: Goal) -> Option<EntityId> {
     match goal {
         Goal::Stands(_) | Goal::Settled => None,
         // The deck is the harbour's.
-        Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
-        _ => world.depots().into_iter().next().map(|(id, _)| id),
+        Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.map.harbours.keys().next().copied(),
+        _ => world.map.depots().into_iter().next().map(|(id, _)| id),
     }
 }
 
@@ -301,7 +213,7 @@ pub fn check(world: &mut World, now: GameTime) {
 /// A reward: coins from the world, landing at the harbour as trade does.
 fn pay(world: &mut World, coins: f64, now: GameTime) {
     world.treasury += coins;
-    if let Some(&harbour) = world.harbours.keys().next() {
+    if let Some(&harbour) = world.map.harbours.keys().next() {
         world.lumps.push(Lump { building: harbour, coins, gdp: 0.0, at: now, good: None, units: 0.0 });
     }
 }
@@ -315,7 +227,7 @@ pub fn sense(world: &mut World, when: When, now: GameTime) {
     }
     // Short is short in the whole town: a van busy elsewhere is not.
     let real = match when {
-        When::Short(good) => !world.depots().into_iter().any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
+        When::Short(good) => !world.map.depots().into_iter().any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
         _ => true,
     };
     if !real || row.steps.iter().all(|&(goal, ..)| met(world, goal)) {
@@ -332,12 +244,13 @@ mod tests {
     use crate::calls;
     use crate::resident::handle_resident_wake;
     use crate::game::settle_and_wake;
-    use crate::protocol::{BuildingKind, Good, GridCoord, TerrainType};
-    use crate::engine::event_queue::EventQueue;
+    use model::{BuildingKind, Good, GridCoord};
+    use land::TerrainType;
+    use traffic::event_queue::EventQueue;
 
     /// A shelf emptied, or filled.
     fn shelve(world: &mut World, at: EntityId, good: Good, level: f64) {
-        if let Some(b) = world.building_mut(at) {
+        if let Some(b) = world.map.building_mut(at) {
             b.stocks.get_mut(&good).unwrap().level = level;
         }
     }
@@ -349,11 +262,11 @@ mod tests {
     /// and pays.
     #[test]
     fn a_site_short_of_stone_asks_for_a_quarry_once() {
-        use crate::missions::Key;
+        use model::missions::Key;
         let mut world = street();
         for x in QUARRY_X - 5..QUARRY_X + 7 {
             for y in 5..14 {
-                world.terrain.insert((x, y), TerrainType::Mountain);
+                world.map.terrain.insert((x, y), TerrainType::Mountain);
             }
         }
         let depot = build(&mut world, 30, BuildingKind::Depot);
@@ -370,9 +283,9 @@ mod tests {
         // Flats, a site of timber and stone, call for both, and the depot
         // has no stone.
         let at = GridCoord { x: 100, y: 1 };
-        let facing = world.site_for(at, BuildingKind::Apartment).unwrap();
-        let flats = world.place_building(at, BuildingKind::Apartment, facing).unwrap();
-        world.orient(flats);
+        let facing = world.map.site_for(at, BuildingKind::Apartment).unwrap();
+        let flats = world.map.place_building(at, BuildingKind::Apartment, facing).unwrap();
+        world.map.orient(flats);
         calls::turn(&mut world, &mut events, flats, 0);
         assert!(world.calls.iter().any(|c| c.at == flats && c.good == Good::Stone && c.answered_by.is_none()), "the flats never called for stone");
         assert_eq!(quarry(&mut world), [false; 0], "it opened during the opening");
@@ -402,19 +315,19 @@ mod tests {
     /// station, once the opening is done; a full tank does not.
     #[test]
     fn a_car_running_dry_asks_for_a_gas_station() {
-        use crate::missions::Key;
-        use crate::needs::Need;
+        use model::missions::Key;
+        use model::needs::Need;
         let mut world = street();
         let house = build(&mut world, 10, BuildingKind::House);
         let mut events = EventQueue::new();
         settle_and_wake(&mut world, &mut events);
-        let id = world.household(house)[0];
-        let car = world.resident(id).unwrap().car;
-        if let Some(r) = world.resident_mut(id) {
+        let id = world.map.household(house)[0];
+        let car = world.map.resident(id).unwrap().car;
+        if let Some(r) = world.map.resident_mut(id) {
             r.at = Some(house);
         }
         let tank = |world: &mut World, full: f64| {
-            if let Some(c) = world.car_mut(car) {
+            if let Some(c) = world.map.car_mut(car) {
                 let s = c.stocks.get_mut(&Need::Fuel).unwrap();
                 s.level = s.cap * full;
             }

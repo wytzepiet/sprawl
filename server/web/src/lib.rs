@@ -2,9 +2,9 @@
 //! worker's own timer, taking and giving msgpack, the bytes the server's
 //! socket carries, so the client draws it as it draws the town.
 
-use sprawl::level::Phase;
-use sprawl::protocol::ClientMessage;
-use sprawl::replay::{Input, Session};
+use interchange::level::Phase;
+use model::ClientMessage;
+use interchange::replay::{Input, Session};
 use wasm_bindgen::prelude::*;
 
 /// How fast a test plays: steps a tick.
@@ -77,12 +77,12 @@ impl Web {
     /// The player's roads, as steps to lay them again (`Level::layout`),
     /// as JSON.
     pub fn layout(&self) -> String {
-        serde_json::to_string(&sprawl::level::Level::layout(&self.session.game.world)).unwrap_or_default()
+        serde_json::to_string(&interchange::level::Level::layout(&self.session.game.world)).unwrap_or_default()
     }
 
     /// Roads written down by `layout`, laid again.
     pub fn load(&mut self, json: &str) {
-        let steps: Vec<sprawl::protocol::Build> = serde_json::from_str(json).unwrap_or_default();
+        let steps: Vec<model::Build> = serde_json::from_str(json).unwrap_or_default();
         for step in steps {
             self.session.command(ClientMessage::Build(step));
         }
@@ -94,10 +94,10 @@ impl Web {
         self.speed(1);
     }
 
-    /// Every two roads that run into each other (`World::clashing`): none,
+    /// Every two roads that run into each other (`Map::clashing`): none,
     /// ever; the drag tests check.
     pub fn clashing(&self) -> String {
-        serde_json::to_string(&self.session.game.world.clashing()).unwrap_or_default()
+        serde_json::to_string(&self.session.game.world.map.clashing()).unwrap_or_default()
     }
 
     /// The level as the client shows it, as JSON.
@@ -117,7 +117,7 @@ impl Web {
     }
 
     /// Mark this moment, and a tile if one is pointed at, with a note: what
-    /// looks wrong here (`sprawl::replay::Flag`).
+    /// looks wrong here (`interchange::replay::Flag`).
     pub fn flag(&mut self, x: Option<i32>, y: Option<i32>, note: String) {
         let tile = x.zip(y).map(|(x, y)| [x, y]);
         self.session.flag(tile, note);

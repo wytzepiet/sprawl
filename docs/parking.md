@@ -1,6 +1,6 @@
 # Parking: drives, yards and kerb bays
 
-Status: built, as `server/src/world/lots.rs` says at its top. A house
+Status: built, as `server/map/src/lots.rs` says at its top. A house
 parks on its drive, a depot, a farm or a harbour keeps a yard, and
 everything else parks at the kerb before it. Not built: car parks where
 the kerb runs out (§8). The specification this grew from, of 2026-09-06

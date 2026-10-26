@@ -1,6 +1,6 @@
 import type { SceneContext } from "@babylonjs/lite";
 import { snap, STEPS } from "./tiles";
-import { projector } from "./view";
+import { groundCover, projector } from "./view";
 import { step, type Sprung } from "./spring";
 import { glazedAt, underGlass } from "./glass";
 
@@ -305,13 +305,16 @@ export class Dots {
     }
     if (!this.dots.size && this.tip.s <= 0.01) return void (this.goo.canvas.style.display = "none");
 
-    // Looking straight down the map lands on the screen by one affine
-    // map: where a tile's corner and its two edges go says where all go.
+    // Each dot where the camera puts it; their sizes by a tile's width at
+    // the middle of the view, near enough everywhere in it.
     const project = projector(this.scene, this.view);
-    const o = project.at(0, 0, Z), ex = project.at(1, 0, Z), ey = project.at(0, 1, Z);
-    const [ux, uy, vx, vy] = [ex.sx - o.sx, ex.sy - o.sy, ey.sx - o.sx, ey.sy - o.sy];
-    const scale = Math.hypot(ux, uy);
-    const at = (x: number, y: number): [number, number] => [o.sx + x * ux + y * vx, o.sy + x * uy + y * vy];
+    const at = (x: number, y: number): [number, number] => {
+      const p = project.at(x, y, Z);
+      return [p.sx, p.sy];
+    };
+    const { cx, cy } = groundCover(this.scene, this.view);
+    const [m, e] = [at(cx, cy), at(cx + 1, cy)];
+    const scale = Math.hypot(e[0] - m[0], e[1] - m[1]);
     // The goo's blur in pixels, and what it eats off a shape's edge.
     const sigma = Math.min(14, Math.max(1, GOO * scale));
     if (Math.abs(Number(this.blur.getAttribute("stdDeviation")) - sigma) > 0.25) this.blur.setAttribute("stdDeviation", sigma.toFixed(1));

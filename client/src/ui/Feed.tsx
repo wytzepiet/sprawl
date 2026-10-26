@@ -8,7 +8,7 @@ import { deals, letterOf, setSpread, spread, stepsOf, type Deal, type Piece } fr
 import { quoteOf, total } from "../state/market";
 import { toMarket } from "./Market";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
-import { eye } from "../engine/OrthoCamera";
+import { eye } from "../engine/Camera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";

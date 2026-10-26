@@ -1,0 +1,155 @@
+# Every branch its own world: a push builds the game and starts it fresh at
+# https://<branch>.<preview domain>; deleting the branch takes it away, and
+# a push to main deletes every branch it has merged, world and all.
+# The box's half is preview/box.sh, set up once by preview/setup.sh.
+name: Preview
+
+on:
+  push:
+  delete:
+
+concurrency:
+  group: preview-${{ github.event_name == 'delete' && github.event.ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  BRANCH: ${{ github.event_name == 'delete' && github.event.ref || github.ref_name }}
+
+jobs:
+  # A branch whose last commit is in main holds nothing main lacks. Deleted
+  # by this job's token, it raises no delete event, so its world goes here.
+  tidy:
+    if: vars.PREVIEW_HOST != '' && github.event_name == 'push' && github.ref_name == 'main'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PREVIEW_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.PREVIEW_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Merged branches, gone
+        run: |
+          for b in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin); do
+            [ "$b" = main ] || [ "$b" = HEAD ] && continue
+            git merge-base --is-ancestor origin/$b origin/main || continue
+            git push origin --delete "$b"
+            slug=$(echo "$b" | tr A-Z a-z | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//' | cut -c1-40 | sed 's/-$//')
+            ssh root@${{ vars.PREVIEW_HOST }} down $slug | tee -a $GITHUB_STEP_SUMMARY
+          done
+
+  preview:
+    if: vars.PREVIEW_HOST != '' && (github.event_name == 'push' || github.event.ref_type == 'branch')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Slug
+        run: echo "SLUG=$(echo "$BRANCH" | tr A-Z a-z | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//' | cut -c1-40 | sed 's/-$//')" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          path: sprawl
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          repository: wytzepiet/Babylon-Lite
+          ref: sprawl
+          path: Babylon-Lite
+
+      # The game crate is half the build, and most pushes leave it as it was:
+      # its binary and its wasm are kept by the tree they were built from,
+      # and a push that did not touch server/ builds neither.
+      - name: The game, built from this server/ before?
+        id: game
+        if: github.event_name == 'push'
+        uses: actions/cache@v4
+        with:
+          path: |
+            sprawl/server/target/release/sprawl-server
+            sprawl/client/src/wasm
+          key: game-${{ hashFiles('sprawl/server/**') }}
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
+        with:
+          targets: wasm32-unknown-unknown
+      # The last build's target, our own crates and all, so a push builds
+      # only the crates it changed and those above them (CLAUDE.md,
+      # Structure). Saved by every push, found by the next on its branch
+      # or from main's.
+      - uses: actions/cache@v4
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            sprawl/server/target/release
+            sprawl/server/target/wasm32-unknown-unknown/release
+            sprawl/server/target/sources.sha
+          key: rust-${{ hashFiles('sprawl/server/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            rust-${{ hashFiles('sprawl/server/Cargo.lock') }}-
+            rust-
+      # Cargo knows a file changed by its time, and a checkout makes every
+      # file new: each one as it was at that build goes back before it.
+      - name: Files that build saw, as old as they are
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
+        working-directory: sprawl/server
+        run: |
+          [ -f target/sources.sha ] && sha1sum --quiet -c target/sources.sha 2>/dev/null | sed -n 's/: FAILED$//p' > /tmp/changed || true
+          if [ -f target/sources.sha ]; then
+            cut -c43- target/sources.sha | grep -vxFf /tmp/changed | xargs -d '\n' -r touch -c -d @1
+          fi
+      - name: wasm-bindgen, the version Cargo.lock asks for
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
+        run: echo "BINDGEN=$(grep -A1 '^name = "wasm-bindgen"$' sprawl/server/Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')" >> $GITHUB_ENV
+      - uses: taiki-e/install-action@v2
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
+        with:
+          tool: wasm-bindgen@${{ env.BINDGEN }}
+      - uses: pnpm/action-setup@v4
+        if: github.event_name == 'push'
+        with:
+          package_json_file: Babylon-Lite/package.json
+      - uses: oven-sh/setup-bun@v2
+        if: github.event_name == 'push'
+
+      - name: Build
+        if: github.event_name == 'push'
+        # What it was built from, so the page can tell a newer push (`ui/Newer.tsx`).
+        env:
+          VITE_REPO: ${{ github.repository }}
+          VITE_BRANCH: ${{ github.ref_name }}
+          VITE_SHA: ${{ github.sha }}
+        run: |
+          # Lite is read from its source: its own tools and tests are not needed.
+          (cd Babylon-Lite && pnpm install --frozen-lockfile --prod)
+          cd sprawl/client && bun install --frozen-lockfile
+          if [ "${{ steps.game.outputs.cache-hit }}" != true ]; then
+            bun run wasm
+            (cd ../server && cargo build --release -p sprawl-server)
+            (cd ../server && git ls-files -z | xargs -0 sha1sum > target/sources.sha)
+          fi
+          # Preview, not production: the clock keeps its speeds and resets (`ui/Clock.tsx`).
+          bunx vite build --mode preview
+
+      - name: Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PREVIEW_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.PREVIEW_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Up
+        if: github.event_name == 'push'
+        run: |
+          tar -cz -C sprawl/server/target/release sprawl-server -C "$GITHUB_WORKSPACE/sprawl/client" dist |
+            ssh root@${{ vars.PREVIEW_HOST }} up $SLUG | tee -a $GITHUB_STEP_SUMMARY
+      - name: Down
+        if: github.event_name == 'delete'
+        run: ssh root@${{ vars.PREVIEW_HOST }} down $SLUG

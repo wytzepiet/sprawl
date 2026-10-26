@@ -1,0 +1,13 @@
+# How things move: cars along the roads and ships along the sea's lanes,
+# taking turns where their ways meet, each woken when it next has
+# something to decide. Never why they go: that is the game's.
+[package]
+name = "traffic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fixed = { path = "../fixed" }
+land = { path = "../land" }
+model = { path = "../model" }
+map = { path = "../map" }

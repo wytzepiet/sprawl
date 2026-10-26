@@ -2,7 +2,7 @@ import { createSignal, Show, onCleanup } from "solid-js";
 import Canvas, { Registered, useEngine } from "../engine/Canvas";
 import Gpu from "../engine/Hud";
 import { underGlass } from "../engine/glass";
-import { OrthoCamera, type Bounds } from "../engine/OrthoCamera";
+import { Camera, type Bounds } from "../engine/Camera";
 import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNightCycle";
 import { InstancePoolProvider } from "../engine/InstancePool";
 import World from "../engine/World";
@@ -26,7 +26,7 @@ import { setCarColour } from "../engine/objects/CarObject";
  * Interchange: the puzzle. A level is a piece of map with roads coming in
  * at its edges and traffic that wants to get from one to another; you
  * draw the roads between, then test them. The level runs in the browser,
- * on the game's own simulation (`server/src/level.rs`, `server/web`).
+ * on the game's own simulation (`server/interchange/src/level.rs`, `server/web`).
  */
 
 export default function Interchange() {
@@ -90,7 +90,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     <GameProvider connect={(on) => (line = connectLevel(props.level.name, props.level.text, layoutOf(props.level.name), on, hear, (json) => keepLayout(props.level.name, json)))}>
       <DayNightProvider>
         <Canvas>
-          <OrthoCamera bounds={bounds} />
+          <Camera bounds={bounds} />
           <DayNightLights>
             <Registered>
               <InstancePoolProvider>
@@ -108,7 +108,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
 }
 
 /** F: this moment, and the tile under the pointer, marked as something
- *  wrong in the replay the level keeps (`server/src/replay.rs`), and then
+ *  wrong in the replay the level keeps (`server/interchange/src/replay.rs`), and then
  *  what. */
 function Flagger(props: { line: () => LevelConnection | null }) {
   const { scene, canvas } = useEngine();
