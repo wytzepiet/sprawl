@@ -1,12 +1,10 @@
-import { createPickingRay, getCameraPosition, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
+import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
 import type { Area } from "../generated";
 
 /**
  * Everything that needs to know how the world lands on the screen. Pixels go
- * to ground by a ray, and ground to pixels by the camera's own matrix. How
- * much ground is in view is arithmetic on the flat camera's frustum, which
- * looks straight down; only while it leans or flies (F8, F9) is it measured,
- * by asking where pixels land.
+ * to ground by a ray, and ground to pixels by the camera's own matrix; how
+ * much ground is in view, by asking where the screen's edges land.
  */
 
 /** Where the canvas is on the page, read once and again only when it is
@@ -51,35 +49,37 @@ export function screenToWorld(
 }
 
 /**
- * The ground the view covers: where the middle of the screen lands, half the
- * ground either way to the screen's edges (`halfW`, `halfH`), and as a circle
- * round the middle, out to the farthest corner. Looking straight down that
- * is half the diagonal; leaning back, the far corners run away and the
- * circle grows toward them.
+ * The ground the view covers: where the middle of the screen lands; half
+ * the ground across its middle (`halfW`) and half from its foot to its top
+ * (`halfH`); as a circle round the middle, out to the farthest corner; and
+ * as a box round its corners. Leaning back, the far corners run away: the
+ * ground in view is wider at the top than at the foot, and reaches further
+ * up from the middle than down.
  */
-export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; halfW: number; halfH: number; radius: number } {
-  const camera = scene.camera!;
+export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; halfW: number; halfH: number; radius: number; x0: number; y0: number; x1: number; y1: number } {
   const { width, height } = rectOf(canvas);
-  if (camera.ortho) {
-    const { x, y } = getCameraPosition(camera);
-    const halfH = camera.ortho.halfHeight;
-    const halfW = (halfH * width) / height;
-    return { cx: x, cy: y, halfW, halfH, radius: Math.hypot(halfW, halfH) };
-  }
   const mid = groundAt(scene, width, height, width / 2, height / 2);
-  const from = (x: number, y: number) => {
-    const c = groundAt(scene, width, height, x, y);
-    return Math.hypot(c.wx - mid.wx, c.wy - mid.wy);
+  const corners = [groundAt(scene, width, height, 0, 0), groundAt(scene, width, height, width, 0), groundAt(scene, width, height, 0, height), groundAt(scene, width, height, width, height)];
+  const xs = corners.map((c) => c.wx);
+  const ys = corners.map((c) => c.wy);
+  const [top, foot, side] = [groundAt(scene, width, height, width / 2, 0), groundAt(scene, width, height, width / 2, height), groundAt(scene, width, height, 0, height / 2)];
+  return {
+    cx: mid.wx,
+    cy: mid.wy,
+    halfW: Math.hypot(side.wx - mid.wx, side.wy - mid.wy),
+    halfH: Math.hypot(top.wx - foot.wx, top.wy - foot.wy) / 2,
+    radius: Math.max(...corners.map((c) => Math.hypot(c.wx - mid.wx, c.wy - mid.wy))),
+    x0: Math.min(...xs),
+    y0: Math.min(...ys),
+    x1: Math.max(...xs),
+    y1: Math.max(...ys),
   };
-  const radius = Math.max(from(0, 0), from(width, 0), from(0, height), from(width, height));
-  return { cx: mid.wx, cy: mid.wy, halfW: from(0, height / 2), halfH: from(width / 2, 0), radius };
 }
 
-/** The tiles the view covers, a square round its middle. */
+/** The tiles the view covers, a box round its corners. */
 export function viewArea(scene: SceneContext, canvas: HTMLCanvasElement): Area {
-  const { cx, cy, halfW, halfH } = groundCover(scene, canvas);
-  const half = Math.max(halfW, halfH);
-  return { x0: Math.floor(cx - half), y0: Math.floor(cy - half), x1: Math.ceil(cx + half), y1: Math.ceil(cy + half) };
+  const { x0, y0, x1, y1 } = groundCover(scene, canvas);
+  return { x0: Math.floor(x0), y0: Math.floor(y0), x1: Math.ceil(x1), y1: Math.ceil(y1) };
 }
 
 /**

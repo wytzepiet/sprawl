@@ -2,7 +2,7 @@ import { createSignal, Show, onCleanup } from "solid-js";
 import Canvas, { Registered, useEngine } from "../engine/Canvas";
 import Gpu from "../engine/Hud";
 import { underGlass } from "../engine/glass";
-import { OrthoCamera, type Bounds } from "../engine/OrthoCamera";
+import { Camera, type Bounds } from "../engine/Camera";
 import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNightCycle";
 import { InstancePoolProvider } from "../engine/InstancePool";
 import World from "../engine/World";
@@ -90,7 +90,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     <GameProvider connect={(on) => (line = connectLevel(props.level.name, props.level.text, layoutOf(props.level.name), on, hear, (json) => keepLayout(props.level.name, json)))}>
       <DayNightProvider>
         <Canvas>
-          <OrthoCamera bounds={bounds} />
+          <Camera bounds={bounds} />
           <DayNightLights>
             <Registered>
               <InstancePoolProvider>

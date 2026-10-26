@@ -163,7 +163,7 @@ export default function Canvas(props: ParentProps) {
     // The glass moving counts too: the UI's springs move at the moving rate.
     const where = () => {
       const c = scene.camera;
-      return c ? `${c.worldMatrixVersion},${c.ortho?.halfHeight},${glass.key()},${paint.key()}` : "";
+      return c ? `${c.worldMatrixVersion},${c.fov},${glass.key()},${paint.key()}` : "";
     };
     const frame = (now: number) => {
       if (!running) return;

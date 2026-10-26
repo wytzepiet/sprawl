@@ -49,7 +49,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&db) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&mut db) };
     if let Some(dir) = &fixtures {
         sprawl::fixtures::build(&mut world, Path::new(dir));
     } else {
@@ -135,7 +135,7 @@ fn inspect(game: &mut Game, query: Debug) -> String {
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
 
-fn load_world(db: &persistence::Db) -> (World, GameTime) {
+fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
     let (entries, meta) = db.load();
     // A new town opens at nine in the morning, so the opening, and its
     // first ferry, are played by daylight rather than in the dark.

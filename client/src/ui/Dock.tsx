@@ -2,7 +2,7 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { follow } from "../engine/spring";
 import { useEngine } from "../engine/Canvas";
-import { eye } from "../engine/OrthoCamera";
+import { eye } from "../engine/Camera";
 import { held, setTool, tool } from "./buildMode";
 import { BLUEPRINTS } from "../blueprints";
 import { select, selected } from "../state/selection";
