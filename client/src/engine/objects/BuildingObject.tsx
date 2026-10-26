@@ -15,6 +15,7 @@ import { depot } from "./depot";
 import { shop } from "./shop";
 import { house } from "./house";
 import { GLASS, glow, glowing } from "./model";
+import { farm } from "./farm";
 import { quarry } from "./quarry";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
@@ -148,7 +149,7 @@ export function mountBuilding(
   // the other way round; a house, one of a few (`house.ts`); a quarry, its
   // hut on the gate's side (`quarry.ts`).
   const side = entry.id % 2 ? 1 : -1;
-  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : null;
+  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : data.kind === "Farm" ? farm(ctx.engine, side) : null;
   const plot = model
     ? model.map((finish) => {
         const it = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);

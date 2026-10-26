@@ -144,9 +144,9 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       }
       continue;
     }
-    // A shop, a house and a quarry are models of their own too
-    // (`objects/shop.ts`, `objects/house.ts`, `objects/quarry.ts`).
-    if (mass.tile.kind === "Shop" || mass.tile.kind === "House" || mass.tile.kind === "Quarry") continue;
+    // A shop, a house, a quarry and a farm are models of their own too
+    // (`objects/shop.ts`, `house.ts`, `quarry.ts`, `farm.ts`).
+    if (["Shop", "House", "Quarry", "Farm"].includes(mass.tile.kind)) continue;
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
