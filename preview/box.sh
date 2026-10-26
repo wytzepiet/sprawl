@@ -1,6 +1,7 @@
 #!/bin/bash
 # The preview box's half: the deploy key runs this and nothing else.
-#   up <slug>    a fresh world from the build on stdin, at https://<slug>.<domain>
+#   up <slug>    the build on stdin, at https://<slug>.<domain>, on the world
+#                its last push left (the game starts over a save it cannot read)
 #   down <slug>  the world, its save and its address, gone
 set -euo pipefail
 read -r verb slug <<<"${SSH_ORIGINAL_COMMAND:-}"
@@ -19,8 +20,7 @@ up)
   fi
   port=$(cat $dir/port)
   systemctl stop sprawl-preview@$slug 2>/dev/null || true
-  # A save is its build's, so every push starts a fresh world.
-  rm -rf $dir/app $dir/sprawl.db*
+  rm -rf $dir/app
   mkdir $dir/app
   tar -xz -C $dir/app
   printf 'SPRAWL_PORT=%s\nCLIENT_DIR=%s\nSPRAWL_DB=%s\nSPRAWL_SEED=7\n' $port $dir/app/dist $dir/sprawl.db > $dir/env
