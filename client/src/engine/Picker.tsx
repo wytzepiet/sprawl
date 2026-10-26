@@ -3,9 +3,9 @@ import { useEngine } from "./Canvas";
 import { screenToWorld } from "./view";
 import { inHand } from "../ui/buildMode";
 import { buildingAt, useGame } from "../state/gameObjects";
-import { carrying, mayorsLorry, packageAt, setCarrying } from "../state/haul";
+import { mayorsLorry, packageAt, takes } from "../state/haul";
 import { LOAD } from "../generated/rows";
-import { carNear, select, setHovered } from "../state/selection";
+import { carNear, goodsOf, select, selected, setHovered } from "../state/selection";
 
 /** How far a pointer may travel and still be a tap rather than a pan. */
 const TAP_PX = 5;
@@ -19,19 +19,20 @@ const CAR_REACH = 0.45;
  * nothing closes the card. Only in select mode; the tools own the pointer
  * otherwise.
  *
- * While you have a lorry, a tap on a package picks it up for it, and so
- * does a tap on the lorry with a load aboard; the next tap on a building
- * sends it there (`haul::send`), and a tap on anything else puts it down.
+ * While you have a lorry, a pile of goods on a pad is picked as well;
+ * with one picked, a tap on a building that takes it sends your lorry
+ * with it there (`haul::send`), and picks the lorry, to follow it.
  */
 export function Picker() {
   const { scene, canvas } = useEngine();
   const { send } = useGame();
   let down: { x: number; y: number; t: number } | null = null;
 
-  /** What is under a pointer: a car first, then the plot the tile belongs to. */
+  /** What is under a pointer: a car first, then a pile of goods your
+   *  lorry could fetch, then the plot the tile belongs to. */
   const under = (e: PointerEvent): number | null => {
     const w = screenToWorld(scene, canvas, e);
-    return carNear(w.wx, w.wy, CAR_REACH) ?? buildingAt(Math.floor(w.wx), Math.floor(w.wy))?.id ?? null;
+    return carNear(w.wx, w.wy, CAR_REACH) ?? (mayorsLorry() ? packageAt(w.wx, w.wy) : null) ?? buildingAt(Math.floor(w.wx), Math.floor(w.wy))?.id ?? null;
   };
   const onPointerMove = (e: PointerEvent) => {
     setHovered(!inHand() && e.buttons === 0 ? under(e) : null);
@@ -45,20 +46,13 @@ export function Picker() {
     const held = performance.now() - down.t;
     down = null;
     if (moved > TAP_PX || held > TAP_MS) return;
-    const w = screenToWorld(scene, canvas, e);
-    const lorry = mayorsLorry();
-    const c = carrying();
-    if (c) {
-      setCarrying(null);
-      const to = buildingAt(Math.floor(w.wx), Math.floor(w.wy))?.id;
-      if (to !== undefined && to !== c.from) send({ type: "Haul", data: { from: c.from, good: c.good, packages: LOAD, to } });
-      return;
-    }
-    const picked = lorry && packageAt(w.wx, w.wy);
-    if (picked) return setCarrying(picked);
     const id = under(e);
-    const aboard = lorry && id === lorry.id ? lorry.car.cargo[0] : undefined;
-    if (lorry && aboard) return setCarrying({ from: lorry.id, good: aboard.good, at: [w.wx, w.wy] });
+    const pile = goodsOf(selected());
+    const lorry = mayorsLorry();
+    if (pile && lorry && id !== null && id !== pile.at && takes(id, pile.good)) {
+      send({ type: "Haul", data: { from: pile.at, good: pile.good, packages: LOAD, to: id } });
+      return select(lorry.id);
+    }
     select(id);
   };
   canvas.addEventListener("pointerdown", onPointerDown);

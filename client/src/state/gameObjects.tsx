@@ -331,7 +331,8 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   // card before stays until the next comes, so the sheet does not sink and
   // rise again between them.
   createEffect(on(selected, (id) => {
-    if (id === null) return setCard(null);
+    // A pile of goods is the client's to show (`goodsOf`).
+    if (id === null || id < 0) return setCard(null);
     const ask = () => send({ type: "Card", data: id });
     ask();
     const timer = setInterval(ask, 1000);

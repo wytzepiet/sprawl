@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { getEntity } from "./gameObjects";
-import { middle } from "../blueprints";
-import type { Building } from "../generated";
+import { GOODS, middle } from "../blueprints";
+import type { Building, Good } from "../generated";
 
 /** The thing whose card is open, if any. */
 const [selected, setSelected] = createSignal<number | null>(null);
@@ -19,6 +19,17 @@ const [hovered, setHovered] = createSignal<number | null>(null);
  */
 const [subject, setSubject] = createSignal<number | null>(null);
 export { selected, following, setFollowing, hovered, setHovered, subject, setSubject };
+
+/** A pile of goods on a pad has no id of its own, so it is given one:
+ *  below zero, its building's and its good's. Selected like anything
+ *  else, outlined, its card in the sheet (`Card.tsx`). */
+const GOOD_ORDER = Object.keys(GOODS) as Good[];
+export const goodsId = (at: number, good: Good) => -(at * GOOD_ORDER.length + GOOD_ORDER.indexOf(good) + 1);
+export function goodsOf(id: number | null): { at: number; good: Good } | null {
+  if (id === null || id >= 0) return null;
+  const k = -id - 1;
+  return { at: Math.floor(k / GOOD_ORDER.length), good: GOOD_ORDER[k % GOOD_ORDER.length] };
+}
 
 export function select(id: number | null) {
   setSelected(id);
@@ -50,6 +61,8 @@ export const parts = new Map<number, Part[]>();
  * resident has no place of their own; ask about where they are instead.
  */
 export function positionOf(id: number): [number, number] | null {
+  const pile = goodsOf(id);
+  if (pile) return positionOf(pile.at);
   const car = carPoses.get(id);
   if (car) return car;
   const e = getEntity(id);

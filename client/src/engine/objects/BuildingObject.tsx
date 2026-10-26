@@ -13,6 +13,7 @@ import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
+import { goodsId, parts, type Part } from "../../state/selection";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
@@ -143,7 +144,8 @@ export function mountBuilding(
   setLifts(entry.id, data.lifts);
   const pad = padOf(data);
   const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
-  const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
+  const stood = (pad?.bays ?? []).map(() => [] as ReturnType<typeof placeShape>[]);
+  const traced: Part[][] = [];
   const lay = (now: number) =>
     pad?.bays.forEach((bay, b) => {
       const want = packagesOf(data, bay.good) + data.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, now), 0);
@@ -153,6 +155,8 @@ export function mountBuilding(
         const [at, up] = placeIn(bay, have.length);
         have.push(placeShape(pool, itemOf(bay.good, false), at, base + up * ITEMS[bay.good].h));
       }
+      // What the outline traces when the pile is picked.
+      parts.set(goodsId(entry.id, bay.good), (traced[b] = have.flatMap((h) => h.parts)));
     });
   lay(simNow());
   const working = pad && data.lifts.some((l) => ends(l) > simNow());
@@ -208,6 +212,7 @@ export function mountBuilding(
     stop();
     for (const { key, id } of placed) pool.removeInstance(key, id);
     for (const it of [...stood.flat(), ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    pad?.bays.forEach((bay, b) => parts.get(goodsId(entry.id, bay.good)) === traced[b] && parts.delete(goodsId(entry.id, bay.good)));
     field?.();
   };
 }

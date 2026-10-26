@@ -1,13 +1,15 @@
 /** @jsxImportSource ~ui */
 import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
-import { BLUEPRINTS } from "../blueprints";
-import { select, setFollowing, setSubject } from "../state/selection";
-import { card, getEntity } from "../state/gameObjects";
+import { BLUEPRINTS, GOODS, packages } from "../blueprints";
+import { goodsOf, select, selected, setFollowing, setSubject } from "../state/selection";
+import { packagesOf } from "../engine/objects/pads";
+import { LOAD } from "../generated/rows";
+import { card, getEntity, useGame } from "../state/gameObjects";
 import { now } from "../state/sea";
-import { mayorsLorry } from "../state/haul";
+import { destinations, mayorsLorry } from "../state/haul";
 import { DepotPanel } from "./Depot";
 import { SitePanel } from "./Site";
-import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
+import { BAD, Bar, Btn, GDP, GOOD, GoodDot, Press, Row, Section, To, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingCard, CarCard, CarRole, ResidentCard } from "../generated";
 
@@ -48,6 +50,7 @@ const buildingOf = (id: number) => {
  */
 export function InspectHead() {
   return (
+    <Show when={!goodsOf(selected())} fallback={<PileHead />}>
     <Show when={card()}>
       {(c) => {
         const head = () => {
@@ -79,6 +82,7 @@ export function InspectHead() {
         return <Header title={head().title} sub={head().sub} icon={(head() as { icon?: JSX.Element }).icon} />;
       }}
     </Show>
+    </Show>
   );
 }
 
@@ -90,6 +94,7 @@ export function InspectBody() {
     return c?.kind === "building" ? c.id : null;
   });
   return (
+    <Show when={!goodsOf(selected())} fallback={<PileBody />}>
     <Show when={card()}>
       {(c) => (
         <>
@@ -99,6 +104,58 @@ export function InspectBody() {
             {(id) => <BuildingLines id={id} card={() => card() as BuildingCard} />}
           </Show>
         </>
+      )}
+    </Show>
+    </Show>
+  );
+}
+
+/** The pile picked: its good, how much, and where. */
+const pile = () => {
+  const p = goodsOf(selected());
+  const b = p && buildingOf(p.at);
+  return p && b ? { ...p, b, n: packagesOf(b, p.good) } : null;
+};
+
+function PileHead() {
+  return (
+    <Show when={pile()}>
+      {(p) => <Header title={GOODS[p().good].label[0].toUpperCase() + GOODS[p().good].label.slice(1)} sub={`${packages(p().good, p().n)} at the ${BLUEPRINTS[p().b.kind].label.toLowerCase()}`} icon={<GoodDot good={p().good} size={36} />} />}
+    </Show>
+  );
+}
+
+/** Where your lorry can take a pile: every building that takes it, the
+ *  nearest first, a tap each; or a tap on one on the map. */
+function PileBody() {
+  const { send } = useGame();
+  const bring = (to: number) => {
+    const p = pile();
+    const lorry = mayorsLorry();
+    if (!p || !lorry) return;
+    send({ type: "Haul", data: { from: p.at, good: p.good, packages: LOAD, to } });
+    select(lorry.id);
+  };
+  const named = (id: number) => {
+    const b = buildingOf(id);
+    if (!b) return "";
+    const bp = BLUEPRINTS[b.kind];
+    if (b.site) return `${bp.label} · a site`;
+    return b.kind === "Harbour" ? "Harbour · to sell" : bp.label;
+  };
+  return (
+    <Show when={pile()}>
+      {(p) => (
+        <Section title="Your lorry can bring it to">
+          <For each={destinations(p().at, p().good).slice(0, 5)} fallback={<text size={13} soft>Nowhere wants it yet</text>}>
+            {(id) => (
+              <Row label={named(id)}>
+                <Btn onTap={() => bring(id)}>Bring</Btn>
+              </Row>
+            )}
+          </For>
+          <text size={12} soft>or tap a building</text>
+        </Section>
       )}
     </Show>
   );
