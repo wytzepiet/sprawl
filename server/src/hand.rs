@@ -16,8 +16,6 @@ pub(crate) fn handle_player_action(
     message: ClientMessage,
     now: GameTime,
 ) -> Option<News> {
-    // Anything the mayor does may do a mission's step.
-    world.missions.stir();
     match message {
         ClientMessage::Build(step) => return build(world, events, owner, step, now),
         ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, owner, stroke, now),
@@ -35,10 +33,6 @@ pub(crate) fn handle_player_action(
         }
         ClientMessage::Trade { good, packages, out } => {
             crate::market::trade(world, good, out, packages);
-            crate::haul::call_lorries(world, events);
-        }
-        ClientMessage::Send { letter, packages } => {
-            crate::orders::send(world, letter, packages);
             crate::haul::call_lorries(world, events);
         }
         ClientMessage::Order { good, out, packages, price } => crate::market::order(world, good, out, packages, price),

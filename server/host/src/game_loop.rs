@@ -148,9 +148,6 @@ fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
         world.gdp = meta.gdp;
         world.treasury = meta.treasury;
-        if !meta.missions.is_empty() {
-            world.missions.list = meta.missions;
-        }
         world.market = meta.market;
         world
     };
@@ -173,7 +170,6 @@ fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
         sim_time,
         gdp: world.gdp,
         treasury: world.treasury,
-        missions: world.missions.list.clone(),
         market: world.market.clone(),
     };
     db.save(&changed, &removed, &meta);

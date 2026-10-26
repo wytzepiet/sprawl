@@ -9,7 +9,6 @@ use land::ChunkCoord;
 pub mod blueprint;
 pub mod card;
 pub mod market;
-pub mod missions;
 pub mod needs;
 pub mod orders;
 
@@ -595,8 +594,7 @@ pub struct Package {
     pub to: Option<EntityId>,
     /// Going out: an export, brought to a harbour's quay for the ferry.
     pub outbound: bool,
-    /// The shipment it is part of: a booking, a pin's, a letter's, the
-    /// starter pack.
+    /// The shipment it is part of: a booking, or the starter pack.
     #[ts(type = "number")]
     pub order: u64,
     /// Who it is from or for: a mayor beyond the edge, or None, the world.
@@ -730,9 +728,6 @@ pub struct Sea {
     pub sailings: Vec<Sailing>,
     #[serde(default)]
     pub lanes: Vec<Lane>,
-    /// What the open letters still want.
-    #[serde(default)]
-    pub letters: Vec<crate::orders::Letter>,
 }
 
 /// A stretch of a line's way as it lies on the map (`traffic::sea::lanes`):
@@ -1033,8 +1028,6 @@ pub enum ClientMessage {
     DespawnAllCars,
     /// Packages of a good bought from the market or sold to it (`market::trade`).
     Trade { good: Good, packages: u32, out: bool },
-    /// Packages a letter wants, sent (`orders::send`).
-    Send { #[ts(type = "number")] letter: u64, packages: u32 },
     /// Packages bought once the price falls to this, or sold once it rises to it.
     Order { good: Good, out: bool, packages: u32, price: f64 },
     Cancel { #[ts(type = "number")] order: u64 },
@@ -1145,10 +1138,7 @@ pub struct StateUpdate {
     /// Every shipment on its way and every harbour's timetable.
     #[serde(default)]
     pub sea: Sea,
-    /// The town's open missions, and those just finished.
-    #[serde(default)]
-    pub missions: Vec<crate::missions::Mission>,
-    /// The mayors of the towns beyond the edge, and how they stand.
+    /// The mayors of the towns beyond the edge.
     #[serde(default)]
     pub neighbours: Vec<crate::orders::Neighbour>,
     /// The island's map, which the client keeps its camera inside.

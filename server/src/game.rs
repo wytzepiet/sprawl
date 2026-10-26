@@ -244,8 +244,6 @@ impl Game {
             wakes += 1;
         }
         crate::market::hour(&mut self.world, &mut self.events, self.now);
-        // Before the flush, which takes the lumps a mission reads.
-        crate::missions::check(&mut self.world, self.now);
         wakes
     }
 
@@ -318,9 +316,6 @@ pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 /// think about it. And the day is always due to turn.
 pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     let changed = !world.map.unsettled.is_empty();
-    if changed {
-        world.missions.stir();
-    }
     for id in world.settle() {
         wake_resident(world, events, id);
     }

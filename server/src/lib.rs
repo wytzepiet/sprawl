@@ -7,7 +7,6 @@ pub mod hand;
 pub mod haul;
 pub mod hint;
 pub mod market;
-pub mod missions;
 pub mod orders;
 mod rows;
 pub mod resident;

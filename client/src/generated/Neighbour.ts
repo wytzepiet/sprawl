@@ -3,15 +3,10 @@ import type { Compass } from "./Compass";
 import type { Mayor } from "./Mayor";
 
 /**
- * A mayor as the clients are sent one: who, where, how they look, and
- * how they stand with the town.
+ * A mayor as the clients are sent one: who, where, how they look.
  */
 export type Neighbour = { mayor: Mayor, name: string, town: string, toward: Compass, 
 /**
  * The town's colour, the crest's ground.
  */
-colour: string, standing: number, 
-/**
- * Writes to the town yet.
- */
-writes: boolean, };
+colour: string, };

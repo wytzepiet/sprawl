@@ -202,7 +202,7 @@ pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
     let Some(&harbour) = world.map.harbours.keys().next() else { return 0 };
     for n in 0..packages {
         let price = world.market.next(good, out);
-        if !crate::orders::book(world, harbour, good, out, None, price, None) {
+        if !crate::orders::book(world, harbour, good, out, None, price) {
             return n;
         }
         world.market.traded(good, 1.0, out);

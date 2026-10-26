@@ -21,7 +21,6 @@
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act buy Timber 2            two bundles of timber from the market, on
  *       sell Crates                     the next ferry; or a crate of food sold
- *   bun run act send 42 2               two packages letter 42 asks for, sent
  *   bun run act order buy Fuel 3 0.9    three pallets of fuel bought once its
  *                                       price (a unit) falls to 0.9; `sell`,
  *                                       once it rises to it
@@ -34,10 +33,6 @@
  *                                       .dev/paths.json, and every bend tighter
  *                                       than a car turns counted
  *   bun run act time                    the clock, as now and time of day
- *   bun run act missions                the town's missions, each step ticked
- *                                       or not, and what the one at hand says;
- *                                       every command also says the steps it
- *                                       saw done and the missions it saw open
  *   bun run act reset                   a new world
  *   bun run act - < steps.txt           one command a line; # comments
  *
@@ -54,7 +49,7 @@ import { PORT, ROOT } from "./lib";
 import { connect } from "./game";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
 import type { P } from "../src/engine/geometry";
-import type { BuildingKind, GameObjectEntry, Good, Mission, Neighbour, Operation, Tool } from "../src/generated";
+import type { BuildingKind, GameObjectEntry, Good, Operation, Tool } from "../src/generated";
 
 /** Quiet this long and the server has said all it will about a command;
  *  silent this long, and it will say nothing. */
@@ -79,10 +74,6 @@ let ops: Operation[] = [];
 /** Every trip seen, once each. */
 const trips = new Map<string, Recorded>();
 const PLAYER = process.env.PLAYER ?? "4242";
-/** The town's missions, as the last update had them. */
-let missions: Mission[] = [];
-/** The mayors beyond the edge, and how they stand. */
-let neighbours: Neighbour[] = [];
 /** News heard since the last command said what it saw. */
 const told: string[] = [];
 // The chunks every tile named lies in, a chunk round, so the server tells
@@ -95,8 +86,6 @@ const game = await connect({
     // The town spending of its own accord, as the news tells a player.
     if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
     if (msg.type !== "Update") return;
-    missions = msg.data.missions ?? [];
-    neighbours = msg.data.neighbours ?? [];
     if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
     for (const op of msg.data.ops) {
       if (op.op !== "Upsert" || op.data.object.kind !== "Car" || !op.data.object.data.trip) continue;
@@ -141,32 +130,6 @@ function changes(batch: Operation[]): string[] {
     ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
   ];
 }
-/** What a mission pays: coins, and for an order standing with its mayor. */
-const pays = (m: Mission) => (typeof m.reward.data === "number" ? `+${m.reward.data} coins` : `+${m.reward.data.coins} coins as it sails, +${m.reward.data.standing} standing`);
-const lapsed = (m: Mission) => m.finished !== null && m.steps.some((s) => !s.done);
-/** What became of the missions over a command: opened, steps done, finished. */
-function progress(before: Mission[]): string[] {
-  const out: string[] = [];
-  for (const m of missions) {
-    const was = before.find((b) => JSON.stringify(b.key) === JSON.stringify(m.key));
-    if (!was) out.push(`mission opened: ${m.title}${m.steps.length === 1 ? `: ${m.steps[0].title}` : ""}`);
-    m.steps.forEach((s, i) => s.done && !was?.steps[i]?.done && out.push(`mission ${m.title}: ${s.title} done`));
-    if (m.finished !== null && was?.finished == null) out.push(lapsed(m) ? `mission lapsed: ${m.title}, ${m.steps[0].title}` : `mission finished: ${m.title}, ${pays(m)}`);
-  }
-  return out;
-}
-/** Every mission, its steps, and what the one at hand says. */
-function listed(): string[] {
-  const mayors = neighbours.map((n) => `${n.name} of ${n.town}, ${n.toward.toLowerCase()}: standing ${n.standing}${n.writes ? "" : ", silent"}`);
-  return mayors.concat(missions.flatMap((m) => {
-    const at = m.steps.findIndex((s) => !s.done);
-    return [
-      `${m.title}${lapsed(m) ? " (lapsed)" : m.finished !== null ? " (finished)" : ""}, ${pays(m)}${m.due !== null && m.finished === null ? `, due at ${m.due} ms` : ""}`,
-      ...m.steps.map((s, i) => `  [${s.done ? "x" : " "}] ${s.title}${s.at !== null ? ` (#${s.at})` : ""}${i === at ? `: ${s.text.replace(/\n\n/g, " ")}` : ""}`),
-    ];
-  }));
-}
-
 /** The trips seen, kept for `bun run plan --paths`, and their bends
  *  tighter than a car turns, by where on the trip they are. */
 function watched(): string[] {
@@ -219,7 +182,6 @@ const at = ([x, y]: P) => ({ x, y });
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];
 for (const line of lines) {
-  const before = missions;
   const [verb, ...rest] = line;
   const flags = rest.filter((a) => a.startsWith("--"));
   const args = rest.filter((a) => !a.startsWith("--"));
@@ -249,14 +211,11 @@ for (const line of lines) {
     case "speed":
       send({ type: "SetSpeed", data: Number(args[0]) });
       break;
-    // The border: the market and the letters. The sea's state, and the
+    // The border: the market. The sea's state, and the
     // market's, is at /sea.
     case "buy":
     case "sell":
       send({ type: "Trade", data: { good: args[0] as Good, packages: Number(args[1] ?? 1), out: verb === "sell" } });
-      break;
-    case "send":
-      send({ type: "Send", data: { letter: Number(args[0]), packages: Number(args[1] ?? 1) } });
       break;
     case "order":
       send({ type: "Order", data: { out: args[0] === "sell", good: args[1] as Good, packages: Number(args[2]), price: Number(args[3]) } });
@@ -268,9 +227,6 @@ for (const line of lines) {
       send({ type: "ResetWorld" });
       break;
     case "time":
-      break;
-    case "missions":
-      report = listed();
       break;
     case "watch":
     case "run": {
@@ -293,9 +249,9 @@ for (const line of lines) {
     default:
       throw new Error(`no such command: ${verb}`);
   }
-  const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
+  const said = [...changes(await settled()), ...told.splice(0), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "send", "order", "cancel", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "order", "cancel"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 game.close();

@@ -1,5 +1,5 @@
 //! The town: its map (`map::Map`), and the life on it, which the sim
-//! runs over the map: its books and calls, its market and missions, its
+//! runs over the map: its books and calls, its market, its
 //! ferries' lines and voyages, the mayor's undo.
 
 use fixed::HashMap;
@@ -8,7 +8,7 @@ use map::Map;
 use model::EntityId;
 
 /// The town: its map, and the life on it, its books and calls, its
-/// market and missions, its ferries' lines.
+/// market, its ferries' lines.
 pub struct World {
     pub map: Map,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
@@ -47,8 +47,6 @@ pub struct World {
     /// The buildings placed lately, for razing to give back (`undo::raze`).
     /// Not saved.
     pub placed: Vec<crate::undo::Placed>,
-    /// The town's missions (`missions.rs`). Saved.
-    pub missions: crate::missions::Missions,
     /// Who goes first at each sea junction and berth: its ships' claims.
     pub junctions: traffic::intersection::IntersectionRegistry,
     /// Who goes first at each road junction and crossing: its cars'
@@ -88,7 +86,6 @@ impl World {
             calls: Vec::new(),
             undo: HashMap::default(),
             placed: Vec::new(),
-            missions: Default::default(),
             junctions: traffic::intersection::IntersectionRegistry::new(),
             streets: traffic::intersection::IntersectionRegistry::new(),
             vacancies: Default::default(),
@@ -97,7 +94,7 @@ impl World {
         }
     }
 
-    /// A saved world's map; its coins, missions and market are the save's to set.
+    /// A saved world's map; its coins and market are the save's to set.
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
         Self { map: Map::from_loaded(objects, terrain_seed), treasury: 0.0, ..Self::new() }
     }

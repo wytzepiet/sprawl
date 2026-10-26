@@ -5,6 +5,27 @@ why it went, what bringing it back would take, and the last commit where
 the code lived — so nothing has to be reinvented from memory, and nothing
 has to stay in the tree to be remembered.
 
+## Missions and the mayors' letters (2026-10-26)
+
+**What.** `missions.md` as built: the opening as a mission of five steps
+(harbour, depot, street, starter pack fetched, houses settled), the trunk
+after it (buy a box, sell a crate), the town's situations (a gas station
+when cars run dry, a quarry, sawmill or farm when sites or shelves go
+short), each paying coins; and the order board (`orders.rs`), letters
+from Tam, Mira, Bess and Port Aldra asking for packages, with standing
+that rose as they were filled. The feed showed them as cards, with the
+button that did each step.
+
+**Why shelved.** `core.md`: the start is open, and what the player may
+build is kept short by the lab's unlocks, not by steps; the goal you can
+see is the locked building in the menu. A letter was a listing with a
+deadline, and selling is the market's Buy, Sell and line. The mayors
+stay, as the market's movers and the names on packages.
+
+**Bringing it back.** As the tutorial, once the loop plays: the steps
+read facts off the town on the server and nothing on the client ticks
+one; that part was right. Last lived at `5bce204`.
+
 ## The price economy (2026-10-10)
 
 **What.** `archive/economy.md` as built through §12.10: every building posting a

@@ -134,9 +134,6 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             van
         });
         world.calls[i].answered_by = answered;
-        if answered.is_none() {
-            crate::missions::sense(world, crate::missions::When::Short(good), now);
-        }
     }
     if world.calls.iter().any(|c| c.answered_by.is_none()) {
         events.wake(RETRY_MS, crate::game::CALLS_AGAIN);

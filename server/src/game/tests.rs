@@ -17,8 +17,8 @@ pub(crate) enum Do {
     Place(BuildingKind, GridCoord),
     /// The building on a tile taken down whole.
     Raze(GridCoord),
-    /// A package a letter wants, sent.
-    Send(u64),
+    /// A package of a good sold at the market.
+    Sell(Good),
 }
 /// The hand's act done, as a player's command is; a building refused is
 /// a test gone wrong.
@@ -27,7 +27,7 @@ pub(crate) fn does(game: &mut Game, d: Do) {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
         Do::Raze(at) => ClientMessage::Raze { building: game.world.map.occupied[&(at.x, at.y)] },
-        Do::Send(letter) => ClientMessage::Send { letter, packages: 1 },
+        Do::Sell(good) => ClientMessage::Trade { good, packages: 1, out: true },
     };
     game.command(PLAYER, message);
     if let Do::Place(kind, at) = d {
@@ -755,9 +755,8 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill);
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
-    // street beside it; and the letters read, and a slot booked going
-    // out for each package an order still wants, while the depot keeps a
-    // lorry's load back for the sites.
+    // street beside it; and the depot's crates over a lorry's load sold
+    // at the market.
     let hand = |world: &World, day: u64| -> Steps {
         let x = 112 + 4 * (day as i32 - 1);
         let at = |x, y| GridCoord { x, y };
@@ -769,12 +768,10 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
         ];
         let depot = world.map.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).unwrap();
         let harbour = harbour_of(world);
-        // Waiting at the harbour, and booked tonight for a letter before this one.
-        let queued = |g: Good, steps: &Steps| (building_of(world, harbour).outgoing.iter().filter(|t| t.good == g).count() + steps.iter().filter(|d| matches!(d, Do::Send(l) if crate::orders::letters(world).iter().any(|o| o.letter == *l && o.good == g))).count()) as f64;
-        for o in crate::orders::letters(world) {
-            let spare = (building_of(world, depot).stocks[&o.good].level / o.good.per_package()).floor() - crate::haul::LOAD as f64 - queued(o.good, &steps);
-            steps.extend((0..(o.packages as f64).min(spare).max(0.0) as usize).map(|_| Do::Send(o.letter)));
-        }
+        // Waiting at the harbour already.
+        let queued = building_of(world, harbour).outgoing.iter().filter(|t| t.good == Good::Crates).count() as f64;
+        let spare = (building_of(world, depot).stocks[&Good::Crates].level / Good::Crates.per_package()).floor() - crate::haul::LOAD as f64 - queued;
+        steps.extend((0..spare.max(0.0) as usize).map(|_| Do::Sell(Good::Crates)));
         steps
     };
     let mut empty_since: std::collections::BTreeMap<(EntityId, String), u64> = Default::default();
@@ -890,28 +887,6 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     });
     let sold = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum::<f64>();
     println!("the season: treasury {:.1}, crates sold to the world for {sold:.1}, {stood} sites stood", world.treasury);
-    // The order board: what the towns beyond the edge asked, what was
-    // sent, and what they paid.
-    let orders: Vec<_> = world.missions.list.iter().filter(|m| matches!(m.key, model::missions::Key::Order(_))).collect();
-    let paid: f64 = orders
-        .iter()
-        .map(|m| match (m.steps[0].goal, m.reward) {
-            (model::missions::Goal::Delivered { units, sailed, .. }, model::missions::Reward::Order { coins, .. }) => coins * sailed.min(units) / units,
-            _ => 0.0,
-        })
-        .sum();
-    let filled = orders.iter().filter(|m| m.steps[0].done).count();
-    let lapsed = orders.iter().filter(|m| m.finished.is_some() && !m.steps[0].done).count();
-    println!(
-        "orders: {} letters, {filled} filled, {lapsed} lapsed; {paid:.0} coins paid: {:.0}% of the treasury",
-        orders.len(),
-        100.0 * paid / world.treasury
-    );
-    for n in crate::orders::neighbours(&world) {
-        let theirs: Vec<_> = orders.iter().filter(|m| m.from == Some(n.mayor)).map(|m| { let sent = match m.steps[0].goal { model::missions::Goal::Delivered { sailed, .. } => sailed, _ => 0.0 }; format!("{}{}", m.steps[0].title, if m.steps[0].done { String::new() } else if m.finished.is_some() { format!(" (lapsed, {sent:.0} sent)") } else { " (open)".into() }) }).collect();
-        println!("  {} of {}: standing {:.1}; {}", n.name, n.town, n.standing, theirs.join(", "));
-    }
-    assert!(filled > 0, "the town filled no orders");
 
     assert!(sold > 0.0, "the farm never sold a harvest to the world");
     assert!(world.treasury > 0.0, "the town ran out of coins");
@@ -1058,38 +1033,20 @@ fn a_real_coast_is_called_at_as_often_as_ever() {
     assert!(per_day >= 6.0, "{per_day} calls a day");
 }
 
-/// The opening, done: what the town's situation waits for.
-pub(crate) fn opening_done(world: &mut World) {
-    world.missions.list.iter_mut().for_each(|m| m.finished = Some(0));
-}
-/// The open missions' steps, by mission, as the step after now reads them.
-pub(crate) fn missions(game: &mut Game) -> Vec<(model::missions::Key, Vec<bool>, bool)> {
-    game.step();
-    game.world.missions.list.iter().map(|m| (m.key, m.steps.iter().map(|s| s.done).collect(), m.finished.is_some())).collect()
-}
-
-/// The opening's steps done.
-pub(crate) fn opening(game: &mut Game) -> Vec<bool> {
-    missions(game).into_iter().find(|m| m.0 == model::missions::Key::Opening).expect("no opening").1
-}
-/// The opening, docs/game.md: a harbour, a depot, a street between
+/// The opening, docs/core.md: a harbour, a depot, a street between
 /// them. The first ferry comes in on time with the starter pack and
 /// the forklifts lift it onto the quay, for nothing; the depot's
 /// lorry fetches a load and its forklift unloads it into the yard, and a second
 /// lorry helps fetch the rest. A house is a site until a
 /// van brings its timber; then its settlers come on the next ferry and
 /// drive home. A box of crates sold goes out on the ferry, paid as it
-/// casts off; and the ferry keeps its timetable throughout. The
-/// opening mission ticks off each step as the town does it, on the
-/// server, and pays when the last is done; the trunk follows it.
+/// casts off; and the ferry keeps its timetable throughout.
 #[test]
 fn the_opening_from_the_harbour() {
-    use model::missions::Key;
     use traffic::sea::DWELL;
     use crate::ferry::FIRST_CALL;
     let mut game = game(street());
     let harbour = harbour_of(&game.world);
-    assert_eq!(opening(&mut game), [true, false, false, false, false], "the harbour stands, and nothing else");
     let x = HARBOUR_X - 12;
     let world = &mut game.world;
     let facing = world.map.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
@@ -1097,7 +1054,7 @@ fn the_opening_from_the_harbour() {
     world.map.orient(depot);
     assert!(building_of(world, depot).site.is_none(), "the first depot is a site");
     assert!(building_of(world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
-    assert_eq!(opening(&mut game), [true, true, true, false, false], "a depot on the harbour's street");
+    game.step();
     let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let lorry = lorries_of(world, depot)[0];
@@ -1148,7 +1105,6 @@ fn the_opening_from_the_harbour() {
     assert!(stock(&game.world) > 0.0, "the lorry brought nothing home in two hours");
     assert!(car_of(&game.world, lorry).cargo.is_empty(), "the load was not gone into stock");
     assert!(game.world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
-    assert_eq!(opening(&mut game), [true, true, true, true, false], "the load fetched");
 
     // A second lorry, bought from the world: the two fetch the rest.
     let before = game.world.treasury;
@@ -1191,18 +1147,9 @@ fn the_opening_from_the_harbour() {
     }
     assert!(rolled > 0, "no settler was seen rolling off the deck");
     assert!(settlers.iter().all(|&id| at_of(&game.world, id) == Some(house)), "the settlers never got home");
-    // The opening done, and paid; the trunk opens on the market: a
-    // package bought.
-    // Paid in the step they came home in, as coins landing at the harbour.
-    assert_eq!(opening(&mut game), [true; 5], "the settlers came");
-    let paid = game.world.lumps.iter().filter(|l| l.building == harbour && l.good.is_none()).map(|l| l.coins).sum::<f64>();
-    assert!((paid - 100.0).abs() < 1e-9, "the opening paid {paid}");
-    // The trunk alone: the market's orders come and go beside it.
-    let trunk = |game: &mut Game| missions(game).into_iter().filter(|(k, ..)| !matches!(k, Key::Order(_))).map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
-    assert_eq!(trunk(&mut game), [(Key::Opening, true), (Key::Book, false)]);
+    // A package bought pushes its price.
     let price = game.world.market.price(Good::Timber);
     game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: false });
-    assert_eq!(trunk(&mut game)[1..], [(Key::Book, true), (Key::Sell, false)]);
     assert!(game.world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
     // A crate of food sold: out on the ferry, paid as it casts off.
@@ -1213,7 +1160,6 @@ fn the_opening_from_the_harbour() {
     // What the depot spares over its own shelf, at the market's price less freight.
     assert!(sold > 0.0 && sold <= Good::Crates.per_package() * crate::market::Market::ceiling(Good::Crates) + 1e-6, "the crate went out for {sold}");
     assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
-    assert_eq!(trunk(&mut game)[2], (Key::Sell, true), "the crate sold");
 }
 
 /// One lorry, its depot a short street from the harbour, fetches the

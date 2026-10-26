@@ -40,15 +40,13 @@ pub struct Meta {
     pub gdp: f64,
     /// The mayor's coins.
     pub treasury: f64,
-    /// The town's missions, open and finished, in order.
-    pub missions: Vec<model::missions::Mission>,
     /// The market's prices, their week and the orders waiting.
     pub market: sprawl::market::Market,
 }
 
 impl Default for Meta {
     fn default() -> Self {
-        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, missions: Vec::new(), market: Default::default() }
+        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, market: Default::default() }
     }
 }
 
@@ -192,17 +190,14 @@ mod tests {
         assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
-    /// The rest of the world outlives a restart as it stood, the town's
-    /// missions with their steps and the market's week among it, whether or not an object
+    /// The rest of the world outlives a restart as it stood, the
+    /// market's week among it, whether or not an object
     /// changed with it; and a reset leaves nothing to load.
     #[test]
     fn the_world_beside_its_objects_is_saved() {
         let scratch = Scratch::new("meta");
-        let mut missions = sprawl::missions::Missions::default().list;
-        missions[0].steps[1].done = true;
-        missions[0].finished = Some(7);
         let market = serde_json::from_str(r#"{"hour":3,"at":{"Timber":0.5},"push":{"Timber":0.1},"history":{"Timber":[1.0,1.5,2.0]},"orders":[]}"#).unwrap();
-        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, missions, market };
+        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, market };
         let mut db = Db::open(&scratch.0);
         db.save(&[], &[], &meta);
         let (_, loaded) = Db::open(&scratch.0).load();
