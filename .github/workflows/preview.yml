@@ -85,6 +85,11 @@ jobs:
 
       - name: Build
         if: github.event_name == 'push'
+        # What it was built from, so the page can tell a newer push (`ui/Newer.tsx`).
+        env:
+          VITE_REPO: ${{ github.repository }}
+          VITE_BRANCH: ${{ github.ref_name }}
+          VITE_SHA: ${{ github.sha }}
         run: |
           (cd Babylon-Lite && pnpm install --frozen-lockfile)
           # Preview, not production: the clock keeps its speeds and resets (`ui/Clock.tsx`).
