@@ -3,7 +3,7 @@ import type { MeshGeometry } from "../geometry";
 import { rgb, type Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
-import { dress, type Dressing } from "./dressing";
+import { dress, HEDGE_THICK, type Dressing, type Hedge } from "./dressing";
 import { pavement } from "./surface";
 import { facts } from "./facts";
 import { area, type Polygon } from "./footprint";
@@ -67,9 +67,49 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   add("mass", mass, null);
   // Each wound as the sheets' outlines are.
   add("lines", flatPolygons(dressing.yardLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
+  add("hedges", hedgeMesh(dressing.hedges), HEDGE);
   // A street lamp stands on the pavement, a prop like what stands on a roof.
   const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: KERB_Z, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
   return { pieces, dressing, props: [...mass.props, ...lamps] };
+}
+
+/** A hedge's green, how high it stands, and how far in its top's edges
+ *  are rounded off. */
+const HEDGE = rgb(0.29, 0.43, 0.24);
+const HEDGE_HIGH = 0.1;
+const HEDGE_ROUND = 0.025;
+
+/** Each hedge a long block on the pavement, its top's edges bevelled,
+ *  for the light to round. */
+function hedgeMesh(hedges: Hedge[]): MeshGeometry {
+  const g: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const face = (pts: number[][], n: number[]) => {
+    const base = g.positions.length / 3;
+    for (const [x, y, z] of pts) g.positions.push(-x, -y, z), g.normals.push(-n[0], -n[1], n[2]);
+    const [a, b, c] = pts;
+    const cross = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])];
+    // Wound as the masses are, clockwise seen from outside.
+    const flip = cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] > 0;
+    for (let i = 1; i + 1 < pts.length; i++) g.indices.push(base, base + (flip ? i + 1 : i), base + (flip ? i : i + 1));
+  };
+  const [lo, hi, r, w] = [KERB_Z, KERB_Z + HEDGE_HIGH, HEDGE_ROUND, HEDGE_THICK / 2];
+  // Its cross-section, out from its line and up: foot, shoulder, top.
+  const ring = [[-w, lo], [-w, hi - r], [-w + r, hi], [w - r, hi], [w, hi - r], [w, lo]];
+  for (const [[x0, y0], [x1, y1]] of hedges) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    const [ux, uy] = [(x1 - x0) / len, (y1 - y0) / len];
+    const [vx, vy] = [-uy, ux];
+    const at = ([x, y]: number[], [o, z]: number[]) => [x + vx * o, y + vy * o, z];
+    for (let i = 0; i + 1 < ring.length; i++) {
+      const [a, b] = [ring[i], ring[i + 1]];
+      // Out of the section, a quarter turn from the way round it.
+      const [no, nz] = [a[1] - b[1], b[0] - a[0]];
+      const l = Math.hypot(no, nz);
+      face([at([x0, y0], a), at([x1, y1], a), at([x1, y1], b), at([x0, y0], b)], [(vx * no) / l, (vy * no) / l, nz / l]);
+    }
+    for (const [[x, y], s] of [[[x0, y0], -1], [[x1, y1], 1]] as [number[], number][]) face(ring.map((p) => at([x, y], p)), [ux * s, uy * s, 0]);
+  }
+  return g;
 }
 
 /**

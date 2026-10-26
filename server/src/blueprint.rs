@@ -54,6 +54,10 @@ pub struct Blueprint {
     /// at once (`World::lift`). One, but a harbour's, which works the
     /// ferry's deck and the lorries both.
     pub forklifts: u8,
+    /// Docks in its yard, the ones nearest its building: as many as fit,
+    /// but a sawmill's one, before its barn door, and a bakery's, in its
+    /// garage (`lots::park`).
+    pub docks: usize,
     /// A farm: its land is what its tractor ploughs in a shift, and its
     /// yard holds a harvest, the cycle's make (`world/fields.rs`).
     pub farm: bool,
@@ -160,7 +164,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
         let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
-        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, opens: None, vehicles: &[], quay: false, forklifts: 1, farm: false }
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, opens: None, vehicles: &[], quay: false, forklifts: 1, docks: usize::MAX, farm: false }
     };
     use Good::{Stone, Timber};
     vec![
@@ -236,6 +240,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
+            docks: 1,
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
         // The sawmill's twin at the mountain's foot: four hands, seven to
@@ -250,11 +255,13 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Bakers start before the town wakes: four hands, five to two,
         // opening bags of grain and baking them into crates of bread, a
         // bag a crate, as much a shift as a farm grows. It keeps ten bags
-        // in and ten crates out, a lorry's load each twice over.
+        // in and ten crates out, a lorry's load each twice over. Its one
+        // dock is in its garage, where it loads out of sight.
         (Bakery, Blueprint {
             shelves: &[(Good::Grain, 250), (Good::Bread, 250)],
             makes: Some(Good::Bread),
             opens: Some(Good::Grain),
+            docks: 1,
             ..row((2, 1), (2, 2), &[(Timber, 8)], vec![shift(5, 14, 4)])
         }),
     ]
@@ -322,15 +329,14 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; opens: Good | null; forklifts: number }> = {\n",
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
             let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
-            let good = |g: Option<Good>| g.map_or("null".into(), |g| format!("\"{g:?}\""));
-            let (makes, opens) = (good(b.makes), good(b.opens));
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
+            let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
         }
         let packages: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));

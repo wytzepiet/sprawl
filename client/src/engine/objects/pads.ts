@@ -15,8 +15,8 @@ import type { Building, Good, Lift, Pose } from "../../generated";
  * - A depot is an open yard, no roof: a bay of each good on the ground
  *   where a hall would stand, its lorry's docks in its lot.
  * - A maker's pad runs down the side of its yard's lane the docks are
- *   not on: a farm's bags of grain stacked four high; a bakery's grain
- *   at the back and its bread toward the gate.
+ *   not on: a farm's bags of grain stacked four high. A bakery's is in
+ *   its garage, with the lorry, out of sight.
  * - A shop, a supermarket and a gas station keep theirs along the front
  *   wall, on the pavement; a site its materials there.
  */
@@ -77,6 +77,8 @@ export function padOf(b: Building): Pad {
   const f = frame(b);
   const kind = BLUEPRINTS[b.kind];
   const forklifts = (at: (k: number) => Pose) => Array.from({ length: kind.forklifts }, (_, k) => at(k));
+  // A bakery loads in its garage, out of sight (`bakery.ts`).
+  if (b.kind === "Bakery" && !b.site) return { bays: [], homes: [], yard: true };
   if (b.site) {
     // Along the front of the slab, each material after the last.
     const goods = Object.keys(b.site) as Good[];
@@ -123,10 +125,7 @@ export function padOf(b: Building): Pad {
     for (let s = 0.12; s < deep - 0.3; s += PITCH)
       for (const o of [0.22, 0.22 + PITCH]) slots.push({ at: [back[0] + fx * s + px * side * o, back[1] + fy * s + py * side * o], heading: Math.atan2(fy, fx) });
     const home = (k: number): Pose => ({ at: [back[0] + fx * (0.1 + k * 0.12), back[1] + fy * (0.1 + k * 0.12)], heading: Math.atan2(fy, fx) });
-    // What it opens, a bakery's grain, at the back; what it makes before
-    // it, toward the gate.
-    const lane = kind.opens ? [{ good: kind.opens, slots: slots.splice(0, Math.floor(slots.length / 2)) }, { good, slots }] : [{ good, slots }];
-    return { bays: lane.map((l) => ({ ...l, stack: Math.max(1, Math.ceil(most(b, l.good) / l.slots.length)) })), homes: forklifts(home), yard: true };
+    return { bays: [{ good, slots, stack: Math.max(1, Math.ceil(most(b, good) / slots.length)) }], homes: forklifts(home), yard: true };
   }
   // Along the front wall, on the pavement.
   let a = -f.w / 2 + 0.12;

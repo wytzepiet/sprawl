@@ -2,7 +2,7 @@ import { isBuilt, type Town } from "./grid";
 import type { Facts } from "./facts";
 import { formOf } from "./mass";
 import { HALF_W } from "../objects/roadGeometry";
-import { INSET } from "./footprint";
+import { defaultJoins, INSET } from "./footprint";
 import { baysAt, drive, SIDEWALK } from "./surface";
 import type { P } from "../geometry";
 
@@ -20,6 +20,8 @@ import type { P } from "../geometry";
  *   with a gap here and there.
  *
  * - Street lamps stand where the road's edge runs (`lamps`).
+ *
+ * - A hedge runs round a home's or a shop's plot (`hedges`).
  *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
@@ -61,8 +63,12 @@ export interface Lamp {
   hy: number;
 }
 
+/** A hedge: the line it runs along, end to end. */
+export type Hedge = [P, P];
+
 export interface Dressing {
   trees: Tree[];
+  hedges: Hedge[];
   lamps: Lamp[];
   cars: Car[];
   docks: Dock[];
@@ -120,10 +126,47 @@ export function dress(town: Town, facts: Facts): Dressing {
   const lorries = docks(town, facts);
   return {
     trees: trees.filter((t) => !onDrive(t)),
-    lamps: lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })),
+    hedges: hedges(town),
+    lamps: [...lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })), ...lorries.lamps],
     cars: [...park(town), ...drives.cars],
     docks: lorries.docks, yardLines: lorries.lines,
   };
+}
+
+/** A hedge's thickness. */
+export const HEDGE_THICK = 0.08;
+
+/** Down each edge of a home's or a shop's plot that meets open ground or
+ *  a building it is not joined to: never along a road, and where a road
+ *  runs past its end, stopped at the front wall, the front strip left
+ *  open. Between two such plots, once, on the line between them; against
+ *  anything else, inside its own. */
+function hedges(town: Town): Hedge[] {
+  const joined = town.joins ?? defaultJoins(town);
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const plot = (c: number, r: number) => {
+    const t = town.tile(c, r);
+    return isBuilt(t) && formOf(t).family === "street";
+  };
+  const out: Hedge[] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (!plot(c, r)) continue;
+      for (const [dc, dr] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        const [nc, nr] = [c + dc, r + dr];
+        const n = town.tile(nc, nr);
+        if ((n.kind !== "open" && !isBuilt(n)) || joined(c, r, nc, nr) || joined(nc, nr, c, r)) continue;
+        const shared = plot(nc, nr);
+        if (shared && dc + dr < 0) continue;
+        const into = shared ? 0.5 : 0.5 - HEDGE_THICK / 2;
+        const [mx, my] = [c + 0.5 + dc * into, r + 0.5 + dr * into];
+        const [px, py] = [-dr, dc];
+        const end = (s: number) => (road(c + px * s, r + py * s) || road(nc + px * s, nr + py * s) ? 0.5 - INSET : 0.5);
+        out.push([[mx - px * end(-1), my - py * end(-1)], [mx + px * end(1), my + py * end(1)]]);
+      }
+    }
+  }
+  return out;
 }
 
 /** How far out from a road's middle a lamp stands: on the pavement, just
@@ -251,9 +294,10 @@ function driveways(town: Town): { strips: P[][]; cars: Car[] } {
 /** A yard's docks, as the server lays its park (`lots::park`): a lane
  *  straight in from the gate, the door's tile, to the yard's back, and off
  *  it, on each side the yard reaches far enough, rows of docks, the lines
- *  between them painted, some with a lorry. */
-function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
-  const out: Dock[] = [], lines: P[][] = [];
+ *  between them painted, some with a lorry; and either side of its gate,
+ *  a lamp leaning in over the lane. */
+function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][]; lamps: Lamp[] } {
+  const out: Dock[] = [], lines: P[][] = [], lamps: Lamp[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       // A harbour's docks are on one side of its lane, the quay's pad on
@@ -272,6 +316,13 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
       // `s` in from it and `side` across.
       const [ox, oy] = [c + 0.5 - fx * (deep - 0.5), r + 0.5 - fy * (deep - 0.5)];
       const at = (s: number, side: number): P => [ox + fx * s + px * side, oy + fy * s + py * side];
+      if (fill === "docks") for (const side of [-1, 1]) {
+        const [x, y] = [c + 0.5 + fx * GATE_LAMP.in + px * side * GATE_LAMP.out, r + 0.5 + fy * GATE_LAMP.in + py * side * GATE_LAMP.out];
+        lamps.push({ x, y, hx: x - px * side * ARM, hy: y - py * side * ARM });
+      }
+      // A sawmill's yard is its model's (`objects/sawmill.ts`), its one dock
+      // unpainted; a bakery's one dock is in its garage (`objects/bakery.ts`).
+      if (["Sawmill", "Bakery"].includes(town.tile(c, r).kind)) continue;
       for (const side of (fill === "park" ? [1] : [1, -1]).filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
         const [nx, ny] = [px * side, py * side];
         for (const s of [...DOCK_ROWS.map((s) => s - 0.15), DOCK_ROWS[DOCK_ROWS.length - 1] + 0.15]) lines.push(strip(ox, oy, fx, fy, s - 0.008, s + 0.008, nx, ny, 0.45, TAIL));
@@ -282,8 +333,12 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
       }
     }
   }
-  return { docks: out, lines };
+  return { docks: out, lines, lamps };
 }
+
+/** A gate's lamps: out from the door tile's middle toward the street, and
+ *  across from the lane's. */
+const GATE_LAMP = { in: 0.36, out: 0.56 };
 
 /** A strip along the line from (x0, y0) along (ux, uy) for `len`, on the
  *  side (nx, ny), from `a` to `b` out from the line. */
