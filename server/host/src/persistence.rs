@@ -24,6 +24,9 @@ type Migration = Option<fn(&mut [Value], &mut Value)>;
 const MIGRATIONS: &[Migration] = &[
     // Saves from before the stamp are version 0, and already today's.
     Some(|_, _| {}),
+    // The opening rebuilt round the mayor's lorry, and the office gone: a
+    // town from before has neither its lorry nor its steps.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -224,10 +227,12 @@ mod tests {
         let mut db = Db::open(&scratch.0);
         db.save(&[], &[], &meta);
         db.conn.pragma_update(None, "user_version", 0).unwrap();
+        // Every save before the mayor's lorry's opening starts over.
         let (_, loaded) = Db::open(&scratch.0).load();
-        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
-        assert_eq!(version(&db), SAVE_VERSION);
+        assert_eq!(loaded.next_id, 1, "a save from before the opening was kept");
         assert!(backup(0).exists());
+        db.save(&[], &[], &meta);
+        assert_eq!(version(&db), SAVE_VERSION);
         db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
         assert_eq!(loaded.next_id, 1, "a newer save was loaded");
