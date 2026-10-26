@@ -115,7 +115,7 @@ const BOX_WGSL = /* wgsl */ `
 struct U { size: vec4f, shade: vec4f }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var sheet: texture_2d<f32>;
-@group(0) @binding(2) var smooth: sampler;
+@group(0) @binding(2) var soft: sampler;
 struct I {
   @location(0) rect: vec4f, @location(1) form: vec4f, @location(2) fill: vec4f,
   @location(3) line: vec4f, @location(4) cb: vec4f, @location(5) cr: vec4f,
@@ -147,7 +147,7 @@ fn dist(p: vec2f, rect: vec4f, r: f32) -> f32 {
   let r = min(v.form.x, min(v.rect.z, v.rect.w) * 0.5);
   let d = dist(v.p, v.rect, r);
   // A photo: its texel, faded by the fill's alpha.
-  let t = textureSampleLevel(sheet, smooth, mix(v.photo.xy, v.photo.zw, (v.p - v.rect.xy) / v.rect.zw), 0);
+  let t = textureSampleLevel(sheet, soft, mix(v.photo.xy, v.photo.zw, (v.p - v.rect.xy) / v.rect.zw), 0);
   let fill = select(v.fill, t * v.fill.a, v.photo.z > 0);
   var col = fill * clamp(0.5 - d, 0, 1);
   if (v.form.y > 0) {
@@ -228,8 +228,8 @@ export function createPaint(engine: EngineContext, colours: Palette) {
   });
   const boxU = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   // The pictures the boxes may show, one sheet of them; a texel until it comes.
-  const smooth = device.createSampler({ magFilter: "linear", minFilter: "linear" });
-  const groupOf = (t: GPUTexture) => device.createBindGroup({ layout: boxLayout, entries: [{ binding: 0, resource: { buffer: boxU } }, { binding: 1, resource: t.createView() }, { binding: 2, resource: smooth }] });
+  const soft = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+  const groupOf = (t: GPUTexture) => device.createBindGroup({ layout: boxLayout, entries: [{ binding: 0, resource: { buffer: boxU } }, { binding: 1, resource: t.createView() }, { binding: 2, resource: soft }] });
   let boxGroup = groupOf(device.createTexture({ size: [1, 1], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING }));
 
   // Letters and icons: Lite's Slug fragment shader, with the clip laid into its coverage.
