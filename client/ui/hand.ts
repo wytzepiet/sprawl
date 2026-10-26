@@ -19,7 +19,7 @@ const up = (n: UiNode | null, prop: string): UiNode | null => (!n || n.props[pro
  * (`onDrag`: a building out of the build menu) is the town's from there;
  * either, let go over a node that takes a drop, is that node's.
  */
-export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (x: number, y: number, down: boolean) => void) {
+export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[]) {
   const at = (x: number, y: number) => {
     const all = hits();
     for (let i = all.length - 1; i >= 0; i--) {
@@ -45,7 +45,6 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
     e.stopPropagation();
     press = { id: e.pointerId, node: n, x: e.clientX, y: e.clientY, last: e.clientY, dragged: false };
     up(n, "onPress")?.props.onPress(true);
-    glow(e.clientX, e.clientY, true);
   };
   const move = (e: PointerEvent) => {
     if (press && e.pointerId === press.id) {
@@ -55,7 +54,6 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
         const out = up(press.node, "onDrag");
         if (out) {
           up(press.node, "onPress")?.props.onPress(false);
-          glow(e.clientX, e.clientY, false);
           press = null;
           town = true;
           return out.props.onDrag();
@@ -64,7 +62,6 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
       const s = up(press.node, "onScroll");
       if (press.dragged && s) s.props.onScroll(press.last - e.clientY, true);
       press.last = e.clientY;
-      glow(e.clientX, e.clientY, true);
       return;
     }
     if (town) return void hover(up(at(e.clientX, e.clientY), "onDrop"));
@@ -87,7 +84,6 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
     const p = press;
     press = null;
     up(p.node, "onPress")?.props.onPress(false);
-    glow(e.clientX, e.clientY, false);
     if (p.dragged) return void up(p.node, "onScroll")?.props.onScroll(0, false);
     if (e.type === "pointercancel") return;
     const tap = up(p.node, "onTap");

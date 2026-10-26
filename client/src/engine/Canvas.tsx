@@ -144,7 +144,7 @@ export default function Canvas(props: ParentProps) {
     // The UI the GPU draws (`ui/`), and the hand on it.
     const paint = createPaint(engine, palette);
     const glass = createGlass(engine, scene, paint);
-    const stopHand = createHand(el, paint.hits, glass.touchAt);
+    const stopHand = createHand(el, paint.hits);
     setRegistered(true);
 
     // Ticks that come much sooner than a frame are skipped. Ticks jitter,

@@ -20,8 +20,7 @@ import type { Layer, Palette, Pane } from "~ui/paint";
  * Each frame the frame loop reads the panes (`read`), after the springs
  * have moved them, and again once the camera has moved, for what is
  * pinned to the map, before the frame is drawn. Then, after the scene,
- * this task draws each run of panes over it: black, flat on the town,
- * with a faint sheen just inside its edge.
+ * this task draws each run of panes over it: pure black, flat on the town.
  */
 
 /** The most panes, and runs of them, drawn. */
@@ -31,11 +30,9 @@ const RUNS = 16;
 const MELT = 26;
 /** Room round a run, in CSS pixels, for its edge's softening. */
 const ROOM = 2;
-/** How far a press's light spreads through the black, in CSS pixels. */
-const GLOW = 40;
 
 /** The black and what is written on it: white ink, a black shadow. */
-export const palette: Palette = { tint: [0.035, 0.035, 0.04], text: [1, 1, 1], ink: [0, 0, 0] };
+export const palette: Palette = { tint: [0, 0, 0], text: [1, 1, 1], ink: [0, 0, 0] };
 
 const WGSL = /* wgsl */ `
 struct Pane { box: vec4f, round: vec4f, dye: vec4f }
@@ -45,7 +42,6 @@ struct Black {
   runs: array<Run, ${RUNS}>,
   tint: vec4f,
   size: vec4f,
-  touch: vec4f,
 }
 @group(0) @binding(0) var<uniform> black: Black;
 
@@ -89,17 +85,10 @@ fn field(p: vec2f, run: Run) -> Field {
   let run = black.runs[in.run];
   let p = in.position.xy;
   let f = field(p, run);
-  let dpr = black.size.z;
 
   var body = black.tint.rgb;
   // A dye is the colour itself, flat and bright on the black.
   body = mix(body, f.dye.rgb / max(f.dye.a, 1e-3), f.dye.a);
-  // A faint sheen just inside the edge, as a screen's glass catches it.
-  body += vec3f(0.06) * exp(-max(-f.d, 0) / (1.4 * dpr)) * (1 - 0.5 * f.dye.a);
-  // Pressed, it lifts a little under the finger.
-  let toTouch = p - black.touch.xy;
-  let glow = black.touch.z * exp(-dot(toTouch, toTouch) / (2 * black.touch.w * black.touch.w));
-  body += vec3f(0.07) * glow;
 
   let cover = clamp(0.5 - f.d, 0, 1);
   return vec4f(body * cover, cover);
@@ -155,15 +144,12 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui: { re
     },
   });
 
-  // The uniforms: panes (box, round, dye: 12 floats), runs (4 u32), then three vec4s.
-  const floats = PANES * 12 + RUNS * 4 + 3 * 4;
+  // The uniforms: panes (box, round, dye: 12 floats), runs (4 u32), then two vec4s.
+  const floats = PANES * 12 + RUNS * 4 + 2 * 4;
   const data = new Float32Array(floats);
   const ints = new Uint32Array(data.buffer);
   const uniforms = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const group = device.createBindGroup({ layout, entries: [{ binding: 0, resource: { buffer: uniforms } }] });
-
-  // A press on the UI, which lights the black (`touchAt`).
-  const touch = { x: 0, y: 0, down: false, glow: 0, at: performance.now() };
 
   // The runs of panes this frame, in device pixels, each with room round
   // it; and the UI's layers, each drawn on its run, if it has one, with
@@ -229,14 +215,8 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui: { re
     const o = PANES * 12 + RUNS * 4;
     data.set([...palette.tint, 1], o);
     data.set([canvas.width, canvas.height, dpr, MELT * dpr], o + 4);
-    const now = performance.now();
-    const dt = Math.min(0.1, (now - touch.at) / 1000);
-    touch.at = now;
-    touch.glow = touch.down ? touch.glow + (1 - touch.glow) * Math.min(1, dt * 14) : touch.glow * Math.exp(-dt * 3.5);
-    if (touch.glow < 0.005) touch.glow = 0;
-    data.set([touch.x * dpr, touch.y * dpr, touch.glow, GLOW * dpr], o + 8);
     glazedKey = key;
-    seen = key + (touch.glow ? touch.glow.toFixed(3) : "");
+    seen = key;
     return seen;
   };
 
@@ -277,11 +257,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui: { re
   };
   addTask(scene, task);
   buildFrameGraphTask(getFrameGraph(scene), task);
-  /** A press on the UI, which lights the black. */
-  const touchAt = (x: number, y: number, down: boolean) => {
-    [touch.x, touch.y, touch.down] = [x, y, down];
-  };
-  return { read, key: () => seen, touchAt };
+  return { read, key: () => seen };
 }
 
 /** "#rrggbb" as 0–1. */
