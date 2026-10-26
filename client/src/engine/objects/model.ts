@@ -299,3 +299,9 @@ export function placing(key: string, model: Model) {
   return (engine: EngineContext, side: 1 | -1) =>
     Object.entries(side > 0 ? model : left).map(([k, { shape, coat, flat }]) => ({ key: `${key}_${k}${side > 0 ? "" : "_left"}`, geo: shape, coat: coat(engine), cast: !flat }));
 }
+
+/** A model's trees, `[x, y, scale]` in its frame, on the map: turned to
+ *  face the way it does, mirrored as its finishes are, their crowns' shades
+ *  taken in turn (`trees.ts`). */
+export const planted = (trees: [number, number, number][], [ax, ay]: [number, number], [dx, dy]: [number, number], side: 1 | -1) =>
+  trees.map(([x, y, scale], k) => ({ at: [ax + dx * y + dy * x * side, ay + dy * y - dx * x * side] as [number, number], scale, shade: k % 3 }));
