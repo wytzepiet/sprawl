@@ -150,7 +150,7 @@ function ResidentLines(c: ResidentCard) {
           {(b) => (
             <box dir="row" align="center" gap={8} minH={22}>
               <text w={64} size={13.5} weight={c.selected === b.need ? 600 : undefined} soft={c.selected !== b.need}>{b.need}</text>
-              <Bar value={b.full} color={c.selected === b.need ? GDP : "#A8A29E"} />
+              <Bar value={b.full} color={c.selected === b.need ? GDP : "#8E8E93"} />
               <box grow={1} />
               <Show when={b.option} fallback={<text size={12} soft>nothing found</text>}>
                 {(id) => <To link={{ id: id(), label: "→ option", kind: "building" }} />}

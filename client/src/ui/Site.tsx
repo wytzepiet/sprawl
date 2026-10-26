@@ -88,7 +88,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
         const m = maker();
         if (m) return <Line dot={GOOD} text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
         const p = parked();
-        if (p) return <Line dot={p.d.joined ? SEA : "#E0A030"} text={`${packages(g(), p.n)} on the quay`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
+        if (p) return <Line dot={p.d.joined ? SEA : "#FFD60A"} text={`${packages(g(), p.n)} on the quay`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
         const s = coming();
         if (s) {
           const b = pieceOf(s);

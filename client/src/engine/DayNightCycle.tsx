@@ -269,69 +269,6 @@ function moonLightAt(elev: number): { colour: Rgb; strength: number } {
   return { colour: MOON_COLOUR, strength: MOON * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15)) };
 }
 
-/** Where the sun is as the screen sees it: which way across the screen
- *  (degrees, clockwise from the right, as SVG's lights take it), how
- *  high (0 to 1), and its light. Up the screen is north, where its path
- *  lies; it rises on the left and sets on the right, as the shadows show. */
-export function sunOnScreen(t: number): { azimuth: number; elevation: number; colour: [number, number, number]; strength: number } {
-  const horiz = Math.cos(sunAngle(t));
-  const elevation = sunElevation(t);
-  const sun = sunLightAt(elevation);
-  return {
-    azimuth: (Math.atan2(-NORTH, -horiz) * 180) / Math.PI,
-    elevation,
-    colour: [sun.colour.r, sun.colour.g, sun.colour.b],
-    strength: sun.strength,
-  };
-}
-
-/** Light as an eye takes it: a little shows its colour, a lot goes white. */
-const EXPOSURE = 3;
-const expose = (light: number[]) => light.map((v) => 1 - Math.exp(-v * EXPOSURE));
-/** A glint's core is whiter than the light that makes it. */
-const CORE = 0.35;
-
-/**
- * The sun's glint on a glassy edge, the UI's and the world's alike: its
- * colour (0..1), how strong, and which way the sun lies on the screen (a
- * unit step, y down). As bright as the sun truly is on glass, the ground's
- * low-sun boost left off, and seen as an eye sees it: white when strong,
- * its colour only when faint; nothing at night.
- */
-export function sunGlint(t: number): { colour: [number, number, number]; strength: number; toward: [number, number] } {
-  const sun = sunOnScreen(t);
-  const glint = expose(sun.colour.map((v) => v * sun.strength * Math.max(sun.elevation, 0.42)));
-  const peak = Math.max(...glint, 1e-6);
-  const a = (sun.azimuth * Math.PI) / 180;
-  return {
-    colour: glint.map((v) => v / peak + (1 - v / peak) * CORE) as [number, number, number],
-    strength: Math.min(0.85, peak),
-    toward: [Math.cos(a), Math.sin(a)],
-  };
-}
-
-/** The sky's light on an edge, as an eye takes it, at full brightness. */
-export function skyGlint(t: number): [number, number, number] {
-  const sky = expose(skyLight(t));
-  return sky.map((v) => v / Math.max(...sky)) as [number, number, number];
-}
-
-/** The sky's light alone, without the sun's: pale by day, lavender at a
- *  low sun, blue at night. What a glass edge reflects all the way round. */
-export function skyLight(t: number): [number, number, number] {
-  const sky = mul(ramp(ambientStops, t, lerp3), SKY_LIGHT);
-  return [sky.r, sky.g, sky.b];
-}
-
-/** The light on a pane held up to the sun at this time of day: the sky's
- *  and the whole of the sun's, so white at noon, rose and gold as it sets,
- *  the sky's blue alone at night. What the UI's glass is lit by. */
-export function lightOnPane(t: number): [number, number, number] {
-  const sky = mul(ramp(ambientStops, t, lerp3), SKY_LIGHT);
-  const sun = sunLightAt(sunElevation(t));
-  return [sky.r + sun.colour.r * sun.strength, sky.g + sun.colour.g * sun.strength, sky.b + sun.colour.b * sun.strength];
-}
-
 // ---------------------------------------------------------------------------
 // Context — time signals (no Babylon dependency)
 // ---------------------------------------------------------------------------

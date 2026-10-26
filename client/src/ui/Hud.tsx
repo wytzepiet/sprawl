@@ -9,24 +9,23 @@ import Dock from "./Dock";
 import Board from "./Board";
 import Ring from "./Ring";
 import Newer from "./Newer";
-import { wide } from "./kit";
+import { BEZEL, CORNER, view, wide } from "./kit";
 
 /** Everything the GPU draws over the town, the first under the rest:
- *  what is pinned to the map, the dials along the top and, on a
- *  branch's preview, a newer build under them, the dock and its
- *  sheet, then the books and the feed over them, and a building's ring
- *  over all. */
+ *  what is pinned to the map; the bezel round the game, and grown out of
+ *  it the clock and the level and purse in the top corners and the dock
+ *  along the foot; on a branch's preview, a newer build under the top;
+ *  then the books and the feed over them, and a building's ring over all. */
 export default function Hud() {
   return (
     <>
       <Cargo />
       <Lumps />
       <Held />
-      <box at={wide() ? { left: 24, top: 24 } : { left: 12, right: 12, top: 12 }} dir="row" align="center" justify="between" gap={12}>
-        <Clock />
-        <Meter />
-      </box>
-      <box at={{ left: 0, right: 0, top: wide() ? 84 : 72 }} align="center">
+      <glass layer="bezel" hole at={{ left: BEZEL, right: BEZEL, top: BEZEL }} h={view().h - 2 * BEZEL} round={22} />
+      <Clock />
+      <Meter />
+      <box at={{ left: 0, right: 0, top: BEZEL + CORNER + (wide() ? 14 : 12) }} align="center">
         <Newer />
       </box>
       <Dock />

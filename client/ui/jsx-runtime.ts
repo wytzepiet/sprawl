@@ -80,12 +80,9 @@ export declare namespace JSX {
     /** Panes of one layer melt together; a later layer lies over an earlier one. */
     layer: string;
     dye?: string;
-    /** How much more the town under it is blurred, 0 to 1: more where
-     *  what is on it must read whatever is under, a chart's red and green. */
-    frost?: number;
-    /** Dark all over, with no clear edge: behind what sits over the
-     *  clear edge of other glass, so it reads. */
-    even?: boolean;
+    /** The black is all round its box and the box is the hole: a frame,
+     *  the bezel round the game. */
+    hole?: boolean;
   }
 
   interface Text extends Common {

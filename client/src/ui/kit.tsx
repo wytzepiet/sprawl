@@ -10,20 +10,26 @@ import type { Good, Neighbour } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
 
 /**
- * What the cards are made of, on the glass the GPU draws: a button that
+ * What the cards are made of, on the black the GPU draws: a button that
  * springs under the finger, a bar of steps, a good on a disc, a town's
- * crest. Ink is the glass's own ("ink"), black on the day's glass and
- * white on the night's.
+ * crest. Ink is the black's own ("ink"): white.
  */
 
-/** The colours the cards name, each for one thing: well and done; wrong,
- *  short or gone; GDP, and the missions that grow it; the sea and what
- *  comes over it; coins. */
-export const GOOD = "#57A773";
-export const BAD = "#D9483B";
-export const GDP = "#7B77E0";
-export const SEA = "#2B6CA3";
-export const COIN = "#B7791F";
+/** The colours the cards name, each for one thing, bright on the black:
+ *  well and done; wrong, short or gone; GDP, and the missions that grow
+ *  it; the sea and what comes over it; coins. */
+export const GOOD = "#30D158";
+export const BAD = "#FF453A";
+export const GDP = "#A27BFF";
+export const SEA = "#0A84FF";
+export const COIN = "#FF9F0A";
+
+/** The black round the game, and how far what grows out of it reaches
+ *  past the screen's edge, unseen, so it is one piece with it. */
+export const BEZEL = 9;
+export const DROP = 40;
+/** How tall the corners are: the clock, the level and the purse. */
+export const CORNER = 40;
 
 /** Something to press: it rises under the pointer, gives under the finger and springs back,
  *  by a few pixels whatever its size: a button's twelfth, a row's hair. */
@@ -39,9 +45,9 @@ export function Press(props: JSX.Box & { onTap: () => void }) {
   return <box {...props} scale={s()} y={y()} onPress={setDown} onHover={hover} onSize={sized} />;
 }
 
-/** A tab bar: one pill, and in it a darker one that slides to the tab
- *  shown, its name turning light as it passes under it; `lit` false,
- *  none is shown. */
+/** A tab bar: one pill, and in it a lighter one that slides to the tab
+ *  shown, its name brightening as it passes under it; `lit` false, none
+ *  is shown. */
 export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?: boolean; pick: (t: T) => void }) {
   const [w, setW] = createSignal(0);
   const seg = () => (w() - 6) / props.tabs.length;
@@ -50,23 +56,16 @@ export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?:
   const lit = (i: number) => Math.max(0, 1 - Math.abs(at() - i)) * Math.max(0, Math.min(1, shown()));
   return (
     <box pad={{ x: 12, top: 14, bottom: 12 }}>
-      {/* Glass of its own, even and frosted, so it reads over the clear edge of the sheet. */}
-      <glass layer="tabs" even frost={1} dir="row" h={38} round={19} pad={3} onSize={(ww) => setW(ww)}>
-        <box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.85" opacity={Math.max(0, Math.min(1, shown()))} />
+      <box dir="row" h={38} round={19} pad={3} fill="ink/0.09" onSize={(ww) => setW(ww)}>
+        <box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.2" opacity={Math.max(0, Math.min(1, shown()))} />
         <For each={props.tabs}>
-          {(t, i) => {
-            const name = t[0].toUpperCase() + t.slice(1);
-            return (
-              <box grow={1} h={32} align="center" justify="center" onTap={() => props.pick(t)}>
-                <text size={13} weight={600} ink={`ink/${(0.72 * (1 - lit(i()))).toFixed(3)}`}>{name}</text>
-                <box at={{ left: 0, top: 0 }} w={seg()} h={32} align="center" justify="center" opacity={lit(i())}>
-                  <text size={13} weight={600} ink="glass">{name}</text>
-                </box>
-              </box>
-            );
-          }}
+          {(t, i) => (
+            <box grow={1} h={32} align="center" justify="center" onTap={() => props.pick(t)}>
+              <text size={13} weight={600} ink={`ink/${(0.55 + 0.45 * lit(i())).toFixed(3)}`}>{t[0].toUpperCase() + t.slice(1)}</text>
+            </box>
+          )}
         </For>
-      </glass>
+      </box>
     </box>
   );
 }

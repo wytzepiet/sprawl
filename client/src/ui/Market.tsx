@@ -6,7 +6,7 @@ import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { LOAD } from "../generated/rows";
-import { BAD, Fade, GoodDot, Line, Press, Tabs } from "./kit";
+import { BAD, Fade, GOOD, GoodDot, Line, Press, Tabs } from "./kit";
 import { open, setOpen, show } from "./sheet";
 import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
@@ -22,9 +22,7 @@ import type { Good, Quote, When } from "../generated";
  * Prices are a package's, the unit a deck and an order trade in.
  */
 
-/** How frosted the glass under a chart is: its red and green read over any town. */
-export const FROSTED = 1;
-const UP = "#2E9D6A";
+const UP = GOOD;
 /** The most packages a ferry's deck takes: the most bought or sold at once. */
 const DECK = 60;
 
@@ -94,7 +92,7 @@ function Chart(props: { history: number[]; lo: number; hi: number; w: number; h:
 function Spark(props: { q: Quote }) {
   const day = () => props.q.history.slice(-25);
   const mid = () => (props.q.floor + props.q.ceiling) / 2;
-  return <Chart history={day().length ? day() : [props.q.price]} lo={mid() * 0.6} hi={mid() * 1.4} w={64} h={26} color={tint(change(props.q)) === "ink/0.5" ? "#8A8F8C" : tint(change(props.q))} />;
+  return <Chart history={day().length ? day() : [props.q.price]} lo={mid() * 0.6} hi={mid() * 1.4} w={64} h={26} color={tint(change(props.q)) === "ink/0.5" ? "#8E8E93" : tint(change(props.q))} />;
 }
 
 /** A good's tile: its glyph on a square of its colour. */
@@ -121,7 +119,7 @@ export const MarketBody = () => (
 );
 
 /** A good's page, as the page stack shows it. */
-export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} />, frost: FROSTED });
+export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} /> });
 /** The market, and a good's page over it: a mission's step. */
 export const toMarket = (g: Good | null) => (setView("market"), show("market", true), g && push(goodPage(g)));
 
@@ -155,7 +153,7 @@ export function Order(props: { o: When; named?: boolean }) {
   const { send } = useGame();
   return (
     <box dir="row" align="center" gap={10} pad={{ left: 10, right: 4, y: 4 }} round={14} fill="ink/0.05">
-      <box w={6} h={26} round={3} fill="#7A5BC0" />
+      <box w={6} h={26} round={3} fill="#BF5AF2" />
       <text size={13.5} grow={1}>
         {props.o.out ? "Sell" : "Buy"} {props.o.packages}{props.named ? ` ${GOODS[props.o.good].label}` : ""} when it {props.o.out ? "rises to" : "falls to"} <text serif>{money(each(props.o.good, props.o.price))}</text>
       </text>
@@ -232,7 +230,7 @@ function Page(props: { good: Good }) {
             marks={[
               { at: q().ceiling, color: "ink/0.3", label: `world sells ${money(each(props.good, q().ceiling))}` },
               { at: q().floor, color: "ink/0.3", label: `world buys ${money(each(props.good, q().floor))}` },
-              ...orders().map((o) => ({ at: o.price, color: "#7A5BC0", dashed: true, label: `${o.out ? "sell" : "buy"} ${o.packages} at ${money(each(o.good, o.price))}` })),
+              ...orders().map((o) => ({ at: o.price, color: "#BF5AF2", dashed: true, label: `${o.out ? "sell" : "buy"} ${o.packages} at ${money(each(o.good, o.price))}` })),
             ]}
           />
         </Show>
@@ -274,7 +272,7 @@ function Page(props: { good: Good }) {
           <text size={13.5} soft>when it {out() ? "rises to" : "falls to"}</text>
           <Stepper value={money(each(props.good, price()))} less={() => nudge(-1)} more={() => nudge(1)} />
           <box grow={1} />
-          <Press h={30} pad={{ x: 14 }} round={15} justify="center" fill="#7A5BC0" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && place()}>
+          <Press h={30} pad={{ x: 14 }} round={15} justify="center" fill="#BF5AF2" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && place()}>
             <text size={13.5} weight={600} ink="white">Place</text>
           </Press>
         </box>

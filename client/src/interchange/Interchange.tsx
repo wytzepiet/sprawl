@@ -7,7 +7,6 @@ import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNig
 import { InstancePoolProvider } from "../engine/InstancePool";
 import World from "../engine/World";
 import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
-import Glass from "../ui/Glass";
 import { projector, screenToWorld } from "../engine/view";
 import { priority, setPriority, setTool, tool } from "../ui/buildMode";
 import type { LevelState } from "../generated";
@@ -101,7 +100,6 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
           <Frame state={state} />
           <Gpu ui={() => <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />} />
         </Canvas>
-        <Glass />
       </DayNightProvider>
     </GameProvider>
   );

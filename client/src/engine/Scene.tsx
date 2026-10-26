@@ -8,7 +8,6 @@ import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import PerfReport from "./PerfReport";
 import Signs from "./Signs";
-import Glass from "../ui/Glass";
 import Shipments from "../ui/Shipments";
 import Hud from "./Hud";
 import Gpu from "../ui/Hud";
@@ -32,7 +31,6 @@ function SceneInner() {
         </DayNightLights>
         <Hud ui={Gpu} />
       </Canvas>
-      <Glass />
       <Shipments />
     </DayNightProvider>
   );

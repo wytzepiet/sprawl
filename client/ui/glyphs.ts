@@ -11,9 +11,9 @@ import { dirt } from "./node";
 export const storage = createGlyphStorage();
 const SET = "ui";
 
-/** The faces: Quicksand at three weights, and Fraunces for numbers. */
+/** The faces: Inter at three weights for words, and Nunito, rounded, for numbers and titles (`serif`). */
 export type Face = 0 | 1 | 2 | 3;
-const FILES = ["Quicksand-500", "Quicksand-600", "Quicksand-700", "Fraunces-400"];
+const FILES = ["Inter-500", "Inter-600", "Inter-700", "Nunito-700"];
 const fonts: (Font | null)[] = [null, null, null, null];
 export const faceOf = (weight = 500, serif = false): Face => (serif ? 3 : weight >= 700 ? 2 : weight >= 600 ? 1 : 0);
 export const ready = () => fonts.every(Boolean);

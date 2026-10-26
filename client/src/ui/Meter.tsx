@@ -3,7 +3,7 @@ import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { follow } from "../engine/spring";
 import { setBoardOpen } from "./Board";
-import { BAD, elapsed, GDP, GOOD, keys, wide } from "./kit";
+import { BAD, BEZEL, CORNER, DROP, elapsed, GDP, GOOD, keys, view, wide } from "./kit";
 
 /** The level's ring, in its own 56-unit box, and how finely its arc is
  *  cut: each cut is a glyph of its own. */
@@ -21,8 +21,9 @@ function arc(share: number) {
 const RING = `M28 ${28 - R}A${R} ${R} 0 1 1 28 ${28 + R}A${R} ${R} 0 1 1 28 ${28 - R}`;
 
 /**
- * The city's two dials, run together into one shape at the top: the
- * level, a ring closing on the next, and the purse.
+ * The city's two dials, grown out of the bezel's top right corner: the
+ * level, a ring closing on the next, and the purse; on a phone half a
+ * band across the top, the clock the other half.
  *
  * The level is the town's GDP to date: the value it adds, landing as
  * each meal is served, each tank filled, each crop cut and each shift at
@@ -50,54 +51,38 @@ export default function Meter() {
     setTimeout(() => setDrips((d) => d.filter((x) => x !== drip)), DRIP_MS);
   }));
 
-  /** The purse's width: as wide as its coins. The ring sits at its left. */
-  const [purse, setPurse] = createSignal(166);
-  const day = () =>
-    low() && Number.isFinite(cover())
-      ? `${cover().toFixed(1)} days of imports · GDP today ${Math.floor(growth().gdp)}`
-      : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today · GDP today ${Math.floor(growth().gdp)}`;
-
   return (
-    <box w={purse() + 64} h={52}>
-      {/* The glass, one shape, the drips running out of it. */}
-      <glass layer="meter" at={{ right: 0, top: 0 }} w={purse() + 24} h={52} round={26} />
-      <glass layer="meter" at={{ right: purse() + 2, top: -2 }} w={56} h={56} round={28} />
-      <For each={drips()}>{() => <Drip />}</For>
-
-      <box at={{ right: purse() + 2, top: -2 }} w={56} h={56} align="center" justify="center">
-        <icon at={{ left: 0, top: 0 }} d={RING} view={56} size={56} stroke={3} ink="ink/0.12" />
-        <Show when={cut() > 0}>
-          <icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={56} stroke={3} ink={GDP} />
-        </Show>
-        <text serif size={21}>{growth().level}</text>
-      </box>
-      <box at={{ right: 0, top: 0 }} minW={166} h={52} dir="row" align="center" justify="end" gap={6} pad={{ left: 12, right: 20 }} onSize={(w) => setPurse(w)} onTap={() => setBoardOpen((o) => !o)}>
-        <text serif size={28} ink={low() ? BAD : undefined}>{Math.floor(treasury()).toLocaleString()}</text>
-        <text size={12} weight={600} soft>coins</text>
-      </box>
+    <>
+      <glass layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={20} pad={{ right: DROP + BEZEL + 14, left: 10, top: DROP + BEZEL }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
+        <box w={28} h={28} align="center" justify="center">
+          <icon at={{ left: 0, top: 0 }} d={RING} view={56} size={28} stroke={4.5} ink="ink/0.16" />
+          <Show when={cut() > 0}>
+            <icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={28} stroke={4.5} ink={GDP} />
+          </Show>
+          <text serif size={13}>{growth().level}</text>
+        </box>
+        <text serif size={20} ink={low() ? BAD : undefined}>{Math.floor(treasury()).toLocaleString()}</text>
+        <text size={11.5} weight={600} soft>coins</text>
+      </glass>
       <For each={drips()}>{(d) => <Drip n={d.n} />}</For>
-      {/* What the day has done, under it. */}
-      <Show when={wide()}>
-        <text at={{ right: 20, top: 60 }} size={12.5} weight={600} soft>{day()}</text>
-      </Show>
-    </box>
+    </>
   );
 }
 
-/** A lump into the purse, dripping out under it: its glass, or, given
- *  how many, its coins on it. */
-function Drip(props: { n?: number }) {
+/** A lump into the purse, dripping out of the corner as a drop of
+ *  green pinched off the black, its coins on it. */
+function Drip(props: { n: number }) {
   const t = elapsed(DRIP_MS);
-  const motion = {
-    get y() { return keys(t(), [[0, 0], [0.12, 0], [0.7, 40], [1, 52]]); },
-    get scale() { return keys(t(), [[0, 0.2], [0.12, 1], [0.7, 0.85], [1, 0.3]]); },
-    get opacity() { return keys(t(), [[0, 0], [0.12, 1], [0.7, 1], [1, 0]]); },
-  };
-  return props.n === undefined ? (
-    <glass layer="meter" dye={GOOD} at={{ right: 70, top: 12 }} w={38} h={28} round={14} {...motion} />
-  ) : (
-    <box at={{ right: 70, top: 12 }} w={38} h={28} align="center" justify="center" {...motion}>
-      <text size={12} weight={700} ink="white">+{props.n}</text>
-    </box>
+  const y = () => keys(t(), [[0, 0], [0.15, 0], [0.7, 44], [1, 60]]);
+  const s = () => keys(t(), [[0, 0.3], [0.15, 1], [0.7, 0.85], [1, 0.3]]);
+  const o = () => keys(t(), [[0, 0], [0.12, 1], [0.75, 1], [1, 0]]);
+  const at = { right: BEZEL + 70, top: BEZEL + CORNER - 22 };
+  return (
+    <>
+      <glass layer="bezel" dye={GOOD} at={at} w={40} h={26} round={13} y={y()} scale={s()} opacity={o()} />
+      <box at={at} w={40} h={26} align="center" justify="center" y={y()} scale={s()} opacity={o()}>
+        <text size={11.5} weight={700} ink="white">+{props.n}</text>
+      </box>
+    </>
   );
 }

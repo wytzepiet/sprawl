@@ -7,12 +7,13 @@ import { setFollowing } from "../state/selection";
 import { deals, letterOf, setSpread, spread, stepsOf, type Deal, type Piece } from "../state/deals";
 import { quoteOf, total } from "../state/market";
 import { toMarket } from "./Market";
+import { boardOpen } from "./Board";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { eye } from "../engine/Camera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
-import { Appear, Btn, COIN, coins, Crest, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
+import { Appear, BEZEL, Btn, COIN, coins, Crest, CORNER, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
 import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
@@ -20,7 +21,7 @@ import type { JSX } from "~ui/jsx-runtime";
 /** Where the feed starts, and the room it leaves below it: on a wide
  *  screen the dock; on a phone the dial's row over it, and the dock and
  *  the sheet's head under it. */
-const TOP = () => (wide() ? 24 : 76);
+const TOP = () => BEZEL + CORNER + (wide() ? 14 : 12);
 const BELOW = () => (wide() ? 112 : 180);
 
 /** A card of the feed: a line of news, a mission, or a deal. */
@@ -32,7 +33,7 @@ type Note =
 /**
  * The feed: everything that happens to
  * the town as a phone's notifications, top right, or across the top of a
- * phone. News drops in on top and goes by itself; a mission is pinned
+ * phone, under the corners; out of the way while the books are open. News drops in on top and goes by itself; a mission is pinned
  * while it is open; a deal stays while its packages are on their way. Folded,
  * the newest is in front and two more peek out under it, under its glass;
  * a tap spreads them out, a tap on one opens it.
@@ -52,7 +53,7 @@ export default function Feed() {
   };
   createEffect(() => notes().length < 2 && setSpread(false));
   return (
-    <box at={wide() ? { right: 24, top: TOP() } : { left: 12, right: 12, top: TOP() }} w={wide() ? 340 : undefined} gap={8}>
+    <box at={wide() ? { right: BEZEL + 14, top: TOP() } : { left: BEZEL + 10, right: BEZEL + 10, top: TOP() }} w={wide() ? 340 : undefined} gap={8} opacity={boardOpen() ? 0 : 1}>
       <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={20}>
         {(n) => {
           const note = n();

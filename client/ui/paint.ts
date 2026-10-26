@@ -23,10 +23,8 @@ export interface Pane {
   r: number;
   fade: number;
   dye?: string;
-  /** How much more the town under it is blurred: 0 to 1. */
-  frost?: number;
-  /** Dark all over, with no clear edge. */
-  even?: boolean;
+  /** The black outside the box, not in it. */
+  hole?: boolean;
 }
 
 /** A layer: its panes, and what lies on them. */
@@ -51,9 +49,8 @@ const OPEN: Clip = [-1e6, -1e6, 1e6, 1e6, 0];
 
 export const root = node("root");
 
-/** The glass's colours, 0–1, as the light has them now: its own (`tint`),
- *  the ink written on it (`text`), and its shadow's (`ink`). The game's to
- *  give (`createPaint`), read at every paint. */
+/** The glass's colours, 0–1: its own (`tint`), the ink written on it
+ *  (`text`), and its shadow's (`ink`). The game's to give (`createPaint`). */
 export interface Palette {
   tint: [number, number, number];
   text: [number, number, number];
@@ -285,7 +282,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
           layers.push((l = { panes: [], boxes: [boxCount, 0], glyphs: [glyphCount, 0] }));
           layer.set(p.layer, l);
         }
-        l.panes.push({ x, y, w, h, r, fade: f, dye: p.dye, frost: p.frost, even: p.even });
+        l.panes.push({ x, y, w, h, r, fade: f, dye: p.dye, hole: p.hole });
       }
       if (c.tag === "box" && (p.fill || p.stroke)) box(x, y, w, h, r, rgba(p.fill, f), rgba(p.stroke?.[1], f), (p.stroke?.[0] ?? 0) * cs, !!p.shadow, clip, k);
       if (c.tag === "text") {
@@ -299,7 +296,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
         const slot = icon(p.d, p.stroke, view);
         if (slot >= 0) glyph(x, y + h, ((ICON_UNIT * (p.size ?? 16)) / view) * cs, slot, rgba(p.ink ?? "ink", f), clip, k);
       }
-      if (p.onTap || p.onScroll || p.onPress || p.onHover || p.onDrag || p.onDrop || c.tag === "glass" || p.fill) hits.push({ node: c, x, y, w, h, r, clip });
+      if (p.onTap || p.onScroll || p.onPress || p.onHover || p.onDrag || p.onDrop || (c.tag === "glass" && !p.hole) || p.fill) hits.push({ node: c, x, y, w, h, r, clip });
       const inner: Clip = p.clip ? [Math.max(clip[0], x), Math.max(clip[1], y), Math.min(clip[2], x + w), Math.min(clip[3], y + h), r] : clip;
       walk(c, x, y, cs, f, inner, k, layer);
     }

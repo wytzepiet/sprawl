@@ -10,9 +10,9 @@ import { InspectBody, InspectHead } from "./Card";
 import { setBoardOpen } from "./Board";
 import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, take } from "./Roads";
 import { BuildBody, BuildHead } from "./Build";
-import { FROSTED, MarketBody, MarketHead, setView } from "./Market";
+import { MarketBody, MarketHead, setView } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
-import { Fade, Press, view, wide } from "./kit";
+import { BEZEL, DROP, Fade, Press, view, wide } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "~ui/jsx-runtime";
 
@@ -27,7 +27,6 @@ const SLOT = 52;
 const BAR = 60;
 const WIDTH = SLOT * TABS.length + 8;
 const cx = (j: number) => 30 + SLOT * j;
-const barBottom = () => (wide() ? 28 : 20);
 
 /** Each tab's sheet: its head, peeking over the bar, and what is drawn up under it. */
 const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> = {
@@ -37,8 +36,9 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
 };
 
 /**
- * The dock: one sheet, the tabs fixed along its foot, the shown tab's
- * content grown up out of the bar over them, as the Find My app has it
+ * The dock: one sheet hanging from the bezel's foot, the tabs fixed
+ * along its foot, the shown tab's content grown up out of the bar over
+ * them, as the Find My app has it
  * (`sheet.ts`): its head peeking, drawn up by a finger or a tap, the
  * rest under it as tall as it is up to its room, and taller scrolls;
  * dragged down from its top, it sinks again. The bare hand, whose
@@ -112,10 +112,7 @@ export default function Dock() {
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
-  // The market's lines and moves, and the build menu's
-  // pictures, want more frosted glass under them.
-  const [frost] = follow(() => (tab() === "select" ? 0 : FROSTED), { rest: 0.001 });
-  createEffect(() => (eye.below = barBottom() + BAR + h()));
+  createEffect(() => (eye.below = BEZEL + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
   /** A finger on the sheet: up draws it up, down sinks it; let go, it
@@ -131,10 +128,10 @@ export default function Dock() {
 
   return (
     <>
-      <box at={{ left: 0, right: 0, bottom: barBottom() }} align="center">
+      <box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
         <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
-          {/* One glass: the shown tab's sheet, grown up out of the bar. */}
-          <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} frost={frost()} clip>
+          {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
+          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={30} clip>
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
@@ -166,7 +163,7 @@ export default function Dock() {
           </box>
         </box>
       </box>
-      <Pages bottom={barBottom()} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
+      <Pages bottom={BEZEL} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
     </>
   );
 }
