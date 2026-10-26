@@ -19,10 +19,11 @@ import { glazedAt, underGlass } from "./glass";
  * pops, so what was built is uncovered from behind. A step refused, the
  * dot strains half as far and no further.
  *
- * Their ink is read off the scene as drawn: a few patches of the frame
- * say how light the ground is, and the ink stands a fixed step from it,
- * darker on light ground and lighter on dark, so the dots hold the same
- * weight at noon, at dusk and at midnight.
+ * The drag is the UI's pure black, a drop of it on the town. The starts'
+ * ink is read off the scene as drawn: a few patches of the frame say how
+ * light the ground is, and the ink stands a fixed step from it, darker on
+ * light ground and lighter on dark, so they hold the same weight at noon,
+ * at dusk and at midnight.
  *
  * Every dot is a spring: its size eases toward shown or gone and a
  * little past, so dots grow and shrink in and out rather than blink,
@@ -358,7 +359,7 @@ export class Dots {
     const shown = p.s > 0.01 || this.snaps.length > 0 || [...this.dots.values()].some((d) => d.kind !== "start");
     ctx.canvas.style.display = shown ? "" : "none";
     if (!shown) return;
-    ctx.fillStyle = `rgb(${colour})`;
+    ctx.fillStyle = "#000";
     ctx.beginPath();
     const held = p.s > 0.01 && this.anchor;
     for (const d of this.dots.values()) {
@@ -379,9 +380,9 @@ export class Dots {
       const k = START_ALPHA + (1 - START_ALPHA) * d.ink * d.ink * (3 - 2 * d.ink);
       const own = new Path2D();
       disc(own, c, r);
-      ctx.fillStyle = `rgb(${ink.map((v, i) => Math.round(this.groundRGB[i] + (v - this.groundRGB[i]) * k)).join(", ")})`;
+      ctx.fillStyle = `rgb(${this.groundRGB.map((v) => Math.round(v * (1 - k))).join(", ")})`;
       ctx.fill(own);
-      ctx.fillStyle = `rgb(${colour})`;
+      ctx.fillStyle = "#000";
     }
     if (held) {
       // The held dot drawn out toward the tip: a body tapering from its
