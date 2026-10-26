@@ -1,11 +1,12 @@
 # Sprawl: the knowledge base
 
-Start with `game.md`. It is one page and it is the shape of everything.
+Start with `core.md`: the loop being built now, and what of the rest is cut until play asks for it. Then `game.md`. It is one page and it is the shape of everything.
 The rest is detail, in the order you would need it. What is built of
 each, and since when, is in its own header, and only there.
 
 | Document | What it holds |
 |---|---|
+| `core.md` | The core loop (2026-10-26): pick what your town becomes and chase its next unlock; an open start, the lab's ladder, one price with Buy, Sell and a line, offices; what is cut. Wins where others disagree. |
 | `game.md` | How the game works: the rule, the island and the door, roads, undo, buildings built from materials, people, goods and calls, money, power, services, legibility, the opening, what is out. |
 | `roadmap.md` | What is built, and the order the rest is built in, each step pointing at its plan. |
 | `missions.md` | Missions: steps the server reads off the town and a reward; the opening and the trunk, the town's situation, orders from other towns, dailies; how they are read cheaply, and how to add one. |
