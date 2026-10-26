@@ -81,14 +81,16 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
   } as unknown as EngineContext;
 
   let town: TownLayer | null = null;
-  let quay: { y: number } | null = null;
   let stopped = false;
 
   const shoot = async () => {
     await registerSceneWithShadowSupport(scene);
-    town = new TownLayer(ctx, lit.casters, (f) => entries.forEach(f), (_, y) => (quay && y >= quay.y ? "Sea" : "Grass"), () => SOLID);
+    town = new TownLayer(ctx, lit.casters, (f) => entries.forEach(f), () => "Grass", () => SOLID);
     for (const [i, kind] of KINDS.entries()) {
       if (stopped) return;
+      // A harbour is its piers on the sea, which the town grid does not
+      // draw: it keeps its icon.
+      if (BLUEPRINTS[kind].quay) continue;
       const { at, half } = stage(kind);
       // Asked to draw, then drawn: the chunks come in a frame at a time.
       while (!town.settled && !stopped) await idle();
@@ -99,6 +101,9 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
       camera.target.set(cx, cy, 0);
       for (const fn of before) fn();
       lit.at(NOON, cx, cy, half * 2);
+      // The shadow pass waits for a new set of casters to load, and a
+      // frame drawn before it is all in shade.
+      while (lit.shadows._preloadPending && !stopped) await idle();
       renderFrame(main, 16, [surface]);
       const [x, y] = [(i % COLUMNS) * CELL, Math.floor(i / COLUMNS) * CELL];
       device.queue.copyExternalImageToTexture({ source: canvas }, { texture: sheet, origin: [x, y], premultipliedAlpha: true }, [CELL, CELL]);
@@ -108,8 +113,8 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
     town.dispose();
   };
 
-  /** A kind set on its street, facing it, the street south of it; the
-   *  harbour with the sea behind. Where to look, and how far round. */
+  /** A kind set on its street, facing it, the street south of it. Where
+   *  to look, and how far round. */
   const stage = (kind: BuildingKind) => {
     const old = entries;
     const [w, h] = plot(kind, 0).size;
@@ -129,7 +134,6 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
       { id: 1, position: tiles[0], object: { kind: "Building", data: building } },
       ...street.map((id, k): GameObjectEntry => ({ id, position: { x: x0 - 1 + k, y: y0 - 1 }, object: { kind: "RoadNode", data: node(k) } })),
     ];
-    quay = BLUEPRINTS[kind].quay ? { y: y0 + h } : null;
     for (const e of [...old, ...entries]) {
       const at = e.object.kind === "Building" ? (e.object.data as Building).tiles : [e.position!];
       for (const t of at) town!.touch(t.x, t.y);
