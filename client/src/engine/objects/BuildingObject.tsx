@@ -14,6 +14,7 @@ import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { depot } from "./depot";
 import { shop } from "./shop";
 import { house } from "./house";
+import { GLASS, glow, glowing } from "./model";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
@@ -23,6 +24,11 @@ import { HANDLE_MS } from "../../generated/rows";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated";
+
+/** Each engine's glass told the night, once a frame, from the first
+ *  model with windows on (`model.ts`). */
+const told = new WeakSet<EngineContext>();
+const lights = (ctx: EngineContext) => void (told.has(ctx) || (told.add(ctx), ctx.beforeRender(glow)));
 
 /** The ferry's berth, out from the quay's edge (`town/draw.ts`): the link
  *  span over its land end, the dolphins it lies between, this far either
@@ -140,7 +146,11 @@ export function mountBuilding(
     ? (() => {
         const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
         const at: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
-        return model.map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012));
+        return model.map((finish) => {
+          const it = placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
+          if (finish.coat === GLASS(ctx.engine)) glowing(pool.finish(finish.key)!.material), lights(ctx);
+          return it;
+        });
       })()
     : [];
 

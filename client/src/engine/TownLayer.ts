@@ -82,7 +82,7 @@ interface Gathered {
  */
 /** The masses' windows, the glass their vertices mark (`town/roof.ts`):
  *  lit from within as the night comes on, a lamp's warm colour, dimmer. */
-const WINDOW_GLOW = [0.9, 0.58, 0.28];
+export const WINDOW_GLOW = [0.9, 0.58, 0.28];
 const WINDOWS: MaterialPlugin = {
   name: "Windows",
   priority: 230,

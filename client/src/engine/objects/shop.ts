@@ -2,7 +2,7 @@ import type { Manifold } from "manifold-3d";
 import { mesh, Solid, solids } from "../solid";
 import { shape, type Part } from "./sea";
 import type { RGB } from "../rgb";
-import { barnX, barnY, box, hull, placing, ribbed, sheet, WOOD, type V } from "./model";
+import { barnX, barnY, box, GLASS, hull, placing, ribbed, sheet, WOOD, type V } from "./model";
 
 /**
  * A shop, whole, on its tile, as `docs/style.md`'s board drew it: an L
@@ -35,8 +35,8 @@ const [SX0, SX1, SY0, SY1, SE, SR] = [0.0, 0.4, -0.42, 0.32, 0.27, 0.44];
 const [WX0, WY1, WE, WR] = [-0.4, -0.06, 0.17, 0.31];
 
 const SHOP = solids(() => {
-  const wood: Part[] = [];
-  const put = (solid: Manifold, rgb: RGB) => wood.push([mesh(solid), [0, 0, 0], rgb]);
+  const wood: Part[] = [], glass: Part[] = [];
+  const put = (solid: Manifold, rgb: RGB) => (rgb === PANE ? glass : wood).push([mesh(solid), [0, 0, 0], rgb]);
   /** A pitched roof's slope: from its ridge `top`, down `down` to past its
    *  eave, along `along`; tiled in courses. */
   const slope = (top: V, along: V, down: V) => {
@@ -92,7 +92,7 @@ const SHOP = solids(() => {
   put(Solid.cylinder(0.08, 0.008, 0.008, 6).translate([-0.3, 0.16, 0.05]), BENCH);
   put(Solid.sphere(0.085, 16).scale([1, 1, 0.85]).translate([-0.3, 0.16, 0.2]).add(Solid.sphere(0.06, 12).translate([-0.25, 0.2, 0.25])), LEAVES);
 
-  return { wood: { shape: shape(wood), coat: WOOD } };
+  return { wood: { shape: shape(wood), coat: WOOD }, glass: { shape: shape(glass), coat: GLASS } };
 });
 
 /** A shop, or its mirror, its courtyard on the other side. */

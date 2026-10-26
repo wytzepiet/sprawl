@@ -2,7 +2,7 @@ import type { Manifold } from "manifold-3d";
 import { mesh, solids } from "../solid";
 import { shape, type Part } from "./sea";
 import type { RGB } from "../rgb";
-import { barnX, barnY, box, hull, placing, sheet, tiled, TILES, WOOD } from "./model";
+import { barnX, barnY, box, GLASS, hull, placing, sheet, tiled, TILES, WOOD } from "./model";
 
 /**
  * A house, whole, on its tile, one of a few, as `docs/style.md`'s board
@@ -27,7 +27,7 @@ const SHED: RGB = [0.5, 0.38, 0.27];
 const SHED_ROOF: RGB = [0.32, 0.3, 0.29];
 const DOORS: RGB[] = [[0.3, 0.45, 0.36], [0.33, 0.42, 0.58], [0.6, 0.3, 0.26]];
 
-type Build = { wood: Part[]; tiles: Part[] };
+type Build = { wood: Part[]; tiles: Part[]; glass: Part[] };
 const put = (b: Build, solid: Manifold, rgb: RGB) => b.wood.push([mesh(solid), [0, 0, 0], rgb]);
 const roof = (b: Build, solid: Manifold) => b.tiles.push([tiled(solid), [0, 0, 0], TILE]);
 
@@ -65,7 +65,7 @@ function window(b: Build, facing: "+y" | "-y" | "+x" | "-x", wall: number, at: n
   const [frame, pane] = facing[1] === "y"
     ? [box(at - w / 2 - f, at + w / 2 + f, ...a, z - f, z + h + f), box(at - w / 2, at + w / 2, ...c, z, z + h)]
     : [box(...a, at - w / 2 - f, at + w / 2 + f, z - f, z + h + f), box(...c, at - w / 2, at + w / 2, z, z + h)];
-  put(b, frame, TRIM), put(b, pane, PANE);
+  put(b, frame, TRIM), b.glass.push([mesh(pane), [0, 0, 0], PANE]);
 }
 /** A door on the front, `at` across, `w` wide. */
 const door = (b: Build, y: number, at: number, rgb: RGB, w = 0.07) => (put(b, box(at - w / 2 - 0.01, at + w / 2 + 0.01, y - 0.004, y + 0.006, 0, 0.16), TRIM), put(b, box(at - w / 2, at + w / 2, y - 0.004, y + 0.01, 0, 0.15), rgb));
@@ -79,7 +79,7 @@ function shed(b: Build, x: number) {
 }
 
 const COTTAGE = (doorColour: RGB) => solids(() => {
-  const b: Build = { wood: [], tiles: [] };
+  const b: Build = { wood: [], tiles: [], glass: [] };
   // The main body, its gable end to the street.
   const [x0, x1, y0, y1, eave, ridge] = [-0.04, 0.32, -0.28, 0.3, 0.2, 0.42];
   put(b, barnY(x0, x1, y0, y1, eave, ridge), BRICK);
@@ -97,11 +97,11 @@ const COTTAGE = (doorColour: RGB) => solids(() => {
   for (const x of [-0.195, -0.065]) put(b, box(x - 0.006, x + 0.006, wy1 + 0.075, wy1 + 0.087, 0, 0.16), TRIM);
   for (const y of [-0.15, 0.12]) window(b, "+x", x1, y, 0.06);
   shed(b, -0.24);
-  return { wood: { shape: shape(b.wood), coat: WOOD }, tiles: { shape: shape(b.tiles), coat: TILES } };
+  return { wood: { shape: shape(b.wood), coat: WOOD }, tiles: { shape: shape(b.tiles), coat: TILES }, glass: { shape: shape(b.glass), coat: GLASS } };
 });
 
 const VILLA = (doorColour: RGB) => solids(() => {
-  const b: Build = { wood: [], tiles: [] };
+  const b: Build = { wood: [], tiles: [], glass: [] };
   const [x0, x1, y0, y1, eave, ridge] = [-0.33, 0.33, -0.3, 0.28, 0.24, 0.44];
   put(b, box(x0, x1, y0, y1, 0, eave), BRICK);
   hipped(b, x0, x1, y0, y1, eave, ridge);
@@ -118,11 +118,11 @@ const VILLA = (doorColour: RGB) => solids(() => {
   door(b, y1, 0, doorColour);
   for (const s of [-1, 1]) for (const y of [-0.15, 0.1]) window(b, s > 0 ? "+x" : "-x", s * x1, y, 0.05);
   shed(b, 0.24);
-  return { wood: { shape: shape(b.wood), coat: WOOD }, tiles: { shape: shape(b.tiles), coat: TILES } };
+  return { wood: { shape: shape(b.wood), coat: WOOD }, tiles: { shape: shape(b.tiles), coat: TILES }, glass: { shape: shape(b.glass), coat: GLASS } };
 });
 
 const FARMHOUSE = (doorColour: RGB) => solids(() => {
-  const b: Build = { wood: [], tiles: [] };
+  const b: Build = { wood: [], tiles: [], glass: [] };
   const [x0, x1, y0, y1, eave, ridge] = [-0.36, 0.36, -0.22, 0.2, 0.17, 0.4];
   put(b, barnX(x0, x1, y0, y1, eave, ridge), BRICK);
   gable(b, "x", x0, x1, y0, y1, eave, ridge);
@@ -135,7 +135,7 @@ const FARMHOUSE = (doorColour: RGB) => solids(() => {
   for (const x of [-0.26, -0.18, 0.18, 0.26]) window(b, "+y", y1, x, 0.05, 0.05);
   for (const s of [-1, 1]) chimney(b, s * (x1 - 0.06), 0, ridge + 0.06);
   shed(b, -0.22);
-  return { wood: { shape: shape(b.wood), coat: WOOD }, tiles: { shape: shape(b.tiles), coat: TILES } };
+  return { wood: { shape: shape(b.wood), coat: WOOD }, tiles: { shape: shape(b.tiles), coat: TILES }, glass: { shape: shape(b.glass), coat: GLASS } };
 });
 
 /** Every kind of house in every door, each and its mirror. */

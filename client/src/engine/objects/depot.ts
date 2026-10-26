@@ -3,7 +3,7 @@ import type { MeshGeometry } from "../geometry";
 import { mesh, Solid, solids } from "../solid";
 import { shape, type Part } from "./sea";
 import type { RGB } from "../rgb";
-import { barrel, box, golf, hull, placing, WOOD, ZINC, ZINC_COLOUR } from "./model";
+import { barrel, box, GLASS, golf, hull, placing, WOOD, ZINC, ZINC_COLOUR } from "./model";
 
 /**
  * A depot, whole: its sheds round its bays and its yard, one model on its
@@ -32,8 +32,8 @@ const EAVE = 0.2;
 const [BACK, INNER, OUTER, FRONT] = [-1.66, 0.74, 1.37, -0.06];
 
 const DEPOT = solids(() => {
-  const wood: Part[] = [], zinc: Part[] = [];
-  const put = (solid: Manifold, rgb: RGB) => wood.push([mesh(solid), [0, 0, 0], rgb]);
+  const wood: Part[] = [], zinc: Part[] = [], glass: Part[] = [];
+  const put = (solid: Manifold, rgb: RGB) => (rgb === PANE ? glass : wood).push([mesh(solid), [0, 0, 0], rgb]);
   const zinced = (geo: MeshGeometry, rgb = ZINC_COLOUR) => zinc.push([geo, [0, 0, 0], rgb]);
   const shed = (s: ReturnType<typeof barrel>) => (put(s.walls, WALL), zinced(s.roof));
   /** A roller shutter `w` wide and `h` high on the wall at `wall`, facing
@@ -90,7 +90,7 @@ const DEPOT = solids(() => {
     ...[-1, 1].flatMap((s) => [...rail(Math.min(s * gate, s * fx), Math.max(s * gate, s * fx), fy - 0.008, fy + 0.008), ...posts(s * gate, fy, s * fx, fy)]),
   ]), FENCE);
 
-  return { wood: { shape: shape(wood), coat: WOOD }, zinc: { shape: shape(zinc), coat: ZINC } };
+  return { wood: { shape: shape(wood), coat: WOOD }, zinc: { shape: shape(zinc), coat: ZINC }, glass: { shape: shape(glass), coat: GLASS } };
 });
 
 /** The depot, as an engine draws it. */
