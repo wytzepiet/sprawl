@@ -6,7 +6,7 @@ import { change, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { LOAD } from "../generated/rows";
-import { BAD, Fade, GOOD, GoodDot, Line, Press, Tabs } from "./kit";
+import { BAD, Fade, GOOD, Line, Press, Tabs } from "./kit";
 import { open, setOpen, show } from "./sheet";
 import { Holdings, Orders } from "./Stock";
 import { PageHead, push } from "./pages";
@@ -23,6 +23,8 @@ import type { Good, Quote, When } from "../generated";
  */
 
 const UP = GOOD;
+/** An order's colour, on the graph and in the list. */
+const ORDER = "#BF5AF2";
 /** The most packages a ferry's deck takes: the most bought or sold at once. */
 const DECK = 60;
 
@@ -45,16 +47,30 @@ export const held = createRoot(() =>
 );
 
 /**
- * A price over time, drawn in packages: a column from each hour's price to
- * the next, a line where they meet, and the ground under it faint; lines
- * across it where asked. `lo` and `hi` are the bottom and the top.
+ * A price over time as bars, rising from the bottom in the good's colour,
+ * the last white: the price now. As many as fit, a bar twice as wide as
+ * its gap, each the mean of its hours, and a short history at the right,
+ * the room before it still to fill. Lines across it where asked. `lo`
+ * and `hi` are the bottom and the top.
  */
-function Chart(props: { history: number[]; lo: number; hi: number; w: number; h: number; color: string; marks?: { at: number; color: string; dashed?: boolean; label?: string }[] }) {
+function Bars(props: { history: number[]; lo: number; hi: number; w: number; h: number; color: string; gap: number; marks?: { at: number; color: string; dashed?: boolean; label?: string }[] }) {
   const y = (v: number) => props.h * (1 - (v - props.lo) / Math.max(1e-9, props.hi - props.lo));
-  const step = () => props.w / Math.max(1, props.history.length - 1);
-  const t = () => Math.max(1.5, props.h / 60);
+  const slots = () => Math.max(1, Math.floor((props.w + props.gap) / (3 * props.gap)));
+  const bars = () => {
+    const all = props.history;
+    const n = Math.min(all.length, slots());
+    return Array.from({ length: n }, (_, i) => {
+      const some = all.slice(Math.floor((i * all.length) / n), Math.max(Math.floor((i * all.length) / n) + 1, Math.floor(((i + 1) * all.length) / n)));
+      return some.reduce((a, v) => a + v, 0) / some.length;
+    });
+  };
+  const bw = () => (props.w + props.gap) / slots() - props.gap;
+  const first = () => slots() - bars().length;
   return (
     <box w={props.w} h={props.h} clip>
+      <Index each={bars()}>
+        {(v, i) => <box at={{ left: (first() + i) * (bw() + props.gap), top: y(v()) }} w={bw()} h={props.h - y(v())} round={Math.min(bw() / 2, 4)} fill={i === bars().length - 1 ? "white" : props.color} />}
+      </Index>
       <Index each={props.marks ?? []}>
         {(m) => (
           <>
@@ -62,37 +78,23 @@ function Chart(props: { history: number[]; lo: number; hi: number; w: number; h:
               <Index each={Array.from({ length: Math.ceil(props.w / 9) })}>{(_, i) => <box at={{ left: i * 9, top: y(m().at) - 0.75 }} w={5} h={1.5} fill={m().color} />}</Index>
             </Show>
             <Show when={m().label}>
-              <box at={{ right: 2, top: Math.min(props.h - 14, Math.max(0, y(m().at) - 15)) }}>
+              <box at={{ left: 2, top: Math.min(props.h - 14, Math.max(0, y(m().at) - 15)) }}>
                 <text size={10.5} weight={600} ink={m().color}>{m().label}</text>
               </box>
             </Show>
           </>
         )}
       </Index>
-      <Index each={props.history}>
-        {(v, i) => {
-          const next = () => props.history[Math.min(i + 1, props.history.length - 1)];
-          const top = () => Math.min(y(v()), y(next()));
-          return (
-            <>
-              <box at={{ left: i * step(), top: y(v()) }} w={Math.max(1, step())} h={props.h - y(v())} fill={`${props.color}1c`} />
-              <Show when={i < props.history.length - 1 || props.history.length === 1}>
-                <box at={{ left: i * step() - t() / 2, top: top() - t() / 2 }} w={Math.max(step(), 0) + t()} h={Math.abs(y(v()) - y(next())) + t()} round={t() / 2} fill={props.color} />
-              </Show>
-            </>
-          );
-        }}
-      </Index>
     </box>
   );
 }
 
-/** The day's line, small, for the list: on one scale for every good, a
- *  half either side of the world's price, so a steady good looks steady. */
+/** The day, small, for the list: on one scale for every good, a half
+ *  either side of the world's price, so a steady good looks steady. */
 function Spark(props: { q: Quote }) {
   const day = () => props.q.history.slice(-25);
   const mid = () => (props.q.floor + props.q.ceiling) / 2;
-  return <Chart history={day().length ? day() : [props.q.price]} lo={mid() * 0.6} hi={mid() * 1.4} w={64} h={26} color={tint(change(props.q)) === "ink/0.5" ? "#8E8E93" : tint(change(props.q))} />;
+  return <Bars history={day().length ? day() : [props.q.price]} lo={mid() * 0.6} hi={mid() * 1.4} w={60} h={26} gap={2} color={GOODS[props.q.good].color} />;
 }
 
 /** A good's tile: its glyph on a square of its colour. */
@@ -126,10 +128,10 @@ export const toMarket = (g: Good | null) => (setView("market"), show("market", t
 /** Every good: what the town holds, the day's line, the price and its move. */
 function List() {
   return (
-    <box pad={{ x: 12, bottom: 12 }} gap={6}>
+    <box pad={{ x: 12, bottom: 12 }} gap={2}>
       <For each={market.goods}>
         {(q) => (
-          <Press dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => push(goodPage(q.good))}>
+          <Press dir="row" align="center" gap={12} pad={{ x: 4, y: 8 }} round={16} onTap={() => push(goodPage(q.good))}>
             <Tile good={q.good} />
             <box grow={1} gap={1}>
               <text size={14.5} weight={600}>{named(q.good)}</text>
@@ -137,7 +139,7 @@ function List() {
             </box>
             <Spark q={q} />
             <box w={64} align="end">
-              <text serif size={16}>{money(each(q.good, q.price))}</text>
+              <text serif size={18}>{money(each(q.good, q.price))}</text>
               <text size={11.5} weight={600} ink={tint(change(q))}>{percent(change(q))}</text>
             </box>
           </Press>
@@ -153,7 +155,7 @@ export function Order(props: { o: When; named?: boolean }) {
   const { send } = useGame();
   return (
     <box dir="row" align="center" gap={10} pad={{ left: 10, right: 4, y: 4 }} round={14} fill="ink/0.05">
-      <box w={6} h={26} round={3} fill="#BF5AF2" />
+      <box w={6} h={26} round={3} fill={ORDER} />
       <text size={13.5} grow={1}>
         {props.o.out ? "Sell" : "Buy"} {props.o.packages}{props.named ? ` ${GOODS[props.o.good].label}` : ""} when it {props.o.out ? "rises to" : "falls to"} <text serif>{money(each(props.o.good, props.o.price))}</text>
       </text>
@@ -211,54 +213,61 @@ function Page(props: { good: Good }) {
     <box pad={{ bottom: 14 }} gap={10}>
       <PageHead>
         <Tile good={props.good} />
-        <text size={17} weight={700} grow={1}>{named(props.good)}</text>
-        <box align="end">
-          <text serif size={22}>{money(each(props.good, q().price))}</text>
-          <text size={11.5} weight={600} ink={tint(change(q()))}>{percent(change(q()))} today</text>
-        </box>
+        <text size={17} weight={700} grow={1} ink={GOODS[props.good].color}>{named(props.good)}</text>
       </PageHead>
-      <box pad={{ x: 12 }} gap={10}>
-      <box pad={{ x: 10, top: 10, bottom: 8 }} round={18} fill="ink/0.05" gap={8} onSize={(x) => setW(x - 20)}>
-        <Show when={w() > 0}>
-          <Chart
-            history={shown().length ? shown() : [q().price]}
-            lo={range()[0]}
-            hi={range()[1]}
-            w={w()}
-            h={150}
-            color={GOODS[props.good].color}
-            marks={[
-              { at: q().ceiling, color: "ink/0.3", label: `world sells ${money(each(props.good, q().ceiling))}` },
-              { at: q().floor, color: "ink/0.3", label: `world buys ${money(each(props.good, q().floor))}` },
-              ...orders().map((o) => ({ at: o.price, color: "#BF5AF2", dashed: true, label: `${o.out ? "sell" : "buy"} ${o.packages} at ${money(each(o.good, o.price))}` })),
-            ]}
-          />
-        </Show>
-        <box dir="row" gap={6}>
+      <box pad={{ x: 16 }} gap={12}>
+      {/* The price now, big, how it moved, and the week or day behind it. */}
+      <box dir="row" align="end" gap={8}>
+        <text serif size={40}>{money(each(props.good, q().price))}</text>
+        <box grow={1} pad={{ bottom: 7 }}>
+          <text size={13} weight={600} ink={tint(change(q()))}>{percent(change(q()))} today</text>
+        </box>
+        <box dir="row" gap={12} pad={{ bottom: 7 }}>
           <For each={[false, true]}>
             {(wk) => (
-              <Press h={24} pad={{ x: 10 }} round={12} justify="center" fill={week() === wk ? "ink/0.85" : "ink/0.07"} onTap={() => setWeek(wk)}>
-                <text size={12} weight={600} ink={week() === wk ? "glass" : "ink/0.6"}>{wk ? "Week" : "Day"}</text>
-              </Press>
+              <box onTap={() => setWeek(wk)}>
+                <text size={13} weight={600} ink={week() === wk ? "ink" : "ink/0.4"}>{wk ? "Week" : "Day"}</text>
+              </box>
             )}
           </For>
         </box>
       </box>
+      <box onSize={(x) => setW(x)}>
+        <Show when={w() > 0}>
+          <Bars
+            history={shown().length ? shown() : [q().price]}
+            lo={range()[0]}
+            hi={range()[1]}
+            w={w()}
+            h={140}
+            gap={3}
+            color={GOODS[props.good].color}
+            marks={[
+              ...orders().map((o) => ({ at: o.price, color: ORDER, dashed: true, label: `${o.out ? "sell" : "buy"} ${o.packages} at ${money(each(o.good, o.price))}` })),
+            ]}
+          />
+        </Show>
+      </box>
+      {/* The band the world keeps it in: the chart's bottom and top. */}
+      <box dir="row">
+        <text size={12} soft grow={1}>World buys at <text serif>{money(each(props.good, q().floor))}</text></text>
+        <text size={12} soft>World sells at <text serif>{money(each(props.good, q().ceiling))}</text></text>
+      </box>
 
-      <Show when={stock()}>{(s) => <box pad={{ x: 4 }}><Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} /></box>}</Show>
+      <Show when={stock()}>{(s) => <Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} />}</Show>
 
       <box dir="row" align="center" gap={8}>
         <Stepper value={`${n()}`} less={() => setN(n() > LOAD ? n() - LOAD : Math.max(1, n() - 1))} more={() => setN(Math.min(DECK, n() < LOAD ? n() + 1 : n() + LOAD))} />
         <text size={13} soft grow={1}>{GOODS[props.good].names[n() === 1 ? 0 : 1]}, {n() * GOODS[props.good].per}</text>
       </box>
       <box dir="row" gap={8}>
-        <Press grow={1} dir="row" align="center" justify="center" gap={8} h={44} round={16} fill={UP} opacity={harbour() && growth().treasury >= cost() ? 1 : 0.4} onTap={() => harbour() && growth().treasury >= cost() && trade(false)}>
-          <text size={15} weight={700} ink="white">Buy</text>
-          <text serif size={15} ink="white">{money(cost())}</text>
+        <Press grow={1} dir="row" align="center" justify="center" gap={8} h={46} round={23} fill={`${UP}38`} opacity={harbour() && growth().treasury >= cost() ? 1 : 0.4} onTap={() => harbour() && growth().treasury >= cost() && trade(false)}>
+          <text size={15} weight={700} ink={UP}>Buy</text>
+          <text serif size={16} ink={UP}>{money(cost())}</text>
         </Press>
-        <Press grow={1} dir="row" align="center" justify="center" gap={8} h={44} round={16} stroke={[1.5, "ink/0.18"]} opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && trade(true)}>
+        <Press grow={1} dir="row" align="center" justify="center" gap={8} h={46} round={23} fill="ink/0.14" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && trade(true)}>
           <text size={15} weight={700}>Sell</text>
-          <text serif size={15}>{money(total(q(), n(), true))}</text>
+          <text serif size={16}>{money(total(q(), n(), true))}</text>
         </Press>
       </box>
 
@@ -272,8 +281,8 @@ function Page(props: { good: Good }) {
           <text size={13.5} soft>when it {out() ? "rises to" : "falls to"}</text>
           <Stepper value={money(each(props.good, price()))} less={() => nudge(-1)} more={() => nudge(1)} />
           <box grow={1} />
-          <Press h={30} pad={{ x: 14 }} round={15} justify="center" fill="#BF5AF2" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && place()}>
-            <text size={13.5} weight={600} ink="white">Place</text>
+          <Press h={30} pad={{ x: 14 }} round={15} justify="center" fill={`${ORDER}38`} opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && place()}>
+            <text size={13.5} weight={600} ink={ORDER}>Place</text>
           </Press>
         </box>
       </box>
@@ -289,18 +298,14 @@ function Shelf(props: { good: Good; level: number; cap: number; incoming: number
   const color = () => GOODS[props.good].color;
   return (
     <box pad={{ y: 6 }} gap={8}>
-      <box dir="row" align="center" gap={8}>
-        <GoodDot good={props.good} size={20} />
-        <text size={13.5} weight={600}>{named(props.good)}</text>
-        <box dir="row" align="end" gap={2}>
-          <text serif size={13.5}>{Math.floor(props.level)}</text>
-          <text serif size={12} soft>/ {props.cap}</text>
-        </box>
+      <box dir="row" align="center" gap={6}>
+        <text serif size={20}>{Math.floor(props.level)}</text>
+        <text size={12.5} soft grow={1}>of {props.cap} held</text>
         <Show when={props.incoming > 0}>
-          <text size={11} soft>+{Math.round(props.incoming)} coming</text>
+          <text size={12.5} weight={600} ink={color()}>+{Math.round(props.incoming)} coming</text>
         </Show>
       </box>
-      <box h={14} round={7} fill="ink/0.09" onSize={(x) => setW(x)}>
+      <box h={14} round={7} fill="ink/0.14" onSize={(x) => setW(x)}>
         <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
         <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
       </box>

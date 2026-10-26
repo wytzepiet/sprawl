@@ -33,7 +33,7 @@ export function Holdings() {
       <Show when={holdings().length} fallback={<box pad={{ x: 4, y: 8 }}><text size={14} weight={600} soft>Goods are kept in a depot</text></box>}>
         <box dir="row" align="center" gap={10} pad={{ x: 4, bottom: 4 }}>
           <box grow={1} gap={0}>
-            <text serif size={22}>{money(worth())}</text>
+            <text serif size={34}>{money(worth())}</text>
             <text size={12} soft>held, at today's prices</text>
           </box>
           <text size={13} weight={600} ink={tint(moved())}>{percent(moved())} today</text>
@@ -44,7 +44,7 @@ export function Holdings() {
           const q = () => quoteOf(h.good)!;
           const c = () => q().price / dayAgo(q()) - 1;
           return (
-            <box dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => push(goodPage(h.good))}>
+            <box dir="row" align="center" gap={12} pad={{ x: 4, y: 8 }} round={16} onTap={() => push(goodPage(h.good))}>
               <Tile good={h.good} />
               <box grow={1} gap={1}>
                 <text size={14.5} weight={600}>{named(h.good)}</text>
@@ -54,7 +54,7 @@ export function Holdings() {
                 </text>
               </box>
               <box align="end">
-                <text serif size={16}>{money(h.worth)}</text>
+                <text serif size={18}>{money(h.worth)}</text>
                 <text size={11.5} weight={600} ink={tint(c())}>{percent(c())}</text>
               </box>
             </box>
