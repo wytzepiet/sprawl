@@ -62,7 +62,7 @@ impl World {
         let n = centers.len();
         let mut lengths = vec![0.0]; // index 0 unused
         if n == route.len() {
-            for (i, j) in crate::car::spawn::parts(backing, n) {
+            for (i, j) in parts(backing, n) {
                 let mut positions = bezier::offset_positions(&centers[i..=j], MEASURED_LANE);
                 for k in i..=j {
                     if k < from_lot || k >= n - to_lot || (k == i && i > 0) || (k == j && j + 1 < n) {
@@ -75,4 +75,14 @@ impl World {
         lengths.resize(route.len().max(1), 1.0);
         lengths
     }
+}
+
+/// The stretches of a route of `n` nodes between its changes of gear, as
+/// `(i, j)`: from node i to node j, each driven one way.
+pub fn parts(backing: &[[usize; 2]], n: usize) -> Vec<(usize, usize)> {
+    let mut cuts: Vec<usize> = backing.iter().flatten().copied().filter(|&k| k > 0 && k + 1 < n).collect();
+    cuts.extend([0, n.saturating_sub(1)]);
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.windows(2).map(|w| (w[0], w[1])).collect()
 }

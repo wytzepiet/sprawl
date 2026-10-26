@@ -243,20 +243,10 @@ pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, b
     true
 }
 
-/// The stretches of a route of `n` nodes between its changes of gear, as
-/// `(i, j)`: from node i to node j, each driven one way.
-pub fn parts(backing: &[[usize; 2]], n: usize) -> Vec<(usize, usize)> {
-    let mut cuts: Vec<usize> = backing.iter().flatten().copied().filter(|&k| k > 0 && k + 1 < n).collect();
-    cuts.extend([0, n.saturating_sub(1)]);
-    cuts.sort_unstable();
-    cuts.dedup();
-    cuts.windows(2).map(|w| (w[0], w[1])).collect()
-}
-
 /// How far along the route each change of gear is, as its physics measures
 /// it: where a vehicle stops and pulls away the other way.
 pub fn cusps(backing: &[[usize; 2]], along: &[f64]) -> Vec<f64> {
-    parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
+    crate::world::geometry::parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
 }
 
 /// How far along a route each node of it is, from its segments' lengths:

@@ -317,7 +317,7 @@ impl World {
     pub fn founded(&mut self, id: EntityId) {
         let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return };
         let kind = b.kind;
-        let first_depot = crate::economy::depot(kind)
+        let first_depot = model::blueprint::depot(kind)
             && !self.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == kind && o.site.is_none()));
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
             if first_depot {
@@ -421,7 +421,7 @@ impl World {
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
             let kind = b.kind;
             for (good, stock) in b.stocks.iter_mut() {
-                if !crate::economy::makes(kind, *good) {
+                if !model::blueprint::makes(kind, *good) {
                     stock.level = stock.cap;
                 }
             }

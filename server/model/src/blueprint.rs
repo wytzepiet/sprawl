@@ -8,6 +8,7 @@
 //! is worked, how a visit is scored — lives with the code that does it, and
 //! takes its parameters from the row.
 
+use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 
@@ -281,6 +282,55 @@ pub fn check() {
         }
     }
     assert_eq!(BLUEPRINTS.len(), BuildingKind::ALL.len(), "a kind has no blueprint");
+}
+
+/// Hours of the shift a kind's row posts.
+pub fn shift_hours(kind: BuildingKind) -> f64 {
+    blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / H as f64)
+}
+
+/// The shelves a kind keeps, and their caps.
+pub fn stocks(kind: BuildingKind) -> BTreeMap<Good, f64> {
+    blueprint(kind).shelves.iter().map(|&(good, cap)| (good, cap as f64)).collect()
+}
+
+/// The goods a kind keeps a shelf of.
+pub fn shelves(kind: BuildingKind) -> Vec<Good> {
+    blueprint(kind).shelves.iter().map(|&(good, _)| good).collect()
+}
+
+/// Units of a good a kind could pass on in a day: what its taps could
+/// serve with every slot busy, and a depot's shelf, turned once.
+pub fn rated(kind: BuildingKind, good: Good) -> f64 {
+    let over_the_counter: f64 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(Tap::rated).sum();
+    over_the_counter + if depot(kind) { stocks(kind).get(&good).copied().unwrap_or(0.0) } else { 0.0 }
+}
+
+/// Its land fills its shelf with this: it never calls for it. The only
+/// seller a depot's lorry fetches from, so that a depot never fetches
+/// from a depot, round and round for nothing.
+pub fn makes(kind: BuildingKind, good: Good) -> bool {
+    blueprint(kind).makes == Some(good)
+}
+
+/// Works land with a tractor. §12.8.
+pub fn farm(kind: BuildingKind) -> bool {
+    blueprint(kind).farm
+}
+
+/// What one tile of a farm's land grows in a cycle: the yard, a
+/// harvest, over the tiles the farm has, so a harvest fills the yard
+/// whatever ground the farm got. A farm on cramped ground has fewer
+/// tiles and a longer wait between runs, not a smaller harvest.
+pub fn crop(kind: BuildingKind, tiles: usize) -> f64 {
+    blueprint(kind).makes.and_then(|g| stocks(kind).get(&g).copied()).unwrap_or(0.0) / tiles.max(1) as f64
+}
+
+/// Keeps shelves and runs vans: delivers its shelves, answering the calls
+/// of stocks running low.
+pub fn depot(kind: BuildingKind) -> bool {
+    let bp = blueprint(kind);
+    !bp.shelves.is_empty() && bp.vehicles.contains(&CarRole::Van)
 }
 
 #[cfg(test)]

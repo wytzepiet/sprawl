@@ -55,7 +55,7 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
     if let Some(site) = &b.site {
         return site.iter().filter(|(_, s)| s.short() > 0.0).map(|(&g, _)| g).collect();
     }
-    if economy::depot(b.kind) {
+    if model::blueprint::depot(b.kind) {
         return Vec::new();
     }
     b.stocks.iter().filter(|&(&g, s)| economy::buys(b.kind, g) && s.level < economy::reorder(world, building, g) && economy::whole(s.short(), g) > 0).map(|(&g, _)| g).collect()
@@ -68,11 +68,11 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
     let Some(b) = world.building(building) else { return };
     let kind = b.kind;
-    if b.site.is_none() && economy::farm(kind) {
+    if b.site.is_none() && model::blueprint::farm(kind) {
         world.farm_run(events, building, now);
     }
     let mut calls: Vec<Call> = wants(world, building).into_iter().map(|good| Call { good, at: building, raised: now, answered_by: None }).collect();
-    if economy::depot(kind) {
+    if model::blueprint::depot(kind) {
         crate::haul::call_lorries(world, events);
     }
     // One call a good a building: a vehicle already on its way keeps its
@@ -151,7 +151,7 @@ fn nearest_seller(world: &mut World, at: EntityId, good: Good, now: GameTime) ->
     // Every depot with the good on its pad, in id order, so two runs of
     // the same town make the same choice.
     let depots: Vec<EntityId> = world
-        .of_kinds(economy::depot)
+        .of_kinds(model::blueprint::depot)
         .into_iter()
         .filter(|&(id, b)| id != at && b.stocks.get(&good).is_some_and(|s| economy::whole(s.level, good) > 0))
         .map(|(id, _)| id)
@@ -308,7 +308,7 @@ mod tests {
     /// The first shelf, as a fraction of full.
     fn stock(world: &World, building: EntityId) -> f64 {
         let b = world.building(building).unwrap();
-        let s = &b.stocks[&crate::economy::shelves(b.kind)[0]];
+        let s = &b.stocks[&model::blueprint::shelves(b.kind)[0]];
         s.level / s.cap
     }
 

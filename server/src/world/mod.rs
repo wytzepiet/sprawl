@@ -4,7 +4,7 @@ pub mod clear;
 pub mod decks;
 
 pub mod fields;
-mod geometry;
+pub mod geometry;
 pub mod lots;
 pub mod network;
 pub mod pads;
@@ -208,7 +208,7 @@ impl World {
 
     /// The standing depots, by id.
     pub fn depots(&self) -> Vec<(EntityId, &Building)> {
-        self.of_kinds(crate::economy::depot).into_iter().filter(|(_, b)| b.site.is_none()).collect()
+        self.of_kinds(model::blueprint::depot).into_iter().filter(|(_, b)| b.site.is_none()).collect()
     }
 
     /// These, nearest a tile first, as the crow walks the grid: with how

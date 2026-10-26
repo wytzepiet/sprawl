@@ -43,7 +43,7 @@ pub const RIPEN: GameTime = DAY_MS as GameTime * 3 / 2;
 /// shift over the pace, less the ground driven between rows. What a
 /// farm's land comes to at capacity, and what its yard is divided by.
 pub fn capacity(kind: model::BuildingKind) -> f64 {
-    (economy::shift_hours(kind) * model::HOUR as f64 / PACE as f64 * 0.9).round()
+    (model::blueprint::shift_hours(kind) * model::HOUR as f64 / PACE as f64 * 0.9).round()
 }
 
 /// The eight ways off a tile: straight first, then the diagonals.
@@ -75,7 +75,7 @@ impl World {
         let GameObject::Building(b) = &e.object else { return };
         let (kind, facing) = (b.kind, b.facing);
         let wanted = capacity(kind) as usize;
-        if !economy::farm(kind) || !b.land.is_empty() {
+        if !model::blueprint::farm(kind) || !b.land.is_empty() {
             return;
         }
         let _ = facing;
@@ -191,7 +191,7 @@ impl World {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
+            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= model::blueprint::crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -583,7 +583,7 @@ impl World {
         let Some(&here) = run.path.get(k) else { return };
         self.update_position(tractor, here);
         let crop = self.objects.get(farm).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some(economy::crop(b.kind, b.land.len())),
+            GameObject::Building(ref b) => Some(model::blueprint::crop(b.kind, b.land.len())),
             _ => None,
         });
         let mut cut = 0.0;

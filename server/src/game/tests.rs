@@ -815,7 +815,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             let GameObject::Building(ref b) = e.object else { continue };
             for (&good, stock) in &b.stocks {
                 // A farm's yard is meant to empty: a lorry takes it.
-                if crate::economy::makes(b.kind, good) {
+                if model::blueprint::makes(b.kind, good) {
                     continue;
                 }
                 if stock.level <= 0.0 {
@@ -976,7 +976,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     // is home, and the yard is empty.
     let day = DAY_MS as u64;
     let land = stages(world).len();
-    let crop = crate::economy::crop(BuildingKind::Farm, land);
+    let crop = model::blueprint::crop(BuildingKind::Farm, land);
     game.run_to(20 * day / 24);
     let world = &game.world;
     assert!(stages(world).iter().all(|&s| s == Stage::Ploughed), "by evening the land is {:?}", stages(world));

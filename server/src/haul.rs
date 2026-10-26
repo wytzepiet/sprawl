@@ -426,7 +426,7 @@ pub const MORE_LORRIES: u8 = 3;
 pub fn buy_lorry(world: &mut World, events: &mut EventQueue, depot: EntityId, now: GameTime) {
     let treasury = world.treasury;
     let Some(b) = world.building_mut(depot) else { return };
-    if !crate::economy::depot(b.kind) || b.lorries >= MORE_LORRIES || treasury < LORRY_PRICE {
+    if !model::blueprint::depot(b.kind) || b.lorries >= MORE_LORRIES || treasury < LORRY_PRICE {
         return;
     }
     b.lorries += 1;
