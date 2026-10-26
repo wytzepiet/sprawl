@@ -1315,16 +1315,19 @@ class Builder {
     for (let k = 1; k + 1 < points.length; k++) this.indices.push(base, base + k, base + k + 1);
   }
   /** From p to q, facing to the right of that, from `lo` up to `hi`; its
-   *  foot out from p and q along `out`, if given. */
-  wall(p: Point, q: Point, lo: number, hi: number, out?: [Point, Point]) {
-    const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
-    const len = Math.hypot(dx, dy);
+   *  foot out from p and q along `out`. Facing at each end the way its foot
+   *  goes, not the way its own face does, so the walls meeting at a point
+   *  face alike there and, set back in the shadow map (`peaks.ts`), stay
+   *  joined, with no slit at a bend for the low sun to shine through. */
+  wall(p: Point, q: Point, lo: number, hi: number, out: [Point, Point]) {
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     if (len < 1e-6) return;
-    const [nx, ny] = [dy / len, -dx / len];
-    const [fp, fq] = out ? [[p[0] + out[0][0], p[1] + out[0][1]], [q[0] + out[1][0], q[1] + out[1][1]]] : [p, q];
+    // Where the ground is flat and the foot goes nowhere, its own face's.
+    const facing = ([x, y]: Point) => (Math.hypot(x, y) > 1e-9 ? [x / Math.hypot(x, y), y / Math.hypot(x, y)] : [(q[1] - p[1]) / len, (p[0] - q[0]) / len]);
+    const [[px, py], [qx, qy]] = out.map(facing);
     const base = this.positions.length / 3;
-    this.positions.push(fp[0], fp[1], lo, fq[0], fq[1], lo, q[0], q[1], hi, p[0], p[1], hi);
-    for (let k = 0; k < 4; k++) this.normals.push(nx, ny, 0);
+    this.positions.push(p[0] + out[0][0], p[1] + out[0][1], lo, q[0] + out[1][0], q[1] + out[1][1], lo, q[0], q[1], hi, p[0], p[1], hi);
+    this.normals.push(px, py, 0, qx, qy, 0, qx, qy, 0, px, py, 0);
     this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   take(): MeshBuffers {

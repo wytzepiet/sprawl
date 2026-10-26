@@ -228,7 +228,7 @@ is late, visibly, and the planner replans what was booked on it.
 
 ## Built: the ferry harbour
 
-What runs, as of 2026-10-10 (`world/sea.rs`, `haul.rs`), and where it
+What runs, as of 2026-10-10 (`map/sea.rs`, `haul.rs`), and where it
 parted from the direction above.
 
 - **The harbour** is a kind like any other, all yard, 3 along the quay

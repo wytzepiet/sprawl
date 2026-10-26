@@ -18,6 +18,6 @@ text: string, done: boolean,
 at: number | null, 
 /**
  * Where the building it asks for would best go, while the opening is
- * on this step (`ghost::best`).
+ * on this step (`sprawl::ghost::best`).
  */
 ghost: Ghost | null, };

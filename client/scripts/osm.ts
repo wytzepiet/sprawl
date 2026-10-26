@@ -7,7 +7,7 @@
  *   bun run osm <name> <file.json>                       an Overpass answer saved earlier
  *   bun run osm <name>                                   made again from what was fetched
  *
- * writes `server/fixtures/<name>.txt` (the key is in `server/src/fixtures.rs`),
+ * writes `server/fixtures/<name>.txt` (the key is in `server/map/src/fixtures.rs`),
  * and keeps what Overpass answered in `.dev/osm/<name>.json`, so a change
  * here remakes every fixture without asking again.
  * A saved answer is what `https://overpass-api.de/api/interpreter` returns

@@ -2,9 +2,13 @@
 import type { BuildingKind } from "./BuildingKind";
 import type { GridCoord } from "./GridCoord";
 
+/**
+ * Where the guide shows a building going, drawn as a ghost the hand can
+ * take, and the street it would need, drawn dashed.
+ */
 export type Ghost = { kind: BuildingKind, 
 /**
- * Where the hand would hold it, and which way round (`World::fit`).
+ * Where the hand would hold it, and which way round (`Map::fit`).
  */
 at: GridCoord, facing: number, tiles: Array<GridCoord>, 
 /**

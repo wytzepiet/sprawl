@@ -52,7 +52,7 @@ cargo: Array<Package>,
  */
 load: [Good, number] | null, 
 /**
- * A ferry's deck, by place (`world/sea.rs` DECK): a pallet each.
+ * A ferry's deck, by place (`map/sea.rs` DECK): a pallet each.
  * Settlers' cars ride in the bays with none.
  */
 deck: Array<Package | null>, passengers: Array<number>, 

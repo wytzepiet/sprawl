@@ -31,9 +31,29 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 
 ## Structure
 
-- `server/` — Rust, a workspace of three:
-  - `server/` itself, the `sprawl` library: the game (DES, world, cars,
-    town) as `game::Game`, with no clock on the wall and no IO.
+- `server/` — Rust, a workspace of crates, each using only those above it
+  in this list, so the compiler keeps the arrows pointing one way:
+  - `server/fixed/` — the game's chance and its maps, the same on every
+    machine.
+  - `server/land/` — the islands and mountains a seed raises; knows nothing
+    of what is built on them.
+  - `server/model/` — what everything is: every type the game keeps and
+    sends (the client's are generated from them), and the fixed rules of
+    each kind (`blueprint`, `needs`). Nothing here knows the world.
+  - `server/map/` — what is where: the land as built on, roads, lots,
+    buildings, the cars on them and who lives and works where (`Map`).
+    It keeps itself whole and decides nothing.
+  - `server/traffic/` — how things move: cars on the roads and ships on
+    the sea's lanes, who goes first where their ways meet, and the queue
+    that wakes each one (`Traffic`). Never why: a driver who steps out
+    is handed back to the game (`World::drive`).
+  - `server/` itself, the `sprawl` library: the sim, what happens on the
+    map (`world::World`: the map, and who moves in and is hired, where
+    everyone and everything is going, the books, calls, market, missions
+    and the ferries' timetable) as `game::Game`, with no clock on the
+    wall and no IO.
+  - `server/interchange/` — the puzzle: levels played on the game, and
+    replays of them. The game knows nothing of it.
   - `server/host/` — the server binary: `Game` on a tokio loop, over
     WebSocket, saved to SQLite. `cargo run` in `server/` runs it.
   - `server/web/` — `Game` for a Web Worker, built for wasm
@@ -112,7 +132,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   budget).
 - **Does it still look right?** `bun run shots` builds the test towns in
   `server/fixtures/*.txt` (a map in text; the key is in
-  `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
+  `server/map/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
   photographs each: `.dev/shots/sheet.png` has them all on one page.
   `--keep` leaves that stack up to look round by hand. The renderer is
   WebGPU only; in a cloud container Playwright's Chromium draws it in
@@ -202,14 +222,14 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Where the hand may go** is the game's to say, never the client's:
   the brush asks (`Ask`, `server/src/hint.rs`) and the game answers by
   the rules it builds by. Where roads may stand is one rule of their
-  shapes (`server/src/world/clear.rs`). `cargo test starts_over_a_view
+  shapes (`server/map/src/clear.rs`). `cargo test starts_over_a_view
   -- --ignored --nocapture` times the dots for a large view, which the
   town's server answers as the camera moves.
 - **Interchange, the puzzle:** `/interchange` on the dev client, the
   levels run in the browser on the sim compiled to wasm (`server/web`):
   `cd client && bun run wasm` after changing the server (`bun run dev`
   does it on start). A level is `server/levels/<name>.txt` (the format at
-  the top of `server/src/level.rs`); `cargo test level` runs every
+  the top of `server/interchange/src/level.rs`); `cargo test level` runs every
   level's own solve and asserts it flows as its `@flow` says, which is
   what scores 100; when cars change, it says what to write instead. A new level file needs
   Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
@@ -218,9 +238,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   its verdict, in `.dev/look/`.
 - **A replay of what went wrong:** in a level, F flags the moment and the
   tile under the pointer, and "Copy replay" puts everything played since
-  the level opened on the clipboard (`server/src/replay.rs`): the
+  the level opened on the clipboard (`server/interchange/src/replay.rs`): the
   player's inputs at the moments they came, and nothing else, since the
-  game is the same from the same inputs on every machine (`fixed.rs`: no
+  game is the same from the same inputs on every machine (`server/fixed`: no
   `std` HashMap or `SmallRng`; settling by the steps, not the ticks).
   Pasted to you, save it as `server/replays/<name>.json` and `cargo run
   --bin replay -- <file> --flag 1 --at x,y --car id` plays it to the flag:
@@ -228,7 +248,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   car through another, one standing for good, one on a priority road
   made to wait for a minor one: `Watch`), and every car
   there, how fast and what it slows or stops for (`why`, in
-  `bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
+  `interchange/src/bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.
 - **Generated types:** a full `cargo test` in `server/` writes them into
   `client/src/generated` (`server/.cargo/config.toml`), and beside them
