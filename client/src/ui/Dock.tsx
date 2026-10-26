@@ -15,7 +15,6 @@ import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { BEZEL, DROP, Fade, Press, view, wide } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "~ui/jsx-runtime";
-import { SQUIRCLE_REACH } from "~ui/paint";
 
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A hammer. */
@@ -28,9 +27,6 @@ const SLOT = 52;
 const BAR = 60;
 const WIDTH = SLOT * TABS.length + 8;
 const cx = (j: number) => 30 + SLOT * j;
-/** The black's corner, round its pills by the room between: the tab bar's
- *  (19, and 12 in from the edge), and the bar's buttons' (22, and 8). */
-const ROUND = 31;
 
 /** Each tab's sheet: its head, peeking over the bar, and what is drawn up under it. */
 const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> = {
@@ -137,7 +133,7 @@ export default function Dock() {
       <box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
         <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
-          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={ROUND / SQUIRCLE_REACH} clip>
+          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={30} clip>
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
