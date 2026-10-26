@@ -58,9 +58,9 @@ export interface Palette {
 }
 let palette: Palette = { tint: [1, 1, 1], text: [0, 0, 0], ink: [0, 0, 0] };
 
-const BOX_FLOATS = 28;
-/** A box with no photo: its fill's colour. */
-const NO_PHOTO = [0, 0, 0, 0];
+const BOX_FLOATS = 32;
+/** Four zeros: a box with no photo, its fill's colour, and no stroke. */
+const NONE = [0, 0, 0, 0];
 const GLYPH_FLOATS = 16;
 
 /** A colour as premultiplied 0–1: "#rgb[a]", "#rrggbb[aa]", "white", or the glass's "ink" and "glass", with "/share". */
@@ -119,14 +119,14 @@ struct U { size: vec4f, shade: vec4f }
 struct I {
   @location(0) rect: vec4f, @location(1) form: vec4f, @location(2) fill: vec4f,
   @location(3) line: vec4f, @location(4) cb: vec4f, @location(5) cr: vec4f,
-  @location(6) photo: vec4f,
+  @location(6) photo: vec4f, @location(7) seg: vec4f,
 }
 struct V {
   @builtin(position) pos: vec4f, @location(0) p: vec2f,
   @location(1) @interpolate(flat) rect: vec4f, @location(2) @interpolate(flat) form: vec4f,
   @location(3) @interpolate(flat) fill: vec4f, @location(4) @interpolate(flat) line: vec4f,
   @location(5) @interpolate(flat) cb: vec4f, @location(6) @interpolate(flat) cr: vec4f,
-  @location(7) @interpolate(flat) photo: vec4f,
+  @location(7) @interpolate(flat) photo: vec4f, @location(8) @interpolate(flat) seg: vec4f,
 }
 @vertex fn vert(in: I, @builtin(vertex_index) i: u32) -> V {
   ${CORNERS}
@@ -136,20 +136,36 @@ struct V {
   let p = in.rect.xy + in.rect.zw * 0.5 + c * (in.rect.zw * 0.5 + room);
   var v: V;
   v.pos = vec4f(p.x / u.size.x * 2 - 1, 1 - p.y / u.size.y * 2, 0, 1);
-  v.p = p; v.rect = in.rect; v.form = in.form; v.fill = in.fill; v.line = in.line; v.cb = in.cb; v.cr = in.cr; v.photo = in.photo;
+  v.p = p; v.rect = in.rect; v.form = in.form; v.fill = in.fill; v.line = in.line; v.cb = in.cb; v.cr = in.cr; v.photo = in.photo; v.seg = in.seg;
   return v;
 }
 ${WGSL_CLIP}
 fn dist(p: vec2f, rect: vec4f, r: f32) -> f32 {
   return squircle(p - rect.xy - rect.zw * 0.5, rect.zw * 0.5, r);
 }
+/** How far from a stroke from a to b, \`r\` either side, its ends round. */
+fn stroke(p: vec2f, s: vec4f, r: f32) -> f32 {
+  let ab = s.zw - s.xy;
+  let along = clamp(dot(p - s.xy, ab) / max(dot(ab, ab), 1e-6), 0, 1);
+  return length(p - s.xy - ab * along) - r;
+}
 @fragment fn frag(v: V) -> @location(0) vec4f {
   let r = min(v.form.x, min(v.rect.z, v.rect.w) * 0.5);
-  let d = dist(v.p, v.rect, r);
+  var d = select(dist(v.p, v.rect, r), stroke(v.p, v.seg, v.form.x), any(v.seg != vec4f(0)));
+  var fade = 1.0;
+  if (v.cr.y > 0) {
+    // Under a segment: below it, cut straight at the box's sides so the
+    // next one meets it seamless, fading to nothing at the box's foot.
+    let ab = v.seg.zw - v.seg.xy;
+    let at = v.seg.y + ab.y * clamp((v.p.x - v.seg.x) / max(ab.x, 1e-6), 0, 1);
+    let inside = v.p.x >= v.rect.x && v.p.x < v.rect.x + v.rect.z;
+    d = select(1.0, (at - v.p.y) * ab.x / max(length(ab), 1e-6), inside);
+    fade = clamp(1 - (v.p.y - v.rect.y) / v.rect.w, 0, 1);
+  }
   // A photo: its texel, faded by the fill's alpha.
   let t = textureSampleLevel(sheet, soft, mix(v.photo.xy, v.photo.zw, (v.p - v.rect.xy) / v.rect.zw), 0);
   let fill = select(v.fill, t * v.fill.a, v.photo.z > 0);
-  var col = fill * clamp(0.5 - d, 0, 1);
+  var col = fill * clamp(0.5 - d, 0, 1) * fade;
   if (v.form.y > 0) {
     let a = clamp(0.5 - d, 0, 1) * clamp(0.5 + d + v.form.y, 0, 1);
     col = v.line * a + col * (1 - v.line.a * a);
@@ -223,7 +239,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
   const boxPipeline = device.createRenderPipeline({
     label: "ui-box",
     layout: device.createPipelineLayout({ bindGroupLayouts: [boxLayout] }),
-    vertex: { module: boxModule, entryPoint: "vert", buffers: [attrs([4, 4, 4, 4, 4, 4, 4])] },
+    vertex: { module: boxModule, entryPoint: "vert", buffers: [attrs([4, 4, 4, 4, 4, 4, 4, 4])] },
     fragment: { module: boxModule, entryPoint: "frag", targets: [{ format: surface.format, blend }] },
   });
   const boxU = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -278,14 +294,14 @@ export function createPaint(engine: EngineContext, colours: Palette) {
     return device.createBuffer({ size: Math.max(1024, 2 ** Math.ceil(Math.log2(bytes))), usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
   };
 
-  const box = (x: number, y: number, w: number, h: number, r: number, fill: number[], line: number[], lineW: number, shadow: boolean, clip: Clip, k: number, photo = NO_PHOTO) => {
+  const box = (x: number, y: number, w: number, h: number, r: number, fill: number[], line: number[], lineW: number, shadow: boolean, clip: Clip, k: number, photo = NONE, seg?: number[], under = false) => {
     if (boxes.length < (boxCount + 1) * BOX_FLOATS) {
       const more = new Float32Array(boxes.length * 2);
       more.set(boxes);
       boxes = more;
     }
     const o = boxCount++ * BOX_FLOATS;
-    boxes.set([x * k, y * k, w * k, h * k, r * k, lineW * k, shadow ? 5 * k : 0, shadow ? 2 * k : 0, ...fill, ...line, clip[0] * k, clip[1] * k, clip[2] * k, clip[3] * k, clip[4] * k, 0, 0, 0, ...photo], o);
+    boxes.set([x * k, y * k, w * k, h * k, r * k, lineW * k, shadow ? 5 * k : 0, shadow ? 2 * k : 0, ...fill, ...line, clip[0] * k, clip[1] * k, clip[2] * k, clip[3] * k, clip[4] * k, under ? 1 : 0, 0, 0, ...photo, ...(seg ? seg.map((v, i) => (v + (i % 2 ? y : x)) * k) : NONE)], o);
   };
   const glyph = (x: number, y: number, unit: number, slot: number, col: number[], clip: Clip, k: number) => {
     if (glyphs.length < (glyphCount + 1) * GLYPH_FLOATS) {
@@ -322,7 +338,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
         }
         l.panes.push({ x, y, w, h, r, fade: f, dye: p.dye, hole: p.hole });
       }
-      if (c.tag === "box" && (p.fill || p.stroke)) box(x, y, w, h, r, rgba(p.fill, f), rgba(p.stroke?.[1], f), (p.stroke?.[0] ?? 0) * cs, !!p.shadow, clip, k, p.photo);
+      if (c.tag === "box" && (p.fill || p.stroke)) box(x, y, w, h, r, rgba(p.fill, f), rgba(p.stroke?.[1], f), (p.stroke?.[0] ?? 0) * cs, !!p.shadow, clip, k, p.photo, p.seg ?? p.under, !!p.under);
       if (c.tag === "text") {
         const laid = (c.lines as { laid: Laid } | undefined)?.laid;
         const spare = c.w - (laid?.w ?? 0);

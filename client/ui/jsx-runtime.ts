@@ -70,6 +70,12 @@ export declare namespace JSX {
     /** A picture cut from the sheet (`paint.sheet`), its corners there
      *  0–1, in place of the fill's colour; the fill's alpha fades it. */
     photo?: [number, number, number, number];
+    /** A stroke from one point to another inside the box, `round` either
+     *  side of it, its ends round, in place of the box's own shape. */
+    seg?: [number, number, number, number];
+    /** The box below a line from one point to another across it, the
+     *  fill fading from the box's top to nothing at its foot. */
+    under?: [number, number, number, number];
     round?: number;
     /** A line round it: how wide, in what. */
     stroke?: [number, string];

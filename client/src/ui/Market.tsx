@@ -59,27 +59,29 @@ const held = createRoot(() =>
 );
 
 /**
- * A price over time: a line from each hour's price to the next, in the
- * good's colour, the ground under it faint, and the price now a white
- * dot at its end. `lo` and `hi` are the bottom and the top.
+ * A price over time: a line from each hour's price to the next in the
+ * good's colour, its ground under it fading down from it, and the price
+ * now a white dot at its end. `lo` and `hi` are the bottom and the top.
  */
 function Chart(props: { history: number[]; lo: number; hi: number; w: number; h: number; color: string; thick: number }) {
   const y = (v: number) => props.h * (1 - (v - props.lo) / Math.max(1e-9, props.hi - props.lo));
   const step = () => props.w / Math.max(1, props.history.length - 1);
-  const t = () => props.thick;
-  const dot = () => t() * 2.6;
+  const t = () => props.thick / 2;
+  const dot = () => props.thick * 2.6;
+  const top = () => Math.min(...props.history.map(y));
   const last = () => props.history[props.history.length - 1];
   return (
     <box w={props.w} h={props.h}>
-      <Index each={props.history}>
+      <Index each={props.history.slice(1)}>
         {(v, i) => {
-          const next = () => props.history[Math.min(i + 1, props.history.length - 1)];
-          const top = () => Math.min(y(v()), y(next()));
+          const [a, b] = [() => y(props.history[i]), () => y(v())];
+          // The ground in whole pixels, each piece meeting the next exactly.
+          const [l, r] = [() => Math.round(i * step()), () => Math.round((i + 1) * step())];
           return (
-            <Show when={i < props.history.length - 1}>
-              <box at={{ left: i * step(), top: y(v()) }} w={step()} h={props.h - y(v())} fill={`${props.color}24`} />
-              <box at={{ left: i * step() - t() / 2, top: top() - t() / 2 }} w={step() + t()} h={Math.abs(y(v()) - y(next())) + t()} round={t() / 2} fill={props.color} />
-            </Show>
+            <>
+              <box at={{ left: l(), top: top() }} w={r() - l()} h={props.h - top()} under={[0, a() - top(), r() - l(), b() - top()]} fill={`${props.color}55`} />
+              <box at={{ left: i * step() - t(), top: Math.min(a(), b()) - t() }} w={step() + 2 * t()} h={Math.abs(a() - b()) + 2 * t()} round={t()} seg={[t(), a() - Math.min(a(), b()) + t(), step() + t(), b() - Math.min(a(), b()) + t()]} fill={props.color} />
+            </>
           );
         }}
       </Index>
