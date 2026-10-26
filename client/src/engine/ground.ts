@@ -47,12 +47,13 @@ const CLOVER = [1, 0.97, 0.86];
  *  touch yellower in places, darker and a touch bluer in others, in broad
  *  patches this many tiles across and small ones this many, by up to this
  *  much. The rest of the land is its colour alone. */
-const PATCHES = 1.5;
+const PATCHES = 3;
 const SPECKS = 0.5;
-const MOTTLE = 0.1;
+const MOTTLE = 0.06;
 /** Grass frays where it meets lower ground: within this far of its edge,
- *  in tiles, a pixel is dropped where the grain, specks and tufts, beats
- *  how far in it is, so it thins to its edge instead of stopping clean. */
+ *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
+ *  (the wood floor's, the grain's specks and tufts) beat how far in it is,
+ *  so it thins to its edge instead of stopping clean. */
 const FRAY = 0.3;
 /** And near its edge the rock under it breaks through in patches, the
  *  slate's plates (`slate.ts`) standing out of it: within this far of the
@@ -302,7 +303,9 @@ if (input.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && 
 // A beach draws back from each wave as it breaks, and is wet where they reach.
 var groundSwash = 0.;
 if (input.vGroundSlot.w > 0.) { groundSwash = input.vGroundSlot.w * ${swash} * groundWash(material.groundTime, input.worldPos.xy) * (0.6 + 0.8 * groundFrayBy); }
-if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * input.vGroundGrass.x * ${fray})) { discard; }`,
+// Grass frays blade by blade, its gaps going first, then its shorter blades.
+let groundFrays = mix(groundFrayBy, 1. - groundLawn.b, input.vGroundGrass.y);
+if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrays * input.vGroundGrass.x * ${fray})) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., input.vGroundLook.a * ${glint} + groundGlinting);
 baseColor = baseColor * input.vGroundLook.rgb * (1. - ${crease} * input.vGroundSlot.z * (1. - groundLawn.b)) * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
 baseColor = mix(baseColor, vec3f(${clover}), groundLawn.a * input.vGroundGrass.y);
