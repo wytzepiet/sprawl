@@ -22,8 +22,8 @@ const COVER = 3;
 /** And they grow in clumps, about this many texels across, the lowest
  *  this much shorter than the tallest: so the lawn has a grain of its own
  *  at the usual zoom, where the blades are too fine to see. */
-const CLUMP = 32;
-const CLUMPED = 0.8;
+const CLUMP = 64;
+const CLUMPED = 0.6;
 /** Clover: this many heads to a tile, of one to three flowers each from
  *  this many texels across to this many, this far apart. */
 const CLOVER = 0.6;
