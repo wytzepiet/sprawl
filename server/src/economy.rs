@@ -143,13 +143,18 @@ pub fn ground(good: Good) -> Option<TerrainType> {
 /// in the open makes nothing; at the forest's edge, half; in the woods,
 /// all it can. A quarry likewise at the mountain's foot.
 pub fn reach(world: &World, building: EntityId) -> f64 {
-    let Some(b) = world.building(building) else { return 0.0 };
-    let Some(ground) = blueprint(b.kind).makes.and_then(self::ground) else { return 0.0 };
-    let (o, (w, h)) = World::bounds(&b.tiles);
+    world.building(building).map_or(0.0, |b| reach_of(world, b.kind, &b.tiles))
+}
+
+/// `reach` for a kind on these tiles, standing or only in hand: where it
+/// fits (`World::fit`).
+pub fn reach_of(world: &World, kind: BuildingKind, tiles: &[crate::protocol::GridCoord]) -> f64 {
+    let Some(ground) = blueprint(kind).makes.and_then(self::ground) else { return 0.0 };
+    let (o, (w, h)) = World::bounds(tiles);
     let mut n = 0;
     for y in o.y - 5..o.y + h as i32 + 5 {
         for x in o.x - 5..o.x + w as i32 + 5 {
-            if world.terrain.get(&(x, y)) == Some(&ground) && !world.occupied.contains_key(&(x, y)) && world.road_node_at(crate::protocol::GridCoord { x, y }).is_none() {
+            if world.terrain.get(&(x, y)) == Some(&ground) && !tiles.contains(&crate::protocol::GridCoord { x, y }) && !world.occupied.contains_key(&(x, y)) && world.road_node_at(crate::protocol::GridCoord { x, y }).is_none() {
                 n += 1;
             }
         }
@@ -848,7 +853,8 @@ mod tests {
     /// A sawmill's hands make timber as they work, as much as the woods
     /// round it give, and a quarry's stone from the mountain beside it,
     /// GDP at the world's price; one with none of its ground in reach
-    /// makes nothing, and a full yard stops the line.
+    /// makes nothing, and so the hand may not place one there; and a full
+    /// yard stops the line.
     #[test]
     fn a_maker_works_the_ground_round_it() {
         for (kind, good, ground) in [(Sawmill, Good::Timber, TerrainType::Forest), (Quarry, Good::Stone, TerrainType::Mountain)] {
@@ -867,6 +873,9 @@ mod tests {
                     world.terrain.insert((x, y), TerrainType::Grass);
                 }
             }
+            let fits = |world: &World, x: i32| (1..5).any(|y| world.facing_for(kind, crate::protocol::GridCoord { x, y }).is_some());
+            assert!(fits(&world, 48), "{kind:?} does not fit by its ground");
+            assert!(!fits(&world, 8), "{kind:?} fits in the open");
             let near = world.place_on_street(at(48), kind).unwrap();
             let open = world.place_on_street(at(8), kind).unwrap();
             assert!(makes(kind, good) && !buys(kind, good));

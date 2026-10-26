@@ -295,6 +295,7 @@ pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
             text: format!("{}, mayor of {}: {letter}\n\nSend them from the letter's card: a depot's lorry takes them to the quay, and the coins land as each sails.", w.name, w.town),
             done: false,
             at: None,
+            ghost: None,
         }],
         reward: Reward::Order { coins, standing: FILLED },
         opened: now,

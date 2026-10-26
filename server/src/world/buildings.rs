@@ -445,23 +445,7 @@ impl World {
     /// the kerb; and a harbour's quay on open sea, which brings its own
     /// street.
     pub fn fit(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
-        let tiles = Self::plot_at(kind, at, facing);
-        for &t in &tiles {
-            if self.occupied.contains_key(&(t.x, t.y)) {
-                return Err("Something stands there");
-            }
-            if self.road_node_at(t).is_some() && !self.is_driveway_stub(t) {
-                return Err("A street runs through it");
-            }
-            match self.terrain.get(&(t.x, t.y)) {
-                Some(TerrainType::Grass | TerrainType::Forest) => {}
-                Some(TerrainType::Sea) if Self::pier(&tiles, kind, facing, t) => {}
-                Some(TerrainType::Water) if Self::pier(&tiles, kind, facing, t) => return Err("A lake: the ferry comes only by sea"),
-                Some(TerrainType::Sea | TerrainType::Water) => return Err("Its plot runs into the water"),
-                Some(TerrainType::Beach) => return Err("On the beach: it stands on grass or forest"),
-                _ => return Err("Not on open land"),
-            }
-        }
+        let tiles = self.lies(kind, at, facing)?;
         if crate::blueprint::blueprint(kind).quay {
             return match self.behind(&tiles, kind, facing) {
                 Behind::Berth => Ok(tiles),
@@ -479,6 +463,37 @@ impl World {
             None if crate::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
             None => Err("No street beside it"),
         }
+    }
+
+    /// `fit` but for the street: may a kind's plot lie round `at` facing
+    /// this way, the ground under it and round it as it needs, were a
+    /// street run to its door (`ghost`).
+    pub fn lies(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
+        let tiles = Self::plot_at(kind, at, facing);
+        for &t in &tiles {
+            if self.occupied.contains_key(&(t.x, t.y)) {
+                return Err("Something stands there");
+            }
+            if self.road_node_at(t).is_some() && !self.is_driveway_stub(t) {
+                return Err("A street runs through it");
+            }
+            match self.terrain.get(&(t.x, t.y)) {
+                Some(TerrainType::Grass | TerrainType::Forest) => {}
+                Some(TerrainType::Sea) if Self::pier(&tiles, kind, facing, t) => {}
+                Some(TerrainType::Water) if Self::pier(&tiles, kind, facing, t) => return Err("A lake: the ferry comes only by sea"),
+                Some(TerrainType::Sea | TerrainType::Water) => return Err("Its plot runs into the water"),
+                Some(TerrainType::Beach) => return Err("On the beach: it stands on grass or forest"),
+                _ => return Err("Not on open land"),
+            }
+        }
+        // A maker of what grows or lies round it stands where it does: a
+        // sawmill in the open would make nothing (`economy::reach`).
+        if let Some(ground) = crate::blueprint::blueprint(kind).makes.and_then(crate::economy::ground) {
+            if crate::economy::reach_of(self, kind, &tiles) == 0.0 {
+                return Err(if ground == TerrainType::Forest { "No woods in reach: it fells the trees round it" } else { "No rock in reach: it breaks the mountain round it" });
+            }
+        }
+        Ok(tiles)
     }
 
     /// May a building stand on this tile: open land, or a road's dead end

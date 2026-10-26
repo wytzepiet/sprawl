@@ -76,6 +76,10 @@ pub struct Step {
     /// deck's goals.
     #[ts(type = "number | null")]
     pub at: Option<EntityId>,
+    /// Where the building it asks for would best go, while the opening is
+    /// on this step (`ghost::best`).
+    #[serde(default)]
+    pub ghost: Option<crate::ghost::Ghost>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -219,7 +223,7 @@ fn open(row: &Row, now: GameTime) -> Mission {
     Mission {
         key: row.key,
         title: row.title.into(),
-        steps: row.steps.iter().map(|&(goal, title, text)| Step { goal, title: title.into(), text: text.into(), done: false, at: None }).collect(),
+        steps: row.steps.iter().map(|&(goal, title, text)| Step { goal, title: title.into(), text: text.into(), done: false, at: None, ghost: None }).collect(),
         reward: row.reward,
         opened: now,
         finished: None,
@@ -237,6 +241,18 @@ fn met(world: &World, goal: Goal) -> bool {
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
         Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
     }
+}
+
+/// Where what a step asks for would best go, until it is placed: a
+/// sawmill once, houses two, as many as the sawmill's hands need.
+fn ghost(world: &World, goal: Goal) -> Option<crate::ghost::Ghost> {
+    let (kind, wanted) = match goal {
+        Goal::Stands(kind) => (kind, 1),
+        Goal::Settled => (BuildingKind::House, 2),
+        _ => return None,
+    };
+    let placed = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind)).count();
+    (placed < wanted).then(|| crate::ghost::best(world, kind)).flatten()
 }
 
 /// What a step's button acts on.
@@ -261,11 +277,14 @@ pub fn check(world: &mut World, now: GameTime) {
             if world.missions.list[i].finished.is_some() {
                 continue;
             }
+            let mut first = world.missions.list[i].key == Key::Opening;
             for s in 0..world.missions.list[i].steps.len() {
                 let step = &world.missions.list[i].steps[s];
                 let (done, here) = (step.done || met(world, step.goal), at(world, step.goal));
+                let ghost = (first && !done).then(|| ghost(world, step.goal)).flatten();
+                first &= done;
                 let step = &mut world.missions.list[i].steps[s];
-                (step.done, step.at) = (done, here);
+                (step.done, step.at, step.ghost) = (done, here, ghost);
             }
             if world.missions.list[i].steps.iter().all(|s| s.done) {
                 world.missions.list[i].finished = Some(now);

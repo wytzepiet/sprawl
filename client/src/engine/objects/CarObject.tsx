@@ -16,6 +16,7 @@ import { itemOf } from "./goods";
 import { liftsOf, onVehicle } from "./pads";
 import type { Car, GameObjectEntry, Good, Pose } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
+import { getEntity } from "../../state/gameObjects";
 import { HALF_LEVEL, heightAlong } from "../decks";
 import { beam, unbeam } from "../lights";
 
@@ -138,11 +139,17 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     if (moving && want.length === deck.length) return want.forEach((d, k) => deck[k].it.move(d.at));
     const keep = new Map(deck.splice(0).map((d) => [d.key, d.it]));
     for (const d of want) {
-      const it = keep.get(d.key) ?? (d.good ? placeShape(pool, itemOf(d.good, moving), d.at, DECK_Z) : place(pool, [{ key: carBucket(pool, d.settler!, false) }], d.at, DECK_Z + CAR.h / 2));
+      const it = keep.get(d.key) ?? (d.good ? placeShape(pool, itemOf(d.good, moving), d.at, DECK_Z) : rider(d.settler!, d.at));
       keep.delete(d.key);
       deck.push({ key: d.key, it });
     }
     for (const it of keep.values()) it.remove();
+  };
+  // A settler's car on the deck, or the mayor's lorry coming in.
+  const rider = (id: number, at: Pose) => {
+    const c = getEntity(id)?.object;
+    if (c?.kind === "Car" && c.data.role === "Truck") return place(pool, [{ key: bodyOf(pool, id, c.data, false).key }], at, DECK_Z);
+    return place(pool, [{ key: carBucket(pool, id, false) }], at, DECK_Z + CAR.h / 2);
   };
   stow(first.m);
   // What stands on its flatbed: its cargo, less what a forklift has yet

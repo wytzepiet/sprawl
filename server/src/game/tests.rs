@@ -1155,10 +1155,14 @@ fn the_opening_from_the_harbour() {
     // Aboard, or already being lifted off onto the quay.
     let landed = car_of(&game.world, ferry).deck.iter().flatten().count() + building_of(&game.world, harbour).pad.len();
     assert_eq!(landed, starter as usize, "the starter pack is not aboard");
-    // The mayor's lorry is the first thing off the ramp, and parks on
-    // the quay.
+    // The mayor's lorry rides it in, first aboard, and is the first thing
+    // off the ramp, onto the quay.
     let lorry = crate::haul::mayors(&game.world).expect("the mayor's lorry did not come with the first ferry");
     assert_eq!(car_of(&game.world, lorry).owner, harbour);
+    while car_of(&game.world, ferry).passengers.contains(&lorry) {
+        assert!(game.step_to(day), "the lorry never rolled off");
+    }
+    assert!(car_of(&game.world, lorry).spot.is_some(), "the lorry did not come off onto the quay");
     // The forklifts unload it onto the quay while it is in, and it
     // sails on time.
     let mut lifted = false;

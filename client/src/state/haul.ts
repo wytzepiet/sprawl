@@ -6,12 +6,13 @@ import { BLUEPRINTS } from "../blueprints";
 import type { Car, Good } from "../generated";
 
 /** The mayor's own lorry, the harbour's: what the hand drives until a
- *  depot's lorry takes over (`haul::mayors`). Read again with the sea. */
+ *  depot's lorry takes over (`haul::mayors`), once it is off the first
+ *  ferry, parked or driving. Read again with the sea. */
 export function mayorsLorry(): { id: number; car: Car } | null {
   now();
   let found: { id: number; car: Car } | null = null;
   eachEntity((e) => {
-    if (found || e.object.kind !== "Car" || e.object.data.role !== "Truck") return;
+    if (found || e.object.kind !== "Car" || e.object.data.role !== "Truck" || !(e.object.data.spot || e.object.data.trip)) return;
     const owner = getEntity(e.object.data.owner);
     if (owner?.object.kind === "Building" && owner.object.data.kind === "Harbour") found = { id: e.id, car: e.object.data };
   });

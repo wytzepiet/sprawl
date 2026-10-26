@@ -263,7 +263,6 @@ impl World {
                 self.held.remove(&ferry);
                 self.cast_off(events, ferry, now);
             } else {
-                self.lorry_off(harbour);
                 self.roll_off(events, ferry, harbour, now);
                 self.work_deck(events, ferry, harbour, now);
                 // Held, it looks again every second whether it may go.
@@ -327,7 +326,8 @@ impl World {
     /// the land end, and the settlers waiting to come take the bays left
     /// empty, two cars a bay.
     fn board(&mut self, ferry: EntityId, harbour: EntityId) {
-        let waiting: Vec<EntityId> = self.waiting_settlers(harbour);
+        let lorry = self.lorry_waiting(harbour);
+        let waiting: Vec<EntityId> = lorry.into_iter().chain(self.waiting_settlers(harbour)).collect();
         let Some(c) = self.car_mut(ferry) else { return };
         c.deck.resize(DECK, None);
         let mut booked = std::mem::take(&mut c.booked).into_iter();
@@ -383,15 +383,18 @@ impl World {
         }
     }
 
-    /// The mayor's lorry comes on the town's first ferry and stands on the
-    /// quay as it berths: the harbour's, which goes where the hand sends it
-    /// (`haul::send`).
-    fn lorry_off(&mut self, harbour: EntityId) {
-        if crate::haul::mayors(self).is_none() {
+    /// The mayor's lorry, the harbour's, comes on the town's first ferry,
+    /// first aboard so first off: made as that ferry sets out, at the
+    /// harbour so the clients that watch it know it is coming, and
+    /// nowhere to be seen until it is on the deck; waiting again if it
+    /// sailed away still aboard.
+    fn lorry_waiting(&mut self, harbour: EntityId) -> Option<EntityId> {
+        let Some(lorry) = crate::haul::mayors(self) else {
             let at = self.objects.get(harbour).and_then(|e| e.position);
-            let car = self.insert_at(GameObject::Car(Car::new(harbour, CarRole::Truck)), at);
-            self.park_in_lot(harbour, car, 0);
-        }
+            return Some(self.insert_at(GameObject::Car(Car::new(harbour, CarRole::Truck)), at));
+        };
+        let aboard = self.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry && c.passengers.contains(&lorry)));
+        self.car(lorry).is_some_and(|c| c.spot.is_none() && c.trip.is_none() && !aboard).then_some(lorry)
     }
 
     /// The next settler drives off the ramp and home: from its seat on the
@@ -406,9 +409,11 @@ impl World {
         let j = c.passengers.len() - 1;
         let free = empty_bays(&c.deck);
         let seat = free.get(j >> 1).map(|&k| (k, seats(berth.moored(), k)[j & 1]));
+        // A settler drives home; the mayor's lorry to the quay it came to.
         let home = match self.objects.get(car).map(|e| &e.object) {
             Some(GameObject::Car(c)) => self.objects.get(c.owner).and_then(|e| match e.object {
                 GameObject::Resident(ref r) => Some(r.home),
+                GameObject::Building(_) => Some(harbour),
                 _ => None,
             }),
             _ => None,
@@ -424,7 +429,13 @@ impl World {
             }
             None => crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX),
         });
-        if drove || home.is_none() {
+        // The mayor's lorry has no road from the ramp round into its own
+        // quay: it stands there as it comes off.
+        let lorry = home == Some(harbour) && !drove;
+        if lorry {
+            self.park_in_lot(harbour, car, now);
+        }
+        if drove || lorry || home.is_none() {
             if let Some(c) = self.car_mut(ferry) {
                 c.passengers.remove(0);
             }

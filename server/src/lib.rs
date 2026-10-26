@@ -7,6 +7,7 @@ pub mod economy;
 pub mod engine;
 pub mod fixtures;
 pub mod game;
+pub mod ghost;
 pub mod hand;
 pub mod fixed;
 pub mod haul;
