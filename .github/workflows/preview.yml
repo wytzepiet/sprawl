@@ -1,7 +1,8 @@
 # Every branch its own world: a push builds the game and runs it on the
-# branch's world at https://<branch>.<preview domain>, kept from push to push
-# as a save is from build to build (`host/src/persistence.rs`); deleting the branch takes it away, and
-# a push to main deletes every branch it has merged, world and all.
+# branch's world at https://<branch>.<preview domain>, kept from push to
+# push as a save is from build to build (`host/src/persistence.rs`);
+# deleting the branch takes it away, and a push to main deletes every
+# branch it has merged, world and all.
 # The box's half is preview/box.sh, set up once by preview/setup.sh.
 name: Preview
 
