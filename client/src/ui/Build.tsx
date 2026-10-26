@@ -9,6 +9,7 @@ import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
+import { unlocked } from "../state/guide";
 
 /** A picture's side, a cell's least width and the room between cells. */
 const PIC = 76;
@@ -43,8 +44,9 @@ function picture(kind: BuildingKind) {
 
 const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materials) as [Good, number][];
 
-/** The kinds of building opened, by the menu's own groups. */
-const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
+/** The kinds of building opened, by the menu's own groups: while the
+ *  opening is on, only those it has come to (`unlocked`). */
+const groups = () => TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t && unlocked(k)) })).filter((g) => g.kinds.length);
 /** The group shown: the roads, or a group of buildings. */
 const [group, setGroup] = createSignal<Tab | "roads">("roads");
 // A road taken up, by a key or the head's row, shows the roads.
@@ -62,7 +64,7 @@ export function BuildHead() {
       when={held()}
       fallback={
         <Show when={!inHand()} fallback={<RoadsHead />}>
-          <Tabs tabs={["roads" as const, ...groups.map((g) => g.tab)]} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
+          <Tabs tabs={["roads" as const, ...groups().map((g) => g.tab)]} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
         </Show>
       }
     >
@@ -85,7 +87,7 @@ export function BuildHead() {
 export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
-  const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
+  const kinds = () => groups().find((g) => g.tab === group())?.kinds ?? [];
   const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
   return (
     <Show when={group()} keyed>

@@ -99,12 +99,14 @@ fn streets_from(world: &World, near: (f64, f64)) -> (HashMap<(i32, i32), u32>, H
     let mut to: HashMap<(i32, i32), u32> = roads.iter().map(|&r| (r, 0)).collect();
     let mut from: HashMap<(i32, i32), (i32, i32)> = HashMap::default();
     let mut queue: VecDeque<(i32, i32)> = roads.into();
+    let open = |t: (i32, i32)| matches!(world.terrain.get(&t), Some(TerrainType::Grass | TerrainType::Forest)) && !world.occupied.contains_key(&t) && inside(t);
     while let Some((x, y)) = queue.pop_front() {
         let d = to[&(x, y)];
-        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        // Straight first, so a street runs straight where it can, and
+        // across a corner only where both sides of it are open.
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
             let n = (x + dx, y + dy);
-            let open = matches!(world.terrain.get(&n), Some(TerrainType::Grass | TerrainType::Forest)) && !world.occupied.contains_key(&n);
-            if open && inside(n) && !to.contains_key(&n) {
+            if open(n) && (dx == 0 || dy == 0 || (open((x + dx, y)) && open((x, y + dy)))) && !to.contains_key(&n) {
                 to.insert(n, d + 1);
                 from.insert(n, (x, y));
                 queue.push_back(n);

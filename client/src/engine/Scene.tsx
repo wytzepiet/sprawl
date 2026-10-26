@@ -8,6 +8,7 @@ import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import PerfReport from "./PerfReport";
 import Signs from "./Signs";
+import Dashes from "./Dashes";
 import Glass from "../ui/Glass";
 import Shipments from "../ui/Shipments";
 import Hud from "./Hud";
@@ -27,6 +28,7 @@ function SceneInner() {
               <Highlight />
               <World />
               <Signs />
+              <Dashes />
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>

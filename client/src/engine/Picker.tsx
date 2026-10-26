@@ -6,6 +6,8 @@ import { buildingAt, useGame } from "../state/gameObjects";
 import { mayorsLorry, packageAt, takes } from "../state/haul";
 import { LOAD } from "../generated/rows";
 import { carNear, goodsOf, select, selected, setHovered } from "../state/selection";
+import { ghost } from "../state/guide";
+import { take } from "../ui/Roads";
 
 /** How far a pointer may travel and still be a tap rather than a pan. */
 const TAP_PX = 5;
@@ -22,6 +24,9 @@ const CAR_REACH = 0.45;
  * While you have a lorry, a pile of goods on a pad is picked as well;
  * with one picked, a tap on a building that takes it sends your lorry
  * with it there (`haul::send`), and picks the lorry, to follow it.
+ *
+ * A tap on the guide's ghost places it there; on it or its dashes while
+ * it waits for its street, takes up the street to draw.
  */
 export function Picker() {
   const { scene, canvas } = useEngine();
@@ -46,6 +51,13 @@ export function Picker() {
     const held = performance.now() - down.t;
     down = null;
     if (moved > TAP_PX || held > TAP_MS) return;
+    const g = ghost();
+    const w = screenToWorld(scene, canvas, e);
+    const tile = (t: { x: number; y: number }) => t.x === Math.floor(w.wx) && t.y === Math.floor(w.wy);
+    if (g && (g.tiles.some(tile) || g.road.some(tile))) {
+      if (g.road.length) return take("Street");
+      return void send({ type: "Place", data: { kind: g.kind, at: g.at, facing: g.facing } });
+    }
     const id = under(e);
     const pile = goodsOf(selected());
     const lorry = mayorsLorry();

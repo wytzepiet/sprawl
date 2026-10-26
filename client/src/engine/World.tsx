@@ -22,7 +22,8 @@ import { mountBuilding } from "./objects/BuildingObject";
 import { forgetCar, mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
-import { aim, placed, setPlaced } from "../ui/buildMode";
+import { aim, inHand as holding, placed, setPlaced } from "../ui/buildMode";
+import { ghostPlacing } from "../state/guide";
 import { news } from "../state/sea";
 
 interface MountedEntry {
@@ -101,8 +102,9 @@ export default function World(props: { brush?: () => JSX.Element }) {
   const town = new TownLayer(ctx, casters()!, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
   // The building in hand, or let go until the server answers, drawn where
-  // it would stand, and the trees out of its way.
-  const standing = () => aim() ?? placed();
+  // it would stand, and the trees out of its way; with the hand empty, the
+  // guide's ghost of the building the opening asks for.
+  const standing = () => aim() ?? placed() ?? (holding() ? null : ghostPlacing());
   createEffect(() => town.hold(standing()));
   const footprint = createMemo(() => {
     const p = standing();

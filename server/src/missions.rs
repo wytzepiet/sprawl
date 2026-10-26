@@ -133,7 +133,7 @@ const ROWS: &[Row] = &[
         when: When::Start,
         title: "The opening",
         steps: &[
-            (Goal::Stands(BuildingKind::Sawmill), "Build a sawmill", "Hello, mayor. I keep the books; you build the town.\n\nTimber first. Draw a street from the harbour to the woods, and place a sawmill at their edge. It is a site until two bundles of timber are in.\n\nThe ferry brought two. Tap them on the quay, then tap the sawmill: your lorry takes them there and builds it."),
+            (Goal::Stands(BuildingKind::Sawmill), "Build a sawmill", "Hello, mayor. I keep the books; you build the town.\n\nTimber first, from the woods up the coast. A sawmill stands at their edge, on a street: draw the street along the dashes, then tap the sawmill to place it.\n\nIt is a site until two bundles of timber are in. The ferry brought two: tap them on the quay, then tap the sawmill, and your lorry takes them there and builds it."),
             (Goal::Settled, "Build houses for its hands", "The sawmill needs four hands, and a house holds two. Place two houses on a street near it.\n\nThen tap the timber in the sawmill's yard and tap a house: your lorry builds it. The next ferry brings the people."),
             (Goal::Sold, "Sell a bundle of timber", "Time to earn. Tap the timber in the sawmill's yard, then tap the harbour. It sells at the market's price as the ferry casts off, and the ferry waits for you."),
             (Goal::Stands(BuildingKind::Depot), "Hire a driver: build a depot", "One lorry cannot haul and build at once. Build a depot: its lorry fetches from the sawmill and the quay, and its vans take timber to every site and build it. Yours stays, for a rush."),
