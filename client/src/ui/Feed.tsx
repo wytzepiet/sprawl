@@ -1,6 +1,6 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, Index, Show } from "solid-js";
-import { groundOf, useGame } from "../state/gameObjects";
+import { useGame } from "../state/gameObjects";
 import { mayorsLorry, standing } from "../state/haul";
 import { missionKey, neighbours, shownMissions } from "../state/missions";
 import { news, until, type News } from "../state/sea";
@@ -10,12 +10,11 @@ import { quoteOf, total } from "../state/market";
 import { toMarket } from "./Market";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { eye } from "../engine/Camera";
-import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
-import { hold } from "./buildMode";
 import { track } from "./Shipments";
+import { GUIDE, hint } from "./Guide";
 import { Appear, Btn, COIN, coins, Crest, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
-import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
+import type { Mission, Step, Mayor } from "../generated";
 import type { JSX } from "~ui/jsx-runtime";
 
 /** Where the feed starts, and the room it leaves below it: on a wide
@@ -111,7 +110,6 @@ const LETTER = "M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 
 const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
 /** The guide who walks the mayor through the opening: a robot, nobody in
  *  particular. */
-const GUIDE = "M11 1h2v3h-2zM5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM7.5 9h3v3h-3zM13.5 9h3v3h-3zM8 14.5h8V16H8zM1 10h1.5v4H1zM21.5 10H23v4h-1.5z";
 
 /** A partner's crest, or the world's globe; an envelope on it for a letter's deal. */
 export function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink?: string }) {
@@ -281,25 +279,6 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
   );
 }
 
-/** Where a kind is built: the harbour on the coast, the quarry at the
- *  mountain's foot, the sawmill at the forest's edge. */
-const GROUND: Partial<Record<BuildingKind, TerrainType>> = { Harbour: "Sea", Quarry: "Mountain", Sawmill: "Forest" };
-
-/** The camera to the nearest ground of a type it has, stopping a few
- *  tiles short so its edge fills the view: the town opens inland. */
-function toward(ground: TerrainType) {
-  const sea = (x: number, y: number) => {
-    const [cx, cy] = [Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)];
-    const tiles = groundOf(cx, cy);
-    return !!tiles && TYPE_BY_BYTE[tiles[(y - cy * CHUNK_SIZE + CHUNK_SKIRT) * CHUNK_STRIDE + x - cx * CHUNK_SIZE + CHUNK_SKIRT]] === ground;
-  };
-  const [x0, y0] = [Math.round(eye.x), Math.round(eye.y)];
-  for (let r = 1; r < 96; r++)
-    for (let d = -r; d <= r; d++)
-      for (const [x, y] of [[x0 + d, y0 - r], [x0 + d, y0 + r], [x0 - r, y0 + d], [x0 + r, y0 + d]])
-        if (sea(x, y)) return eye.go(x0 + ((x - x0) * (r - 4)) / r, y0 + ((y - y0) * (r - 4)) / r);
-}
-
 /** What the step at hand offers to do: a tool to take, a load to bring,
  *  a new deal to make. */
 function Act(props: { step: Step }) {
@@ -314,12 +293,9 @@ function Act(props: { step: Step }) {
       {() => {
         const goal = props.step.goal;
         switch (goal.kind) {
-          case "Stands": {
-            const kind = goal.data;
-            return <Btn onTap={() => (GROUND[kind] && toward(GROUND[kind]!), hold(kind))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>;
-          }
+          case "Stands":
           case "Settled":
-            return <Btn onTap={() => hold("House")}>Take a house</Btn>;
+            return <Btn onTap={() => { const h = hint(); if (h) eye.go(h.at[0], h.at[1]); }}>Show me</Btn>;
           case "Sold":
             return <Btn big onTap={sell} color={BLUEPRINTS.Harbour.color} disabled={!mayorsLorry() || standing("Sawmill") === null}>Bring a bundle to the quay</Btn>;
           case "Booked":
