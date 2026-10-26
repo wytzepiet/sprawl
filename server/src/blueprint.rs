@@ -37,9 +37,13 @@ pub struct Blueprint {
     /// Its shelves, a good each and the units it holds: what a counter
     /// serves from, what a depot keeps, what a farm's yard fills with.
     pub shelves: &'static [(Good, u32)],
-    /// What its land fills its shelf with: a farm's crates. None for a
-    /// row that buys its shelves in, or keeps none.
+    /// What its land or its hands fill its shelf with: a farm's grain, a
+    /// bakery's bread. None for a row that buys its shelves in, or keeps
+    /// none.
     pub makes: Option<Good>,
+    /// What its hands open to make it: a bakery's grain, which it buys in
+    /// like a counter's shelf. None for a maker off the land.
+    pub opens: Option<Good>,
     /// The vehicles it runs, each in a dock of its yard. A kind with
     /// shelves and vehicles delivers them (`economy::depot`).
     pub vehicles: &'static [CarRole],
@@ -156,7 +160,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
         let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
-        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, farm: false }
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, opens: None, vehicles: &[], quay: false, forklifts: 1, farm: false }
     };
     use Good::{Stone, Timber};
     vec![
@@ -164,7 +168,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
-            shelves: &[(Good::Crates, 50)],
+            shelves: &[(Good::Bread, 50)],
             ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
@@ -183,31 +187,31 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
         (Supermarket, Blueprint {
-            shelves: &[(Good::Crates, 150)],
+            shelves: &[(Good::Bread, 150)],
             ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 12)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
         // Where the town's goods are kept, in the open, a little of every
-        // good: eight crates, ten pallets of drums, fifteen bundles of
-        // timber, fifteen pallets of stone. Its lorry hauls packages from
-        // the harbour and its vans deliver to shops and sites.
+        // good: eight crates of bread, eight bags of grain, ten pallets of
+        // drums, fifteen bundles of timber, fifteen pallets of stone. Its
+        // lorry hauls packages from the harbour and makers' yards, and its
+        // vans deliver to shops, the bakery and sites.
         (Depot, Blueprint {
-            shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
+            shelves: &[(Good::Bread, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60), (Good::Grain, 200)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
             ..row((2, 2), (3, 2), &[(Timber, 12)], vec![shift(6, 18, 6)])
         }),
-        // Where food comes from. Four hands, six to three, each growing a
-        // sitting's worth every few minutes: at eighteen crates an hour a
-        // day's work feeds sixty people, a fifth of what a modern farm
-        // manages and about what a market garden does. The make grows on
-        // its land, the grass behind it that its tractor ploughs in a
-        // shift, seeds the next day and harvests two days after, each
-        // tile's crop landing in the yard as it is cut (§12.8). A depot's
-        // lorry fetches from it. Its yard is a harvest: four days of four
-        // hands' nine hours at eighteen crates an hour, a hundred and four
-        // crates on its pad.
+        // Where grain comes from. Four hands, six to three, each growing
+        // a sitting's worth every few minutes: at eighteen units an hour a
+        // day's work feeds sixty people once baked, a fifth of what a
+        // modern farm manages. The make grows on its land, the grass
+        // behind it that its tractor ploughs in a shift, seeds the next
+        // day and harvests two days after, each tile's crop landing in
+        // the yard as it is cut (§12.8). A depot's lorry fetches from it.
+        // Its yard is a harvest: four days of four hands' nine hours at
+        // eighteen an hour, a hundred and four bags on its pad.
         (Farm, Blueprint {
-            shelves: &[(Good::Crates, 2600)],
-            makes: Some(Good::Crates),
+            shelves: &[(Good::Grain, 2600)],
+            makes: Some(Good::Grain),
             vehicles: &[CarRole::Tractor],
             farm: true,
             ..row((3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
@@ -243,6 +247,16 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             makes: Some(Good::Stone),
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
+        // Bakers start before the town wakes: four hands, five to two,
+        // opening bags of grain and baking them into crates of bread, a
+        // bag a crate, as much a shift as a farm grows. It keeps ten bags
+        // in and ten crates out, a lorry's load each twice over.
+        (Bakery, Blueprint {
+            shelves: &[(Good::Grain, 250), (Good::Bread, 250)],
+            makes: Some(Good::Bread),
+            opens: Some(Good::Grain),
+            ..row((2, 1), (2, 2), &[(Timber, 8)], vec![shift(5, 14, 4)])
+        }),
     ]
 });
 
@@ -260,6 +274,7 @@ pub fn check() {
         // Its lane runs down its middle from the gate to the ramp.
         assert!(!b.quay || b.size.0 % 2 == 1, "{kind:?} has a quay and no middle tile for its ramp");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
+        assert!(b.opens.is_none_or(|g| b.makes.is_some() && b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} opens what it has no shelf for, or makes nothing of it");
         // Packages are whole: every shelf holds, and every site takes, so
         // many of them.
         for &(good, n) in b.shelves.iter().chain(b.materials) {
@@ -307,18 +322,19 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {\n",
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; opens: Good | null; forklifts: number }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
             let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
-            let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
+            let good = |g: Option<Good>| g.map_or("null".into(), |g| format!("\"{g:?}\""));
+            let (makes, opens) = (good(b.makes), good(b.opens));
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
         }
-        let packages: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
+        let packages: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
-        let names: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
+        let names: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
         ts += &format!("\n/** What a package of each good is called, one and several (`Good::package`). */\nexport const PACKAGE: Record<Good, [string, string]> = {{ {} }};\n", names.join(", "));
         ts += &format!(
             "\n/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */\nexport const LOAD = {};\nexport const VAN_LOAD = {};\nexport const HANDLE_MS = {};\n",

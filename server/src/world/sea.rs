@@ -57,9 +57,9 @@ pub const ROLL_MS: GameTime = 4_000;
 /// The starter pack's order: the world's gift, paid for by nobody.
 pub const GIFT: u64 = 0;
 /// The starter pack, the first harbour's first sailing: timber for the
-/// first houses, stone for the first streets, crates for the first shop,
+/// first houses, stone for the first streets, grain for the first bread,
 /// fuel; so many packages of each.
-pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 15), (Good::Stone, 5), (Good::Crates, 4), (Good::Fuel, 5)];
+pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 15), (Good::Stone, 5), (Good::Grain, 4), (Good::Fuel, 5)];
 
 fn ahead(heading: f64, d: f64) -> [f64; 2] {
     [heading.cos() * d, heading.sin() * d]
@@ -178,7 +178,7 @@ impl World {
     /// A harbour is built: the world's ferry is put on its line, due half
     /// an hour later. The first harbour's first sailing brings the starter
     /// pack, the world's gift: timber for the first houses, stone for the
-    /// first streets, crates for the first shop, fuel, every package the
+    /// first streets, grain for the first bread, fuel, every package the
     /// town's (docs/game.md §The opening).
     pub fn commission(&mut self, harbour: EntityId, now: GameTime) {
         // No ferry yet on any line, its harbour standing or not.

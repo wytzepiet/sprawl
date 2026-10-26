@@ -9,9 +9,9 @@ import type { Good } from "../../generated";
  * each, the unit the game trades and carries (docs/plan-goods.md), every
  * one of a good the same height and look, so a pad is counted at a glance
  * and a good known by its shape before its colour. A bundle of timber,
- * three logs by three, strapped; a crate of food, open, its produce
- * showing; a pallet of stone, two layers of blocks; a pallet of fuel,
- * four drums. Each a square ITEM across, its middle on the origin, its
+ * three logs by three, strapped; a crate of bread, open, its loaves
+ * showing; a big bag of grain, open at the top; a pallet of stone, two
+ * layers of blocks; a pallet of fuel, four drums. Each a square ITEM across, its middle on the origin, its
  * base on z = 0; its colours its own, its bucket white.
  */
 export const ITEM = 0.084;
@@ -22,7 +22,11 @@ const END: RGB = [0.89, 0.76, 0.56];
 const STRAP: RGB = [0.23, 0.23, 0.23];
 const WOOD: RGB = [0.79, 0.6, 0.36];
 const SLAT: RGB = [0.65, 0.48, 0.26];
-const PRODUCE: RGB = [0.42, 0.62, 0.3];
+const CRUMB: RGB = [0.86, 0.68, 0.42];
+const CRUST: RGB = [0.74, 0.45, 0.22];
+const SACK: RGB = [0.9, 0.88, 0.8];
+const LOOP: RGB = [0.36, 0.42, 0.52];
+const GRAIN: RGB = [0.87, 0.71, 0.36];
 const PALLET: RGB = [0.7, 0.54, 0.35];
 const BLOCK: RGB = [0.84, 0.82, 0.76];
 const DRUM: RGB = [0.8, 0.31, 0.23];
@@ -50,7 +54,7 @@ function timber(): Shape {
 }
 
 /** An open crate: four walls of boards, a dark band round its top, and
- *  its produce heaped a little in it. */
+ *  three loaves lying in it, crust up. */
 function crate(): Shape {
   const h = 0.058, wall = 0.007;
   const inner = ITEM - 2 * wall;
@@ -62,8 +66,23 @@ function crate(): Shape {
       [box(ITEM + 0.001, wall + 0.001, 0.008), [0, s * (H - wall / 2), h - 0.012], SLAT],
       [box(wall + 0.001, inner, 0.008), [s * (H - wall / 2), 0, h - 0.012], SLAT],
     ]),
-    [box(inner, inner, h - 0.012), [0, 0, (h - 0.012) / 2], PRODUCE],
-    ...[[-1, -1], [1, 1], [-1, 1], [1, -1]].map(([a, b]): Part => [box(inner / 2.4, inner / 2.4, 0.008), [a * inner / 4.5, b * inner / 4.5, h - 0.008], PRODUCE]),
+    [box(inner, inner, h - 0.016), [0, 0, (h - 0.016) / 2], CRUMB],
+    ...[-1, 0, 1].flatMap((a): Part[] => [
+      [box(inner / 3.4, inner * 0.84, 0.01), [a * inner / 3.2, 0, h - 0.013], CRUST],
+      [box(inner / 4.6, inner * 0.76, 0.005), [a * inner / 3.2, 0, h - 0.006], CRUST],
+    ]),
+  ]);
+}
+
+/** A big bag on a pallet: woven sack, a lifting loop at each corner, and
+ *  its grain showing at the open top. */
+function bag(): Shape {
+  const h = 0.056, w = ITEM - 0.008;
+  return shape([
+    pallet,
+    [box(w, w, h), [0, 0, BOARD + h / 2], SACK],
+    [box(w - 0.012, w - 0.012, 0.004), [0, 0, BOARD + h], GRAIN],
+    ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, y]): Part => [box(0.008, 0.008, 0.014), [x * (w / 2 - 0.006), y * (w / 2 - 0.006), BOARD + h + 0.005], LOOP]),
   ]);
 }
 
@@ -89,7 +108,8 @@ function drums(): Shape {
  *  high as so many. */
 export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
   Timber: { key: "item_Timber", geo: timber(), h: ITEM },
-  Crates: { key: "item_Crates", geo: crate(), h: 0.058 },
+  Bread: { key: "item_Bread", geo: crate(), h: 0.058 },
+  Grain: { key: "item_Grain", geo: bag(), h: BOARD + 0.056 },
   Stone: { key: "item_Stone", geo: stone(), h: BOARD + 2 * (ITEM / 2 - 0.003) + 0.001 },
   Fuel: { key: "item_Fuel", geo: drums(), h: BOARD + 0.055 },
 };

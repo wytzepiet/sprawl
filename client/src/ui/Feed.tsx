@@ -339,7 +339,7 @@ function Act(props: { step: Step }) {
             return <Btn onTap={() => hold("House")}>Take a house</Btn>;
           case "Booked":
           case "Sold":
-            return <Btn big onTap={() => toMarket(goal.kind === "Sold" ? "Crates" : "Timber")} color={BLUEPRINTS.Harbour.color}>Open the market</Btn>;
+            return <Btn big onTap={() => toMarket(goal.kind === "Sold" ? "Grain" : "Timber")} color={BLUEPRINTS.Harbour.color}>Open the market</Btn>;
         }
       }}
     </>

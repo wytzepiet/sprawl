@@ -97,7 +97,7 @@ export const tripOf = (id: number | null) => {
   return o?.kind === "Car" ? (o.data as Car).trip : null;
 };
 
-/** A load in words: "3 bundles of timber, 2 crates of food". */
+/** A load in words: "3 bundles of timber, 2 crates of bread". */
 export const load = (cargo: Package[]) => {
   const n = new Map<Good, number>();
   for (const p of cargo) n.set(p.good, (n.get(p.good) ?? 0) + 1);

@@ -15,6 +15,7 @@
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm
+//! K bakery
 //! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
@@ -66,12 +67,13 @@ fn building(c: char) -> Option<BuildingKind> {
         'W' => Sawmill,
         'Q' => Quarry,
         'B' => Farm,
+        'K' => Bakery,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDPWQB".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOFGMDPWQBK".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -271,7 +273,7 @@ fn stock_yards(world: &mut World) {
         }
         // A harbour's quay, a ferry's worth landed on it.
         if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
-            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
+            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Grain, 3), (Good::Fuel, 4)] {
                 for _ in 0..n {
                     let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: crate::world::sea::GIFT, partner: None, price: 0.0 };
                     world.building_mut(id).unwrap().pad.push(p);

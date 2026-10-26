@@ -176,7 +176,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Shop: {
     label: "Shop",
-    about: "Serves meals from its crates, nine to six. Two jobs.",
+    about: "Serves meals from its crates of bread, nine to six. Two jobs.",
     color: "#3B78B8",
     material: "#56708A",
     // A storefront: scalloped awning, window and door beneath.
@@ -224,7 +224,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Supermarket: {
     label: "Supermarket",
-    about: "Meals for a whole district, eight to nine, from big shelves of crates. Six jobs.",
+    about: "Meals for a whole district, eight to nine, from big shelves of bread. Six jobs.",
     color: "#6EC1E4",
     material: "#8FA7B3",
     // A basket: handle arcs over, three slats cut out.
@@ -235,7 +235,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Farm: {
     label: "Farm",
-    about: "Grows crates on the grass behind it, which its tractor ploughs, sows and harvests. Four jobs, six to three.",
+    about: "Grows grain on the grass behind it, which its tractor ploughs, sows and harvests. Four jobs, six to three.",
     color: "#D9A23B",
     material: "#B79A62",
     // A barn: the gambrel roof, the big door, and a hayloft window.
@@ -266,6 +266,17 @@ const LOOKS: Record<BuildingKind, Look> = {
     heights: [0.3],
     tab: "work",
   },
+  Bakery: {
+    label: "Bakery",
+    about: "Bakes the town's grain into bread for its shops. Built among the houses. Four jobs, five to two.",
+    color: "#C9773A",
+    material: "#B98A5E",
+    // An oven: its dome, the mouth cut out, a chimney.
+    glyph: "M2 21v-6a10 9 0 0 1 20 0v6zM8 21v-4a4 4 0 0 1 8 0v4zM16 3h3v6.2l-3-1.6z",
+    shape: "box",
+    heights: [0.4],
+    tab: "work",
+  },
 };
 
 export const BLUEPRINTS = Object.fromEntries(Object.entries(LOOKS).map(([k, look]) => [k, { ...look, ...ROWS[k as BuildingKind] }])) as Record<BuildingKind, Blueprint>;
@@ -285,11 +296,17 @@ const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> 
     // Three logs stacked, their ends ringed.
     glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
   },
-  Crates: {
-    label: "crates",
-    color: "#5E9E52",
-    // A crate: its lid and two slats.
-    glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
+  Bread: {
+    label: "bread",
+    color: "#C9773A",
+    // A loaf: its domed top and three scores across it.
+    glyph: "M3 20v-7a9 7 0 0 1 18 0v7zM8 7.5l2 4.5h1.6l-2-4.8zM11.2 6.6l1.6 5.4h1.6l-1.6-5.6zM14.6 7l1.2 5h1.6l-1.2-4.6z",
+  },
+  Grain: {
+    label: "grain",
+    color: "#D9B44A",
+    // An ear of wheat: kernels up a stalk, two by two.
+    glyph: "M11.2 12h1.6v10h-1.6zM12 2c1.3 1 1.3 3 0 4-1.3-1-1.3-3 0-4zM8.4 5.6c1.6.2 2.8 1.8 2.6 3.4-1.6-.2-2.8-1.8-2.6-3.4zm7.2 0c.2 1.6-1 3.2-2.6 3.4-.2-1.6 1-3.2 2.6-3.4zM8.4 9.6c1.6.2 2.8 1.8 2.6 3.4-1.6-.2-2.8-1.8-2.6-3.4zm7.2 0c.2 1.6-1 3.2-2.6 3.4-.2-1.6 1-3.2 2.6-3.4z",
   },
   Stone: {
     label: "stone",

@@ -179,7 +179,7 @@ way. No harbour's or ferry's card trades.
 - **Lorries go of their own accord**: to fetch what lands, to load what
   goes out. There is no switch.
 
-A town that makes no food buys crates for good,
+A town that grows no food buys grain for good,
 paying for it in coins and in depending on a neighbour, and that is a
 choice against using the land for farms.
 

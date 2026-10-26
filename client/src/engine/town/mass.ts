@@ -35,6 +35,10 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Sawmill: { family: "industry", yard: { fill: "docks" } },
   // A quarry's yard is its heaps of broken stone, a lorry backed to them.
   Quarry: { family: "industry", yard: { fill: "docks" } },
+  // A bakery is a shop on the street that bakes behind: its front a
+  // place on the high street, its yard the grain coming in and the
+  // bread going out.
+  Bakery: { family: "street", yard: { fill: "docks" } },
   // A supermarket is a big box, its customers parked at the kerb.
   Supermarket: { family: "box" },
   GasStation: { family: "box" },
@@ -69,7 +73,7 @@ export function slope(t: Tile) {
  *  flat sits RECESS down, as a mansard hides its roof, an AC unit in a
  *  corner (`roof.ts`). */
 export const mansard = (t: Tile) => formOf(t).family === "street" && t.storeys <= 3 && SIGNED.has(t.kind as BuildingKind);
-const SIGNED = new Set<BuildingKind>(["Shop"]);
+const SIGNED = new Set<BuildingKind>(["Shop", "Bakery"]);
 export const RECESS = 0.03, BAND = 0.035;
 
 /** An office tower's flat roof carries its plant, as a real one does: a
@@ -96,5 +100,5 @@ export const kin = (a: Tile, b: Tile) =>
 /** A kind placed whole, one building: it joins only itself, and never on
  *  the diagonal. */
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
-const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm"]);
+const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm", "Bakery"]);
 

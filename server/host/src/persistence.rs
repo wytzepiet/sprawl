@@ -24,7 +24,32 @@ type Migration = Option<fn(&mut [Value], &mut Value)>;
 const MIGRATIONS: &[Migration] = &[
     // Saves from before the stamp are version 0, and already today's.
     Some(|_, _| {}),
+    // The farm grows grain and a bakery bakes it: what was crates of food
+    // is bread on a shelf or a pad, and grain on the market. A farm's yard
+    // of crates is dropped as it opens with its new shelf.
+    Some(|objects, meta| {
+        for o in objects {
+            renamed(o, "Crates", "Bread");
+        }
+        renamed(&mut meta["market"], "Crates", "Grain");
+    }),
 ];
+
+/// Every string and key `from` in a save's JSON, `to`: a good or a kind
+/// that changed its name.
+fn renamed(v: &mut Value, from: &str, to: &str) {
+    match v {
+        Value::String(s) if s == from => *s = to.into(),
+        Value::Array(a) => a.iter_mut().for_each(|v| renamed(v, from, to)),
+        Value::Object(m) => {
+            if let Some(x) = m.remove(from) {
+                m.insert(to.into(), x);
+            }
+            m.values_mut().for_each(|v| renamed(v, from, to));
+        }
+        _ => {}
+    }
+}
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
 
@@ -210,6 +235,17 @@ mod tests {
         db.clear();
         let (entries, loaded) = Db::open(&scratch.0).load();
         assert!(entries.is_empty() && loaded.next_id == 1);
+    }
+
+    /// A save from before grain: its crates are bread, on the map, and
+    /// grain, on the market.
+    #[test]
+    fn crates_become_bread_and_grain() {
+        let mut objects = vec![serde_json::json!({"stocks": {"Crates": {"level": 25.0, "cap": 50.0}}, "load": ["Crates", 25.0]})];
+        let mut meta = serde_json::json!({"market": {"at": {"Crates": 0.5}, "orders": [{"good": "Crates"}]}});
+        MIGRATIONS[1].unwrap()(&mut objects, &mut meta);
+        assert_eq!(objects[0], serde_json::json!({"stocks": {"Bread": {"level": 25.0, "cap": 50.0}}, "load": ["Bread", 25.0]}));
+        assert_eq!(meta, serde_json::json!({"market": {"at": {"Grain": 0.5}, "orders": [{"good": "Grain"}]}}));
     }
 
     /// An old save is brought up to date and kept, the old one set aside

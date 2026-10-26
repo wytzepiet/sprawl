@@ -31,12 +31,12 @@ pub enum Need {
 }
 
 impl Need {
-    /// The good a counter serves this from: a meal off a shelf of crates,
+    /// The good a counter serves this from: a meal off a shelf of bread,
     /// a tank off the station's fuel. Being home, working and sleeping
     /// draw no shelf.
     pub fn good(self) -> Option<Good> {
         match self {
-            Need::Eat => Some(Good::Crates),
+            Need::Eat => Some(Good::Bread),
             Need::Fuel => Some(Good::Fuel),
             _ => None,
         }

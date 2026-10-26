@@ -155,7 +155,7 @@ fn spare(world: &World, depot: EntityId, good: Good) -> u32 {
 /// is short of, as much as it has room for up to a lorry's, or else of
 /// one a slot going out wants, by the tiles between them: the town's own
 /// shelf before the world's. A lorry is free to go to a maker whenever it
-/// is empty, so a farm's endless crates for the world would otherwise keep
+/// is empty, so a farm's endless grain for the world would otherwise keep
 /// it from the sawmill's timber the town is out of.
 fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
     let at = world.objects.get(depot)?.position?;
@@ -205,7 +205,7 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         if let Some(c) = world.car_mut(lorry) {
             c.cargo = out;
         }
-        for good in crate::market::GOODS {
+        for good in Good::ALL {
             let n = home_goods.iter().filter(|t| t.good == good).count() as u32;
             if n == 0 {
                 continue;
@@ -341,11 +341,11 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
     if let Some(c) = world.car_mut(lorry) {
         c.cargo = kept;
     }
-    for good in crate::market::GOODS {
+    for good in Good::ALL {
         let off = dropped.iter().filter(|t| t.good == good).count() as u32;
         world.lift(harbour, lorry, good, off, false, now);
     }
-    for good in crate::market::GOODS {
+    for good in Good::ALL {
         let on = taken.iter().filter(|(_, t)| t.good == good).count() as u32;
         world.lift(harbour, lorry, good, on, true, now);
     }

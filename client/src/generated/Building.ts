@@ -22,7 +22,7 @@ tiles: Array<GridCoord>,
 facing: number, 
 /**
  * Its stocks, by good: the shelf of what it serves or keeps — meals,
- * tanks, a farm's crates — drawn down by visits and loads and filled
+ * tanks, a farm's grain — drawn down by visits and loads and filled
  * by a delivery or its own land. Empty shelves serve nothing. A save
  * from before a stock existed gets it issued at load
  * (`economy::open`).

@@ -2,13 +2,15 @@
 
 Status: draft, 2026-10-10, for the player to correct. Built so far:
 house, apartment, shop, office, factory, gas station, supermarket, the
-general depot (`Depot`: crates 200, fuel 100, timber 60, stone 60, a
+general depot (`Depot`: bread 200, grain 200, fuel 100, timber 60, stone 60, a
 lorry and two vans, and up to three more lorries bought from the world at
 40 coins each), the farm, the sawmill and the quarry (each four hands
 working the ground within five tiles, the forest for timber, the
 mountain for stone: half a unit an hour each with thirty tiles of it in
-reach, nothing in the open; a yard of six boxes) and the ferry harbour.
-Goods are crates, fuel, timber and stone. A maker's yard needs no vehicle
+reach, nothing in the open; a yard of six boxes), the bakery (four
+hands opening grain and baking it into bread, eighteen meals an hour
+each, ten bags in and ten crates out) and the ferry harbour. Goods are
+grain, bread, fuel, timber and stone. A maker's yard needs no vehicle
 of its own: a depot's lorry fetches a load from it, a box's worth or what
 its shelf has room for, or a box for the world.
 
@@ -26,6 +28,7 @@ and how much (`Blueprint::materials`, which a draft's bill reads):
 | Supermarket | 16 | 10 |
 | Depot | 10 | |
 | Farm | 8 | |
+| Bakery | 8 | |
 | Sawmill | 6 | |
 | Quarry | 8 | |
 | Harbour | | |
@@ -67,8 +70,8 @@ one.
 
 | Good | Class | Comes from | Used by |
 |---|---|---|---|
-| Crates (food) | box | farm, or imported | shops, supermarkets; homes' meals out |
-| Grain | bulk | farm | food plant (later) |
+| Grain | bulk | farm, or imported | bakery |
+| Bread | box | bakery; fresh, never on the market | shops, supermarkets; homes' meals out |
 | Fuel | liquid | refinery, or imported | gas stations; every fleet vehicle |
 | Crude oil | liquid | oil well (where the island has it), or imported | refinery |
 | Timber | box | sawmill (forest) | every building, tier one |
@@ -92,8 +95,8 @@ Labour is not a good (`shelved.md`, jobs across the border).
 
 | Kind | Serves | Shelf | Filled from | Built from |
 |---|---|---|---|---|
-| Shop | meals | crates | nearest depot with crates | timber |
-| Supermarket | meals, a district's | crates, many | nearest depot | timber, concrete |
+| Shop | meals | bread | nearest depot with bread | timber |
+| Supermarket | meals, a district's | bread, many | nearest depot | timber, concrete |
 | Gas station | fuel | fuel | nearest depot with fuel, by tanker | timber, steel |
 
 ## Doors
@@ -120,7 +123,8 @@ All on the coast, all on the shipping company's lines (`shipping.md`).
 
 | Kind | Stands on / by | Takes | Makes | Built from |
 |---|---|---|---|---|
-| Farm | flat land, its own fields | — | crates (later grain) | timber |
+| Farm | flat land, its own fields | — | grain | timber |
+| Bakery | among the houses | grain | bread | timber |
 | Sawmill | by forest, which it fells and which regrows | — | timber | timber |
 | Quarry | on the mountain | — | stone / gravel | timber, steel |
 | Mine | on the mountain | — | ore | timber, steel |
@@ -150,7 +154,11 @@ stops the line, in sight.
 
 ## Open
 
-1. Whether food stays a farm's crates, or grain goes through a food plant.
+1. ~~Whether food stays a farm's crates, or grain goes through a food
+   plant.~~ Decided 2026-10-26: the farm grows grain, the world's food,
+   and a bakery in town bakes it into bread, which is fresh and never on
+   the market, so every town bakes its own. More foods by land (fish,
+   greens, milk) and packaged food from a food plant wait for play.
 2. Where oil is: tiles the island draws, offshore, or only off the boat.
 3. Whether the cement works makes concrete for sites, or concrete is mixed
    at the site from cement and gravel (as it is in life, within ninety

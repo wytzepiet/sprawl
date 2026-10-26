@@ -15,7 +15,8 @@ import type { Building, Good, Lift, Pose } from "../../generated";
  * - A depot is an open yard, no roof: a bay of each good on the ground
  *   where a hall would stand, its lorry's docks in its lot.
  * - A maker's pad runs down the side of its yard's lane the docks are
- *   not on: a farm's crates stacked four high.
+ *   not on: a farm's bags of grain stacked four high; a bakery's grain
+ *   at the back and its bread toward the gate.
  * - A shop, a supermarket and a gas station keep theirs along the front
  *   wall, on the pavement; a site its materials there.
  */
@@ -91,16 +92,20 @@ export function padOf(b: Building): Pad {
   if (kind.quay) {
     // Out from the ramp, a bay of each good two by two, as many high as
     // the quay takes; its forklifts between them and the lane.
-    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
+    const order: Good[] = ["Timber", "Stone", "Grain", "Fuel"];
     const back = -f.d / 2;
     const bays = order.map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.55 + (k < 2 ? 0 : 0.66), 4, 6), stack: 2 }));
     return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.4)), yard: true };
   }
   const goods = Object.keys(b.stocks) as Good[];
   if (b.kind === "Depot") {
-    // Four bays on the open ground, the heavy goods at the back.
-    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
-    const bays = order.filter((g) => goods.includes(g)).map((good, k) => ({ good, slots: grid(f, (k % 2 ? 1 : -1) * 0.46, (k < 2 ? -1 : 1) * 0.42, 4, 4), stack: 1 }));
+    // A bay of each good on the open ground, three across, the heavy
+    // goods at the back.
+    const order: Good[] = ["Timber", "Stone", "Grain", "Bread", "Fuel"];
+    const bays = order.filter((g) => goods.includes(g)).map((good, k) => {
+      const slots = grid(f, ((k % 3) - 1) * 0.62, (k < 3 ? -1 : 1) * 0.42, 3, 5);
+      return { good, slots, stack: Math.max(1, Math.ceil(most(b, good) / slots.length)) };
+    });
     return { bays, homes: forklifts((k) => f.pose(f.at, (k - (kind.forklifts - 1) / 2) * 0.12, 0)), yard: true };
   }
   if (kind.makes && b.door) {
@@ -118,7 +123,10 @@ export function padOf(b: Building): Pad {
     for (let s = 0.12; s < deep - 0.3; s += PITCH)
       for (const o of [0.22, 0.22 + PITCH]) slots.push({ at: [back[0] + fx * s + px * side * o, back[1] + fy * s + py * side * o], heading: Math.atan2(fy, fx) });
     const home = (k: number): Pose => ({ at: [back[0] + fx * (0.1 + k * 0.12), back[1] + fy * (0.1 + k * 0.12)], heading: Math.atan2(fy, fx) });
-    return { bays: [{ good, slots, stack: Math.max(1, Math.ceil(most(b, good) / slots.length)) }], homes: forklifts(home), yard: true };
+    // What it opens, a bakery's grain, at the back; what it makes before
+    // it, toward the gate.
+    const lane = kind.opens ? [{ good: kind.opens, slots: slots.splice(0, Math.floor(slots.length / 2)) }, { good, slots }] : [{ good, slots }];
+    return { bays: lane.map((l) => ({ ...l, stack: Math.max(1, Math.ceil(most(b, l.good) / l.slots.length)) })), homes: forklifts(home), yard: true };
   }
   // Along the front wall, on the pavement.
   let a = -f.w / 2 + 0.12;

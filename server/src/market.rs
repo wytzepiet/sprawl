@@ -37,7 +37,7 @@ use crate::protocol::{Good, DAY_MS};
 use crate::world::World;
 
 /// The goods on the market, in the order the list shows them.
-pub const GOODS: [Good; 4] = [Good::Timber, Good::Stone, Good::Crates, Good::Fuel];
+pub const GOODS: [Good; 4] = [Good::Timber, Good::Stone, Good::Grain, Good::Fuel];
 
 /// How far a good's price may stray from the world's, each way, as a
 /// share of it: the band. Never under freight, so the world's two prices
@@ -45,7 +45,7 @@ pub const GOODS: [Good; 4] = [Good::Timber, Good::Stone, Good::Crates, Good::Fue
 fn band(good: Good) -> f64 {
     match good {
         Good::Stone => 0.15,
-        Good::Timber | Good::Crates => 0.2,
+        Good::Timber | Good::Grain | Good::Bread => 0.2,
         Good::Fuel => 0.5,
     }
 }

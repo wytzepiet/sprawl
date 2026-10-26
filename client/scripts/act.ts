@@ -20,7 +20,7 @@
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act buy Timber 2            two bundles of timber from the market, on
- *       sell Crates                     the next ferry; or a crate of food sold
+ *       sell Grain                      the next ferry; or a bag of grain sold
  *   bun run act send 42 2               two packages letter 42 asks for, sent
  *   bun run act order buy Fuel 3 0.9    three pallets of fuel bought once its
  *                                       price (a unit) falls to 0.9; `sell`,

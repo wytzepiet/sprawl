@@ -93,8 +93,8 @@ const WHO: [Who; 4] = [
         town: "Saltmere",
         toward: Compass::West,
         colour: "#3f7fa8",
-        goods: &[Good::Crates, Good::Fuel],
-        sells: &[Good::Crates],
+        goods: &[Good::Grain, Good::Fuel],
+        sells: &[Good::Grain],
         packages: 5,
         price: 1.25,
         trust: 1.0,
@@ -126,7 +126,7 @@ const WHO: [Who; 4] = [
         toward: Compass::South,
         colour: "#c98a2b",
         goods: &[Good::Stone, Good::Timber],
-        sells: &[Good::Crates, Good::Timber],
+        sells: &[Good::Grain, Good::Timber],
         packages: 10,
         price: 1.5,
         trust: 0.0,
@@ -141,7 +141,7 @@ const WHO: [Who; 4] = [
         town: "Port Aldra",
         toward: Compass::East,
         colour: "#a33b3b",
-        goods: &[Good::Crates, Good::Timber, Good::Stone, Good::Fuel],
+        goods: &[Good::Grain, Good::Timber, Good::Stone, Good::Fuel],
         sells: &[Good::Fuel, Good::Timber],
         packages: 20,
         price: 2.0,
@@ -219,12 +219,12 @@ pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         built.push(b.kind);
-        let made = blueprint(b.kind).makes.filter(|&g| b.site.is_none() && world.street_of(e.id).is_some() && kept(g) >= crate::haul::LOAD as f64 * g.per_package());
+        let made = blueprint(b.kind).makes.filter(|g| crate::market::GOODS.contains(g)).filter(|&g| b.site.is_none() && world.street_of(e.id).is_some() && kept(g) >= crate::haul::LOAD as f64 * g.per_package());
         if let Some(g) = made.filter(|g| !now.contains(g)) {
             now.push(g);
         }
     }
-    let further = BuildingKind::ALL.iter().filter(|&&k| !built.contains(&k)).filter_map(|&k| blueprint(k).makes).filter(|g| !now.contains(g)).collect();
+    let further = BuildingKind::ALL.iter().filter(|&&k| !built.contains(&k)).filter_map(|&k| blueprint(k).makes).filter(|g| crate::market::GOODS.contains(g) && !now.contains(g)).collect();
     (now, further)
 }
 
@@ -436,10 +436,10 @@ mod tests {
         // A town that makes nothing: the first letters reach a step on.
         let first = asks(&mut world, 0);
         assert!(!first.contains(&Good::Fuel), "asked for fuel nobody can make: {first:?}");
-        assert_eq!(first[0], Good::Crates, "Tam writes first, for the crates a farm would make");
-        // A farm stands: crates are made in town.
+        assert_eq!(first[0], Good::Grain, "Tam writes first, for the grain a farm would grow");
+        // A farm stands: grain is grown in town.
         build(&mut world, 20, BuildingKind::Farm);
-        assert_eq!(sourceable(&world).0, [Good::Crates]);
+        assert_eq!(sourceable(&world).0, [Good::Grain]);
         let then = asks(&mut world, 9);
         assert!(!then.contains(&Good::Fuel), "asked for fuel nobody can make: {then:?}");
     }
@@ -527,7 +527,7 @@ mod tests {
         opening_done(world);
         post(world, harbour, 0);
         let order = world.missions.list.last().unwrap().clone();
-        assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Crates), "Tam's letter, for crates");
+        assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Grain), "Tam's letter, for grain");
         let (crate::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
         let before = (world.treasury, standing(world, Mayor::Tam));
         let n = crate::orders::letters(world).iter().find(|l| l.letter == id).unwrap().packages;
@@ -549,8 +549,8 @@ mod tests {
         let treasury = world.treasury;
         game.run_to(game.now + DAY_MS as u64);
         let world = &game.world;
-        let crates_sold: f64 = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum();
-        assert!((crates_sold - coins).abs() < 1e-6, "crates sold for {crates_sold} in all");
+        let grain_sold: f64 = world.town.season().map(|p| p.sold.get(&Good::Grain).copied().unwrap_or(0.0)).sum();
+        assert!((grain_sold - coins).abs() < 1e-6, "grain sold for {grain_sold} in all");
         assert!(world.treasury <= treasury + 1e-6, "paid again: {} more", world.treasury - treasury);
         assert_eq!(standing(world, Mayor::Tam), before.1 + 1.0, "standing rose again");
     }

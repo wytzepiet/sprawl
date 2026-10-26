@@ -226,8 +226,8 @@ pub enum BuildingKind {
     /// pad: a lorry that fetches packages from the harbour and vans that
     /// deliver to shops and sites. Placed by the mayor.
     Depot,
-    /// Where food comes from: hands that fill a yard with crates, and a
-    /// tractor on its land. A depot's lorry fetches them. Placed by the
+    /// Where grain comes from: a tractor on its land, and hands that fill
+    /// a yard with its bags. A depot's lorry fetches them. Placed by the
     /// mayor.
     Farm,
     /// The door: a ramp on the coast and a quay, where the world's ferry
@@ -242,11 +242,15 @@ pub enum BuildingKind {
     /// beside it, the stone heaped in its yard for a depot's lorry.
     /// Placed by the mayor, at the mountain's foot.
     Quarry,
+    /// Where bread comes from: hands opening the town's grain and baking
+    /// it, the crates stacked in its yard for a depot's lorry. Placed by
+    /// the mayor, among the houses.
+    Bakery,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 13] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -259,6 +263,7 @@ impl BuildingKind {
         BuildingKind::Harbour,
         BuildingKind::Sawmill,
         BuildingKind::Quarry,
+        BuildingKind::Bakery,
     ];
 }
 
@@ -275,7 +280,7 @@ pub struct Building {
     /// within the footprint from this.
     pub facing: u8,
     /// Its stocks, by good: the shelf of what it serves or keeps — meals,
-    /// tanks, a farm's crates — drawn down by visits and loads and filled
+    /// tanks, a farm's grain — drawn down by visits and loads and filled
     /// by a delivery or its own land. Empty shelves serve nothing. A save
     /// from before a stock existed gets it issued at load
     /// (`economy::open`).
@@ -517,8 +522,9 @@ pub struct Pose {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Good {
-    /// Food, in wooden crates: what a shop serves meals from.
-    Crates,
+    /// Bread, in wooden crates: what a shop serves meals from. Baked in
+    /// town and eaten fresh, so never on the market (`market::GOODS`).
+    Bread,
     /// What a pump fills a tank from, in drums on a pallet.
     Fuel,
     /// What buildings are built from, the first material: logs in a
@@ -527,16 +533,23 @@ pub enum Good {
     /// Broken rock in blocks on a pallet: what roads are laid on, and the
     /// masonry of the bigger buildings.
     Stone,
+    /// What a farm grows and a bakery bakes, in a big bag open at the
+    /// top: the food the world trades.
+    Grain,
 }
 
 impl Good {
+    /// Every good, in declaration order.
+    pub const ALL: [Good; 5] = [Good::Bread, Good::Fuel, Good::Timber, Good::Stone, Good::Grain];
+
     /// Units one package holds: the thing that is traded, carried and
-    /// stacked, whole (docs/plan-goods.md §Goods you can see). A crate is
-    /// twenty-five meals' worth, a pallet of drums ten tanks, a bundle
+    /// stacked, whole (docs/plan-goods.md §Goods you can see). A crate of
+    /// bread is twenty-five meals, a bag of grain the same unbaked, a
+    /// pallet of drums ten tanks, a bundle
     /// or a pallet of blocks a house's timber or four tiles of road.
     pub fn per_package(self) -> f64 {
         match self {
-            Good::Crates => 25.0,
+            Good::Bread | Good::Grain => 25.0,
             Good::Fuel => 10.0,
             Good::Timber | Good::Stone => 4.0,
         }
@@ -545,7 +558,8 @@ impl Good {
     /// What one package of it is called, and several.
     pub fn package(self) -> (&'static str, &'static str) {
         match self {
-            Good::Crates => ("crate of food", "crates of food"),
+            Good::Bread => ("crate of bread", "crates of bread"),
+            Good::Grain => ("bag of grain", "bags of grain"),
             Good::Fuel => ("pallet of fuel drums", "pallets of fuel drums"),
             Good::Timber => ("bundle of timber", "bundles of timber"),
             Good::Stone => ("pallet of stone", "pallets of stone"),
