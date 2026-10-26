@@ -12,6 +12,7 @@ import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { depot } from "./depot";
+import { shop } from "./shop";
 import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
@@ -130,12 +131,14 @@ export function mountBuilding(
     : null;
 
   // A depot too, its sheds round its bays, its gantry and its fence
-  // (`depot.ts`).
-  const plot = data.kind === "Depot" && !data.site
+  // (`depot.ts`); and a shop round its courtyard (`shop.ts`), every other
+  // one the other way round.
+  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, entry.id % 2 ? 1 : -1) : null;
+  const plot = model
     ? (() => {
         const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
         const at: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
-        return depot(ctx.engine, 1).map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012));
+        return model.map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012));
       })()
     : [];
 

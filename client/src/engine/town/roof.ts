@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { AWNING, OPENING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, formOf, planted, sawtooth, slope } from "./mass";
+import { OPENING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, formOf, planted, sawtooth, slope } from "./mass";
 import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
@@ -36,18 +36,6 @@ type Line = [number, number, number];
 /** An office roof's plant, in tiles: how far in from the parapet; the lift
  *  room's length, breadth and height; an AC unit's side and height; a
  *  vent's cap across and height. */
-/** What stands on a high-street place's flat (`kit`), in tiles: how far in
- *  from the flat's edge; an AC unit's side and height; a duct's breadth
- *  and height; an extract stack's breadth (its cowl's) and height; a
- *  dish's breadth and how high it stands; a rooflight's and its dome's. */
-const KIT = {
-  margin: 0.02,
-  ac: 0.085, acHigh: 0.055,
-  duct: 0.03, ductHigh: 0.03,
-  stack: 0.06, stackHigh: 0.1,
-  dish: 0.07, dishHigh: 0.04,
-  rooflight: 0.075, rooflightHigh: 0.025,
-} as const;
 /** A sawtooth shed's stack, in tiles: how far in from the back corner it
  *  stands, which is its breadth, and how high; and how broad its puffs of
  *  smoke grow. */
@@ -156,6 +144,8 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       }
       continue;
     }
+    // A shop is a model of its own too (`objects/shop.ts`).
+    if (mass.tile.kind === "Shop") continue;
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
@@ -231,31 +221,6 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       solid(box(at(m + lw / 2, m + lh / 2), lw, lh), top, top + PLANT.room[2], paint(tile, 0.9, 0.2));
       for (let k = 0; k < 2; k++) prop("ac", at(length - m - PLANT.ac / 2, m + PLANT.ac / 2 + k * (PLANT.ac + 0.03)), top, PLANT.ac, PLANT.acHigh);
       for (let k = 0; k < 3; k++) prop("vent", at(m + lw + 0.1 + k * 0.1, width - m - 0.025), top, PLANT.vent, PLANT.ventHigh);
-    };
-    /** One AC unit in a corner of a small flat roof, which corner by where
-     *  the building stands, clear of the sign in its middle. */
-    /** What stands on a high-street place's flat, by its corners, which
-     *  corner first by where it stands: an AC unit in one; and by its kind,
-     *  in the one across from it, a restaurant's extract stack with its
-     *  duct run along an edge to it, a bar's satellite dish, a shop's
-     *  rooflight with a second unit beside the first for its fridges. */
-    const kit = (flat: Polygon[], z: number, tile: Tile) => {
-      const all = flat.flat(2);
-      if (!all.length) return;
-      const [x0, y0] = [Math.min(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1]))];
-      const [x1, y1] = [Math.max(...all.map((p) => p[0])), Math.max(...all.map((p) => p[1]))];
-      const first = Math.floor((Math.abs(Math.sin(x0 * 12.9898 + y0 * 78.233) * 43758.5453) % 1) * 4);
-      /** Corner k (bit 1 the far x, bit 2 the far y), a thing this broad tucked into it. */
-      const corner = (k: number, size: number): P => {
-        const reach = KIT.margin + size / 2;
-        return [k & 1 ? x1 - reach : x0 + reach, k & 2 ? y1 - reach : y0 + reach];
-      };
-      const [across, beside] = [first ^ 3, first ^ 1];
-      prop("ac", corner(first, KIT.ac), z, KIT.ac, KIT.acHigh);
-      if (tile.kind === "Shop") {
-        prop("rooflight", corner(across, KIT.rooflight), z, KIT.rooflight, KIT.rooflightHigh);
-        prop("ac", corner(beside, KIT.ac), z, KIT.ac, KIT.acHigh);
-      }
     };
     /** A sawtooth roof over the flat: strips across the way to the door,
      *  each a slope from its back up TOOTH to its front, where a glazed
@@ -342,44 +307,10 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
               if (k === 0 && front && !shed && j % 3 === 1) {
                 pane(a, OPENING.door + 2 * OPENING.frame, 0, OPENING.doorHigh + OPENING.frame, 0.003, cream);
                 pane(a, OPENING.door, 0, OPENING.doorHigh, 0.005, door);
-              } else window(a, k === 0 && front && tile.kind === "Shop" ? OPENING.pitch - 2.5 * OPENING.frame : OPENING.wide, z0, z1);
+              } else window(a, OPENING.wide, z0, z1);
             }
           }
         });
-      }
-    };
-    /** A shop's awning: over the middle of its front, the wall toward its
-     *  door, from AWNING.at of the way up the wall out and down, in
-     *  stripes of its colour and cream, a valance at its hem. */
-    const awning = (polygons: Polygon[], tile: Tile) => {
-      const f = doorOf(tile);
-      if (!f) return;
-      let front: [P, P] | undefined, best = 0;
-      for (const ring of polygons.flatMap((poly) => poly.slice(0, 1))) {
-        ring.forEach((p, i) => {
-          const q = ring[(i + 1) % ring.length];
-          const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
-          const facing = ((q[1] - p[1]) * f[0] - (q[0] - p[0]) * f[1]) / len;
-          if (facing > 0.9 && len > best) [front, best] = [[p, q], len];
-        });
-      }
-      if (!front) return;
-      const [p, q] = front;
-      const t: P = [(q[0] - p[0]) / best, (q[1] - p[1]) / best];
-      const w = best * AWNING.span, n = Math.max(3, Math.round(w / AWNING.stripe) | 1);
-      const mid: P = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-      const z0 = top * AWNING.at, z1 = z0 - AWNING.drop;
-      const at = (a: number, out: number, z: number): V => [mid[0] + t[0] * a + f[0] * out, mid[1] + t[1] * a + f[1] * out, z];
-      const up: V = [f[0] * AWNING.drop, f[1] * AWNING.drop, AWNING.out];
-      const l = Math.hypot(...up);
-      const nUp = up.map((v) => v / l) as V, nDown = nUp.map((v) => -v) as V, nOut: V = [f[0], f[1], 0];
-      for (let k = 0; k < n; k++) {
-        const [a0, a1] = [-w / 2 + (k * w) / n, -w / 2 + ((k + 1) * w) / n];
-        const rgb = k % 2 ? paint(tile, 1, 0) : paint(tile, 0.08, 0.84);
-        const [b0, b1, c0, c1] = [at(a0, 0.002, z0), at(a1, 0.002, z0), at(a0, AWNING.out, z1), at(a1, AWNING.out, z1)];
-        for (const nrm of [nUp, nDown]) tri(b0, b1, c1, nrm, rgb), tri(b0, c1, c0, nrm, rgb);
-        const [d0, d1] = [at(a0, AWNING.out, z1 - 0.02), at(a1, AWNING.out, z1 - 0.02)];
-        tri(c0, c1, d1, nOut, rgb), tri(c0, d1, d0, nOut, rgb);
       }
     };
     /** A flat roof's parapet: a low wall round its edge, its coping a shade
@@ -402,10 +333,6 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     if (sawtooth(mass.tile) && doorOf(mass.tile)) teeth(flat, top, doorOf(mass.tile)!);
     else cover(flat, () => top + height);
     if (height === 0 && !sawtooth(mass.tile)) parapet(outline, top);
-    if (mass.tile.kind === "Shop") {
-      kit(shrink(flat, PARAPET_W), top, mass.tile);
-      for (const part of mass.parts) awning(part.polygons, part.tile);
-    }
     if (planted(mass.tile)) plant(polygon, top, mass.tile);
   }
   return { positions, normals, colors, indices, props };

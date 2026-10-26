@@ -55,10 +55,10 @@ export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
 /** How steeply a kind's roof climbs from its walls, and how high before
  *  it runs flat: a house's pitched, no higher than a one-tile row's ridge
  *  (0.3 in from its walls), so anything deeper is flat on top at that
- *  height; a block of flats' nearly flat behind a low rim; a shed's, a
- *  shop's or a big box's flat, as a depot's is seen from above. */
+ *  height; a block of flats' nearly flat behind a low rim; a shed's or a
+ *  big box's flat, as a depot's is seen from above. */
 export function slope(t: Tile) {
-  if (formOf(t).family !== "street" || t.kind === "Shop") return { pitch: 1, height: 0 };
+  if (formOf(t).family !== "street") return { pitch: 1, height: 0 };
   if (t.storeys > 3) return { pitch: 0.5, height: 0.03 };
   return { pitch: 0.75, height: 0.225 };
 }
@@ -68,11 +68,6 @@ export function slope(t: Tile) {
  *  their frames' width; a door's width and height; a shed's big door. */
 export const OPENING = { wide: 0.06, high: 0.065, pitch: 0.15, end: 0.06, frame: 0.012, door: 0.07, doorHigh: 0.15, shedDoor: 0.26, shedHigh: 0.17 } as const;
 
-/** A shop's awning over its front, striped in its colour and cream: how
- *  high on the wall it hangs, how far out it reaches and how far it drops
- *  there, how much of the front it spans, and how wide a stripe is
- *  (`roof.ts`). */
-export const AWNING = { at: 0.5, out: 0.1, drop: 0.045, span: 0.7, stripe: 0.05 } as const;
 
 /** Whether a shed wears a sawtooth roof, as a mill's or a works' does:
  *  ridges across it, each a slope up from the back to a glazed face
