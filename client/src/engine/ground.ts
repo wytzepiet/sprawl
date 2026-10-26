@@ -47,9 +47,9 @@ const CLOVER = [1, 0.97, 0.86];
  *  touch yellower in places, darker and a touch bluer in others, in broad
  *  patches this many tiles across and small ones this many, by up to this
  *  much. The rest of the land is its colour alone. */
-const PATCHES = 3;
+const PATCHES = 1.5;
 const SPECKS = 0.5;
-const MOTTLE = 0.04;
+const MOTTLE = 0.1;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the grain, specks and tufts, beats
  *  how far in it is, so it thins to its edge instead of stopping clean. */
