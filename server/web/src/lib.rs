@@ -94,10 +94,10 @@ impl Web {
         self.speed(1);
     }
 
-    /// Every two roads that run into each other (`World::clashing`): none,
+    /// Every two roads that run into each other (`Map::clashing`): none,
     /// ever; the drag tests check.
     pub fn clashing(&self) -> String {
-        serde_json::to_string(&self.session.game.world.clashing()).unwrap_or_default()
+        serde_json::to_string(&self.session.game.world.map.clashing()).unwrap_or_default()
     }
 
     /// The level as the client shows it, as JSON.

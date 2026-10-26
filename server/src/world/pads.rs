@@ -16,13 +16,13 @@ use model::blueprint::blueprint;
 use model::GameTime;
 use model::{CarRole, EntityId, Good, Lift};
 
-use super::World;
+use super::Map;
 
 /// A forklift lifts a package off a vehicle and sets it on the pad, or
 /// back: a couple of minutes of the clock.
 pub const HANDLE_MS: GameTime = 1_500;
 
-impl World {
+impl Map {
     /// A forklift of the building's lifts `n` packages of a good between
     /// its pad and a vehicle standing at it, onto the vehicle or off: the
     /// first free, from when it is free, one package at a time. The

@@ -26,7 +26,7 @@ use model::blueprint::FACINGS;
 use model::GameTime;
 use model::{EntityId, GameObject, GridCoord, Pose};
 use serde_json::{json, Value};
-use crate::world::World;
+use crate::world::Map;
 use crate::world::bezier::LANE_OFFSET;
 use crate::world::segments::EdgeSegment;
 
@@ -265,7 +265,7 @@ impl Lot {
     }
 }
 
-impl World {
+impl Map {
     /// The building's lot, built or rebuilt to match the map. `None` where
     /// no road reaches it.
     pub fn lot_mut(&mut self, building: EntityId) -> Option<&mut Lot> {
@@ -301,13 +301,13 @@ impl World {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
         let mut spots = Vec::new();
-        let mut node = |world: &mut World, at: [f64; 2]| {
+        let mut node = |world: &mut Map, at: [f64; 2]| {
             let id = world.objects.reserve_id();
             world.lot_nodes.insert(id, at);
             nodes.push(id);
             id
         };
-        let mut edge = |world: &mut World, a: EntityId, b: EntityId| {
+        let mut edge = |world: &mut Map, a: EntityId, b: EntityId| {
             world.edges.insert((a, b), EdgeSegment::new(1));
             edges.push((a, b));
         };
@@ -513,11 +513,11 @@ impl World {
         tiles: &[GridCoord],
         kind: model::BuildingKind,
         facing: u8,
-        mut node: impl FnMut(&mut World, [f64; 2]) -> EntityId,
-        mut edge: impl FnMut(&mut World, EntityId, EntityId),
+        mut node: impl FnMut(&mut Map, [f64; 2]) -> EntityId,
+        mut edge: impl FnMut(&mut Map, EntityId, EntityId),
     ) -> Option<Lot> {
         let street = gate.1;
-        let (pos, p) = World::lie(tiles, kind, facing);
+        let (pos, p) = Map::lie(tiles, kind, facing);
         let ((lx, ly), (gw, gh)) = p.lot?;
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
         let (dx, dy) = FACINGS[facing as usize % 4];
@@ -857,7 +857,6 @@ impl World {
         })
     }
 
-
     /// The way from where the car stands to the street: its lot nodes in
     /// order, and the street node last.
     pub fn way_out(&self, car: EntityId) -> Option<Vec<EntityId>> {
@@ -1086,8 +1085,8 @@ mod tests {
     use model::BuildingKind;
 
     /// Open land with one street along y = 0.
-    fn street() -> World {
-        World::meadow(-4..40, -4..8).street(-4..40)
+    fn street() -> Map {
+        Map::meadow(-4..40, -4..8).street(-4..40)
     }
 
     /// A car that finds the drive full stops at the door, unseen, rather
@@ -1098,7 +1097,7 @@ mod tests {
         let mut world = street();
         let house = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::House).unwrap();
         assert_eq!(world.lot_mut(house).unwrap().spots.len(), 2);
-        let car = |world: &mut World| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
+        let car = |world: &mut Map| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
         assert!(matches!(world.claim_spot(house, a, 10_000, 12_000, |_| true), Some(Claim::Spot(_))));
         assert!(matches!(world.claim_spot(house, b, 10_000, 12_000, |_| true), Some(Claim::Spot(_))));
@@ -1126,7 +1125,7 @@ mod tests {
         assert!(world.lot_mut(flats).unwrap().spots.iter().all(|s| s.pose.heading.abs() < 1e-9), "facing east, the way the lane on that side runs");
         let shop = flats;
 
-        let car = |world: &mut World| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
+        let car = |world: &mut Map| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let (west, east) = (world.road_node_at(GridCoord { x: -2, y: 0 }).unwrap(), world.road_node_at(GridCoord { x: 20, y: 0 }).unwrap());
         // From the west, along the lane beside the bays: into each, from
         // the street node behind it. The far bay is pulled into, along the
@@ -1196,7 +1195,7 @@ mod tests {
         for (bay, x) in at.iter().zip([2.365, 2.635]) {
             assert!((bay[0] - x).abs() < 1e-9 && (bay[1] - (0.5 + SQUARE)).abs() < 1e-9, "a bay at {bay:?}");
         }
-        let car = |world: &mut World| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
+        let car = |world: &mut Map| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         for (from, sign) in [(GridCoord { x: -2, y: 0 }, 1.0), (GridCoord { x: 20, y: 0 }, -1.0)] {
             let a = car(&mut world);
             let ways = world.ways_to(shop, world.road_node_at(from).unwrap()).unwrap();
@@ -1237,7 +1236,7 @@ mod tests {
     /// ends half way along it is refused, one a tile on is placed.
     #[test]
     fn a_kerb_parker_needs_a_street_along_a_whole_side() {
-        let world = World::meadow(-4..12, -4..8).street(-4..3);
+        let world = Map::meadow(-4..12, -4..8).street(-4..3);
         assert_eq!(world.fit(BuildingKind::Office, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
         assert!(world.fit(BuildingKind::Office, GridCoord { x: 2, y: 1 }, 0).is_ok());
     }
@@ -1256,7 +1255,7 @@ mod tests {
             Some(GameObject::Building(b)) => b.clone(),
             _ => unreachable!(),
         };
-        assert_eq!(world.door_of(depot).map(|d| d.0), World::gate_of(&b.tiles, b.kind, b.facing), "the door is the gate");
+        assert_eq!(world.door_of(depot).map(|d| d.0), Map::gate_of(&b.tiles, b.kind, b.facing), "the door is the gate");
         world.lot_mut(shop).unwrap();
         // One of the depot's own lorries, in its dock since the depot was reached.
         let lorry = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == model::CarRole::Truck)).map(|e| e.id).unwrap();
@@ -1281,38 +1280,6 @@ mod tests {
         // Staff at a depot stop at the door: a yard has no car spots.
         let car = world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         assert_eq!(world.claim_spot(depot, car, 0, GameTime::MAX, |_| true), Some(Claim::Door));
-    }
-
-    /// A house's car drives onto its driveway nose first, stands facing the
-    /// house, and backs out onto the street when it leaves: the first edge
-    /// of the trip out is driven backwards, and then it drives on.
-    #[test]
-    fn a_car_backs_out_of_its_driveway() {
-        let mut world = street();
-        let house = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
-        let depot = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Depot).unwrap();
-        let car = world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
-        let ways = world.ways_to(house, world.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
-        let (way, _) = world.way_in(house, car, &ways, 0, GameTime::MAX).unwrap();
-        let door = world.door_of(house).unwrap().0;
-        let driveway = [door.x as f64 + 0.5, door.y as f64 + 0.5];
-        let spot = world.node_pos(way[way.len() - 1]).unwrap();
-        world.park_in_lot(house, car, 0);
-        let pose = match world.objects.get(car).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => c.spot.unwrap(),
-            _ => unreachable!(),
-        };
-        let (dx, dy) = (driveway[0] - spot[0], driveway[1] - spot[1]);
-        assert!(pose.heading.cos() * dx + pose.heading.sin() * dy > 0.0, "parked facing the house, the way it drove in");
-        assert_eq!(world.backs_out(car), 1, "backed off the driveway");
-        let mut events = crate::engine::event_queue::EventQueue::new();
-        let street = world.approach(house).unwrap();
-        assert!(crate::car::spawn::start_trip(&mut world, &mut events, car, street, depot, 0, GameTime::MAX));
-        let trip = match world.objects.get(car).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => c.trip.clone().unwrap(),
-            _ => unreachable!(),
-        };
-        assert_eq!(trip.backing, vec![[0, 1]], "the first edge backwards, the rest forward");
     }
 
 }

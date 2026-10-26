@@ -38,7 +38,7 @@ pub(crate) fn hhmm(t: GameTime) -> String {
 }
 
 fn link(world: &World, id: EntityId) -> Link {
-    let (kind, label) = match world.objects.get(id).map(|e| &e.object) {
+    let (kind, label) = match world.map.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Resident(_)) => (LinkKind::Resident, name(id)),
         Some(GameObject::Building(b)) => (LinkKind::Building, format!("{:?}", b.kind)),
         Some(GameObject::Car(c)) => (LinkKind::Car, match c.role {
@@ -54,7 +54,7 @@ fn link(world: &World, id: EntityId) -> Link {
 }
 
 pub fn card(world: &World, id: EntityId, now: GameTime) -> Card {
-    match world.objects.get(id).map(|e| &e.object) {
+    match world.map.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Resident(r)) => Card::Resident(resident(world, id, r, now)),
         Some(GameObject::Car(c)) => Card::Car(car(world, id, c, now)),
         Some(GameObject::Building(b)) => Card::Building(building(world, id, b, now)),
@@ -87,7 +87,7 @@ fn call_line(world: &World, call: &Call) -> CallLine {
 }
 
 fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> CarCard {
-    let owner = world.objects.get(c.owner).map(|e| &e.object);
+    let owner = world.map.objects.get(c.owner).map(|e| &e.object);
     let rider = match owner {
         Some(GameObject::Resident(r)) if r.at == Some(id) => Some(link(world, c.owner)),
         _ => None,
@@ -114,7 +114,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Buildin
     let mut here = Vec::new();
     let mut household = Vec::new();
     let mut staff = Vec::new();
-    for e in world.objects.iter() {
+    for e in world.map.objects.iter() {
         let GameObject::Resident(ref r) = e.object else { continue };
         if r.at == Some(id) {
             here.push(Present { who: link(world, e.id), doing: r.selected });
@@ -129,21 +129,21 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Buildin
     // A site's: where its materials are, nearest first. Every depot, and
     // whether its street is joined to the harbour; every maker of one, and
     // its yard.
-    let pos = world.objects.get(id).and_then(|e| e.position).filter(|_| b.site.is_some());
+    let pos = world.map.objects.get(id).and_then(|e| e.position).filter(|_| b.site.is_some());
     let site = b.site.as_ref();
     let depots = pos.map_or_else(Vec::new, |at| {
-        let depots = world.depots().into_iter().map(|(d, _)| d);
-        world.nearest(at, depots).into_iter().filter_map(|(_, d)| {
-            let joined = world.street_of(d).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
-            let stocks = world.building(d)?.stocks.iter().map(|(&g, s)| (g, s.level)).collect();
+        let depots = world.map.depots().into_iter().map(|(d, _)| d);
+        world.map.nearest(at, depots).into_iter().filter_map(|(_, d)| {
+            let joined = world.map.street_of(d).and_then(|s| world.map.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
+            let stocks = world.map.building(d)?.stocks.iter().map(|(&g, s)| (g, s.level)).collect();
             Some(DepotLine { depot: link(world, d), joined, stocks })
         }).collect()
     });
     let makers = pos.map_or_else(Vec::new, |at| {
         let makes = |k: BuildingKind| blueprint(k).makes.is_some_and(|g| site.is_some_and(|s| s.contains_key(&g)));
-        let makers = world.of_kinds(makes).into_iter().filter(|(_, m)| m.site.is_none()).map(|(m, _)| m);
-        world.nearest(at, makers).into_iter().filter_map(|(_, m)| {
-            let yard = world.building(m)?;
+        let makers = world.map.of_kinds(makes).into_iter().filter(|(_, m)| m.site.is_none()).map(|(m, _)| m);
+        world.map.nearest(at, makers).into_iter().filter_map(|(_, m)| {
+            let yard = world.map.building(m)?;
             let good = blueprint(yard.kind).makes?;
             Some(MakerLine { maker: link(world, m), kind: yard.kind, good, level: yard.stocks.get(&good).map_or(0.0, |s| s.level) })
         }).collect()
@@ -151,14 +151,14 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Buildin
     BuildingCard {
         id,
         building_kind: b.kind,
-        reached: world.street_of(id).is_some(),
+        reached: world.map.street_of(id).is_some(),
         stocks: b.stocks.iter().map(|(good, s)| Gauge { what: format!("{good:?}"), full: s.level / s.cap }).collect(),
         depots,
         makers,
         here,
         household,
         staff,
-        fleet: world.objects.fleet(id).filter(|&c| world.car(c).is_some_and(|c| c.role != CarRole::Private)).map(|c| link(world, c)).collect(),
+        fleet: world.map.objects.fleet(id).filter(|&c| world.map.car(c).is_some_and(|c| c.role != CarRole::Private)).map(|c| link(world, c)).collect(),
         calls: world.calls.iter().filter(|call| call.at == id).map(|call| call_line(world, call)).collect(),
         served: blueprint(b.kind)
             .taps

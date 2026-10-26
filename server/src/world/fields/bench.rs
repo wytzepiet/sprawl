@@ -101,8 +101,8 @@ fn sweeps() {
             continue;
         }
         let text = std::fs::read_to_string(&file).unwrap();
-        let mut world = World::new();
-        crate::fixtures::build_text(&mut world, &text);
+        let mut world = Map::new();
+        crate::world::fixtures::build_text(&mut world, &text);
         let farm = world.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm)).map(|e| e.id).expect("a farm");
         // What was built on its land after it claimed it is land no more.
         world.tend(farm);

@@ -76,17 +76,17 @@ fn main() {
     };
     let mut cars: Vec<(EntityId, String)> = s
         .game
-        .world
+        .world.map
         .objects
         .iter()
         .filter_map(|e| match &e.object {
             GameObject::Car(c) => c.trip.as_ref().map(|t| (e.id, t)),
             _ => None,
         })
-        .filter(|(_, t)| near(s.game.world.objects.get(t.route[t.route_index]).and_then(|e| e.position)))
+        .filter(|(_, t)| near(s.game.world.map.objects.get(t.route[t.route_index]).and_then(|e| e.position)))
         .map(|(id, t)| {
             let (_, v) = t.at(s.game.now);
-            let at = |n: EntityId| s.game.world.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
+            let at = |n: EntityId| s.game.world.map.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
             let tile = format!("{} {} → {}", t.route[t.route_index], at(t.route[t.route_index - 1]), at(t.route[t.route_index]));
             let lane = t.lanes.get(t.route_index).copied().unwrap_or(0);
             (id, format!("car {id} {tile} lane {lane} v {v:.2} a {:.2}: {}", t.acceleration, why(&s.game, id).unwrap_or_else(|| "free".into())))
@@ -97,10 +97,10 @@ fn main() {
         println!("{line}");
     }
     // Where the followed car goes from here.
-    if let Some(GameObject::Car(c)) = car.and_then(|c| s.game.world.objects.get(c)).map(|e| &e.object)
+    if let Some(GameObject::Car(c)) = car.and_then(|c| s.game.world.map.objects.get(c)).map(|e| &e.object)
         && let Some(t) = c.trip.as_ref()
     {
-        let at = |n: EntityId| s.game.world.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
+        let at = |n: EntityId| s.game.world.map.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
         let ahead: Vec<String> = (t.route_index..t.route.len()).take(8).map(|k| format!("{} (lane {})", at(t.route[k]), t.lanes[k])).collect();
         println!("car {} goes on to {}", car.unwrap(), ahead.join(", "));
     }
@@ -108,14 +108,14 @@ fn main() {
 
 /// What a car slows or stops for, said.
 fn why(game: &Game, car: EntityId) -> Option<String> {
-    let (cause, accel) = game.world.why(car)?;
-    let pos = |id: EntityId| game.world.objects.get(id).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
+    let (cause, accel) = game.world.map.why(car)?;
+    let pos = |id: EntityId| game.world.map.objects.get(id).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
     let what = match cause {
         Cause::Ahead(o) => format!("behind car {o}"),
         Cause::Merging(o) => format!("car {o} merging in ahead"),
         Cause::LettingIn(o) => format!("letting car {o} in"),
         Cause::Junction(j) => {
-            let (through, waiting) = game.world.streets.who(j);
+            let (through, waiting) = game.world.map.streets.who(j);
             format!("no passage at {} (through {through:?}, waiting {waiting:?})", pos(j))
         }
         Cause::Turn(o) => format!("car {o} turning across"),

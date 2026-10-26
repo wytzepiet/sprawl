@@ -607,6 +607,9 @@ pub struct Package {
     pub price: f64,
 }
 
+/// The starter pack's order: the world's gift, paid for by nobody.
+pub const GIFT: u64 = 0;
+
 impl Package {
     /// What it is worth at its deal's price.
     pub fn value(&self) -> f64 {

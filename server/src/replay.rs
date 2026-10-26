@@ -211,12 +211,12 @@ impl Watch {
     pub fn look(&mut self, game: &Game) -> Vec<String> {
         let world = &game.world;
         let mut out = Vec::new();
-        for (edge, seg) in &world.edges {
+        for (edge, seg) in &world.map.edges {
             for lane in 0..seg.lanes as usize {
                 // On it, not yet coming to it by another road.
                 let mut on: Vec<(f64, EntityId, CarRole)> = seg
                     .lane(lane)
-                    .filter_map(|c| match world.objects.get(c).map(|e| &e.object) {
+                    .filter_map(|c| match world.map.objects.get(c).map(|e| &e.object) {
                         Some(GameObject::Car(car)) => {
                             let t = car.trip.as_ref()?;
                             let i = t.route_index;
@@ -234,7 +234,7 @@ impl Watch {
                 }
             }
         }
-        for e in world.objects.iter() {
+        for e in world.map.objects.iter() {
             let GameObject::Car(c) = &e.object else { continue };
             let Some(t) = c.trip.as_ref() else {
                 self.standing.remove(&e.id);
@@ -242,18 +242,18 @@ impl Watch {
             };
             // Held at a junction, or for one let in there before it that is
             // standing at its line, not coming in ahead of it.
-            let speed = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+            let speed = |o: EntityId| match world.map.objects.get(o).map(|e| &e.object) {
                 Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| t.at(game.now).1),
                 _ => 0.0,
             };
             // Standing, and not behind one on its way.
             let standing = |o: EntityId| {
                 speed(o) < 0.01
-                    && !matches!(world.why(o), Some((model::Cause::Ahead(a) | model::Cause::Merging(a), _)) if speed(a) >= 0.01)
+                    && !matches!(world.map.why(o), Some((model::Cause::Ahead(a) | model::Cause::Merging(a), _)) if speed(a) >= 0.01)
             };
-            let held = match world.why(e.id) {
-                Some((model::Cause::Junction(j), a)) => Some((j, a, game.world.streets.who(j).0)),
-                Some((model::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.streets.has_passage(j, e.id) && game.world.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
+            let held = match world.map.why(e.id) {
+                Some((model::Cause::Junction(j), a)) => Some((j, a, game.world.map.streets.who(j).0)),
+                Some((model::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.world.map.streets.has_passage(j, e.id) && game.world.map.streets.has_passage(j, l)).map(|&j| (j, a, vec![l])),
                 _ => None,
             };
             if let Some((j, a, them)) = held
@@ -263,7 +263,7 @@ impl Watch {
             {
                 // Not one in the junction already, past its line, held up on
                 // its way out: the jam holds them both, not the junction.
-                let inside = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+                let inside = |o: EntityId| match world.map.objects.get(o).map(|e| &e.object) {
                     Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
                         (1..t.route.len()).find(|&k| t.route[k] == j).is_none_or(|k| t.along[k] - t.at(game.now).0 < t.segment_lengths[k] / 2.0)
                     }),
@@ -284,7 +284,7 @@ impl Watch {
             // none, if one ahead of it is on its way.
             let mut waits = Some(e.id);
             let mut at_junction = None;
-            let going = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+            let going = |o: EntityId| match world.map.objects.get(o).map(|e| &e.object) {
                 Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| t.at(game.now).1 > 0.01 || t.acceleration > 0.0),
                 _ => false,
             };
@@ -293,7 +293,7 @@ impl Watch {
                     self.standing.insert(e.id, game.now);
                     break;
                 }
-                match waits.and_then(|w| world.why(w)) {
+                match waits.and_then(|w| world.map.why(w)) {
                     Some((model::Cause::Junction(j), _)) => {
                         at_junction = Some(j);
                         break;
@@ -306,7 +306,7 @@ impl Watch {
             let moving = at_junction.map_or(since, |j| {
                 // Who, not in what order: cars let through, giving it back
                 // and let through again, go nowhere.
-                let mut now_through = game.world.streets.who(j).0;
+                let mut now_through = game.world.map.streets.who(j).0;
                 now_through.sort_unstable();
                 let seen = self.through.entry(j).or_insert((now_through.clone(), game.now));
                 if seen.0 != now_through {
@@ -332,15 +332,15 @@ pub fn clock(now: GameTime) -> String {
 /// Whether a car comes to junction `j` on a priority road, if it comes to
 /// it at all.
 fn on_priority(world: &crate::world::World, car: EntityId, j: EntityId) -> Option<bool> {
-    let Some(GameObject::Car(c)) = world.objects.get(car).map(|e| &e.object) else { return None };
+    let Some(GameObject::Car(c)) = world.map.objects.get(car).map(|e| &e.object) else { return None };
     let t = c.trip.as_ref()?;
     let k = (1..t.route.len()).find(|&k| t.route[k] == j)?;
-    Some(world.is_road_between(t.route[k - 1], j))
+    Some(world.map.is_road_between(t.route[k - 1], j))
 }
 
 /// Where a node is, as a tile.
 fn place(world: &crate::world::World, node: EntityId) -> String {
-    world.objects.get(node).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y))
+    world.map.objects.get(node).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y))
 }
 
 /// The state of the game's traffic, in a number: when, how much is in the
@@ -349,9 +349,9 @@ fn place(world: &crate::world::World, node: EntityId) -> String {
 pub fn fingerprint(game: &Game) -> u64 {
     let mut h = std::hash::DefaultHasher::new();
     h.write_u64(game.now);
-    h.write_u64(game.world.objects.len() as u64);
+    h.write_u64(game.world.map.objects.len() as u64);
     let mut cars: Vec<_> = game
-        .world
+        .world.map
         .objects
         .iter()
         .filter_map(|e| match &e.object {

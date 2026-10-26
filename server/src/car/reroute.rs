@@ -19,7 +19,7 @@ pub(crate) fn handle_road_demolish(
 ) {
 
     // Collect neighbor IDs before removing anything (to check for orphans later)
-    let neighbor_ids: Vec<EntityId> = match world.objects.get(node_id) {
+    let neighbor_ids: Vec<EntityId> = match world.map.objects.get(node_id) {
         Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
             node.outgoing.iter().chain(node.incoming.iter()).copied().collect()
         } else { vec![] },
@@ -27,11 +27,11 @@ pub(crate) fn handle_road_demolish(
     };
 
     // Snapshot affected cars before removing anything
-    let affected_car_ids: Vec<EntityId> = world.node_cars.get(&node_id).cloned().unwrap_or_default().into_iter().collect();
+    let affected_car_ids: Vec<EntityId> = world.map.node_cars.get(&node_id).cloned().unwrap_or_default().into_iter().collect();
     let car_entries: Vec<(EntityId, Vec<EntityId>, usize, EntityId)> = affected_car_ids
         .iter()
         .filter_map(|&car_id| {
-            let entry = world.objects.get(car_id)?;
+            let entry = world.map.objects.get(car_id)?;
             if let GameObject::Car(ref car) = entry.object {
                 let trip = car.trip.as_ref()?;
                 Some((car_id, trip.route.clone(), trip.route_index, trip.destination))
@@ -42,7 +42,7 @@ pub(crate) fn handle_road_demolish(
         .collect();
 
     // Fully remove the node and update the graph BEFORE rerouting
-    world.demolish_node(node_id);
+    world.map.demolish_node(node_id);
 
     // Now reroute — pathfinder sees the correct graph
     for (car_id, route, ri, dest) in car_entries {
@@ -74,14 +74,14 @@ pub(crate) fn handle_link_demolish(
     now: GameTime,
 ) {
     let cut = |x: EntityId, y: EntityId| (x == a && y == b) || (x == b && y == a);
-    let cars: Vec<(EntityId, EntityId, EntityId)> = world
+    let cars: Vec<(EntityId, EntityId, EntityId)> = world.map
         .node_cars
         .get(&a)
         .cloned()
         .unwrap_or_default()
         .into_iter()
         .filter_map(|car_id| {
-            let GameObject::Car(ref car) = world.objects.get(car_id)?.object else { return None };
+            let GameObject::Car(ref car) = world.map.objects.get(car_id)?.object else { return None };
             let trip = car.trip.as_ref()?;
             let (route, ri) = (&trip.route, trip.route_index);
             if !route[ri.saturating_sub(1)..].windows(2).any(|w| cut(w[0], w[1])) {
@@ -92,7 +92,7 @@ pub(crate) fn handle_link_demolish(
             Some((car_id, from, trip.destination))
         })
         .collect();
-    world.unlink_roads(a, b);
+    world.map.unlink_roads(a, b);
     for (car_id, from, dest) in cars {
         if !reroute(world, events, car_id, from, dest, now) {
             park_at_home(world, events, car_id);
@@ -105,7 +105,7 @@ pub(crate) fn handle_link_demolish(
 /// over one sent home.
 fn drop_orphans(world: &mut World, events: &mut EventQueue, nodes: &[EntityId]) {
     for &nid in nodes {
-        let is_orphan = match world.objects.get(nid) {
+        let is_orphan = match world.map.objects.get(nid) {
             Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
                 node.outgoing.is_empty() && node.incoming.is_empty()
             } else { false },
@@ -113,11 +113,11 @@ fn drop_orphans(world: &mut World, events: &mut EventQueue, nodes: &[EntityId]) 
         };
         if is_orphan {
             // Any car routed over this orphan has nowhere left to drive
-            let orphan_cars: Vec<EntityId> = world.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
+            let orphan_cars: Vec<EntityId> = world.map.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
             for car_id in orphan_cars {
                 park_at_home(world, events, car_id);
             }
-            world.demolish_node(nid);
+            world.map.demolish_node(nid);
         }
     }
 }
@@ -133,24 +133,24 @@ fn reroute(
     dest: EntityId,
     now: GameTime,
 ) -> bool {
-    let Some(ways) = world.ways_to(dest, from_node) else { return false };
+    let Some(ways) = world.map.ways_to(dest, from_node) else { return false };
     // The spot it was heading for is still its own.
-    let Some((new_route, to_lot)) = world.way_in(dest, car_id, &ways, now, GameTime::MAX) else { return false };
-    let Some(GameObject::Car(c)) = world.objects.get(car_id).map(|e| &e.object) else { return false };
+    let Some((new_route, to_lot)) = world.map.way_in(dest, car_id, &ways, now, GameTime::MAX) else { return false };
+    let Some(GameObject::Car(c)) = world.map.objects.get(car_id).map(|e| &e.object) else { return false };
     let Some(old) = c.trip.clone() else { return false };
 
     // Out of every queue on the old route: a car stands in the queues of the
     // whole run ahead of it, not just the tile it is on.
-    world.unregister_car_route(car_id, &old.route);
-    world.remove_car_from_edges(car_id);
-    for (_node, woken_id) in world.streets.remove_car_from_all(car_id, now) {
+    world.map.unregister_car_route(car_id, &old.route);
+    world.map.remove_car_from_edges(car_id);
+    for (_node, woken_id) in world.map.streets.remove_car_from_all(car_id, now) {
         events.wake(0, woken_id);
     }
 
     // What it knew of the road behind it and of its lanes it keeps, and
     // when it was due.
-    let backing = crate::car::spawn::backing(0, world.reverse_tail(car_id), new_route.len());
-    let stretches = [old.stretches[0].clone(), world.stretch(car_id)];
+    let backing = crate::car::spawn::backing(0, world.map.reverse_tail(car_id), new_route.len());
+    let stretches = [old.stretches[0].clone(), world.map.stretch(car_id)];
     let fresh = crate::car::spawn::trip(world, car_id, dest, new_route, 0, to_lot, backing, stretches, None, now);
     let trip = Trip { eta: old.eta, joined: old.joined, standing: old.standing, why: old.why, shift: old.shift, signal: old.signal, ..fresh };
     crate::car::spawn::set_off(world, events, car_id, trip);

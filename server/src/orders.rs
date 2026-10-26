@@ -178,11 +178,11 @@ pub fn neighbours(world: &World) -> Vec<Neighbour> {
 pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
     let mut now = Vec::new();
     let mut built = Vec::new();
-    let kept = |good: Good| world.depots().into_iter().map(|(_, b)| b.stocks.get(&good).map_or(0.0, |s| s.level)).sum::<f64>();
-    for e in world.objects.iter() {
+    let kept = |good: Good| world.map.depots().into_iter().map(|(_, b)| b.stocks.get(&good).map_or(0.0, |s| s.level)).sum::<f64>();
+    for e in world.map.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         built.push(b.kind);
-        let made = blueprint(b.kind).makes.filter(|&g| b.site.is_none() && world.street_of(e.id).is_some() && kept(g) >= crate::haul::LOAD as f64 * g.per_package());
+        let made = blueprint(b.kind).makes.filter(|&g| b.site.is_none() && world.map.street_of(e.id).is_some() && kept(g) >= crate::haul::LOAD as f64 * g.per_package());
         if let Some(g) = made.filter(|g| !now.contains(g)) {
             now.push(g);
         }
@@ -248,7 +248,7 @@ pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
     let units = count as f64 * good.per_package();
     let coins = (units * crate::economy::world_price(good) * w.price * (1.0 + WARMTH * standing)).round();
     let letter = w.voice[(standing >= 2.0) as usize].replace("{n}", &good.packages(count));
-    let id = world.objects.reserve_id();
+    let id = world.map.objects.reserve_id();
     Some(Mission {
         key: Key::Order(id),
         title: format!("{} of {}", w.name, w.town),
@@ -286,7 +286,7 @@ pub fn trades() -> impl Iterator<Item = (&'static [Good], &'static [Good])> {
 /// Every open letter that wants packages not yet booked.
 pub fn letters(world: &World) -> Vec<Letter> {
     let marked = crate::haul::packages(world);
-    let waiting: Vec<Package> = world.harbours.keys().filter_map(|&h| match world.objects.get(h).map(|e| &e.object) {
+    let waiting: Vec<Package> = world.map.harbours.keys().filter_map(|&h| match world.map.objects.get(h).map(|e| &e.object) {
         Some(GameObject::Building(b)) => Some(b.outgoing.clone()),
         _ => None,
     }).flatten().collect();
@@ -303,7 +303,7 @@ pub fn letters(world: &World) -> Vec<Letter> {
 /// Send so many of the packages a letter wants: each waits at the harbour
 /// for a depot's lorry. How many were booked.
 pub fn send(world: &mut World, letter: u64, packages: u32) -> u32 {
-    let (Some(&harbour), Some(l)) = (world.harbours.keys().next(), letters(world).into_iter().find(|l| l.letter == letter)) else { return 0 };
+    let (Some(&harbour), Some(l)) = (world.map.harbours.keys().next(), letters(world).into_iter().find(|l| l.letter == letter)) else { return 0 };
     (0..packages.min(l.packages)).take_while(|_| book(world, harbour, l.good, true, Some(l.partner), l.price, Some(letter))).count() as u32
 }
 
@@ -313,10 +313,10 @@ pub fn send(world: &mut World, letter: u64, packages: u32) -> u32 {
 /// market, to wait at the harbour for a lorry. Whether it was booked.
 pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner: Option<Mayor>, price: f64, letter: Option<u64>) -> bool {
     let deck = crate::world::sea::DECK;
-    let id = world.objects.reserve_id();
+    let id = world.map.objects.reserve_id();
     let t = Package { id, good, to: None, outbound: out, order: letter.unwrap_or(id), partner, price };
     if out {
-        let Some(b) = world.harbours.contains_key(&harbour).then(|| world.building_mut(harbour)).flatten().filter(|b| b.outgoing.len() < deck) else { return false };
+        let Some(b) = world.map.harbours.contains_key(&harbour).then(|| world.map.building_mut(harbour)).flatten().filter(|b| b.outgoing.len() < deck) else { return false };
         b.outgoing.push(t);
         world.missions.stir();
         return true;
@@ -326,7 +326,7 @@ pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner
         return false;
     }
     let Some(ferry) = world.next_ferry(harbour) else { return false };
-    let Some(c) = world.car_mut(ferry) else { return false };
+    let Some(c) = world.map.car_mut(ferry) else { return false };
     if c.booked.len() >= deck {
         return false;
     }

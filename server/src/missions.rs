@@ -156,10 +156,10 @@ fn open(row: &Row, now: GameTime) -> Mission {
 /// Is the fact true of the town now.
 fn met(world: &World, goal: Goal) -> bool {
     match goal {
-        Goal::Stands(kind) => world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.street_of(e.id).is_some()),
-        Goal::Joined => world.depots().into_iter().any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
-        Goal::Fetched => world.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
-        Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
+        Goal::Stands(kind) => world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.map.street_of(e.id).is_some()),
+        Goal::Joined => world.map.depots().into_iter().any(|(id, _)| world.map.street_of(id).and_then(|s| world.map.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
+        Goal::Fetched => world.map.depots().into_iter().any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
+        Goal::Settled => world.map.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
         Goal::Booked => crate::haul::packages(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
         Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
@@ -171,8 +171,8 @@ fn at(world: &World, goal: Goal) -> Option<EntityId> {
     match goal {
         Goal::Stands(_) | Goal::Settled => None,
         // The deck is the harbour's.
-        Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
-        _ => world.depots().into_iter().next().map(|(id, _)| id),
+        Goal::Booked | Goal::Sold | Goal::Delivered { .. } => world.map.harbours.keys().next().copied(),
+        _ => world.map.depots().into_iter().next().map(|(id, _)| id),
     }
 }
 
@@ -213,7 +213,7 @@ pub fn check(world: &mut World, now: GameTime) {
 /// A reward: coins from the world, landing at the harbour as trade does.
 fn pay(world: &mut World, coins: f64, now: GameTime) {
     world.treasury += coins;
-    if let Some(&harbour) = world.harbours.keys().next() {
+    if let Some(&harbour) = world.map.harbours.keys().next() {
         world.lumps.push(Lump { building: harbour, coins, gdp: 0.0, at: now, good: None, units: 0.0 });
     }
 }
@@ -227,7 +227,7 @@ pub fn sense(world: &mut World, when: When, now: GameTime) {
     }
     // Short is short in the whole town: a van busy elsewhere is not.
     let real = match when {
-        When::Short(good) => !world.depots().into_iter().any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
+        When::Short(good) => !world.map.depots().into_iter().any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
         _ => true,
     };
     if !real || row.steps.iter().all(|&(goal, ..)| met(world, goal)) {
@@ -250,7 +250,7 @@ mod tests {
 
     /// A shelf emptied, or filled.
     fn shelve(world: &mut World, at: EntityId, good: Good, level: f64) {
-        if let Some(b) = world.building_mut(at) {
+        if let Some(b) = world.map.building_mut(at) {
             b.stocks.get_mut(&good).unwrap().level = level;
         }
     }
@@ -266,7 +266,7 @@ mod tests {
         let mut world = street();
         for x in QUARRY_X - 5..QUARRY_X + 7 {
             for y in 5..14 {
-                world.terrain.insert((x, y), TerrainType::Mountain);
+                world.map.terrain.insert((x, y), TerrainType::Mountain);
             }
         }
         let depot = build(&mut world, 30, BuildingKind::Depot);
@@ -283,9 +283,9 @@ mod tests {
         // Flats, a site of timber and stone, call for both, and the depot
         // has no stone.
         let at = GridCoord { x: 100, y: 1 };
-        let facing = world.site_for(at, BuildingKind::Apartment).unwrap();
-        let flats = world.place_building(at, BuildingKind::Apartment, facing).unwrap();
-        world.orient(flats);
+        let facing = world.map.site_for(at, BuildingKind::Apartment).unwrap();
+        let flats = world.map.place_building(at, BuildingKind::Apartment, facing).unwrap();
+        world.map.orient(flats);
         calls::turn(&mut world, &mut events, flats, 0);
         assert!(world.calls.iter().any(|c| c.at == flats && c.good == Good::Stone && c.answered_by.is_none()), "the flats never called for stone");
         assert_eq!(quarry(&mut world), [false; 0], "it opened during the opening");
@@ -321,13 +321,13 @@ mod tests {
         let house = build(&mut world, 10, BuildingKind::House);
         let mut events = EventQueue::new();
         settle_and_wake(&mut world, &mut events);
-        let id = world.household(house)[0];
-        let car = world.resident(id).unwrap().car;
-        if let Some(r) = world.resident_mut(id) {
+        let id = world.map.household(house)[0];
+        let car = world.map.resident(id).unwrap().car;
+        if let Some(r) = world.map.resident_mut(id) {
             r.at = Some(house);
         }
         let tank = |world: &mut World, full: f64| {
-            if let Some(c) = world.car_mut(car) {
+            if let Some(c) = world.map.car_mut(car) {
                 let s = c.stocks.get_mut(&Need::Fuel).unwrap();
                 s.level = s.cap * full;
             }

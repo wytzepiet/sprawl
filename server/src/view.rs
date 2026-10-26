@@ -65,7 +65,7 @@ pub(crate) fn handle_set_chunks(
 ) {
     let world = shared.world;
     let visible_chunks: HashSet<ChunkCoord> = bounds.coords().collect();
-    let in_view = world.entities_in_chunks(&visible_chunks);
+    let in_view = world.map.entities_in_chunks(&visible_chunks);
 
     let cs = match clients.get_mut(&client_id) {
         Some(cs) => cs,
@@ -78,7 +78,7 @@ pub(crate) fn handle_set_chunks(
     // island is seen from the first minute: there is no fog.
     for &coord in visible_chunks.iter() {
         if cs.known_chunks.insert(coord) {
-            outbox.push((client_id, ServerMessage::TerrainChunk(world.terrain_chunk(coord))));
+            outbox.push((client_id, ServerMessage::TerrainChunk(world.map.terrain_chunk(coord))));
         }
     }
     let dropped: Vec<ChunkCoord> = cs.known_chunks
@@ -95,7 +95,7 @@ pub(crate) fn handle_set_chunks(
     let mut ops = Vec::new();
     for &id in &in_view {
         if !cs.known.contains(&id)
-            && let Some(entry) = world.objects.get(id) {
+            && let Some(entry) = world.map.objects.get(id) {
                 ops.push(Operation::Upsert(Box::new(entry.clone())));
             }
     }
@@ -129,16 +129,16 @@ pub(crate) fn flush_dirty(
             outbox.push((id, ServerMessage::News(news.clone())));
         }
     }
-    let (changed, removed) = world.objects.drain_dirty();
+    let (changed, removed) = world.map.objects.drain_dirty();
     let crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)> =
-        std::mem::take(&mut world.chunk_crossings)
+        std::mem::take(&mut world.map.chunk_crossings)
             .into_iter()
             .filter(|(id, ..)| !removed.contains(id))
             .collect();
     // Money that landed, for whoever is looking at where it landed.
     let lumps: Vec<(ChunkCoord, Lump)> = std::mem::take(&mut world.lumps)
         .into_iter()
-        .filter_map(|s| Some((chunk_of(world.objects.get(s.building)?.position?), s)))
+        .filter_map(|s| Some((chunk_of(world.map.objects.get(s.building)?.position?), s)))
         .collect();
 
     if changed.is_empty() && removed.is_empty() && crossings.is_empty() && lumps.is_empty() {
@@ -151,7 +151,7 @@ pub(crate) fn flush_dirty(
     let world = &*world;
     let mut by_chunk: HashMap<ChunkCoord, Vec<&GameObjectEntry>> = HashMap::default();
     for id in &changed {
-        if let Some(entry) = world.objects.get(*id)
+        if let Some(entry) = world.map.objects.get(*id)
             && let Some(pos) = entry.position
         {
             by_chunk.entry(chunk_of(pos)).or_default().push(entry);
@@ -183,7 +183,7 @@ pub(crate) fn flush_dirty(
                     ops.push(Operation::Delete(id));
                 }
             } else if has && !had && !cs.known.contains(&id)
-                && let Some(entry) = world.objects.get(id)
+                && let Some(entry) = world.map.objects.get(id)
             {
                 cs.known.insert(id);
                 ops.push(Operation::Upsert(Box::new(entry.clone())));

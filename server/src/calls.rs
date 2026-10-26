@@ -10,7 +10,7 @@
 //! tractor is no call at all: it runs over the farm's own land
 //! (`world/fields.rs`). A van stands at its depot while the forklift loads
 //! it, drives to the caller, stands while the caller's unloads it
-//! (`World::lift`), and goes home. Empty pads serve nothing, and nothing a
+//! (`Map::lift`), and goes home. Empty pads serve nothing, and nothing a
 //! van carries crosses the border, so nothing it carries is paid for.
 
 use model::blueprint::blueprint;
@@ -44,14 +44,14 @@ pub const RETRY_MS: GameTime = DAY_MS as GameTime / 24;
 /// A hand on shift at the building: a tractor goes only with someone to
 /// drive it.
 pub fn staffed(world: &World, building: EntityId) -> bool {
-    world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at == Some(building) && r.selected == Some(model::needs::Need::Work)))
+    world.map.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at == Some(building) && r.selected == Some(model::needs::Need::Work)))
 }
 
 /// What a building is short of and calls for: a site, each material not
 /// yet in; a standing building that is no depot, every shelf its row buys
 /// under its reorder point, with room for a package of it.
 fn wants(world: &World, building: EntityId) -> Vec<Good> {
-    let Some(b) = world.building(building) else { return Vec::new() };
+    let Some(b) = world.map.building(building) else { return Vec::new() };
     if let Some(site) = &b.site {
         return site.iter().filter(|(_, s)| s.short() > 0.0).map(|(&g, _)| g).collect();
     }
@@ -66,7 +66,7 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
 /// lorries; and a farm with a hand on shift, room in the yard and a ripe
 /// field sends the tractor.
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
-    let Some(b) = world.building(building) else { return };
+    let Some(b) = world.map.building(building) else { return };
     let kind = b.kind;
     if b.site.is_none() && model::blueprint::farm(kind) {
         world.farm_run(events, building, now);
@@ -89,17 +89,17 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
 /// Midnight: every building takes its turn, so a row nobody visits still
 /// draws, and every line reads the labour market at the next settle.
 pub fn turns(world: &mut World, events: &mut EventQueue, now: GameTime) {
-    let ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
+    let ids: Vec<EntityId> = world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     for id in ids {
         turn(world, events, id, now);
-        world.unsettled.insert(id);
+        world.map.unsettled.insert(id);
     }
 }
 
 /// Does this building have something on every shelf its taps sell from?
 /// A building that keeps no shelf always does; a site never does.
 pub fn stocked(world: &World, building: EntityId) -> bool {
-    match world.objects.get(building).map(|e| &e.object) {
+    match world.map.objects.get(building).map(|e| &e.object) {
         Some(GameObject::Building(b)) => b.site.is_none() && blueprint(b.kind).taps.iter().all(|t| t.need.good().and_then(|g| b.stocks.get(&g)).is_none_or(|s| s.level > 0.0)),
         _ => false,
     }
@@ -111,25 +111,25 @@ pub fn stocked(world: &World, building: EntityId) -> bool {
 /// home.
 pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
     // A caller that has gone, or a vehicle that has, ends or reopens the call.
-    world.calls.retain(|c| world.objects.get(c.at).is_some());
+    world.calls.retain(|c| world.map.objects.get(c.at).is_some());
     for c in &mut world.calls {
-        if c.answered_by.is_some_and(|car| world.objects.get(car).is_none()) {
+        if c.answered_by.is_some_and(|car| world.map.objects.get(car).is_none()) {
             c.answered_by = None;
         }
     }
     for i in 0..world.calls.len() {
         let Call { good, at, answered_by, .. } = world.calls[i];
-        if answered_by.is_some() || world.street_of(at).is_none() {
+        if answered_by.is_some() || world.map.street_of(at).is_none() {
             continue;
         }
-        let room = match world.objects.get(at).map(|e| &e.object) {
+        let room = match world.map.objects.get(at).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.site.as_ref().unwrap_or(&b.stocks).get(&good).map_or(0, |s| economy::whole(s.short(), good)),
             _ => continue,
         };
         let answered = nearest_seller(world, at, good, now).map(|(depot, van)| {
             let n = economy::loaded(world, depot, good, room.min(economy::VAN_LOAD));
             load(world, van, Some((good, n as f64 * good.per_package())));
-            let ready = world.lift(depot, van, good, n, true, now);
+            let ready = world.map.lift(depot, van, good, n, true, now);
             events.wake(ready - now, van);
             turn(world, events, depot, now);
             van
@@ -150,15 +150,15 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
 fn nearest_seller(world: &mut World, at: EntityId, good: Good, now: GameTime) -> Option<(EntityId, EntityId)> {
     // Every depot with the good on its pad, in id order, so two runs of
     // the same town make the same choice.
-    let depots: Vec<EntityId> = world
+    let depots: Vec<EntityId> = world.map
         .of_kinds(model::blueprint::depot)
         .into_iter()
         .filter(|&(id, b)| id != at && b.stocks.get(&good).is_some_and(|s| economy::whole(s.level, good) > 0))
         .map(|(id, _)| id)
         .collect();
     let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, CarRole::Van, now).map(|(van, door)| (d, van, door))).collect();
-    let door = world.street_of(at)?;
-    let mut routes = Routes::from(world, door);
+    let door = world.map.street_of(at)?;
+    let mut routes = Routes::from(&world.map, door);
     vans.into_iter()
         .filter_map(|(depot, van, from)| Some((if from == door { 0.0 } else { routes.cost_to(from)? }, depot, van)))
         .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
@@ -169,19 +169,19 @@ fn nearest_seller(world: &mut World, at: EntityId, good: Good, now: GameTime) ->
 /// at it, and the driveway it leaves from. None where no road reaches the
 /// yard.
 fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole, now: GameTime) -> Option<(EntityId, EntityId)> {
-    let door = world.street_of(facility)?;
-    world.stable(facility);
-    let car = world.objects.fleet(facility).find(|&car| {
-        world.claims.get(&car).is_none_or(|&b| b == facility)
+    let door = world.map.street_of(facility)?;
+    world.map.stable(facility);
+    let car = world.map.objects.fleet(facility).find(|&car| {
+        world.map.claims.get(&car).is_none_or(|&b| b == facility)
             && !world.calls.iter().any(|c| c.answered_by == Some(car))
-            && matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && c.load.is_none() && c.due <= now)
+            && matches!(world.map.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && c.load.is_none() && c.due <= now)
     })?;
     Some((car, door))
 }
 
 /// Put a load on a vehicle, or take it off; what it carried.
 pub fn load(world: &mut World, car: EntityId, load: Option<(Good, f64)>) -> Option<(Good, f64)> {
-    match world.objects.get_mut(car).map(|e| &mut e.object) {
+    match world.map.objects.get_mut(car).map(|e| &mut e.object) {
         Some(GameObject::Car(c)) => std::mem::replace(&mut c.load, load),
         _ => None,
     }
@@ -194,7 +194,7 @@ pub fn load(world: &mut World, car: EntityId, load: Option<(Good, f64)>) -> Opti
 /// there; and one home in its yard with nothing to do is filled there
 /// (`economy::refilled`).
 pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: GameTime) {
-    let (owner, run, role) = match world.objects.get(car) {
+    let (owner, run, role) = match world.map.objects.get(car) {
         Some(e) => match e.object {
             GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.run.is_some(), c.role),
             _ => return,
@@ -206,8 +206,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         CarRole::Tractor if run => return world.tractor_step(events, car, now),
         _ => {}
     }
-    if !world.handled(car, now) {
-        let due = world.car(car).map_or(now, |c| c.due);
+    if !world.map.handled(car, now) {
+        let due = world.map.car(car).map_or(now, |c| c.due);
         events.wake(due - now, car);
         return;
     }
@@ -215,14 +215,14 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         crate::haul::lorry_wake(world, events, car, now);
         return;
     }
-    let at = world.claims.get(&car).copied().unwrap_or(owner);
+    let at = world.map.claims.get(&car).copied().unwrap_or(owner);
     let call = world.calls.iter().position(|c| c.answered_by == Some(car));
     match call {
         // Loaded at home for a call: out to the caller, as soon as the
         // street lets it.
         Some(i) if at == owner => {
             let to = world.calls[i].at;
-            let gone = world.street_of(owner).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, to, now, GameTime::MAX));
+            let gone = world.map.street_of(owner).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, to, now, GameTime::MAX));
             if !gone {
                 events.wake(SERVICE_MS, car);
             }
@@ -240,7 +240,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
                 load(world, car, Some((call.good, left)));
             }
             let n = economy::whole(units - left, call.good);
-            let done = world.lift(call.at, car, call.good, n, false, now);
+            let done = world.map.lift(call.at, car, call.good, n, false, now);
             events.wake((done - now).max(SERVICE_MS * (n == 0) as GameTime), car);
             // Up to the stock: a load short of the order, or a long lead,
             // leaves it under the reorder point still.
@@ -249,7 +249,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         }
         // Done somewhere else: home, as soon as the street lets it out.
         None if at != owner => {
-            let home = world.street_of(at).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
+            let home = world.map.street_of(at).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
             if !home {
                 events.wake(SERVICE_MS, car);
             }
@@ -276,7 +276,7 @@ mod tests {
 
     /// Sell `units` off a shop's shelf, as visits would, and let it call.
     fn sell(world: &mut World, events: &mut EventQueue, shop: EntityId, units: f64, now: GameTime) {
-        if let Some(b) = world.building_mut(shop) {
+        if let Some(b) = world.map.building_mut(shop) {
             b.stocks.get_mut(&Good::Crates).unwrap().take(units);
         }
         crate::calls::turn(world, events, shop, now);
@@ -284,7 +284,7 @@ mod tests {
 
     /// The first shelf, as a fraction of full.
     fn stock(world: &World, building: EntityId) -> f64 {
-        let b = world.building(building).unwrap();
+        let b = world.map.building(building).unwrap();
         let s = &b.stocks[&model::blueprint::shelves(b.kind)[0]];
         s.level / s.cap
     }
@@ -300,7 +300,7 @@ mod tests {
         sell(&mut game.world, &mut game.events, shop, 50.0, 0);
         let world = &game.world;
         let truck = world.calls[0].answered_by.expect("the warehouse answers");
-        assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
+        assert!(matches!(world.map.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
         // The shop learned how long a delivery from next door takes, and
         // reorders later for it.
         let before = crate::economy::reorder(world, shop, Good::Crates);
@@ -310,9 +310,9 @@ mod tests {
         game.run_to(3 * DAY_MS as u64 / 24);
         let world = &game.world;
         assert!(world.calls.is_empty());
-        let e = world.objects.get(truck).expect("the warehouse keeps its truck");
+        let e = world.map.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
-        assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
+        assert_eq!(e.position, world.map.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
         assert_eq!(stock(world, shop), 1.0, "the shelves are full again");
         assert!(crate::economy::reorder(world, shop, Good::Crates) < before, "the shop did not learn the lead time");
     }
@@ -329,13 +329,13 @@ mod tests {
         let far = build(&mut world, 60, BuildingKind::Depot);
         let mut events = EventQueue::new();
         let empty = |world: &mut World, depot: EntityId| {
-            if let Some(b) = world.building_mut(depot) {
+            if let Some(b) = world.map.building_mut(depot) {
                 b.stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
             }
         };
         let answered_by = |world: &World| {
             let truck = world.calls.last().unwrap().answered_by?;
-            Some(world.car(truck).unwrap().owner)
+            Some(world.map.car(truck).unwrap().owner)
         };
         sell(&mut world, &mut events, shop, 35.0, 0);
         assert_eq!(answered_by(&world), Some(near), "the nearer depot did not answer");

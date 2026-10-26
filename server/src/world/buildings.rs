@@ -1,6 +1,6 @@
 use model::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing};
 use land::TerrainType;
-use crate::world::World;
+use crate::world::Map;
 
 /// What lies behind a harbour's back, best first.
 #[derive(Clone, Copy)]
@@ -11,7 +11,7 @@ enum Behind {
     Land,
 }
 
-impl World {
+impl Map {
     /// A building saved before it had its shelves or its yard gets them the
     /// way a standing one does; one whose row changed a shelf gets the new
     /// one. A site has neither until it stands.
@@ -242,7 +242,7 @@ impl World {
     }
 
     /// A harbour's gate: the middle tile of its front, the one way in,
-    /// where its lane starts down to the ramp (`World::berth_at`).
+    /// where its lane starts down to the ramp (`Map::berth_at`).
     pub fn gate_of(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<GridCoord> {
         if !Self::works(tiles, kind) {
             return None;
@@ -482,14 +482,14 @@ impl World {
 
     /// The plot a kind placed round `at` facing this way stands on: its
     /// whole footprint, building and yard, laid round the tile as the
-    /// hand holds it (`World::placing`).
+    /// hand holds it (`Map::placing`).
     pub fn plot_at(kind: BuildingKind, at: GridCoord, facing: u8) -> Vec<GridCoord> {
         let (w, h) = model::blueprint::plot(kind, facing).size;
         Self::footprint(GridCoord { x: at.x - w as i32 / 2, y: at.y - h as i32 / 2 }, (w, h)).collect()
     }
 
     /// May a kind be placed round `at` facing this way, and if not, why,
-    /// in the words the hand's preview says it in (`World::placing`): open
+    /// in the words the hand's preview says it in (`Map::placing`): open
     /// land under the whole plot, or a road's dead end it stands over, or
     /// for a harbour the sea (`pier`); a street before its front, its
     /// yard's if it keeps one, or all along one side for one that parks at
@@ -628,9 +628,9 @@ impl World {
         if self.berth_at(tiles, kind, facing).is_some() {
             return Behind::Berth;
         }
-        let Some(gate) = World::gate_of(tiles, kind, facing) else { return Behind::Land };
+        let Some(gate) = Map::gate_of(tiles, kind, facing) else { return Behind::Land };
         let (dx, dy) = model::blueprint::FACINGS[facing as usize % 4];
-        let (_, (w, h)) = World::bounds(tiles);
+        let (_, (w, h)) = Map::bounds(tiles);
         let deep = if dx == 0 { h } else { w } as i32 - 1;
         match self.terrain.get(&(gate.x - dx * deep, gate.y - dy * deep)) {
             Some(TerrainType::Sea) => Behind::Sea,
@@ -795,8 +795,8 @@ mod tests {
     use crate::world::decks::MIDDLE;
 
     /// A world with nothing in it but grass and the given road path.
-    fn world_with_road(path: &[(i32, i32)]) -> World {
-        let mut world = World::meadow(-8..8, -8..8);
+    fn world_with_road(path: &[(i32, i32)]) -> Map {
+        let mut world = Map::meadow(-8..8, -8..8);
         let coords: Vec<GridCoord> = path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
         world.place_road_path(&coords);
         world
@@ -862,7 +862,7 @@ mod tests {
     #[test]
     fn takes_a_road_straight_on() {
         let world = world_with_road(&[(0, 1), (1, 1)]);
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     /// The case the corner rule exists for: no perimeter tile is orthogonally
@@ -870,30 +870,30 @@ mod tests {
     #[test]
     fn takes_a_road_off_its_corner() {
         let world = world_with_road(&[(1, 1), (2, 2)]);
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     #[test]
     fn corner_rule_reaches_past_a_wide_footprint() {
         // Footprint covers (0,0) and (1,0); the road only meets its far corner.
         let world = world_with_road(&[(2, 1), (3, 2)]);
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (2, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 0, y: 0 }, (2, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     #[test]
     fn no_road_in_reach_is_no_access() {
         let world = world_with_road(&[(5, 5), (6, 5)]);
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
     }
 
     /// A road two tiles out is not access, diagonally or otherwise.
     #[test]
     fn diagonals_do_not_reach_two_tiles() {
         let world = world_with_road(&[(2, 2), (3, 3)]);
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
     }
 
-    fn diagonal_world() -> World {
+    fn diagonal_world() -> Map {
         world_with_road(&[(0, 0), (1, 1), (2, 2)])
     }
 
@@ -903,18 +903,18 @@ mod tests {
     #[test]
     fn plot_in_the_elbow_of_a_diagonal_cannot_connect() {
         let world = diagonal_world();
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 1, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 1, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
     }
 
     /// The perpendicular of a diagonal is diagonal, so this one connects.
     #[test]
     fn plot_offset_diagonally_from_a_diagonal_connects() {
         let world = diagonal_world();
-        assert!(world.driveway_for(&World::footprint(GridCoord { x: 2, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
+        assert!(world.driveway_for(&Map::footprint(GridCoord { x: 2, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     /// One house on one tile, built.
-    fn house(world: &mut World, x: i32, y: i32) -> EntityId {
+    fn house(world: &mut Map, x: i32, y: i32) -> EntityId {
         world
             .place_on_street(GridCoord { x, y }, BuildingKind::House)
             .expect("a road should be beside it")
@@ -927,9 +927,9 @@ mod tests {
     #[test]
     fn a_road_that_reaches_nothing_is_an_island() {
         // The street's far end is its way out.
-        let mut world = World::meadow(-8..140, -8..8).street(0..130);
+        let mut world = Map::meadow(-8..140, -8..8).street(0..130);
         world.open_exit(world.road_node_at(GridCoord { x: 129, y: 0 }).unwrap());
-        let joined = |world: &World, at: GridCoord| {
+        let joined = |world: &Map, at: GridCoord| {
             let id = world.road_node_at(at).unwrap();
             matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined)
         };
@@ -1001,13 +1001,13 @@ mod tests {
     #[test]
     fn footprint_covers_every_tile() {
         let pos = GridCoord { x: 10, y: 10 };
-        let tiles: Vec<_> = World::footprint(pos, (2, 3)).collect();
+        let tiles: Vec<_> = Map::footprint(pos, (2, 3)).collect();
         assert_eq!(tiles.len(), 6);
         assert_eq!(tiles[0], pos);
         assert_eq!(tiles[5], GridCoord { x: 11, y: 12 });
     }
 
-    fn tiles_of(world: &World, id: EntityId) -> Vec<GridCoord> {
+    fn tiles_of(world: &Map, id: EntityId) -> Vec<GridCoord> {
         match world.objects.get(id).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.tiles.clone(),
             _ => Vec::new(),
@@ -1029,7 +1029,7 @@ mod tests {
         let id = world.raise(BuildingKind::Depot, tiles, 0);
         assert_eq!(tiles_of(&world, id).len(), 12);
         assert!(world.street_of(id).is_some(), "its door is open");
-        let yard = World::yard_of(&tiles_of(&world, id), BuildingKind::Depot, 0).unwrap();
+        let yard = Map::yard_of(&tiles_of(&world, id), BuildingKind::Depot, 0).unwrap();
         assert!(yard.iter().all(|t| t.y <= 2), "its yard is not on the street side: {yard:?}");
     }
 
@@ -1044,11 +1044,11 @@ mod tests {
         let tiles = world.fit(BuildingKind::Depot, at, 0).unwrap();
         let id = world.raise(BuildingKind::Depot, tiles.clone(), 0);
         world.finish(id);
-        let facing = |w: &World| match w.objects.get(id).map(|e| &e.object) {
+        let facing = |w: &Map| match w.objects.get(id).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.facing,
             _ => unreachable!(),
         };
-        let yard = |w: &World| World::yard_of(&tiles, BuildingKind::Depot, facing(w)).unwrap();
+        let yard = |w: &Map| Map::yard_of(&tiles, BuildingKind::Depot, facing(w)).unwrap();
         // A street along its back: the door it has stands, so nothing turns.
         world.place_road_path(&(-6..=6).map(|x| GridCoord { x, y: 5 }).collect::<Vec<_>>());
         world.settle();

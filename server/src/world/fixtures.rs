@@ -32,7 +32,7 @@ use serde::Serialize;
 use model::blueprint::blueprint;
 use model::{BuildingKind, GameObject, Good, GridCoord, Package};
 use land::TerrainType;
-use crate::world::World;
+use crate::world::Map;
 
 /// Grass left between one fixture and the next, and round them all.
 const GAP: i32 = 8;
@@ -88,7 +88,7 @@ fn ground(c: char) -> TerrainType {
 
 /// Build every fixture in `dir` into an empty world, west to east in name
 /// order, and remember where each went.
-pub fn build(world: &mut World, dir: &Path) {
+pub fn build(world: &mut Map, dir: &Path) {
     let mut files: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("fixtures: cannot read {}: {e}", dir.display()))
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -114,7 +114,7 @@ pub fn build(world: &mut World, dir: &Path) {
 
 /// One fixture's text built into the world with its north-west corner at
 /// `x0`: its size, and its title.
-pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, String) {
+pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, String) {
     let (notes, rows): (Vec<&str>, Vec<&str>) = text.lines().partition(|l| l.starts_with('#'));
     let rows: Vec<Vec<char>> = rows.iter().map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
     let w = rows.iter().map(Vec::len).max().unwrap_or(0) as i32;
@@ -188,7 +188,7 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
             // a game's; else toward the first street it has.
             let mut marked: Vec<GridCoord> = run.iter().filter(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r)).collect();
             marked.sort_by_key(|t| (t.x, t.y));
-            let yard = |f: u8| World::yard_of(&tiles, kind, f).map(|mut y| { y.sort_by_key(|t| (t.x, t.y)); y });
+            let yard = |f: u8| Map::yard_of(&tiles, kind, f).map(|mut y| { y.sort_by_key(|t| (t.x, t.y)); y });
             let facing = (0..4)
                 .find(|&f| !marked.is_empty() && yard(f).as_ref() == Some(&marked))
                 .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())))
@@ -218,7 +218,7 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
 /// One fixture from its text alone, standing as written: a world for
 /// whatever has no files to read.
 #[cfg(test)]
-pub fn build_text(world: &mut World, text: &str) {
+pub fn build_text(world: &mut Map, text: &str) {
     lay(world, text, 0, "fixture");
     finish_sites(world);
 }
@@ -231,7 +231,7 @@ pub const NOON: model::GameTime = model::DAY_MS as model::GameTime * 5 / 2;
 /// stage of the cycle, so one row of them shows every look a field has:
 /// ploughed; sown just now, a quarter grown, green, ripe; cut; and the
 /// tractor half way through a harvest, and through ploughing the stubble.
-fn till_farms(world: &mut World) {
+fn till_farms(world: &mut Map) {
     use model::Job::*;
     use crate::world::fields::RIPEN;
     let now = NOON;
@@ -261,7 +261,7 @@ fn till_farms(world: &mut World) {
 /// Every shelf and yard part full, as a town in use keeps them: what
 /// the look shows of a pad is its goods (docs/plan-goods.md), a share
 /// of each stock the same for the same building every time.
-fn stock_yards(world: &mut World) {
+fn stock_yards(world: &mut Map) {
     let ids: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     for id in ids {
         if let Some(b) = world.building_mut(id) {
@@ -274,7 +274,7 @@ fn stock_yards(world: &mut World) {
         if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
             for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
                 for _ in 0..n {
-                    let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: crate::shipping::ferry::GIFT, partner: None, price: 0.0 };
+                    let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: model::GIFT, partner: None, price: 0.0 };
                     world.building_mut(id).unwrap().pad.push(p);
                 }
             }
@@ -282,7 +282,7 @@ fn stock_yards(world: &mut World) {
     }
 }
 
-fn finish_sites(world: &mut World) {
+fn finish_sites(world: &mut Map) {
     let sites: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some())).map(|e| e.id).collect();
     for id in sites {
         world.finish(id);
@@ -294,7 +294,7 @@ fn finish_sites(world: &mut World) {
 /// does. A building is its letter, its lot or yard paved. The first line names the
 /// game's tile at column 0, row 0: a column on is a tile less of x, a row
 /// on a tile less of y.
-pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
+pub fn draw(world: &Map, x: i32, y: i32, r: i32) -> String {
     let mut out = format!("# The game round {x},{y}\n# origin {},{}\n", x + r, y + r);
     for ty in (y - r..=y + r).rev() {
         for tx in (x - r..=x + r).rev() {
@@ -303,7 +303,7 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
                 // A building is its letter on every tile, its yard's in
                 // small letters, where the game lays its lot.
-                (_, Some(GameObject::Building(b))) => match World::yard_of(&b.tiles, b.kind, b.facing) {
+                (_, Some(GameObject::Building(b))) => match Map::yard_of(&b.tiles, b.kind, b.facing) {
                     Some(yard) if yard.contains(&GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
                     _ => letter(b.kind),
                 },
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn every_fixture_builds_letter_for_letter() {
         let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures"));
-        let mut world = World::new();
+        let mut world = Map::new();
         build(&mut world, dir);
         let mut wrong = Vec::new();
         for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {

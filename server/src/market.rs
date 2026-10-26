@@ -173,7 +173,7 @@ fn noise(seed: u32, hour: u64, mayor: u64, good: u64) -> f64 {
 pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQueue, now: GameTime) {
     let mut traded = false;
     while (world.market.hour + 1) * HOUR <= now {
-        world.market.step(world.terrain_seed);
+        world.market.step(world.map.terrain_seed);
         // An order is read at the hour's price, and booked as far as it goes.
         for i in (0..world.market.orders.len()).rev() {
             let o = world.market.orders[i];
@@ -199,7 +199,7 @@ pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQue
 /// sell them, to wait at the harbour for a lorry: each at the price it
 /// moves to. How many were booked.
 pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
-    let Some(&harbour) = world.harbours.keys().next() else { return 0 };
+    let Some(&harbour) = world.map.harbours.keys().next() else { return 0 };
     for n in 0..packages {
         let price = world.market.next(good, out);
         if !crate::orders::book(world, harbour, good, out, None, price, None) {
@@ -215,7 +215,7 @@ pub fn order(world: &mut World, good: Good, out: bool, packages: u32, price: f64
     if packages == 0 || !price.is_finite() {
         return;
     }
-    let id = world.objects.reserve_id();
+    let id = world.map.objects.reserve_id();
     world.market.orders.push(When { id, good, out, packages, price });
     world.market.changed = true;
 }

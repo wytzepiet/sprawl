@@ -5,7 +5,7 @@ use fixed::{HashMap, HashSet};
 use model::CRUISE_SPEED;
 use model::{EntityId, GridCoord};
 use crate::world::network::Segment;
-use crate::world::World;
+use crate::world::Map;
 
 /// Where a search stands: at a junction, come in from the node before it
 /// (the junction itself where the search began). Turns are made at
@@ -52,7 +52,7 @@ struct Leg {
 
 /// Is the turn through `at`, in from `from` and out to `to`, a right angle
 /// or gentler: the one turn a car makes (`may_turn`), and what a road may
-/// be built to offer (`World::leads_nowhere`).
+/// be built to offer (`Map::leads_nowhere`).
 pub fn shallow(from: GridCoord, at: GridCoord, to: GridCoord) -> bool {
     (from.x - at.x) * (to.x - at.x) + (from.y - at.y) * (to.y - at.y) <= 0
 }
@@ -60,7 +60,7 @@ pub fn shallow(from: GridCoord, at: GridCoord, to: GridCoord) -> bool {
 /// May a car come in to `at` from `from` and go on to `to`? Never back the
 /// way it came. Where the search begins it came from nowhere, and where it
 /// ends it goes nowhere.
-pub fn may_turn(world: &World, from: EntityId, at: EntityId, to: EntityId) -> bool {
+pub fn may_turn(world: &Map, from: EntityId, at: EntityId, to: EntityId) -> bool {
     if from == at || to == at {
         return true;
     }
@@ -92,7 +92,7 @@ pub fn may_turn(world: &World, from: EntityId, at: EntityId, to: EntityId) -> bo
 /// shop. It lives for one decision and reads live costs, so there is nothing
 /// to invalidate.
 pub struct Routes<'w> {
-    world: &'w World,
+    world: &'w Map,
     start: EntityId,
     /// Best cost known to each junction by each way in, and the leg that
     /// reached it: where that leg left from, and its first step.
@@ -105,7 +105,7 @@ pub struct Routes<'w> {
 }
 
 impl<'w> Routes<'w> {
-    pub fn from(world: &'w World, start: EntityId) -> Self {
+    pub fn from(world: &'w Map, start: EntityId) -> Self {
         let mut routes = Routes {
             world,
             start,
@@ -243,7 +243,7 @@ fn extend_route(route: &mut Vec<EntityId>, leg: &[EntityId]) {
 }
 
 /// Every stretch leading away from this junction, and where it comes out.
-fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
+fn hops_from(world: &Map, at: EntityId) -> Vec<Leg> {
     world
         .network
         .segments_at(at)
@@ -269,7 +269,7 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
 /// costs to get there from where it stands; or else those it can be reached
 /// from, named from the node's side the same way, costed the way they are
 /// driven: in. A junction leads to itself, for nothing.
-fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
+fn stretch_ends(world: &Map, node: EntityId, leaving: bool) -> Vec<Leg> {
     if world.network.ends_run(node) {
         return vec![Leg { to: node, cost: 0.0, step: node, behind: node }];
     }
@@ -307,7 +307,7 @@ fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
 /// because a stretch can end where it began: a loop that leaves a junction
 /// and comes back to it holds that junction at both ends, and only the step
 /// says which.
-fn along(world: &World, at: EntityId, step: EntityId, to: EntityId) -> Option<Vec<EntityId>> {
+fn along(world: &Map, at: EntityId, step: EntityId, to: EntityId) -> Option<Vec<EntityId>> {
     world.network.segments_at(at).find_map(|seg| {
         let n = &seg.nodes;
         let (i, ahead) = (0..n.len()).find_map(|i| match (n[i] == at, n.get(i + 1) == Some(&step), i > 0 && n[i - 1] == step) {
@@ -322,7 +322,7 @@ fn along(world: &World, at: EntityId, step: EntityId, to: EntityId) -> Option<Ve
 }
 
 /// Both on the same stretch, and where along it.
-fn same_stretch(world: &World, a: EntityId, b: EntityId) -> Option<(&Segment, usize, usize)> {
+fn same_stretch(world: &Map, a: EntityId, b: EntityId) -> Option<(&Segment, usize, usize)> {
     world.network.segments_at(a).find_map(|seg| {
         let i = seg.nodes.iter().position(|&n| n == a)?;
         let j = seg.nodes.iter().position(|&n| n == b)?;
@@ -330,7 +330,7 @@ fn same_stretch(world: &World, a: EntityId, b: EntityId) -> Option<(&Segment, us
     })
 }
 
-fn run_length(world: &World, nodes: &[EntityId]) -> f64 {
+fn run_length(world: &Map, nodes: &[EntityId]) -> f64 {
     nodes.windows(2).map(|p| world.segment_length(p[0], p[1])).sum()
 }
 
@@ -339,14 +339,14 @@ mod tests {
     use super::*;
     use model::{GameObject, GridCoord};
 
-    fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
+    fn find_path(world: &Map, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
         Routes::from(world, start).route_to(end)
     }
 
     /// The search this replaced: tile by tile, over the raw graph. Kept as the
     /// thing to be measured against — searching over stretches is only allowed
     /// to be quicker, never to arrive somewhere else.
-    fn find_path_tile_by_tile(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
+    fn find_path_tile_by_tile(world: &Map, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
         if start == end {
             return None;
         }
@@ -398,11 +398,11 @@ mod tests {
         None
     }
 
-    fn total(world: &World, route: &[EntityId]) -> f64 {
+    fn total(world: &Map, route: &[EntityId]) -> f64 {
         run_length(world, route)
     }
 
-    fn joined_up(world: &World, route: &[EntityId]) -> bool {
+    fn joined_up(world: &Map, route: &[EntityId]) -> bool {
         route.windows(2).all(|p| {
             world.edges.contains_key(&(p[0], p[1])) || world.edges.contains_key(&(p[1], p[0]))
         })
@@ -411,8 +411,8 @@ mod tests {
     /// A town of streets: a grid of them nine tiles by seven, every other
     /// one broken off short, and two long diagonals across it, so a route
     /// has junctions of every kind to find its way through.
-    fn a_town_of_streets() -> World {
-        let mut world = World::meadow(-2..100, -2..100);
+    fn a_town_of_streets() -> Map {
+        let mut world = Map::meadow(-2..100, -2..100);
         for (i, y) in (0..98).step_by(7).enumerate() {
             world.place_road_path(&(0..if i % 2 == 0 { 98 } else { 60 }).map(|x| GridCoord { x, y }).collect::<Vec<_>>());
         }
@@ -502,8 +502,8 @@ mod tests {
         assert!(compared > 20, "only {compared} pairs were reachable; test proves little");
     }
 
-    fn straight_world() -> World {
-        World::meadow(-4..8, -4..8)
+    fn straight_world() -> Map {
+        Map::meadow(-4..8, -4..8)
     }
 
     #[test]
@@ -567,8 +567,8 @@ mod tests {
 
     /// Two ways round, one short and one long, with a stub at each end so both
     /// junctions are real. The short way is taken until it jams.
-    fn two_ways_round() -> (World, EntityId, EntityId) {
-        let mut world = World::meadow(-2..10, -2..10);
+    fn two_ways_round() -> (Map, EntityId, EntityId) {
+        let mut world = Map::meadow(-2..10, -2..10);
         let at = |x, y| GridCoord { x, y };
         // The short way: straight along the bottom.
         world.place_road_path(&(0..=6).map(|x| at(x, 0)).collect::<Vec<_>>());

@@ -69,13 +69,13 @@ impl Game {
     /// wake that was not saved: one standing at a door it delivered to would
     /// stand there for good, holding its place and never free for a call.
     fn wake_all(&mut self) {
-        self.world.resettle();
+        self.world.map.resettle();
         settle_and_wake(&mut self.world, &mut self.events);
-        for id in self.world.resident_ids() {
+        for id in self.world.map.resident_ids() {
             wake_resident(&self.world, &mut self.events, id);
         }
         let standing: Vec<EntityId> = self
-            .world
+            .world.map
             .objects
             .iter()
             .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none()))
@@ -231,14 +231,14 @@ impl Game {
     /// ticks: a tick is as many steps as the clock's speed, and what the
     /// game does must not depend on how fast it is watched (`replay.rs`).
     pub fn step(&mut self) -> u32 {
-        if std::mem::take(&mut self.stirred) || !self.world.unsettled.is_empty() || self.now % SETTLE_MS == 0 {
+        if std::mem::take(&mut self.stirred) || !self.world.map.unsettled.is_empty() || self.now % SETTLE_MS == 0 {
             settle_and_wake(&mut self.world, &mut self.events);
         }
         self.now += STEP_MS;
         self.events.set_now(self.now);
         let mut wakes = 0;
         while let Some(id) = self.events.pop_due() {
-            if self.world.resident(id).is_some() {
+            if self.world.map.resident(id).is_some() {
                 self.thoughts += 1;
             }
             handle_wake(&mut self.world, &mut self.events, id, self.now);
@@ -261,7 +261,7 @@ impl Game {
         if self.now >= to {
             return false;
         }
-        if !self.stirred && self.world.unsettled.is_empty() {
+        if !self.stirred && self.world.map.unsettled.is_empty() {
             let due = self.events.next_due().into_iter().chain([(self.world.market.hour + 1) * crate::market::HOUR]).min().unwrap_or(GameTime::MAX);
             let next = due.saturating_sub(STEP_MS).min(self.now.next_multiple_of(SETTLE_MS)).max(self.now).next_multiple_of(STEP_MS);
             if next >= to {
@@ -289,7 +289,7 @@ fn handle_wake(
     id: EntityId,
     now: GameTime,
 ) {
-    match world.objects.get(id).map(|e| &e.object) {
+    match world.map.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Car(_)) => handle_car_wake_up(world, events, id, now),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened.
@@ -316,29 +316,29 @@ pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 /// Population follows what changed, and whoever's situation changed gets to
 /// think about it. And the day is always due to turn.
 pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
-    let changed = !world.unsettled.is_empty();
+    let changed = !world.map.unsettled.is_empty();
     if changed {
         world.missions.stir();
     }
-    for id in world.settle() {
+    for id in world.map.settle() {
         wake_resident(world, events, id);
     }
     // A harbour reached, or cut off: the town's way out, and its ferry.
-    world.mark_harbours();
-    let standing: Vec<EntityId> = world.harbours.keys().copied().collect();
+    world.map.mark_harbours();
+    let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();
     for h in standing {
         world.commission(h, events.now());
     }
     // A site reached, and not calling: it calls for its timber.
-    world.sites.retain(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
-    let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
+    world.map.sites.retain(|&id| matches!(world.map.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
+    let waiting: Vec<EntityId> = world.map.sites.iter().copied().filter(|&id| world.map.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
     for id in waiting {
         crate::calls::turn(world, events, id, events.now());
     }
     // A harbour built, or its line changed: its ferries look
     // again. Not at every settle: a moored ferry woken rolls its next
     // settler off at once, not ROLL_MS after the last.
-    let harbours: Vec<EntityId> = if changed { world.harbours.keys().copied().collect() } else { Vec::new() };
+    let harbours: Vec<EntityId> = if changed { world.map.harbours.keys().copied().collect() } else { Vec::new() };
     for h in harbours {
         for id in world.ferries_of(h) {
             events.wake(0, id);
@@ -356,7 +356,7 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
 fn wake_resident(world: &World, events: &mut EventQueue, id: EntityId) {
     const TRICKLE_MS: u64 = 3 * (DAY_MS as u64) / 24;
     let off_map = matches!(
-        world.objects.get(id).map(|e| &e.object),
+        world.map.objects.get(id).map(|e| &e.object),
         Some(GameObject::Resident(r)) if r.at.is_none()
     );
     let delay = if off_map {

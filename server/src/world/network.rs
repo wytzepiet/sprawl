@@ -111,7 +111,7 @@ fn close_ring(mut nodes: Vec<EntityId>) -> Vec<EntityId> {
 /// relabels the smaller one, and cutting one searches outward from both sides
 /// of the cut in step, stopping the moment either side closes.
 ///
-/// Pure graph, no World: everything it needs is what it was told.
+/// Pure graph, no Map: everything it needs is what it was told.
 #[derive(Default)]
 pub struct RoadNetwork {
     /// Neighbours, and how far away each is.

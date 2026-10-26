@@ -276,7 +276,7 @@ impl Level {
             .filter(|r| !r.is_empty())
             .collect();
         let plain: String = map.iter().map(|l| if l.starts_with('#') { l.to_string() } else { l.chars().map(|c| if c.is_ascii_digit() { '.' } else { c }).collect() }).collect::<Vec<_>>().join("\n");
-        let (w, h, title) = crate::fixtures::lay(&mut world, &plain, 0, name);
+        let (w, h, title) = crate::world::fixtures::lay(&mut world.map, &plain, 0, name);
         let at = |col: i32, row: i32| GridCoord { x: w - 1 - col, y: -row };
 
         let mut gates = Vec::new();
@@ -300,19 +300,19 @@ impl Level {
                 let (way, wide) = gates_said.get(&c).copied().unwrap_or((Way::Both, false));
                 let run: Vec<GridCoord> = if way == Way::In { path.iter().rev().copied().collect() } else { path.clone() };
                 match way {
-                    Way::Both => world.place_road_path_of(&path, false),
-                    _ => world.place_one_way_of(&run, false),
+                    Way::Both => world.map.place_road_path_of(&path, false),
+                    _ => world.map.place_one_way_of(&run, false),
                 }
                 if wide && way != Way::Both {
                     for p in run.windows(2) {
-                        if let (Some(a), Some(b)) = (world.road_node_at(p[0]), world.road_node_at(p[1])) {
-                            world.set_wide(a, b, true);
+                        if let (Some(a), Some(b)) = (world.map.road_node_at(p[0]), world.map.road_node_at(p[1])) {
+                            world.map.set_wide(a, b, true);
                         }
                     }
                 }
                 let end = path[path.len() - 1];
-                if let Some(node) = world.road_node_at(end) {
-                    world.open_exit(node);
+                if let Some(node) = world.map.road_node_at(end) {
+                    world.map.open_exit(node);
                 }
                 gates.push(Gate { label: c, edge: path[0], end, way });
             }
@@ -365,7 +365,7 @@ impl Level {
         let par = (!solution.is_empty()).then_some((par, flow));
         let seed = name.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
         let n = wants.len();
-        world.frame = Some((at(w - 1, h - 1), at(0, 0)));
+        world.map.frame = Some((at(w - 1, h - 1), at(0, 0)));
         let level = Level {
             name: name.to_string(),
             title,
@@ -425,7 +425,7 @@ impl Level {
                 for hb in ha.saturating_sub(1)..=ha + 1 {
                     let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }, ha) || road(GridCoord { x: a.x, y: a.y + dy }, ha));
                     let done = steps.iter().any(|s: &Build| s.from == b && s.to == a && s.up.unwrap_or_default() == [hb, ha]);
-                    if road(b, hb) && joins(ha, hb) && !beside && !done && world.link_between_at(a, ha, MIDDLE, b, hb, MIDDLE).is_none() {
+                    if road(b, hb) && joins(ha, hb) && !beside && !done && world.map.link_between_at(a, ha, MIDDLE, b, hb, MIDDLE).is_none() {
                         steps.push(Build { tool: Tool::Street, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: None, road: priority(a, ha, b, hb) });
                     }
                 }
@@ -441,34 +441,34 @@ impl Level {
     /// link with a laid end, the way it runs, at its heights.
     pub fn layout(world: &World) -> Vec<Build> {
         let mut steps = Vec::new();
-        let node = |id: EntityId| match world.objects.get(id).map(|e| (e.position, &e.object)) {
+        let node = |id: EntityId| match world.map.objects.get(id).map(|e| (e.position, &e.object)) {
             Some((Some(p), GameObject::RoadNode(n))) => Some((p, n.height, n.laid)),
             _ => None,
         };
-        let mut edges: Vec<_> = world.edges.keys().copied().collect();
+        let mut edges: Vec<_> = world.map.edges.keys().copied().collect();
         edges.sort_unstable();
         for (a, b) in edges {
             let (Some((pa, ha, la)), Some((pb, hb, lb))) = (node(a), node(b)) else { continue };
             if !la && !lb {
                 continue;
             }
-            let back = world.edges.contains_key(&(b, a));
+            let back = world.map.edges.contains_key(&(b, a));
             // A two-way once, from its lower end; a one-way the way it runs.
             if back && a > b {
                 continue;
             }
             let tool = if back {
                 Tool::Street
-            } else if world.is_wide(a, b) {
+            } else if world.map.is_wide(a, b) {
                 Tool::Wide
             } else {
                 Tool::OneWay
             };
-            let sides = [world.side_of(a), world.side_of(b)];
-            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: (sides != [MIDDLE; 2]).then_some(sides), road: world.is_road_between(a, b) });
+            let sides = [world.map.side_of(a), world.map.side_of(b)];
+            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: (sides != [MIDDLE; 2]).then_some(sides), road: world.map.is_road_between(a, b) });
         }
         // And the lights, once their junctions stand.
-        for e in world.objects.roads() {
+        for e in world.map.objects.roads() {
             if let (Some(p), GameObject::RoadNode(n)) = (e.position, &e.object)
                 && n.light.is_some()
             {
@@ -536,9 +536,9 @@ impl Level {
 
     fn route(&self, world: &World, i: usize) -> Option<Vec<EntityId>> {
         let w = &self.wants[i];
-        let from = world.road_node_at(self.gates[w.from].end)?;
-        let to = world.road_node_at(self.gates[w.to].end)?;
-        crate::world::pathfinding::Routes::from(world, from).route_to(to)
+        let from = world.map.road_node_at(self.gates[w.from].end)?;
+        let to = world.map.road_node_at(self.gates[w.to].end)?;
+        crate::world::pathfinding::Routes::from(&world.map, from).route_to(to)
     }
 
     /// Before each step of time: count who arrived, set off who is due, and
@@ -546,7 +546,7 @@ impl Level {
     pub fn step(&mut self, game: &mut Game) {
         let now = game.now;
         // Arrived: gone from the world.
-        let arrived: Vec<EntityId> = self.live.keys().copied().filter(|&id| game.world.objects.get(id).is_none()).collect();
+        let arrived: Vec<EntityId> = self.live.keys().copied().filter(|&id| game.world.map.objects.get(id).is_none()).collect();
         for id in arrived {
             let (i, due, ideal) = self.live.remove(&id).unwrap();
             if self.phase == Phase::Test {
@@ -580,14 +580,14 @@ impl Level {
                     }
                     break;
                 };
-                let start = game.world.objects.get(route[0]).and_then(|e| e.position);
-                let car = game.world.insert_at(GameObject::Car(Car::new(0, CarRole::Private)), start);
+                let start = game.world.map.objects.get(route[0]).and_then(|e| e.position);
+                let car = game.world.map.insert_at(GameObject::Car(Car::new(0, CarRole::Private)), start);
                 if !crate::car::spawn::drive_through(&mut game.world, &mut game.events, car, route, now) {
-                    game.world.despawn_car(car);
+                    game.world.map.despawn_car(car);
                     break;
                 }
                 self.queue[i].pop_front();
-                let ideal = match game.world.objects.get(car).map(|e| &e.object) {
+                let ideal = match game.world.map.objects.get(car).map(|e| &e.object) {
                     Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| t.total_route_length / CRUISE_SPEED * 1000.0),
                     _ => 0.0,
                 };
@@ -605,7 +605,7 @@ impl Level {
                 .live
                 .iter()
                 .min_by_key(|(id, (_, due, _))| (*due, **id))
-                .and_then(|(&id, _)| game.world.objects.get(id).and_then(|e| e.position))
+                .and_then(|(&id, _)| game.world.map.objects.get(id).and_then(|e| e.position))
                 .unwrap_or(self.min);
             self.jammed(at, "Gridlock".to_string());
         } else if now - self.started >= TEST_MS {
@@ -618,7 +618,7 @@ impl Level {
     /// tile two, a deck's three, for the concrete and steel under them; a
     /// junction's lights four.
     pub fn cost(world: &World) -> u32 {
-        world
+        world.map
             .objects
             .roads()
             .filter_map(|e| match e.object {
@@ -658,7 +658,7 @@ impl Level {
     }
 
     fn estimate(&self, world: &World, i: usize) -> f64 {
-        self.route(world, i).map_or(0.0, |r| r.windows(2).map(|p| world.segment_length(p[0], p[1])).sum::<f64>() / CRUISE_SPEED * 1000.0)
+        self.route(world, i).map_or(0.0, |r| r.windows(2).map(|p| world.map.segment_length(p[0], p[1])).sum::<f64>() / CRUISE_SPEED * 1000.0)
     }
 
     pub fn state(&self, game: &Game) -> LevelState {
@@ -727,7 +727,7 @@ impl Level {
 
 /// Every car off the road.
 fn clear(game: &mut Game) {
-    let cars: Vec<EntityId> = game.world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(_))).map(|e| e.id).collect();
+    let cars: Vec<EntityId> = game.world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Car(_))).map(|e| e.id).collect();
     for car in cars {
         crate::car::simulation::park_at_home(&mut game.world, &mut game.events, car);
     }
@@ -761,8 +761,8 @@ mod tests {
                 crate::draw::draw(&mut game.world, &mut game.events, 1, stroke, 0);
             }
         }
-        let node = |x, y| game.world.road_node_at(GridCoord { x, y }).expect("the roads were not laid");
-        assert!(game.world.crossing_of(node(3, -4), node(4, -3)).is_some(), "the diagonals do not cross");
+        let node = |x, y| game.world.map.road_node_at(GridCoord { x, y }).expect("the roads were not laid");
+        assert!(game.world.map.crossing_of(node(3, -4), node(4, -3)).is_some(), "the diagonals do not cross");
         level.test(&mut game);
         let corner = [4.0, -3.0];
         let mut both = 0;
@@ -771,7 +771,7 @@ mod tests {
             game.step();
             // Where each car is, along the edge it is on.
             let near: Vec<EntityId> = game
-                .world
+                .world.map
                 .objects
                 .iter()
                 .filter_map(|e| match e.object {
@@ -922,8 +922,8 @@ mod tests {
             open += 1;
             for (i, g) in level.gates.iter().enumerate() {
                 assert!(level.inside(g.edge) && !level.inside(g.end), "{name}: gate {} is not on the edge", g.label);
-                let node = game.world.road_node_at(g.edge).unwrap_or_else(|| panic!("{name}: gate {} has no road", g.label));
-                let lanes = game.world.edges.iter().filter(|(k, _)| k.0 == node || k.1 == node).map(|(_, s)| s.lanes).max().unwrap_or(1) as f64;
+                let node = game.world.map.road_node_at(g.edge).unwrap_or_else(|| panic!("{name}: gate {} has no road", g.label));
+                let lanes = game.world.map.edges.iter().filter(|(k, _)| k.0 == node || k.1 == node).map(|(_, s)| s.lanes).max().unwrap_or(1) as f64;
                 let asked: f64 = level.wants.iter().filter(|w| w.from == i || w.to == i).map(|w| w.per_min).sum();
                 assert!(asked <= 60.0 * lanes, "{name}: gate {} asks {asked} a minute of {lanes} lanes", g.label);
             }
@@ -947,7 +947,7 @@ mod tests {
             assert!(crate::hand::take_step(&mut fresh.world, &mut fresh.events, *step, fresh.now), "{step:?}");
         }
         assert_eq!(Level::cost(&fresh.world), Level::cost(&game.world));
-        assert_eq!(fresh.world.edges.len(), game.world.edges.len());
+        assert_eq!(fresh.world.map.edges.len(), game.world.map.edges.len());
     }
 
     /// A road of two lanes carries cars in both, side by side; where two
@@ -973,8 +973,8 @@ mod tests {
                 // Never one through another (`Watch`).
                 let wrong = watch.look(&game);
                 assert!(wrong.is_empty(), "{tool:?}: {}", wrong.join("; "));
-                let node = |x| game.world.road_node_at(GridCoord { x, y: -1 }).unwrap();
-                let Some(seg) = game.world.edges.get(&(node(5), node(4))) else { continue };
+                let node = |x| game.world.map.road_node_at(GridCoord { x, y: -1 }).unwrap();
+                let Some(seg) = game.world.map.edges.get(&(node(5), node(4))) else { continue };
                 both |= seg.all().any(|c| seg.lane_of(c) == Some(1)) && seg.all().any(|c| seg.lane_of(c) == Some(0));
             }
             (level.phase, both)
@@ -1003,9 +1003,9 @@ mod tests {
             for b in &branches {
                 draw_road(&mut game, Tool::OneWay, &flip(b));
             }
-            let node = |(x, y): (i32, i32)| game.world.road_node_at(GridCoord { x: if split { x } else { 9 - x }, y }).unwrap();
+            let node = |(x, y): (i32, i32)| game.world.map.road_node_at(GridCoord { x: if split { x } else { 9 - x }, y }).unwrap();
             let (wide, at) = (node((4, -3)), node((5, -3)));
-            branches.iter().map(|b| if split { game.world.branch_lane(wide, at, node(b[1])) } else { game.world.branch_lane(node(b[1]), at, wide) }).collect::<Vec<_>>()
+            branches.iter().map(|b| if split { game.world.map.branch_lane(wide, at, node(b[1])) } else { game.world.map.branch_lane(node(b[1]), at, wide) }).collect::<Vec<_>>()
         };
         for split in [true, false] {
             // The road runs east, its right toward y + 1 (`lanes_for`): the
@@ -1027,7 +1027,7 @@ mod tests {
 
     /// The cars on the road, with their trips.
     fn trips(game: &Game) -> Vec<(EntityId, model::Trip)> {
-        game.world.objects.iter().filter_map(|e| match &e.object {
+        game.world.map.objects.iter().filter_map(|e| match &e.object {
             GameObject::Car(c) => c.trip.clone().map(|t| (e.id, t)),
             _ => None,
         }).collect()
@@ -1043,7 +1043,7 @@ mod tests {
         let (mut level, mut game) = play(text);
         draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
         draw_road(&mut game, Tool::OneWay, &[(9, -6), (9, -5), (9, -4), (9, -3)]);
-        let junction = game.world.road_node_at(GridCoord { x: 9, y: -3 }).unwrap();
+        let junction = game.world.map.road_node_at(GridCoord { x: 9, y: -3 }).unwrap();
         level.test(&mut game);
         let (mut changes, mut merged_into) = (fixed::HashSet::default(), fixed::HashSet::default());
         let mut watch = crate::replay::Watch::default();
@@ -1057,8 +1057,8 @@ mod tests {
                     changes.insert((id, s.at));
                 }
                 // One from the side, short of the road: the lane it joins by.
-                if let Some(j) = t.route.iter().position(|&n| n == junction).filter(|&j| j > 0 && t.route_index <= j && t.route[j - 1] != t.route[0] && game.world.height_of(t.route[j - 1]) == 0) {
-                    if game.world.objects.get(t.route[j - 1]).and_then(|e| e.position) == Some(GridCoord { x: 9, y: -4 }) {
+                if let Some(j) = t.route.iter().position(|&n| n == junction).filter(|&j| j > 0 && t.route_index <= j && t.route[j - 1] != t.route[0] && game.world.map.height_of(t.route[j - 1]) == 0) {
+                    if game.world.map.objects.get(t.route[j - 1]).and_then(|e| e.position) == Some(GridCoord { x: 9, y: -4 }) {
                         merged_into.insert(t.lanes[j + 1]);
                     }
                 }
@@ -1078,8 +1078,8 @@ mod tests {
         let (mut level, mut game) = play(text);
         draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
         draw_road(&mut game, Tool::OneWay, &[(5, -3), (5, -2), (5, -1), (5, 0)]);
-        let junction = game.world.road_node_at(GridCoord { x: 5, y: -3 }).unwrap();
-        let out = game.world.road_node_at(GridCoord { x: 0, y: -3 }).unwrap();
+        let junction = game.world.map.road_node_at(GridCoord { x: 5, y: -3 }).unwrap();
+        let out = game.world.map.road_node_at(GridCoord { x: 0, y: -3 }).unwrap();
         level.test(&mut game);
         let (mut turning, mut through) = (Vec::new(), Vec::new());
         let mut seen = fixed::HashSet::default();
@@ -1092,7 +1092,7 @@ mod tests {
             for (id, t) in trips(&game) {
                 let ri = t.route_index;
                 // Coming to the turn, its last edge before it; at the far end, the last edge.
-                if t.route.get(ri) == Some(&junction) && t.route.get(ri + 1).is_some_and(|&n| game.world.objects.get(n).and_then(|e| e.position).is_some_and(|p| p.y == -2)) && seen.insert((id, 0)) {
+                if t.route.get(ri) == Some(&junction) && t.route.get(ri + 1).is_some_and(|&n| game.world.map.objects.get(n).and_then(|e| e.position).is_some_and(|p| p.y == -2)) && seen.insert((id, 0)) {
                     turning.push(t.lanes[ri]);
                 }
                 if t.route.get(ri) == Some(&out) && seen.insert((id, 1)) {
@@ -1145,8 +1145,8 @@ mod tests {
     fn any_road_may_have_priority() {
         let (_, mut game) = play(CROSSING);
         let road = |game: &Game, x| {
-            let at = |x| game.world.road_node_at(GridCoord { x, y: -1 }).unwrap();
-            game.world.is_road_between(at(x), at(x + 1))
+            let at = |x| game.world.map.road_node_at(GridCoord { x, y: -1 }).unwrap();
+            game.world.map.is_road_between(at(x), at(x + 1))
         };
         let step = |game: &mut Game, tool, x, priority| {
             let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, sides: None, road: priority };
@@ -1162,6 +1162,6 @@ mod tests {
             step(&mut game, Tool::OneWay, x, false);
         }
         assert!((0..9).all(|x| !road(&game, x)), "drawn again without it, it has none");
-        assert!(game.world.edges.contains_key(&(game.world.road_node_at(GridCoord { x: 3, y: -1 }).unwrap(), game.world.road_node_at(GridCoord { x: 4, y: -1 }).unwrap())), "and is still there");
+        assert!(game.world.map.edges.contains_key(&(game.world.map.road_node_at(GridCoord { x: 3, y: -1 }).unwrap(), game.world.map.road_node_at(GridCoord { x: 4, y: -1 }).unwrap())), "and is still there");
     }
 }

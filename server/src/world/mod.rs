@@ -4,6 +4,7 @@ pub mod clear;
 pub mod decks;
 
 pub mod fields;
+pub mod fixtures;
 pub mod geometry;
 pub mod lots;
 pub mod network;
@@ -26,7 +27,10 @@ use crate::world::segments::EdgeSegment;
 
 pub use pads::HANDLE_MS;
 
-pub struct World {
+/// What is where: the land, the roads and lots, the buildings, the cars on
+/// them and who lives and works where. Nothing here runs the town; the
+/// sim does, over it (`World`).
+pub struct Map {
     pub objects: Tracked,
     /// Entities by chunk. Chunk-granular because that is the unit clients
     /// subscribe to; exact-tile queries filter a chunk's set, which stays small
@@ -54,23 +58,6 @@ pub struct World {
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
     pub manoeuvres: HashMap<EntityId, (EntityId, model::GameTime)>,
     pub terrain_seed: u32,
-    /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
-    /// starts counting afresh.
-    pub books: HashMap<EntityId, crate::economy::Books>,
-    /// The town's own books: what it served, and what crossed the border.
-    pub town: crate::economy::Books<crate::economy::Town>,
-    /// GDP to date: the value the town has added, banked as it appears
-    /// (`economy`). The level is its running sum.
-    pub gdp: f64,
-    /// The mayor's coins: the town's balance of trade, less what it built.
-    /// docs/trade.md, Coins.
-    pub treasury: f64,
-    /// Coins and GDP that landed on buildings since the last flush, for
-    /// the clients looking at them.
-    pub lumps: Vec<model::Lump>,
-    /// What the town bought of its own accord since the last flush, said
-    /// to every player.
-    pub news: Vec<model::News>,
     /// Tiles of road the mayor has laid, which `hand::lay` counts to price.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
@@ -82,21 +69,10 @@ pub struct World {
     /// The mountains' heights, eroded, made from the terrain the first time
     /// a chunk of it is sent (`mountains.rs`).
     pub peaks: std::sync::OnceLock<land::mountains::Peaks>,
-    /// The sea, read from the terrain the first time a way over it is
-    /// wanted (`shipping::water`).
-    pub water: std::sync::OnceLock<crate::shipping::water::Water>,
-    /// Each harbour's line to the world, its ways found when it is
-    /// commissioned. Derived, like every other index.
-    pub lines: std::collections::BTreeMap<EntityId, crate::shipping::lines::Line>,
-    /// The lanes those ways are laid as, the junctions where they share
-    /// or cross water, and each ship's leg through them: derived too, and
-    /// a ship saved at sea comes back moored.
-    pub lanes: Option<crate::shipping::lanes::Lanes>,
     pub junctions: crate::intersection::IntersectionRegistry,
     /// Who goes first at each road junction and crossing: its cars'
     /// claims, keyed by node or crossing. Never saved: trips are not.
     pub streets: crate::intersection::IntersectionRegistry,
-    pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -109,9 +85,6 @@ pub struct World {
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
     pub occupied: HashMap<(i32, i32), EntityId>,
-    /// Calls raised and not yet resolved. Not saved: a shop still low when
-    /// the world comes back calls again at its next visit.
-    pub calls: Vec<crate::calls::Call>,
     /// Tile → the road node on it. Asked for constantly — every driveway
     /// check, every bend, every site the placer tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
@@ -135,6 +108,43 @@ pub struct World {
     /// Every building settled as a site, standing or not since: those
     /// still waiting call for their timber (`game::settle_and_wake`).
     pub sites: BTreeSet<EntityId>,
+}
+
+/// The town: its map, and the life on it, its books and calls, its
+/// market and missions, its ferries' lines.
+pub struct World {
+    pub map: Map,
+    /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
+    /// starts counting afresh.
+    pub books: HashMap<EntityId, crate::economy::Books>,
+    /// The town's own books: what it served, and what crossed the border.
+    pub town: crate::economy::Books<crate::economy::Town>,
+    /// GDP to date: the value the town has added, banked as it appears
+    /// (`economy`). The level is its running sum.
+    pub gdp: f64,
+    /// The mayor's coins: the town's balance of trade, less what it built.
+    /// docs/trade.md, Coins.
+    pub treasury: f64,
+    /// Coins and GDP that landed on buildings since the last flush, for
+    /// the clients looking at them.
+    pub lumps: Vec<model::Lump>,
+    /// What the town bought of its own accord since the last flush, said
+    /// to every player.
+    pub news: Vec<model::News>,
+    /// The sea, read from the terrain the first time a way over it is
+    /// wanted (`shipping::water`).
+    pub water: std::sync::OnceLock<crate::shipping::water::Water>,
+    /// Each harbour's line to the world, its ways found when it is
+    /// commissioned. Derived, like every other index.
+    pub lines: std::collections::BTreeMap<EntityId, crate::shipping::lines::Line>,
+    /// The lanes those ways are laid as, the junctions where they share
+    /// or cross water, and each ship's leg through them: derived too, and
+    /// a ship saved at sea comes back moored.
+    pub lanes: Option<crate::shipping::lanes::Lanes>,
+    pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
+    /// Calls raised and not yet resolved. Not saved: a shop still low when
+    /// the world comes back calls again at its next visit.
+    pub calls: Vec<crate::calls::Call>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<model::OwnerId, Vec<crate::undo::Done>>,
     /// The buildings placed lately, for razing to give back (`undo::raze`).
@@ -155,7 +165,42 @@ pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
     }
 }
 
+/// A town on this map, from its first day: the mayor's stake, nothing booked.
+impl From<Map> for World {
+    fn from(map: Map) -> World {
+        World { map, ..World::new() }
+    }
+}
+
 impl World {
+    pub fn new() -> Self {
+        Self {
+            map: Map::new(),
+            books: HashMap::default(),
+            town: Default::default(),
+            gdp: 0.0,
+            treasury: crate::economy::STAKE,
+            lumps: Vec::new(),
+            news: Vec::new(),
+            water: Default::default(),
+            lines: Default::default(),
+            lanes: None,
+            voyages: HashMap::default(),
+            calls: Vec::new(),
+            undo: HashMap::default(),
+            placed: Vec::new(),
+            missions: Default::default(),
+            market: Default::default(),
+        }
+    }
+
+    /// A saved world's map; its coins, missions and market are the save's to set.
+    pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
+        Self { map: Map::from_loaded(objects, terrain_seed), treasury: 0.0, ..Self::new() }
+    }
+}
+
+impl Map {
     pub fn building(&self, id: EntityId) -> Option<&Building> {
         match self.objects.get(id)?.object {
             GameObject::Building(ref b) => Some(b),
@@ -241,42 +286,27 @@ impl World {
             node_cars: HashMap::default(),
             manoeuvres: HashMap::default(),
             terrain_seed: 0,
-            books: HashMap::default(),
-            town: Default::default(),
-            gdp: 0.0,
-            treasury: crate::economy::STAKE,
-            lumps: Vec::new(),
-            news: Vec::new(),
             laid: 0,
             frame: None,
             terrain: HashMap::default(),
             peaks: Default::default(),
-            water: Default::default(),
-            lines: Default::default(),
-            lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
             streets: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::default(),
             occupied: HashMap::default(),
             roads: HashMap::default(),
             decks: HashMap::default(),
-            calls: Vec::new(),
             harbours: Default::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
             vacancies: BTreeSet::new(),
             sites: BTreeSet::new(),
-            undo: HashMap::default(),
-            placed: Vec::new(),
-            missions: Default::default(),
-            market: Default::default(),
         }
     }
 
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
-        let mut world = Self { objects, terrain_seed, treasury: 0.0, ..Self::new() };
+        let mut world = Self { objects, terrain_seed, ..Self::new() };
         // Rebuild the spatial index and the road index from loaded objects.
         for entry in world.objects.iter().chain(world.objects.roads()) {
             if let Some(pos) = entry.position {

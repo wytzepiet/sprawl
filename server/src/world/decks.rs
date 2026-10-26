@@ -21,7 +21,7 @@
 //! back when it would lie clear there again (`settle_sides`). Links
 //! crossing on the diagonal, between tiles, cross over each other a level
 //! apart; within a level, they cross at the corner, and their cars take
-//! turns there (`World::crossing_of`).
+//! turns there (`Map::crossing_of`).
 //!
 //! The ground's middle nodes are `roads`, as they always were, and
 //! everything the town does with a tile's road is theirs. The rest, above
@@ -31,7 +31,7 @@ use model::{EntityId, GameObject, GridCoord, RoadNode, Tool};
 use land::TerrainType;
 
 use super::clear::End;
-use super::World;
+use super::Map;
 
 /// The highest a road stands: three levels up.
 pub const TOP: u8 = 6;
@@ -73,17 +73,17 @@ fn gcd(a: i32, b: i32) -> i32 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
 
-/// Crossings' ids (`World::crossing_of`): apart from every entity's.
+/// Crossings' ids (`Map::crossing_of`): apart from every entity's.
 pub const CROSSINGS: EntityId = 1 << 62;
 
-/// Where a road on a side of a tile stands (`World::node_pos`).
+/// Where a road on a side of a tile stands (`Map::node_pos`).
 pub(crate) fn spot(at: GridCoord, side: Side) -> [f64; 2] {
     let [sx, sy] = side.map(f64::from);
     let by = if sx == 0.0 && sy == 0.0 { 0.0 } else { SIDE_OFFSET / (sx * sx + sy * sy).sqrt() };
     [at.x as f64 + 0.5 + sx * by, at.y as f64 + 0.5 + sy * by]
 }
 
-impl World {
+impl Map {
     /// The middle road node on a tile at a height.
     pub fn node_at(&self, coord: GridCoord, height: u8) -> Option<EntityId> {
         self.node_in(coord, height, MIDDLE)
@@ -193,7 +193,7 @@ impl World {
     }
 
     /// `may_lay_at`, for a road drawn with this tool, a drag going on from
-    /// `to` that way, if it does (`World::leads_nowhere`), and on to `then`,
+    /// `to` that way, if it does (`Map::leads_nowhere`), and on to `then`,
     /// if it is known where: a step of a level, a slope's end, or one slope
     /// on to the next; above the ground, nothing built under it and no
     /// mountain; and the road, with the next step's, and any they move
@@ -332,8 +332,8 @@ impl World {
 mod tests {
     use super::*;
 
-    fn grass() -> World {
-        World::meadow(-2..14, -4..6)
+    fn grass() -> Map {
+        Map::meadow(-2..14, -4..6)
     }
 
     const fn at(x: i32, y: i32) -> GridCoord {
@@ -341,7 +341,7 @@ mod tests {
     }
 
     /// Lay a path of (x, y, height), each step checked.
-    fn lay(world: &mut World, path: &[(i32, i32, u8)]) {
+    fn lay(world: &mut Map, path: &[(i32, i32, u8)]) {
         for p in path.windows(2) {
             let ((x0, y0, h0), (x1, y1, h1)) = (p[0], p[1]);
             assert!(world.may_lay_at(at(x0, y0), h0, MIDDLE, at(x1, y1), h1, MIDDLE, false), "{:?} refused", p);
@@ -429,7 +429,7 @@ mod tests {
         lay(&mut world, &[(4, 0, 0), (5, 1, 0)]);
         assert!(world.may_lay_at(at(5, 0), 0, MIDDLE, at(4, 1), 0, MIDDLE, false));
         lay(&mut world, &[(5, 0, 0), (4, 1, 0)]);
-        let node = |world: &World, x, y, h| world.node_at(at(x, y), h).unwrap();
+        let node = |world: &Map, x, y, h| world.node_at(at(x, y), h).unwrap();
         let crossing = world.crossing_of(node(&world, 4, 0, 0), node(&world, 5, 1, 0));
         assert!(crossing.is_some() && crossing == world.crossing_of(node(&world, 4, 1, 0), node(&world, 5, 0, 0)), "the two do not cross at one crossing");
         lay(&mut world, &[(6, -1, 2), (6, 0, 2), (7, 1, 2)]);

@@ -14,9 +14,9 @@
 //! on the map, give or take their kerbs touching, or a level apart in
 //! height. Roads joined need not: two
 //! links that meet at a node are a junction there, whatever their angle
-//! (`World::leads_nowhere` says which angles cars may take). Nor two
+//! (`Map::leads_nowhere` says which angles cars may take). Nor two
 //! diagonal links across one corner: there they cross, their cars taking
-//! turns (`World::crossing_of`), or pass a level apart.
+//! turns (`Map::crossing_of`), or pass a level apart.
 //!
 //! So everything about where roads may stand beside, over and across each
 //! other follows from this: two one-ways side by side on a tile, round a
@@ -26,7 +26,7 @@
 use fixed::HashMap;
 
 use super::decks::{spot, Side, MIDDLE};
-use super::World;
+use super::Map;
 use crate::intersection::{track, TRACK_POINTS};
 use model::{EntityId, GridCoord};
 
@@ -70,7 +70,7 @@ struct Piece {
 
 /// The world as a sketch would leave it, as far as where roads lie.
 struct Drawn<'a> {
-    world: &'a World,
+    world: &'a Map,
     sketch: &'a Sketch,
     /// Each new node's end, by its id less `FRESH`.
     fresh: Vec<End>,
@@ -79,7 +79,7 @@ struct Drawn<'a> {
 }
 
 impl<'a> Drawn<'a> {
-    fn new(world: &'a World, sketch: &'a Sketch) -> Drawn<'a> {
+    fn new(world: &'a Map, sketch: &'a Sketch) -> Drawn<'a> {
         let mut fresh: Vec<End> = Vec::new();
         let mut id = |e: End| {
             world.node_in(e.0, e.1, e.2).unwrap_or_else(|| {
@@ -276,7 +276,7 @@ fn nearest(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> (f64, f64, f64
     if flip.is_some() { (dist, t, end) } else { (dist, end, t) }
 }
 
-impl World {
+impl Map {
     /// Would every road the sketch changes keep clear of every road near
     /// it: its links' ends, the nodes it moves, and the roads joined to
     /// those, whose seams move with them.

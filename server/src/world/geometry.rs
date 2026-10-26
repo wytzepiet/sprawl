@@ -1,5 +1,5 @@
 use model::EntityId;
-use crate::world::World;
+use crate::world::Map;
 use crate::world::bezier;
 
 /// The lane a route is measured on: not `bezier::LANE_OFFSET`, the lane
@@ -8,7 +8,7 @@ use crate::world::bezier;
 /// on its ninth day and `04-merge` falls to 0.487.
 const MEASURED_LANE: f64 = 0.15;
 
-impl World {
+impl Map {
     /// Compute the cosine of the turn angle at route[node_index].
     /// Returns 1.0 (straight) for route endpoints (first/last node).
     pub fn turn_cos_angle(&self, route: &[EntityId], node_index: usize) -> f64 {

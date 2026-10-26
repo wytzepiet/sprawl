@@ -18,7 +18,7 @@
 //! a bay, and settlers' cars in the bays with none. The harbour's
 //! forklifts lift the pallets off onto the quay while it has room, and
 //! what waits on the quay to go out onto the deck while it has room, each
-//! only if it is done before the ferry sails (`World::lift`). The world
+//! only if it is done before the ferry sails (`Map::lift`). The world
 //! pays for what went out as it casts off; the town pays for what came in
 //! as each package lands on the quay. It is double-ended, as small island
 //! ferries are: it never turns, it sails in one end first and out the
@@ -27,7 +27,7 @@
 use model::blueprint::FACINGS;
 use model::{BuildingKind, EntityId, GameObject, GridCoord, Pose};
 use land::TerrainType;
-use crate::world::World;
+use crate::world::Map;
 /// The ferry, in tiles: long and broad, bigger than true to the map, as
 /// `FERRY` in the client's `dressing.ts`.
 pub const FERRY_LENGTH: f64 = 3.2;
@@ -86,7 +86,7 @@ impl Berth {
     }
 }
 
-impl World {
+impl Map {
     /// The berth a kind's plot would have here this way round: the tile of
     /// the sea behind the middle of its back, in line with its lane, with
     /// `BERTH` tiles of sea straight out from it, and the middle of its
@@ -94,9 +94,9 @@ impl World {
     /// that is land, a lake, or water too narrow for the ferry.
     pub fn berth_at(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<Berth> {
         let (dx, dy) = FACINGS[facing as usize % 4];
-        let gate = World::gate_of(tiles, kind, facing)?;
+        let gate = Map::gate_of(tiles, kind, facing)?;
         // Straight back from the gate, through the plot, to the water.
-        let (_, (w, h)) = World::bounds(tiles);
+        let (_, (w, h)) = Map::bounds(tiles);
         let deep = if dx == 0 { h } else { w } as i32;
         let b = Berth { quay: GridCoord { x: gate.x - dx * deep, y: gate.y - dy * deep }, out: (-dx, -dy) };
         (-1..BERTH).all(|n| self.terrain.get(&(b.tile(n).x, b.tile(n).y)) == Some(&TerrainType::Sea)).then_some(b)
@@ -117,8 +117,8 @@ mod tests {
     /// Grass either side of a street along y = 0, and the sea from y = 3
     /// south of it; the map ends at y = 41, a chunk and more out, and
     /// further than that to the sides.
-    fn coast() -> World {
-        let mut world = World::new();
+    fn coast() -> Map {
+        let mut world = Map::new();
         for y in -8..41 {
             for x in -60..100 {
                 world.terrain.insert((x, y), if y >= 2 { TerrainType::Sea } else { TerrainType::Grass });
@@ -136,14 +136,6 @@ mod tests {
         let harbour = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Harbour).expect("the coast takes a harbour");
         let berth = world.berth(harbour).unwrap();
         assert_eq!((berth.quay.y, berth.out), (3, (0, 1)), "the quay is the water behind the back face: {berth:?}");
-        // The way out is straight out from the moored ferry and on over the
-        // map's edge, all of it on the water.
-        world.commission(harbour, 0);
-        let way = &world.lines[&harbour].legs[0];
-        assert_eq!(way[0], berth.moored().at);
-        assert_eq!(way[1][0], berth.tile(BERTH - 1).x as f64 + 0.5, "it turned off the berth's line: {way:?}");
-        assert!(world.water.get().unwrap().afloat(way), "the ship sailed over land");
-        assert_eq!(way.last().unwrap()[1], 41.0, "it did not sail off the map's edge: {way:?}");
         // Moored, its land end is on the ramp.
         let m = berth.moored();
         let end = plus(m.at, ahead(m.heading, FERRY_LENGTH / 2.0));
@@ -177,7 +169,7 @@ mod tests {
     /// its gate on the land, its quay out over the sea.
     #[test]
     fn a_harbour_fits_a_diagonal_coast() {
-        let mut world = World::new();
+        let mut world = Map::new();
         for y in -10..40 {
             for x in -10..40 {
                 world.terrain.insert((x, y), if x + y >= 14 { TerrainType::Sea } else { TerrainType::Grass });

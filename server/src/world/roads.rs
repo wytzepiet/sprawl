@@ -1,8 +1,8 @@
 use model::{EntityId, GameObject, GridCoord};
-use crate::world::World;
+use crate::world::Map;
 use super::decks::MIDDLE;
 
-impl World {
+impl Map {
     /// The road on this tile.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
         self.roads.get(&(coord.x, coord.y)).copied()
@@ -309,8 +309,8 @@ impl World {
 
     /// A test's world: grass over these tiles, nothing on it.
     #[cfg(test)]
-    pub fn meadow(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> World {
-        let mut world = World::new();
+    pub fn meadow(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> Map {
+        let mut world = Map::new();
         for (x, y) in xs.flat_map(|x| ys.clone().map(move |y| (x, y))) {
             world.terrain.insert((x, y), land::TerrainType::Grass);
         }
@@ -319,7 +319,7 @@ impl World {
 
     /// And a street along y = 0 over these tiles.
     #[cfg(test)]
-    pub fn street(mut self, xs: std::ops::Range<i32>) -> World {
+    pub fn street(mut self, xs: std::ops::Range<i32>) -> Map {
         self.place_road_path(&xs.map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         self
     }
@@ -458,8 +458,8 @@ pub(super) mod tests {
     use model::BuildingKind;
 
     /// Grass, and a one-way street east along y = 0.
-    fn eastward() -> World {
-        let mut world = World::meadow(-2..12, -4..5);
+    fn eastward() -> Map {
+        let mut world = Map::meadow(-2..12, -4..5);
         world.place_one_way_of(&(0..10).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>(), false);
         world
     }
@@ -483,7 +483,7 @@ pub(super) mod tests {
         assert!(!world.may_lay(at(6, -1), at(5, 0), true), "a ramp joining against the traffic");
         assert!(!world.may_lay(at(5, 0), at(4, -1), true), "a ramp leaving back the way the road came");
         // Onto a two-way street, a one-way, its cars turning the shallow way.
-        let mut both = World::new();
+        let mut both = Map::new();
         both.terrain = world.terrain.clone();
         both.place_road_path(&(0..10).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         assert!(both.may_lay(at(4, -1), at(5, 0), true));
@@ -509,8 +509,8 @@ pub(super) mod tests {
             world.place_road_at(at(x, 0), 0, NORTH, at(x - 1, 0), 0, NORTH, true, false);
         }
         assert!(world.road_node_at(at(5, 0)).is_none(), "nothing in the middle");
-        let east = |w: &World, x| w.node_in(at(x, 0), 0, SOUTH).unwrap();
-        let west = |w: &World, x| w.node_in(at(x, 0), 0, NORTH).unwrap();
+        let east = |w: &Map, x| w.node_in(at(x, 0), 0, SOUTH).unwrap();
+        let west = |w: &Map, x| w.node_in(at(x, 0), 0, NORTH).unwrap();
         assert!(world.edges.contains_key(&(east(&world, 4), east(&world, 5))), "the eastward road, moved over, still runs");
         assert!(!world.may_lay_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, NORTH, false), "not across the near road to the far one");
         assert!(!world.may_lay_at(at(5, 0), 0, SOUTH, at(6, 0), 0, NORTH, true), "not from one side to the other");
@@ -519,7 +519,7 @@ pub(super) mod tests {
         assert!(world.may_lay_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, SOUTH, false));
         world.place_road_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, SOUTH, false, false);
         let street = world.road_node_at(at(5, 3)).unwrap();
-        let route = |w: &World, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
+        let route = |w: &Map, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
         assert!(route(&world, east(&world, 0), street).is_some(), "right off it");
         assert!(route(&world, street, east(&world, 9)).is_some(), "right onto it");
         assert!(route(&world, west(&world, 9), street).is_none(), "the far side has no way to it");
@@ -539,7 +539,7 @@ pub(super) mod tests {
         assert!(back.may_lay_at(at(9, 0), 0, MIDDLE, at(8, 0), 0, NORTH, true), "back along the road it came in by");
         // Round a bend: east, then south; and back beside it all the way,
         // outside the bend, the one there moving in.
-        let mut bend = World::new();
+        let mut bend = Map::new();
         bend.terrain = world.terrain.clone();
         bend.place_one_way_of(&[at(0, 0), at(1, 0), at(2, 0), at(3, 0), at(3, 1), at(3, 2), at(3, 3)], false);
         let (east, out): (Side, Side) = ([1, 0], [1, -1]);
@@ -551,7 +551,7 @@ pub(super) mod tests {
         }
         assert!(bend.road_node_at(at(3, 0)).is_none(), "the corner is two roads");
         assert!(bend.node_in(at(3, 0), 0, [-1, 1]).is_some(), "the first inside the bend");
-        let r = |w: &World, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
+        let r = |w: &Map, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
         assert!(r(&bend, bend.node_in(at(3, 3), 0, east).unwrap(), bend.node_in(at(0, 0), 0, NORTH).unwrap()).is_some(), "the way back drives");
         assert!(r(&bend, bend.node_in(at(0, 0), 0, SOUTH).unwrap(), bend.node_in(at(3, 3), 0, [-1, 0]).unwrap()).is_some(), "and the way out");
         // On the wrong side: a pair that keeps left is still a pair.
@@ -570,7 +570,7 @@ pub(super) mod tests {
     /// The reachability index is maintained edit by edit rather than rebuilt,
     /// so the thing worth testing is that it never drifts from the graph it
     /// claims to describe. Brute-forces the answer and demands agreement.
-    pub(in crate::world) fn agrees_with_the_edges(world: &World) {
+    pub(in crate::world) fn agrees_with_the_edges(world: &Map) {
         let mut adj: fixed::HashMap<EntityId, Vec<EntityId>> =
             fixed::HashMap::default();
         for &(a, b) in world.edges.keys() {
@@ -599,7 +599,7 @@ pub(super) mod tests {
     }
 
     /// Demolition as the game loop does it: edges first, then the node.
-    pub(in crate::world) fn lift_road(world: &mut World, at: GridCoord) {
+    pub(in crate::world) fn lift_road(world: &mut Map, at: GridCoord) {
         let Some(id) = world.road_node_at(at) else { return };
         world.demolish_node(id);
     }
@@ -610,14 +610,14 @@ pub(super) mod tests {
     /// edges say, through cuts, rings and islands.
     #[test]
     fn the_network_follows_the_roads_laid_and_lifted() {
-        let mut world = World::meadow(-2..8, -2..8);
+        let mut world = Map::meadow(-2..8, -2..8);
         let mut rng: u64 = 0x5eed;
         let mut roll = move |n: i32| {
             rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             ((rng >> 33) % n as u64) as i32
         };
         // How many networks there are, by what the index says.
-        let parts = |world: &World| {
+        let parts = |world: &Map| {
             let nodes: Vec<EntityId> = world.objects.roads().map(|e| e.id).collect();
             nodes.iter().enumerate().filter(|&(i, &n)| !nodes[..i].iter().any(|&m| world.network.connected(m, n))).count()
         };
@@ -644,7 +644,7 @@ pub(super) mod tests {
     /// before the mayor's tiles were counted, and took one from nought.
     #[test]
     fn a_saved_drive_opens_as_a_door() {
-        let mut world = World::meadow(-8..8, -8..8);
+        let mut world = Map::meadow(-8..8, -8..8);
         world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 4, y: 2 }]);
         let house = world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2).unwrap();
         world.place_road_path(&[GridCoord { x: 2, y: 2 }, GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }]);
@@ -666,7 +666,7 @@ pub(super) mod tests {
     /// nothing stands on it until the mayor builds.
     #[test]
     fn a_fresh_world_is_the_bare_island() {
-        let mut world = World::new();
+        let mut world = Map::new();
         world.terrain = land::terrain::generate(7);
         world.restore();
         world.resettle();

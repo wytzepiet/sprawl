@@ -30,10 +30,10 @@ fn new_seed() -> u32 {
 /// derived from the seed, so it is made again on every start rather than
 /// saved.
 fn island(world: &mut World) {
-    world.terrain = land::terrain::generate(world.terrain_seed);
-    println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
+    world.map.terrain = land::terrain::generate(world.map.terrain_seed);
+    println!("terrain: {} tiles from seed {}", world.map.terrain.len(), world.map.terrain_seed);
     let started = std::time::Instant::now();
-    world.raise_mountains();
+    world.map.raise_mountains();
     println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
 }
 
@@ -49,17 +49,17 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
     // Fixtures are built fresh on every start, at noon, standing still: the
     // same pictures every time, lit the same way.
-    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::fixtures::NOON) } else { load_world(&mut db) };
+    let (mut world, sim_time) = if fixtures.is_some() { (World::new(), sprawl::world::fixtures::NOON) } else { load_world(&mut db) };
     if let Some(dir) = &fixtures {
-        sprawl::fixtures::build(&mut world, Path::new(dir));
+        sprawl::world::fixtures::build(&mut world.map, Path::new(dir));
     } else {
-        if world.objects.is_empty() {
-            world.terrain_seed = new_seed();
+        if world.map.objects.is_empty() {
+            world.map.terrain_seed = new_seed();
         }
         island(&mut world);
-        if !world.objects.is_empty() {
-            world.restore();
-            println!("loaded {} objects from db", world.objects.len());
+        if !world.map.objects.is_empty() {
+            world.map.restore();
+            println!("loaded {} objects from db", world.map.objects.len());
         }
     }
     let speed = if fixtures.is_some() { 0 } else { 1 };
@@ -67,7 +67,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fresh = Box::new(move || {
         persistence::Db::open(&fresh_db).clear();
         let mut world = World::new();
-        world.terrain_seed = new_seed();
+        world.map.terrain_seed = new_seed();
         island(&mut world);
         println!("reset: world cleared, terrain regenerated");
         world
@@ -127,10 +127,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 fn inspect(game: &mut Game, query: Debug) -> String {
     let (world, now) = (&mut game.world, game.now);
     let v = match query {
-        Debug::Lot(id) => world.inspect_lot(id, now),
+        Debug::Lot(id) => world.map.inspect_lot(id, now),
         Debug::Town => sprawl::economy::town(world, now),
         Debug::Sea => sprawl::haul::inspect(world, now),
-        Debug::Map { x, y, r } => sprawl::fixtures::draw(world, x, y, r).into(),
+        Debug::Map { x, y, r } => sprawl::world::fixtures::draw(&world.map, x, y, r).into(),
     };
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
@@ -165,11 +165,11 @@ fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
 /// it stands, saved even when no object changed: a paused town's coins
 /// and clock are worth keeping too.
 fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
-    let (changed, removed) = world.objects.drain_persist_dirty();
-    let changed: Vec<_> = changed.iter().filter_map(|&id| world.objects.get(id)).filter(|e| persistence::kept(e)).collect();
+    let (changed, removed) = world.map.objects.drain_persist_dirty();
+    let changed: Vec<_> = changed.iter().filter_map(|&id| world.map.objects.get(id)).filter(|e| persistence::kept(e)).collect();
     let meta = persistence::Meta {
-        next_id: world.objects.next_id(),
-        terrain_seed: world.terrain_seed,
+        next_id: world.map.objects.next_id(),
+        terrain_seed: world.map.terrain_seed,
         sim_time,
         gdp: world.gdp,
         treasury: world.treasury,

@@ -4,9 +4,9 @@ use fixed::HashSet;
 use model::blueprint::blueprint;
 use model::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
 use land::{ChunkCoord, CHUNK_SIZE};
-use crate::world::World;
+use crate::world::Map;
 
-impl World {
+impl Map {
     /// Everything as if it had just been built: at startup, for a world
     /// laid out fresh or loaded from a save. A save from before a need
     /// existed owes it from now on; one from before stocks gets its shelf;
@@ -354,17 +354,17 @@ mod tests {
     use model::BuildingKind;
 
     /// Grass, one long street, and whatever gets built beside it.
-    fn town() -> World {
-        World::meadow(-4..40, -4..4).street(-2..40)
+    fn town() -> Map {
+        Map::meadow(-4..40, -4..4).street(-2..40)
     }
 
-    fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {
+    fn build(world: &mut Map, x: i32, kind: BuildingKind) -> EntityId {
         world
             .place_on_street(GridCoord { x, y: 1 }, kind)
             .expect("the street should give it a driveway")
     }
 
-    fn residents(world: &World) -> Vec<Resident> {
+    fn residents(world: &Map) -> Vec<Resident> {
         world
             .objects
             .iter()
