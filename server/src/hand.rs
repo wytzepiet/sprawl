@@ -1,7 +1,7 @@
 //! The mayor's hand: what a player asks of the town, done, and the rule of
 //! where it may go (`may_step`), which the hand's dots are drawn by too.
 
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{Build, BuildingKind, ClientMessage, EntityId, GameObject, GridCoord, News, OwnerId, Tool};
 use map::decks::MIDDLE;
@@ -30,7 +30,7 @@ pub(crate) fn handle_player_action(
                 .map(|e| e.id)
                 .collect();
             for car_id in car_ids {
-                crate::car::simulation::park_at_home(world, events, car_id);
+                world.drive(events, |t, e| traffic::car::simulation::park_at_home(t, e, car_id));
             }
         }
         ClientMessage::Trade { good, packages, out } => {
@@ -136,10 +136,10 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, step: Build, now: G
             // the two tiles.
             if from == to {
                 if let Some(id) = world.map.node_in(to, ht, st) {
-                    crate::car::reroute::handle_road_demolish(world, events, id, now);
+                    world.drive(events, |t, e| traffic::car::reroute::handle_road_demolish(t, e, id, now));
                 }
             } else if let Some((a, b)) = world.map.link_between_at(from, hf, sf, to, ht, st) {
-                crate::car::reroute::handle_link_demolish(world, events, a, b, now);
+                world.drive(events, |t, e| traffic::car::reroute::handle_link_demolish(t, e, a, b, now));
             }
         }
     }

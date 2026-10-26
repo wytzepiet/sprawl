@@ -78,7 +78,7 @@ function chunkImage(tiles: Uint8Array, sheet: Sheet): unknown {
 }
 
 /**
- * A lane faint on the water, as the map reserves it (`shipping::lanes`):
+ * A lane faint on the water, as the map reserves it (`traffic::sea::lanes`):
  * one way, a thin line with a chevron every few tiles the way it runs; a
  * junction shared both ways, a berth's approach or a strait, dashed and
  * warmer; a crossing, a short bold stroke where the lanes meet.

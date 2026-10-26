@@ -376,13 +376,13 @@ pub enum Job {
     Harvest,
 }
 
-/// A ship's leg over the water (`shipping::water::route`): the way, in
+/// A ship's leg over the water (`traffic::sea::water::route`): the way, in
 /// tiles, from the ferry's middle at one end to the other, and when it
 /// set out and arrives. It gathers way from a berth and comes into one
 /// at an even push (`ease`: the start is a berth, the end is), at full
-/// speed over the map's edge; `shipping::covered` says how far along it
+/// speed over the map's edge; `traffic::sea::covered` says how far along it
 /// is at any moment, here and in the client. A leg is sailed in pieces
-/// where it stops at a junction's mouth (`shipping::voyage`); each piece
+/// where it stops at a junction's mouth (`traffic::sea::voyage`); each piece
 /// is sent once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -735,7 +735,7 @@ pub struct Sea {
     pub letters: Vec<crate::orders::Letter>,
 }
 
-/// A stretch of a line's way as it lies on the map (`shipping::lanes`):
+/// A stretch of a line's way as it lies on the map (`traffic::sea::lanes`):
 /// a lane, one way, the way the points run; or a junction between lanes.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

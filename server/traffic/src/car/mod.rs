@@ -12,6 +12,8 @@ pub const REVERSE_SPEED: f64 = 0.2;
 /// it pulls the other way, as a driver does.
 pub const CUSP_MS: u64 = 500;
 pub const MIN_GAP: f64 = 0.5;
+/// Pulling up at a door with nothing to lift: ten minutes.
+pub const SERVICE_MS: model::GameTime = model::DAY_MS as model::GameTime / 144;
 /// How far behind the car ahead a driver likes to keep, in time, besides
 /// `MIN_GAP`: further the faster they go, so a slowing at the front
 /// reaches each one behind a little harder, and a jam spreads back. Not a
@@ -70,3 +72,12 @@ pub enum Obstacle {
     },
 }
 
+
+/// A trip's end: what it burned comes off the tank.
+pub fn drove(map: &mut map::Map, car: model::EntityId, tiles: f64) {
+    if let Some(c) = map.car_mut(car) {
+        for (need, stock) in c.stocks.iter_mut() {
+            stock.take(tiles * need.per_tile());
+        }
+    }
+}

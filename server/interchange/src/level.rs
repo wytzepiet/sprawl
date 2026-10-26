@@ -582,7 +582,7 @@ impl Level {
                 };
                 let start = game.world.map.objects.get(route[0]).and_then(|e| e.position);
                 let car = game.world.map.insert_at(GameObject::Car(Car::new(0, CarRole::Private)), start);
-                if !sprawl::car::spawn::drive_through(&mut game.world, &mut game.events, car, route, now) {
+                if !game.world.drive(&mut game.events, |t, e| traffic::car::spawn::drive_through(t, e, car, route, now)) {
                     game.world.map.despawn_car(car);
                     break;
                 }
@@ -729,7 +729,7 @@ impl Level {
 fn clear(game: &mut Game) {
     let cars: Vec<EntityId> = game.world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Car(_))).map(|e| e.id).collect();
     for car in cars {
-        sprawl::car::simulation::park_at_home(&mut game.world, &mut game.events, car);
+        game.world.drive(&mut game.events, |t, e| traffic::car::simulation::park_at_home(t, e, car));
     }
 }
 

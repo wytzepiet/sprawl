@@ -381,7 +381,7 @@ impl Lanes {
 mod tests {
     use super::*;
     use model::GridCoord;
-    use crate::shipping::water::End;
+    use crate::sea::water::End;
     use map::sea::Berth;
 
     fn rows(spec: &[(&str, usize)]) -> Vec<String> {
@@ -405,23 +405,23 @@ mod tests {
         for (way, berths) in [(&out, [true, false]), (&back, [false, true])] {
             let gates = lanes.gates(way);
             assert!(gates.len() == 1 && gates[0].kind == Kind::Berth, "{gates:?}\n{map}");
-            let len = crate::shipping::length(way);
+            let len = crate::sea::length(way);
             assert!(if berths[0] { gates[0].d0 == 0.0 } else { gates[0].d1 == len }, "{gates:?}\n{map}");
         }
         assert!(lanes.two_way(&w).is_empty(), "{map}");
         // Out and back keep apart past the approach: a tile clear, a
         // lane over, as the search put them.
-        let at = |w: &[[f64; 2]], d: f64| crate::shipping::point_at(w, d).0;
-        let len = crate::shipping::length(&out);
+        let at = |w: &[[f64; 2]], d: f64| crate::sea::point_at(w, d).0;
+        let len = crate::sea::length(&out);
         let gaps: Vec<f64> = (12..(len as usize - 1))
             .map(|k| at(&out, k as f64))
-            .map(|p| (0..(crate::shipping::length(&back) * 4.0) as usize).map(|j| at(&back, j as f64 / 4.0)).map(|q| (p[0] - q[0]).hypot(p[1] - q[1])).fold(f64::INFINITY, f64::min))
+            .map(|p| (0..(crate::sea::length(&back) * 4.0) as usize).map(|j| at(&back, j as f64 / 4.0)).map(|q| (p[0] - q[0]).hypot(p[1] - q[1])).fold(f64::INFINITY, f64::min))
             .collect();
         assert!(gaps.iter().all(|&g| g >= 1.5), "out and back {gaps:.2?} apart\n{map}");
         // Port to port: going out, the way back is on the left.
-        let (p, heading) = crate::shipping::point_at(&out, len / 2.0);
+        let (p, heading) = crate::sea::point_at(&out, len / 2.0);
         let left = [p[0] + 2.0 * heading.sin(), p[1] - 2.0 * heading.cos()];
-        let near = |q: [f64; 2]| (0..(crate::shipping::length(&back) * 4.0) as usize).map(|j| at(&back, j as f64 / 4.0)).map(|b| (b[0] - q[0]).hypot(b[1] - q[1])).fold(f64::INFINITY, f64::min);
+        let near = |q: [f64; 2]| (0..(crate::sea::length(&back) * 4.0) as usize).map(|j| at(&back, j as f64 / 4.0)).map(|b| (b[0] - q[0]).hypot(b[1] - q[1])).fold(f64::INFINITY, f64::min);
         assert!(near(left) < 1.0, "the way back is not on the left\n{map}");
     }
 

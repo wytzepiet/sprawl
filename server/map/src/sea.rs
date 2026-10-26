@@ -12,7 +12,7 @@
 //!
 //! The ferry is the world's, one to a harbour, on a timetable: it leaves
 //! the world with what was booked for it and the settlers waiting to come,
-//! sails in from the map's edge along its line's way (`shipping/`),
+//! sails in from the map's edge along its line's way (`traffic::sea`),
 //! berths for `DWELL`, and casts off on time with whatever the forklifts
 //! got aboard, back out over the edge. Its deck carries pallets, a few to
 //! a bay, and settlers' cars in the bays with none. The harbour's

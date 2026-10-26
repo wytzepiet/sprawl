@@ -1,9 +1,9 @@
 use crate::car::{nose, tail, ACCELERATION, LOT_SPEED, MIN_GAP};
 use model::CRUISE_SPEED;
-use crate::engine::event_queue::EventQueue;
+use crate::event_queue::EventQueue;
 use model::GameTime;
 use model::{EntityId, GameObject, Trip};
-use crate::world::World;
+use crate::Traffic;
 
 /// Send a parked car out to a spot at a building, owner aboard. It leaves
 /// from the spot it holds, if it holds one, else from the node given: the
@@ -15,7 +15,7 @@ use crate::world::World;
 /// where this car would pull in. The caller decides when to try again;
 /// nothing is queued here.
 pub fn start_trip(
-    world: &mut World,
+    world: &mut Traffic,
     events: &mut EventQueue,
     car_id: EntityId,
     from_node: EntityId,
@@ -35,7 +35,7 @@ pub fn start_trip(
 /// the car stands (`leaves`).
 #[allow(clippy::too_many_arguments)]
 pub fn depart(
-    world: &mut World,
+    world: &mut Traffic,
     events: &mut EventQueue,
     car_id: EntityId,
     out: Vec<EntityId>,
@@ -85,7 +85,7 @@ pub fn depart(
 /// (`car::reroute`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn trip(
-    world: &World,
+    world: &Traffic,
     car_id: EntityId,
     destination: EntityId,
     route: Vec<EntityId>,
@@ -139,7 +139,7 @@ pub(crate) fn trip(
 
 /// A car set off on its trip: at the trip's first node, in the queues of
 /// its route and of its first edge, and awake.
-pub(crate) fn set_off(world: &mut World, events: &mut EventQueue, car_id: EntityId, trip: Trip) {
+pub(crate) fn set_off(world: &mut Traffic, events: &mut EventQueue, car_id: EntityId, trip: Trip) {
     let first_edge = (trip.route[0], trip.route[1]);
     let first_lane = trip.lanes.get(1).copied().unwrap_or(0) as usize;
     let route = trip.route.clone();
@@ -152,13 +152,10 @@ pub(crate) fn set_off(world: &mut World, events: &mut EventQueue, car_id: Entity
 
     // The driver's `at` points at the car for the whole ride; arrival points
     // it at the destination.
-    // A settler off the ferry, the first time they are anywhere: a
-    // mission may have waited for them.
     if let Some(entry) = world.map.objects.get_mut(owner)
         && let GameObject::Resident(ref mut r) = entry.object
-        && r.at.replace(car_id).is_none()
     {
-        world.missions.stir();
+        r.at = Some(car_id);
     }
 
     world.map.register_car_route(car_id, &route);
@@ -172,7 +169,7 @@ pub(crate) fn set_off(world: &mut World, events: &mut EventQueue, car_id: Entity
 
 /// Is the start of this edge clear of the last car to set off along it, by
 /// a car's length and a gap?
-fn room_at_start(world: &World, first_edge: (EntityId, EntityId), lane: usize, role: model::CarRole, now: GameTime) -> bool {
+fn room_at_start(world: &Traffic, first_edge: (EntityId, EntityId), lane: usize, role: model::CarRole, now: GameTime) -> bool {
     if let Some(seg) = world.map.edges.get(&first_edge)
         && let Some(last_id) = seg.back(lane)
         && let Some(entry) = world.map.objects.get(last_id)
@@ -192,7 +189,7 @@ fn room_at_start(world: &World, first_edge: (EntityId, EntityId), lane: usize, r
 /// its first to its last: it is gone when it gets there. A level's traffic,
 /// in at one gate and out at another. False when the start of the road is
 /// taken.
-pub fn drive_through(world: &mut World, events: &mut EventQueue, car_id: EntityId, route: Vec<EntityId>, now: GameTime) -> bool {
+pub fn drive_through(world: &mut Traffic, events: &mut EventQueue, car_id: EntityId, route: Vec<EntityId>, now: GameTime) -> bool {
     let role = match world.map.objects.get(car_id).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.trip.is_none() && route.len() >= 2 => c.role,
         _ => return false,
@@ -232,7 +229,7 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
 
 /// A manoeuvre within a lot, by a way given, all of it lot nodes, its last
 /// `backs` edges backed: a lorry from one dock of a yard to another.
-pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<model::Pose>, now: GameTime) -> bool {
+pub fn manoeuvre(world: &mut Traffic, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<model::Pose>, now: GameTime) -> bool {
     let n = route.len();
     if !matches!(world.map.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n) {
         return false;
@@ -269,7 +266,9 @@ mod tests {
     /// of the trip out is driven backwards, and then it drives on.
     #[test]
     fn a_car_backs_out_of_its_driveway() {
-        let mut world = World::from(Map::meadow(-4..40, -4..8).street(-4..40));
+        let mut map = Map::meadow(-4..40, -4..8).street(-4..40);
+        let mut streets = crate::intersection::IntersectionRegistry::new();
+        let mut world = Traffic { map: &mut map, streets: &mut streets, arrived: Vec::new() };
         let house = world.map.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
         let depot = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Depot).unwrap();
         let car = world.map.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
@@ -286,7 +285,7 @@ mod tests {
         let (dx, dy) = (driveway[0] - spot[0], driveway[1] - spot[1]);
         assert!(pose.heading.cos() * dx + pose.heading.sin() * dy > 0.0, "parked facing the house, the way it drove in");
         assert_eq!(world.map.backs_out(car), 1, "backed off the driveway");
-        let mut events = crate::engine::event_queue::EventQueue::new();
+        let mut events = crate::event_queue::EventQueue::new();
         let street = world.map.approach(house).unwrap();
         assert!(crate::car::spawn::start_trip(&mut world, &mut events, car, street, depot, 0, GameTime::MAX));
         let trip = match world.map.objects.get(car).map(|e| &e.object) {

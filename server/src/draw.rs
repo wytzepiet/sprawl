@@ -21,7 +21,7 @@
 //! with every turn its angles allow. A road to cross with no turns goes
 //! over or under. A drag is one action to undo (`undo::Act::Drawn`).
 
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};

@@ -429,6 +429,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sprawl",
+ "traffic",
  "ts-rs",
 ]
 
@@ -924,6 +925,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "traffic",
  "ts-rs",
 ]
 
@@ -944,6 +946,7 @@ dependencies = [
  "sprawl",
  "tokio",
  "tower-http",
+ "traffic",
 ]
 
 [[package]]
@@ -957,6 +960,7 @@ dependencies = [
  "rmp-serde",
  "serde_json",
  "sprawl",
+ "traffic",
  "wasm-bindgen",
 ]
 
@@ -1142,6 +1146,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "traffic"
+version = "0.1.0"
+dependencies = [
+ "fixed",
+ "land",
+ "map",
+ "model",
 ]
 
 [[package]]

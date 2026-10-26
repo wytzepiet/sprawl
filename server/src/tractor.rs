@@ -4,7 +4,7 @@
 //! is laid over it, are the map's (`world::fields`).
 
 use crate::economy;
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use map::fields::{PACE, RIPEN};
 use crate::world::World;
 use model::{CarRole, EntityId, GameObject, GameTime, Job, Run, Stage};

@@ -29,16 +29,16 @@ pub struct World {
     /// to every player.
     pub news: Vec<model::News>,
     /// The sea, read from the terrain the first time a way over it is
-    /// wanted (`shipping::water`).
-    pub water: std::sync::OnceLock<crate::shipping::water::Water>,
+    /// wanted (`traffic::sea::water`).
+    pub water: std::sync::OnceLock<traffic::sea::water::Water>,
     /// Each harbour's line to the world, its ways found when it is
     /// commissioned. Derived, like every other index.
-    pub lines: std::collections::BTreeMap<EntityId, crate::shipping::lines::Line>,
+    pub lines: std::collections::BTreeMap<EntityId, traffic::sea::lines::Line>,
     /// The lanes those ways are laid as, the junctions where they share
     /// or cross water, and each ship's leg through them: derived too, and
     /// a ship saved at sea comes back moored.
-    pub lanes: Option<crate::shipping::lanes::Lanes>,
-    pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
+    pub lanes: Option<traffic::sea::lanes::Lanes>,
+    pub voyages: HashMap<EntityId, traffic::sea::voyage::Voyage>,
     /// Calls raised and not yet resolved. Not saved: a shop still low when
     /// the world comes back calls again at its next visit.
     pub calls: Vec<crate::calls::Call>,
@@ -50,10 +50,10 @@ pub struct World {
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
     /// Who goes first at each sea junction and berth: its ships' claims.
-    pub junctions: crate::intersection::IntersectionRegistry,
+    pub junctions: traffic::intersection::IntersectionRegistry,
     /// Who goes first at each road junction and crossing: its cars'
     /// claims, keyed by node or crossing. Never saved: trips are not.
-    pub streets: crate::intersection::IntersectionRegistry,
+    pub streets: traffic::intersection::IntersectionRegistry,
     /// Every line that may have a desk free: each one settled, and each
     /// that lost a worker. Some are full; `settle` sees which, by id.
     pub vacancies: std::collections::BTreeSet<EntityId>,
@@ -89,8 +89,8 @@ impl World {
             undo: HashMap::default(),
             placed: Vec::new(),
             missions: Default::default(),
-            junctions: crate::intersection::IntersectionRegistry::new(),
-            streets: crate::intersection::IntersectionRegistry::new(),
+            junctions: traffic::intersection::IntersectionRegistry::new(),
+            streets: traffic::intersection::IntersectionRegistry::new(),
             vacancies: Default::default(),
             sites: Default::default(),
             market: Default::default(),
@@ -100,5 +100,16 @@ impl World {
     /// A saved world's map; its coins, missions and market are the save's to set.
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
         Self { map: Map::from_loaded(objects, terrain_seed), treasury: 0.0, ..Self::new() }
+    }
+
+    /// Traffic over the map, and then whoever stepped out of a car on the
+    /// way steps in where it stopped (`resident::set_at`).
+    pub fn drive<R>(&mut self, events: &mut traffic::event_queue::EventQueue, f: impl FnOnce(&mut traffic::Traffic, &mut traffic::event_queue::EventQueue) -> R) -> R {
+        let mut t = traffic::Traffic { map: &mut self.map, streets: &mut self.streets, arrived: Vec::new() };
+        let r = f(&mut t, events);
+        for (who, at) in t.arrived {
+            crate::resident::set_at(self, events, who, at, events.now());
+        }
+        r
     }
 }

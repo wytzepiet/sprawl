@@ -2,17 +2,17 @@
 //! is, or sent home where no way is left.
 
 use crate::car::simulation::park_at_home;
-use crate::engine::event_queue::EventQueue;
+use crate::event_queue::EventQueue;
 use model::GameTime;
 use model::{EntityId, GameObject, Trip};
-use crate::world::World;
+use crate::Traffic;
 
 /// Take a road out of the world, rerouting or despawning whatever was on it.
 ///
 /// By id rather than by tile: while a new road crosses one being demolished the
 /// tile holds a node for each world, and only one of them is going.
-pub(crate) fn handle_road_demolish(
-    world: &mut World,
+pub fn handle_road_demolish(
+    world: &mut Traffic,
     events: &mut EventQueue,
     node_id: EntityId,
     now: GameTime,
@@ -66,8 +66,8 @@ pub(crate) fn handle_road_demolish(
 
 /// Cut the road between two nodes, both ways, rerouting whatever was to
 /// drive it; a node left with no road goes.
-pub(crate) fn handle_link_demolish(
-    world: &mut World,
+pub fn handle_link_demolish(
+    world: &mut Traffic,
     events: &mut EventQueue,
     a: EntityId,
     b: EntityId,
@@ -103,7 +103,7 @@ pub(crate) fn handle_link_demolish(
 
 /// Road nodes among these left with no road: gone, and anything routed
 /// over one sent home.
-fn drop_orphans(world: &mut World, events: &mut EventQueue, nodes: &[EntityId]) {
+fn drop_orphans(world: &mut Traffic, events: &mut EventQueue, nodes: &[EntityId]) {
     for &nid in nodes {
         let is_orphan = match world.map.objects.get(nid) {
             Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
@@ -126,7 +126,7 @@ fn drop_orphans(world: &mut World, events: &mut EventQueue, nodes: &[EntityId]) 
 /// `from_node`: out of every queue of its old route and into those of its
 /// new, standing where it was. False where no way is left.
 fn reroute(
-    world: &mut World,
+    world: &mut Traffic,
     events: &mut EventQueue,
     car_id: EntityId,
     from_node: EntityId,

@@ -43,10 +43,15 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   - `server/map/` — what is where: the land as built on, roads, lots,
     buildings, the cars on them and who lives and works where (`Map`).
     It keeps itself whole and decides nothing.
+  - `server/traffic/` — how things move: cars on the roads and ships on
+    the sea's lanes, who goes first where their ways meet, and the queue
+    that wakes each one (`Traffic`). Never why: a driver who steps out
+    is handed back to the game (`World::drive`).
   - `server/` itself, the `sprawl` library: the sim, what happens on the
-    map (`world::World`: the map, and who moves in and is hired, who goes
-    first at a junction, the books, calls, market, missions and ferries)
-    as `game::Game`, with no clock on the wall and no IO.
+    map (`world::World`: the map, and who moves in and is hired, where
+    everyone and everything is going, the books, calls, market, missions
+    and the ferries' timetable) as `game::Game`, with no clock on the
+    wall and no IO.
   - `server/interchange/` — the puzzle: levels played on the game, and
     replays of them. The game knows nothing of it.
   - `server/host/` — the server binary: `Game` on a tokio loop, over

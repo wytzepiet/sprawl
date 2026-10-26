@@ -4,13 +4,13 @@
 //! got aboard (docs/shipping.md §Harbours). Where a harbour and its berth
 //! stand, and the ferry's deck, are the map's (`world::sea`).
 
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::{Car, CarRole, EntityId, GameObject, GameTime, Good, GridCoord, Package, DAY_MS};
-use crate::shipping::lanes::{Gate, Kind, Lanes};
-use crate::shipping::lines::Line;
-use crate::shipping::DWELL;
-use crate::shipping::voyage::Voyage;
-use crate::shipping::water::{End, Water};
+use traffic::sea::lanes::{Gate, Kind, Lanes};
+use traffic::sea::lines::Line;
+use traffic::sea::DWELL;
+use traffic::sea::voyage::Voyage;
+use traffic::sea::water::{End, Water};
 use map::sea::{seats, BAYS, DECK, PER_BAY, QUAY};
 use crate::world::World;
 
@@ -25,8 +25,8 @@ pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 15), (Good::Stone, 5), (Go
 
 impl World {
     /// A harbour's line to the world: out from its berth to the map's
-    /// edge (`shipping::water::route`) and back in its own lane beside the
-    /// way out, both laid on the map as lanes (`shipping::lanes`), on the
+    /// edge (`traffic::sea::water::route`) and back in its own lane beside the
+    /// way out, both laid on the map as lanes (`traffic::sea::lanes`), on the
     /// clock-face timetable (`Line::cycle`). Found once, when the harbour
     /// is commissioned, and kept; rebuilt from nothing on load, harbour by
     /// harbour in the same order. None where the water does not reach the
@@ -46,7 +46,7 @@ impl World {
     /// berth's approach at the end of the way in.
     fn berth_gate(&self, harbour: EntityId) -> Option<Gate> {
         let way = &self.lines.get(&harbour)?.legs[1];
-        self.lanes.as_ref()?.gates(way).pop().filter(|g| g.kind == Kind::Berth && g.d1 >= crate::shipping::length(way) - 1e-6)
+        self.lanes.as_ref()?.gates(way).pop().filter(|g| g.kind == Kind::Berth && g.d1 >= traffic::sea::length(way) - 1e-6)
     }
 
     /// A ferry sets out on a leg of its line: in from the edge, or out
@@ -179,9 +179,9 @@ impl World {
             // last of the way, from where a ship that is due then is now;
             // held up on its way out, it comes in late, over the edge.
             let way = &line.legs[1];
-            let len = crate::shipping::length(way);
-            let left = if now < due { crate::shipping::covered(len, [true, false], due - now) } else { len };
-            let way = crate::shipping::last(way, left);
+            let len = traffic::sea::length(way);
+            let left = if now < due { traffic::sea::covered(len, [true, false], due - now) } else { len };
+            let way = traffic::sea::last(way, left);
             self.board(ferry, harbour);
             self.set_out(events, ferry, way, false, now);
         }
@@ -270,13 +270,19 @@ impl World {
         // street does not let out yet tries again with the next. Whoever is
         // still aboard when the ferry sails waits for the next sailing.
         let off = seat.and_then(|(k, at)| Some((self.map.way_off(harbour, 2 * k + (j & 1))?, at)));
+        // A settler off the ferry, the first time they are anywhere: a
+        // mission may have waited for them.
+        let settler = self.map.car(car).and_then(|c| self.map.resident(c.owner)).is_some_and(|r| r.at.is_none());
         let drove = home.is_some_and(|home| match off {
             Some((out, at)) => {
                 self.map.update_position(car, GridCoord { x: at.at[0].floor() as i32, y: at.at[1].floor() as i32 });
-                crate::car::spawn::depart(self, events, car, out, Some(at), street, home, now, GameTime::MAX)
+                self.drive(events, |t, e| traffic::car::spawn::depart(t, e, car, out, Some(at), street, home, now, GameTime::MAX))
             }
-            None => crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX),
+            None => self.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, street, home, now, GameTime::MAX)),
         });
+        if drove && settler {
+            self.missions.stir();
+        }
         if drove || home.is_none() {
             if let Some(c) = self.map.car_mut(ferry) {
                 c.passengers.remove(0);
@@ -286,7 +292,7 @@ impl World {
 
     /// On a leg: on the map where the leg has it, and awake again as it
     /// crosses into another chunk, for the views that watch one, and as
-    /// its voyage must think at a junction (`shipping::voyage`): it may
+    /// its voyage must think at a junction (`traffic::sea::voyage`): it may
     /// stop at a mouth and stand there, and the ships it lets through as
     /// it leaves one are woken. At the end, in at the berth it moors; out
     /// over the edge it is away, back at the berth a turn after it cast
@@ -299,7 +305,7 @@ impl World {
             events.wake(0, w);
         }
         let tile = |t: GameTime| {
-            let p = crate::shipping::pose(&sail, t).at;
+            let p = traffic::sea::pose(&sail, t).at;
             GridCoord { x: p[0].floor() as i32, y: p[1].floor() as i32 }
         };
         if !done {
@@ -309,7 +315,7 @@ impl World {
                 c.sail = Some(sail.clone());
             }
             self.map.update_position(ferry, tile(now));
-            let next = voyage.wake(&sail).min(if now < sail.ends { crate::shipping::next_crossing(&sail, now) } else { GameTime::MAX });
+            let next = voyage.wake(&sail).min(if now < sail.ends { traffic::sea::next_crossing(&sail, now) } else { GameTime::MAX });
             if next < GameTime::MAX {
                 events.wake(next.saturating_sub(now).max(1), ferry);
             }
@@ -320,7 +326,7 @@ impl World {
         c.sail = None;
         let harbour = c.owner;
         if !sail.astern {
-            c.spot = Some(crate::shipping::pose(&sail, sail.ends));
+            c.spot = Some(traffic::sea::pose(&sail, sail.ends));
             c.due = now + DWELL;
             self.map.update_position(ferry, tile(sail.ends));
             // The post comes with it.

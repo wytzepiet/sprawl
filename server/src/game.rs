@@ -1,8 +1,7 @@
 use fixed::{HashMap, HashSet};
 
-use crate::car::simulation::handle_car_wake_up;
 use crate::resident::handle_resident_wake;
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{CarRole, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
 use land::ChunkCoord;
@@ -290,12 +289,14 @@ fn handle_wake(
     now: GameTime,
 ) {
     match world.map.objects.get(id).map(|e| &e.object) {
-        Some(GameObject::Car(_)) => handle_car_wake_up(world, events, id, now),
+        // A parked one's is the game's: what it does next.
+        Some(GameObject::Car(c)) if c.trip.is_none() => crate::calls::car_idle(world, events, id, now),
+        Some(GameObject::Car(_)) => world.drive(events, |t, e| traffic::car::simulation::handle_car_wake_up(t, e, id, now)),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened.
         Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
         // A junction's is its lights looking again.
-        Some(GameObject::RoadNode(_)) => crate::car::simulation::lights(world, events, id, now),
+        Some(GameObject::RoadNode(_)) => world.drive(events, |t, e| traffic::car::simulation::lights(t, e, id, now)),
         // Midnight: every building takes its turn, and every line reads
         // the labour market again.
         None if id == MIDNIGHT => {

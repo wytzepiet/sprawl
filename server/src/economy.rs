@@ -661,7 +661,7 @@ mod tests {
         let depot = world.map.place_on_street(at(20), Depot).unwrap();
         let van = world.map.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == model::CarRole::Van)).map(|e| e.id).expect("a van in the yard");
         world.treasury = 100.0;
-        crate::resident::drove(&mut world, van, 250.0);
+        traffic::car::drove(&mut world.map, van, 250.0);
         let fuel = shelf(&world, depot, Good::Fuel).level;
         refilled(&mut world, van, 0);
         let full = match world.map.objects.get(van).map(|e| &e.object) {
@@ -672,7 +672,7 @@ mod tests {
         assert!((fuel - shelf(&world, depot, Good::Fuel).level - 0.5).abs() < 1e-9, "half a tank came off the depot's shelf");
         assert_eq!(world.treasury, 100.0, "the depot's own fuel was paid for");
         take(&mut world, depot, Good::Fuel, f64::INFINITY);
-        crate::resident::drove(&mut world, van, 250.0);
+        traffic::car::drove(&mut world.map, van, 250.0);
         refilled(&mut world, van, 0);
         assert!((100.0 - world.treasury - import(Good::Fuel, 0.5)).abs() < 1e-9, "the fill cost {}", 100.0 - world.treasury);
     }

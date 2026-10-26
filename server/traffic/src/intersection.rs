@@ -10,7 +10,7 @@ pub type Dir = (i32, i32);
 
 /// Who may go together through a junction: does a party waiting, from
 /// its arm to its exit, cross one passing. Only ships, which say no track,
-/// are judged by one (`shipping::lanes`; keeping right is
+/// are judged by one (`sea::lanes`; keeping right is
 /// `paths_conflict`); a car says its track.
 pub type Rule = fn(waiting: (Dir, Dir), passing: (Dir, Dir)) -> bool;
 
@@ -514,7 +514,7 @@ impl IntersectionRegistry {
         self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(None))
     }
 
-    /// A junction that keeps its own rule (a sea's: `shipping::lanes`).
+    /// A junction that keeps its own rule (a sea's: `sea::lanes`).
     pub fn get_or_create_with(&mut self, node_id: EntityId, rule: Rule) -> &mut IntersectionManager {
         self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(Some(rule)))
     }

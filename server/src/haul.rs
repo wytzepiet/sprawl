@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use model::blueprint::blueprint;
 
 use crate::economy::whole;
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{CarRole, EntityId, GameObject, Good, Leg, Package, Sailing, Sea, Shipment};
 use crate::world::World;
@@ -226,7 +226,7 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
     // or a slot going out wants: the lorry fetches it from the maker's
     // yard.
     if empty && let Some(maker) = maker_with_surplus(world, depot) {
-        if !crate::car::spawn::start_trip(world, events, lorry, home, maker, now, GameTime::MAX) {
+        if !world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, home, maker, now, GameTime::MAX)) {
             events.wake(crate::calls::RETRY_MS, lorry);
         }
         return;
@@ -258,7 +258,7 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
     let laden = world.map.car(lorry).is_some_and(|c| !c.cargo.is_empty());
     let harbour = waiting_for(world, depot, lorry).or_else(|| laden.then(|| harbour_for(world, depot)).flatten());
     let Some(harbour) = harbour else { return };
-    if !crate::car::spawn::start_trip(world, events, lorry, home, harbour, now, GameTime::MAX) {
+    if !world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, home, harbour, now, GameTime::MAX)) {
         events.wake(crate::calls::RETRY_MS, lorry);
     }
 }
@@ -277,7 +277,7 @@ fn at_maker(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot: 
     let cargo = world.map.car(lorry).map_or(Vec::new(), |c| c.cargo.clone());
     if !cargo.is_empty() {
         let to = if cargo.iter().any(|t| !t.outbound) { Some(depot) } else { harbour_for(world, depot) };
-        let gone = to.zip(world.map.street_of(maker)).is_some_and(|(to, door)| crate::car::spawn::start_trip(world, events, lorry, door, to, now, GameTime::MAX));
+        let gone = to.zip(world.map.street_of(maker)).is_some_and(|(to, door)| world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, door, to, now, GameTime::MAX)));
         if !gone {
             events.wake(crate::calls::RETRY_MS, lorry);
         }
@@ -359,7 +359,7 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
 fn go_home(world: &mut World, events: &mut EventQueue, lorry: EntityId, from: EntityId, now: GameTime) {
     let Some(depot) = world.map.car(lorry).map(|c| c.owner) else { return };
     let door = world.map.street_of(from);
-    let gone = door.is_some_and(|door| crate::car::spawn::start_trip(world, events, lorry, door, depot, now, GameTime::MAX));
+    let gone = door.is_some_and(|door| world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, door, depot, now, GameTime::MAX)));
     if !gone {
         events.wake(crate::calls::RETRY_MS, lorry);
     }
@@ -390,8 +390,8 @@ pub fn sea(world: &World) -> Sea {
             let ferry = world.ferry_of(harbour)?;
             let c = world.map.car(ferry)?;
             let berthed = c.spot.is_some();
-            let arrives = if berthed { c.due - crate::shipping::DWELL } else { c.due };
-            let departs = arrives + crate::shipping::DWELL;
+            let arrives = if berthed { c.due - traffic::sea::DWELL } else { c.due };
+            let departs = arrives + traffic::sea::DWELL;
             Some(Sailing {
                 harbour,
                 ferry,

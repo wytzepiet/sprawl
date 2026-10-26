@@ -1,6 +1,6 @@
-use crate::car::spawn::start_trip;
+use traffic::car::spawn::start_trip;
 use model::CRUISE_SPEED;
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::blueprint::blueprint;
 use crate::economy;
@@ -515,7 +515,7 @@ fn drive(
     until: GameTime,
 ) -> bool {
     match world.map.street_of(from_building) {
-        Some(node) => start_trip(world, events, car, node, dest_building, now, until),
+        Some(node) => world.drive(events, |t, e| start_trip(t, e, car, node, dest_building, now, until)),
         None => false,
     }
 }
@@ -541,15 +541,6 @@ pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<model::card::Nee
             },
         })
         .collect()
-}
-
-/// A trip's end: what it burned comes off the tank.
-pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
-    if let Some(c) = world.map.car_mut(car) {
-        for (need, stock) in c.stocks.iter_mut() {
-            stock.take(tiles * need.per_tile());
-        }
-    }
 }
 
 /// Step out somewhere. The time up to now was spent wherever they were —
@@ -634,7 +625,7 @@ fn crow_flies_ms(world: &World, from: EntityId, to: EntityId) -> GameTime {
 }
 
 /// The lot at either end of a trip: about a tile of ring each, at a crawl.
-const LOT_MS: f64 = 2.0 / crate::car::LOT_SPEED * 1000.0;
+const LOT_MS: f64 = 2.0 / traffic::car::LOT_SPEED * 1000.0;
 
 fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
     world.map.objects.get(id)?.position.map(|p| (p.x, p.y))

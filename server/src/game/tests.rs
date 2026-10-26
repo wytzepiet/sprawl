@@ -132,19 +132,19 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
             };
             let (backer, through) = (car(&mut game.world, home), car(&mut game.world, from));
             let s = game.world.map.approach(from).unwrap();
-            assert!(crate::car::spawn::start_trip(&mut game.world, &mut game.events, through, s, shop, 0, GameTime::MAX));
+            assert!(game.world.drive(&mut game.events, |t, e| traffic::car::spawn::start_trip(t, e, through, s, shop, 0, GameTime::MAX)));
             let mut out = false;
             while game.now < 60_000 {
                 if !out && game.now >= start {
                     let s = game.world.map.approach(home).unwrap();
-                    out = crate::car::spawn::start_trip(&mut game.world, &mut game.events, backer, s, shop, game.now, GameTime::MAX);
+                    out = game.world.drive(&mut game.events, |t, e| traffic::car::spawn::start_trip(t, e, backer, s, shop, game.now, GameTime::MAX));
                 }
                 game.step_to(game.now + 50);
                 let (world, now) = (&game.world, game.now);
                 let (a, b) = (whereabouts(world, backer, now), whereabouts(world, through, now));
                 if let Some((_, v, k)) = a {
                     if k == 1 {
-                        assert!(v <= crate::car::REVERSE_SPEED + 0.06, "backing at {v:.2} (start {start})");
+                        assert!(v <= traffic::car::REVERSE_SPEED + 0.06, "backing at {v:.2} (start {start})");
                     }
                 }
                 if let (Some(a), Some(b)) = (a, b) {
@@ -1085,8 +1085,8 @@ pub(crate) fn opening(game: &mut Game) -> Vec<bool> {
 #[test]
 fn the_opening_from_the_harbour() {
     use model::missions::Key;
-    use crate::shipping::DWELL;
-    use crate::shipping::ferry::FIRST_CALL;
+    use traffic::sea::DWELL;
+    use crate::ferry::FIRST_CALL;
     let mut game = game(street());
     let harbour = harbour_of(&game.world);
     assert_eq!(opening(&mut game), [true, false, false, false, false], "the harbour stands, and nothing else");
@@ -1101,7 +1101,7 @@ fn the_opening_from_the_harbour() {
     let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let lorry = lorries_of(world, depot)[0];
-    let starter: u32 = crate::shipping::ferry::STARTER.iter().map(|&(_, n)| n).sum();
+    let starter: u32 = crate::ferry::STARTER.iter().map(|&(_, n)| n).sum();
     assert_eq!(car_of(world, ferry).booked.len(), starter as usize, "the starter pack is booked");
     // A settle with nothing new touches nothing: what it touches goes
     // to every client, and is written down, each tick.

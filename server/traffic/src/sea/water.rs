@@ -384,14 +384,14 @@ fn sweep(p: &[[f64; 2]], i: usize, j: usize, t: f64) -> Vec<[f64; 2]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shipping::lanes::Kind;
+    use crate::sea::lanes::Kind;
 
     /// The tightest turn along a way at sea, as a radius in tiles: at each
     /// point, the legs either side over the angle between them. Within
     /// `BERTH` tiles of a berth the ferry turns on its thrusters, at a crawl,
     /// and is not counted.
     fn tightest(way: &[[f64; 2]]) -> f64 {
-        let len = crate::shipping::length(way);
+        let len = crate::sea::length(way);
         let mut along = 0.0;
         let mut at_sea = Vec::new();
         for (i, p) in way.iter().enumerate() {
@@ -474,7 +474,7 @@ mod tests {
         let mut times = Vec::new();
         let (mut off_grid, mut off_lane) = (0, 0);
         // The tiles a way passes over, a quarter tile apart.
-        let under = |w: &[[f64; 2]]| -> Vec<(i32, i32)> { crate::shipping::lanes::under(w).into_iter().map(|(_, x, y, _)| (x, y)).collect() };
+        let under = |w: &[[f64; 2]]| -> Vec<(i32, i32)> { crate::sea::lanes::under(w).into_iter().map(|(_, x, y, _)| (x, y)).collect() };
         for seed in 0..20 {
             let started = std::time::Instant::now();
             let water = Water::of(&land::terrain::generate(seed));
@@ -556,7 +556,7 @@ mod tests {
                             off_grid += 1;
                             wrong.push(format!("seed {seed}: a way to {name} runs off the grid from {:?} to {:?}", w[0], w[1]));
                         }
-                        let way = crate::shipping::lanes::way_of(dy.atan2(dx));
+                        let way = crate::sea::lanes::way_of(dy.atan2(dx));
                         let n = (l * 16.0).ceil().max(1.0) as usize;
                         let near = |p: [f64; 2]| {
                             let tiles = |v: f64| (v - SLACK).floor() as i32..=(v + SLACK).floor() as i32;
@@ -584,7 +584,7 @@ mod tests {
                 };
                 // Out of a junction, neither sails over the other's lane.
                 for w in [way, back] {
-                    if let Some((_, x, y, _)) = crate::shipping::lanes::under(w).into_iter().find(|&(_, x, y, h)| !lanes.its_own(x, y, h)) {
+                    if let Some((_, x, y, _)) = crate::sea::lanes::under(w).into_iter().find(|&(_, x, y, h)| !lanes.its_own(x, y, h)) {
                         wrong.push(format!("seed {seed}: a way to {name} sails over another lane at {x},{y}\n{}", lanes.draw(&water, (x, y), 12)));
                     }
                 }
@@ -602,12 +602,12 @@ mod tests {
                 if longest > 12 {
                     wrong.push(format!("seed {seed}: the ways to {name} and back share {:.1} tiles of open water", longest as f64 / 4.0));
                 }
-                let len = crate::shipping::length(way);
-                line += &format!(" {name} {len:.0} tiles {:.1} h{};", crate::shipping::sail_ms(len, berths) as f64 / crate::shipping::HOUR as f64, if crossings > 0 { format!(", lanes cross {crossings}") } else { String::new() });
+                let len = crate::sea::length(way);
+                line += &format!(" {name} {len:.0} tiles {:.1} h{};", crate::sea::sail_ms(len, berths) as f64 / crate::sea::HOUR as f64, if crossings > 0 { format!(", lanes cross {crossings}") } else { String::new() });
                 // The world's line from here calls as often as the old
                 // ferry's 6.4 a day, with as many ferries as that takes.
                 if end == End::Edge {
-                    let ferry = crate::shipping::lines::Line { legs: [way.clone(), back.clone()] };
+                    let ferry = crate::sea::lines::Line { legs: [way.clone(), back.clone()] };
                     let calls = ferry.every_call() as f64 * model::DAY_MS as f64 / ferry.cycle() as f64;
                     line += &format!(" {} ferries, {calls:.1} calls a day;", ferry.every_call());
                     if calls < 6.0 {

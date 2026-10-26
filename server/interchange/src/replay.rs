@@ -20,7 +20,7 @@ use std::hash::Hasher;
 
 use serde::{Deserialize, Serialize};
 
-use sprawl::car::{nose, tail};
+use traffic::car::{nose, tail};
 use model::GameTime;
 use fixed::{HashMap, HashSet};
 use sprawl::game::Game;

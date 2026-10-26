@@ -170,7 +170,7 @@ fn noise(seed: u32, hour: u64, mayor: u64, good: u64) -> f64 {
 /// Every hour gone by since the market last stepped, stepped, and the
 /// orders whose price came read. Read each step of the game: no wake of
 /// its own, so a level or a replay with no market plays as it did.
-pub fn hour(world: &mut World, events: &mut crate::engine::event_queue::EventQueue, now: GameTime) {
+pub fn hour(world: &mut World, events: &mut traffic::event_queue::EventQueue, now: GameTime) {
     let mut traded = false;
     while (world.market.hour + 1) * HOUR <= now {
         world.market.step(world.map.terrain_seed);

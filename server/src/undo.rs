@@ -11,7 +11,7 @@
 //! with why, and stays. All of it is the server's, and dies with the
 //! process.
 
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
@@ -129,7 +129,7 @@ pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, steps: &[Lai
     for step in steps.iter().rev() {
         let [a, b] = step.nodes;
         if step.fresh && (world.map.edges.contains_key(&(a, b)) || world.map.edges.contains_key(&(b, a))) {
-            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
+            world.drive(events, |t, e| traffic::car::reroute::handle_link_demolish(t, e, a, b, now));
         }
         paid.add(step.paid.clone());
     }
@@ -392,7 +392,7 @@ fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: Build
 fn take_up(world: &mut World, events: &mut EventQueue, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
         if let Some((a, b)) = world.map.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
-            crate::car::reroute::handle_link_demolish(world, events, a, b, now);
+            world.drive(events, |t, e| traffic::car::reroute::handle_link_demolish(t, e, a, b, now));
         }
     }
 }

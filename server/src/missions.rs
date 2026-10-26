@@ -246,7 +246,7 @@ mod tests {
     use crate::game::settle_and_wake;
     use model::{BuildingKind, Good, GridCoord};
     use land::TerrainType;
-    use crate::engine::event_queue::EventQueue;
+    use traffic::event_queue::EventQueue;
 
     /// A shelf emptied, or filled.
     fn shelve(world: &mut World, at: EntityId, good: Good, level: f64) {

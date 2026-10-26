@@ -15,7 +15,7 @@
 
 use model::blueprint::blueprint;
 use crate::economy;
-use crate::engine::event_queue::EventQueue;
+use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{CarRole, EntityId, GameObject, Good, DAY_MS};
 use map::pathfinding::Routes;
@@ -34,8 +34,7 @@ pub struct Call {
     pub answered_by: Option<EntityId>,
 }
 
-/// Pulling up at a door with nothing to lift: ten minutes.
-pub const SERVICE_MS: GameTime = DAY_MS as GameTime / 144;
+pub use traffic::car::SERVICE_MS;
 
 /// A call nothing could answer is tried again in an hour
 /// (`game::CALLS_AGAIN`).
@@ -222,7 +221,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         // street lets it.
         Some(i) if at == owner => {
             let to = world.calls[i].at;
-            let gone = world.map.street_of(owner).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, to, now, GameTime::MAX));
+            let gone = world.map.street_of(owner).is_some_and(|door| world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, door, to, now, GameTime::MAX)));
             if !gone {
                 events.wake(SERVICE_MS, car);
             }
@@ -249,7 +248,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         }
         // Done somewhere else: home, as soon as the street lets it out.
         None if at != owner => {
-            let home = world.map.street_of(at).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
+            let home = world.map.street_of(at).is_some_and(|door| world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, door, owner, now, GameTime::MAX)));
             if !home {
                 events.wake(SERVICE_MS, car);
             }
@@ -272,7 +271,7 @@ mod tests {
     use super::*;
     use crate::game::tests::*;
     use model::{BuildingKind, Good, DAY_MS};
-    use crate::engine::event_queue::EventQueue;
+    use traffic::event_queue::EventQueue;
 
     /// Sell `units` off a shop's shelf, as visits would, and let it call.
     fn sell(world: &mut World, events: &mut EventQueue, shop: EntityId, units: f64, now: GameTime) {
