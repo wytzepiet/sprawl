@@ -332,7 +332,8 @@ mod tests {
     use crate::calls;
     use crate::resident::handle_resident_wake;
     use crate::game::settle_and_wake;
-    use crate::protocol::{BuildingKind, Good, GridCoord, TerrainType};
+    use crate::protocol::{BuildingKind, Good, GridCoord};
+    use land::TerrainType;
     use crate::engine::event_queue::EventQueue;
 
     /// A shelf emptied, or filled.

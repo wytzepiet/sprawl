@@ -10,7 +10,8 @@ pub mod water;
 pub mod lines;
 
 use crate::engine::GameTime;
-use crate::protocol::{Pose, Sail, CHUNK_SIZE};
+use crate::protocol::{Pose, Sail};
+use land::CHUNK_SIZE;
 
 /// An hour of the clock, as the sea counts time.
 pub const HOUR: GameTime = crate::protocol::HOUR as GameTime;

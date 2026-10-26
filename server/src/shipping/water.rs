@@ -11,9 +11,10 @@ use std::cmp::Reverse;
 
 use super::lanes::{Lanes, WAYS};
 use std::collections::BinaryHeap;
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
-use crate::protocol::{GridCoord, Pose, TerrainType};
+use crate::protocol::{GridCoord, Pose};
+use land::TerrainType;
 use crate::world::sea::FERRY_LENGTH;
 
 /// Tiles of sea in a line behind a harbour: the ferry's length at the
@@ -505,7 +506,7 @@ mod tests {
         let under = |w: &[[f64; 2]]| -> Vec<(i32, i32)> { crate::shipping::lanes::under(w).into_iter().map(|(_, x, y, _)| (x, y)).collect() };
         for seed in 0..20 {
             let started = std::time::Instant::now();
-            let water = Water::of(&crate::terrain::generate(seed));
+            let water = Water::of(&land::terrain::generate(seed));
             let built = started.elapsed().as_secs_f64() * 1000.0;
             // Every berth there is: sea with land behind it and room
             // straight out; and each tile's island, by flooding the land.
@@ -619,7 +620,7 @@ mod tests {
                 // Lanes are one-way in open water: past the berths'
                 // approaches the way back runs over none of the way out's
                 // water, but to cross it, where the two change sides.
-                let out: crate::fixed::HashSet<(i32, i32)> = under(way).into_iter().collect();
+                let out: fixed::HashSet<(i32, i32)> = under(way).into_iter().collect();
                 let (mut run, mut longest, mut crossings) = (0, 0, 0);
                 for t in under(back) {
                     let shared = out.contains(&t) && water.clear(t.0, t.1) > NARROW && !matches!(lanes.junction_at(t.0, t.1), Some((_, Kind::Berth)));

@@ -250,7 +250,7 @@ impl World {
         // already there may be carried on from.
         let wet = |t: GridCoord| {
             self.road_node_at(t).is_none()
-                && matches!(self.terrain.get(&(t.x, t.y)), Some(crate::protocol::TerrainType::Water | crate::protocol::TerrainType::Sea | crate::protocol::TerrainType::Beach | crate::protocol::TerrainType::Mountain))
+                && matches!(self.terrain.get(&(t.x, t.y)), Some(land::TerrainType::Water | land::TerrainType::Sea | land::TerrainType::Beach | land::TerrainType::Mountain))
         };
         if wet(from) || wet(to) {
             return false;
@@ -312,7 +312,7 @@ impl World {
     pub fn meadow(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> World {
         let mut world = World::new();
         for (x, y) in xs.flat_map(|x| ys.clone().map(move |y| (x, y))) {
-            world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+            world.terrain.insert((x, y), land::TerrainType::Grass);
         }
         world
     }
@@ -571,15 +571,15 @@ pub(super) mod tests {
     /// so the thing worth testing is that it never drifts from the graph it
     /// claims to describe. Brute-forces the answer and demands agreement.
     pub(in crate::world) fn agrees_with_the_edges(world: &World) {
-        let mut adj: crate::fixed::HashMap<EntityId, Vec<EntityId>> =
-            crate::fixed::HashMap::default();
+        let mut adj: fixed::HashMap<EntityId, Vec<EntityId>> =
+            fixed::HashMap::default();
         for &(a, b) in world.edges.keys() {
             adj.entry(a).or_default().push(b);
             adj.entry(b).or_default().push(a);
         }
         let nodes: Vec<EntityId> = adj.keys().copied().collect();
         for &from in &nodes {
-            let mut seen = crate::fixed::HashSet::from_iter([from]);
+            let mut seen = fixed::HashSet::from_iter([from]);
             let mut stack = vec![from];
             while let Some(n) = stack.pop() {
                 for &next in adj.get(&n).into_iter().flatten() {
@@ -667,7 +667,7 @@ pub(super) mod tests {
     #[test]
     fn a_fresh_world_is_the_bare_island() {
         let mut world = World::new();
-        world.terrain = crate::terrain::generate(7);
+        world.terrain = land::terrain::generate(7);
         world.restore();
         world.resettle();
         assert!(world.objects.roads().next().is_none(), "a road was born with the map");

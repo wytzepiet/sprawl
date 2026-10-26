@@ -62,7 +62,7 @@ fn svg(text: &str, land: &[GridCoord], head: &HashSet<(i32, i32)>, path: &[GridC
     }
     // Each visit to a tile a little further down and right of its middle,
     // so a tile driven again shows twice, and an arrow on each step.
-    let mut visits: crate::fixed::HashMap<(i32, i32), usize> = Default::default();
+    let mut visits: fixed::HashMap<(i32, i32), usize> = Default::default();
     let points: Vec<(f64, f64)> = path.iter().map(|t| {
         let k = visits.entry((t.x, t.y)).or_insert(0);
         *k += 1;

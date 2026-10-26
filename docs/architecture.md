@@ -108,7 +108,7 @@ restarts the unit; clients reconnect.
 
 ## Build philosophy
 
-- Deterministic maps (`fixed.rs`), a priority queue, event handlers.
+- Deterministic maps (`server/fixed`), a priority queue, event handlers.
   Nothing cleverer until it has to be.
 - The simulation does not know about rendering; the renderer does not
   know about the network.

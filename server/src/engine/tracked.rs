@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
 use crate::protocol::{BuildingKind, EntityId, GameObjectEntry, GameObject, GridCoord};
 

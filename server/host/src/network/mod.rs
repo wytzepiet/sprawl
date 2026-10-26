@@ -137,7 +137,8 @@ fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sprawl::protocol::{ChunkCoord, Clock, Operation, DAY_MS};
+    use sprawl::protocol::{Clock, Operation, DAY_MS};
+    use land::ChunkCoord;
 
     /// A chunk unloaded between two updates goes out between them: merged
     /// past it, the second's ops would land after the chunk they belong to

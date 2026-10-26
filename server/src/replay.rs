@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::car::{nose, tail};
 use crate::engine::GameTime;
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 use crate::game::Game;
 use crate::level::Level;
 use crate::protocol::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId};

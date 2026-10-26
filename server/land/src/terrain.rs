@@ -1,11 +1,11 @@
-use crate::fixed::HashMap;
+use fixed::HashMap;
 use std::f64::consts::{PI, TAU};
 
 use noise::{NoiseFn, Simplex};
-use crate::fixed::SmallRng;
+use fixed::SmallRng;
 use rand::{Rng, SeedableRng};
 
-use crate::protocol::{ChunkCoord, TerrainType, CHUNK_SIZE};
+use crate::{ChunkCoord, TerrainType, CHUNK_SIZE};
 
 /// The map, in tiles and in chunks.
 const WIDTH: i32 = 1024;
@@ -292,7 +292,7 @@ pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
 
 #[cfg(test)]
 mod tests {
-    use crate::fixed::HashSet;
+    use fixed::HashSet;
 
     use super::*;
 

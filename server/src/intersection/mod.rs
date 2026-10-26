@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
 use crate::engine::GameTime;
 use crate::protocol::EntityId;

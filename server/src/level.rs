@@ -39,9 +39,9 @@
 //! `TEST_MS` from empty roads, every car counted, and ends early in a jam.
 
 use std::collections::VecDeque;
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
-use crate::fixed::SmallRng;
+use fixed::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 use ts_rs::TS;
@@ -1045,7 +1045,7 @@ mod tests {
         draw_road(&mut game, Tool::OneWay, &[(9, -6), (9, -5), (9, -4), (9, -3)]);
         let junction = game.world.road_node_at(GridCoord { x: 9, y: -3 }).unwrap();
         level.test(&mut game);
-        let (mut changes, mut merged_into) = (crate::fixed::HashSet::default(), crate::fixed::HashSet::default());
+        let (mut changes, mut merged_into) = (fixed::HashSet::default(), fixed::HashSet::default());
         let mut watch = crate::replay::Watch::default();
         while level.phase == Phase::Test {
             level.step(&mut game);
@@ -1065,7 +1065,7 @@ mod tests {
             }
         }
         assert_eq!(level.phase, Phase::Done, "{}", level.message);
-        assert_eq!(merged_into, crate::fixed::HashSet::from_iter([0]), "joining from the right, into the right lane");
+        assert_eq!(merged_into, fixed::HashSet::from_iter([0]), "joining from the right, into the right lane");
         assert!(changes.len() > 10, "{} changes of lane", changes.len());
     }
 
@@ -1082,7 +1082,7 @@ mod tests {
         let out = game.world.road_node_at(GridCoord { x: 0, y: -3 }).unwrap();
         level.test(&mut game);
         let (mut turning, mut through) = (Vec::new(), Vec::new());
-        let mut seen = crate::fixed::HashSet::default();
+        let mut seen = fixed::HashSet::default();
         let mut watch = crate::replay::Watch::default();
         while level.phase == Phase::Test {
             level.step(&mut game);

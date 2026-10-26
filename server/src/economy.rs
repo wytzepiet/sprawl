@@ -27,7 +27,8 @@ use serde_json::{json, Value};
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
 use crate::needs::{Need, Stock, Tap};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, TerrainType, DAY_MS, HOUR};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS, HOUR};
+use land::TerrainType;
 use crate::world::World;
 
 /// What the world beyond the border reckons a unit of a good is worth,
@@ -617,7 +618,7 @@ mod tests {
         // Deep enough for a depot and its yard behind the street.
         for y in -6..6 {
             for x in -4..300 {
-                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+                world.terrain.insert((x, y), land::TerrainType::Grass);
             }
         }
         world.place_road_path(&(-2..300).map(|x| crate::protocol::GridCoord { x, y: 0 }).collect::<Vec<_>>());

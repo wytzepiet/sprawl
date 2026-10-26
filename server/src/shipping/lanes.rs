@@ -12,7 +12,7 @@
 //! run between road nodes, and a ship takes a junction as a car takes a
 //! road junction (`intersection`), by the junction's own rule (`Kind`).
 
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
 use crate::intersection::{paths_conflict, Dir, Rule};
 use crate::protocol::{Lane, LaneKind};

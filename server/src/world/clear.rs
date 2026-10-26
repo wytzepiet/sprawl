@@ -23,7 +23,7 @@
 //! bend or parting; a slope over a road, clear only where it is a level
 //! up; a ramp beside a road on one tile.
 
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
 use super::decks::{spot, Side, MIDDLE};
 use super::World;

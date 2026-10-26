@@ -10,7 +10,7 @@ use crate::protocol::{EntityId, GameObject, Resident, HOUR};
 use crate::world::World;
 use serde::Serialize;
 use std::collections::BinaryHeap;
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
 /// Real roads bend; the crow does not. Straight-line travel time is scaled up
 /// by this before promising to be anywhere. Being systematically a little

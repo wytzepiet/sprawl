@@ -83,7 +83,8 @@ fn erase_from(world: &World, at: GridCoord, stand: Stand) -> Vec<Option<Stand>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, TerrainType};
+    use crate::protocol::BuildingKind;
+    use land::TerrainType;
 
     const fn at(x: i32, y: i32) -> GridCoord {
         GridCoord { x, y }

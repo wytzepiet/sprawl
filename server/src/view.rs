@@ -1,9 +1,10 @@
 //! What each client is sent: the objects and terrain of the chunks it
 //! looks at, what changed in them, and the town's state beside them.
 
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 use crate::game::ClientId;
-use crate::protocol::{ChunkBounds, ChunkCoord, Clock, EntityId, GameObjectEntry, Lump, Operation, OwnerId, ServerMessage, StateUpdate};
+use crate::protocol::{ChunkBounds, Clock, EntityId, GameObjectEntry, Lump, Operation, OwnerId, ServerMessage, StateUpdate};
+use land::ChunkCoord;
 use crate::world::chunk_of;
 use crate::world::World;
 
@@ -30,7 +31,7 @@ pub fn state_update(world: &World, clk: Clock) -> StateUpdate {
         sea: crate::haul::sea(world),
         missions: world.missions.shown(clk.now),
         neighbours: crate::orders::neighbours(world),
-        island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
+        island: ChunkBounds { min_cx: land::terrain::CHUNKS_MIN, min_cy: land::terrain::CHUNKS_MIN, max_cx: land::terrain::CHUNKS_MAX, max_cy: land::terrain::CHUNKS_MAX },
     }
 }
 

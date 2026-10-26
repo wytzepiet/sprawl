@@ -27,7 +27,8 @@
 use crate::blueprint::FACINGS;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Package, Pose, TerrainType, DAY_MS};
+use crate::protocol::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Package, Pose, DAY_MS};
+use land::TerrainType;
 use crate::shipping::lanes::{Gate, Kind, Lanes};
 use crate::shipping::lines::Line;
 use crate::shipping::DWELL;
@@ -310,7 +311,7 @@ impl World {
     /// nowhere, waiting for a ferry, and none is aboard one. With more than
     /// one harbour, each comes in by the nearest to their home.
     pub fn waiting_settlers(&self, harbour: EntityId) -> Vec<EntityId> {
-        let aboard: crate::fixed::HashSet<EntityId> = self
+        let aboard: fixed::HashSet<EntityId> = self
             .objects
             .iter()
             .filter_map(|e| match e.object {
@@ -566,7 +567,7 @@ fn empty_bays(deck: &[Option<Package>]) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::TerrainType;
+    use land::TerrainType;
 
     /// Grass either side of a street along y = 0, and the sea from y = 3
     /// south of it; the map ends at y = 41, a chunk and more out, and

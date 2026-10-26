@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
-use crate::fixed::HashMap;
+use fixed::HashMap;
 
 use crate::protocol::EntityId;
 use crate::engine::GameTime;

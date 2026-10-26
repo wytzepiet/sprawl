@@ -31,7 +31,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 
 ## Structure
 
-- `server/` — Rust, a workspace of three:
+- `server/` — Rust, a workspace of crates, each using only those above it
+  in this list, so the compiler keeps the arrows pointing one way:
+  - `server/fixed/` — the game's chance and its maps, the same on every
+    machine.
+  - `server/land/` — the islands and mountains a seed raises; knows nothing
+    of what is built on them.
   - `server/` itself, the `sprawl` library: the game (DES, world, cars,
     town) as `game::Game`, with no clock on the wall and no IO.
   - `server/host/` — the server binary: `Game` on a tokio loop, over
@@ -214,7 +219,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   tile under the pointer, and "Copy replay" puts everything played since
   the level opened on the clipboard (`server/src/replay.rs`): the
   player's inputs at the moments they came, and nothing else, since the
-  game is the same from the same inputs on every machine (`fixed.rs`: no
+  game is the same from the same inputs on every machine (`server/fixed`: no
   `std` HashMap or `SmallRng`; settling by the steps, not the ticks).
   Pasted to you, save it as `server/replays/<name>.json` and `cargo run
   --bin replay -- <file> --flag 1 --at x,y --car id` plays it to the flag:

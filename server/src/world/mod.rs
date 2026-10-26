@@ -15,14 +15,12 @@ pub mod sea;
 pub mod segments;
 
 use std::collections::BTreeSet;
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
 use crate::engine::GameTime;
 
-use crate::protocol::{
-    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId,
-    Building, BuildingKind, Car, GameObject, Resident, TILE_ABSENT, TerrainChunk, TerrainType,
-};
+use crate::protocol::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, Resident, TerrainChunk};
+use land::{CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, TILE_ABSENT, TerrainType};
 use crate::engine::tracked::Tracked;
 use crate::world::network::RoadNetwork;
 use crate::world::segments::EdgeSegment;
@@ -84,7 +82,7 @@ pub struct World {
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// The mountains' heights, eroded, made from the terrain the first time
     /// a chunk of it is sent (`mountains.rs`).
-    pub peaks: std::sync::OnceLock<crate::mountains::Peaks>,
+    pub peaks: std::sync::OnceLock<land::mountains::Peaks>,
     /// The sea, read from the terrain the first time a way over it is
     /// wanted (`shipping::water`).
     pub water: std::sync::OnceLock<crate::shipping::water::Water>,
@@ -545,8 +543,8 @@ impl World {
     /// The mountains' heights, eroded from the terrain the first time they
     /// are asked for: at startup, after the terrain is made, so no player
     /// waits on them.
-    pub fn raise_mountains(&self) -> &crate::mountains::Peaks {
-        self.peaks.get_or_init(|| crate::mountains::Peaks::new(&self.terrain, self.terrain_seed))
+    pub fn raise_mountains(&self) -> &land::mountains::Peaks {
+        self.peaks.get_or_init(|| land::mountains::Peaks::new(&self.terrain, self.terrain_seed))
     }
 
     /// Every entity in the given chunks.

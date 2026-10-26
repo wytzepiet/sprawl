@@ -30,7 +30,7 @@ fn new_seed() -> u32 {
 /// derived from the seed, so it is made again on every start rather than
 /// saved.
 fn island(world: &mut World) {
-    world.terrain = sprawl::terrain::generate(world.terrain_seed);
+    world.terrain = land::terrain::generate(world.terrain_seed);
     println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
     let started = std::time::Instant::now();
     world.raise_mountains();

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
 use crate::car::CRUISE_SPEED;
 use crate::protocol::{EntityId, GridCoord};

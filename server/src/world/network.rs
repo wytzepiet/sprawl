@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
 use crate::protocol::EntityId;
 

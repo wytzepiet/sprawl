@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
-use crate::fixed::HashSet;
+use fixed::HashSet;
 
 use crate::blueprint::blueprint;
 use crate::economy;
-use crate::protocol::{Car, ChunkCoord, EntityId, GameObject, GridCoord, Resident, CHUNK_SIZE, DAY_MS};
+use crate::protocol::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
+use land::{ChunkCoord, CHUNK_SIZE};
 use crate::world::World;
 
 impl World {

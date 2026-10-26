@@ -8,9 +8,9 @@
 //! terrain alone, and sent to the client a chunk at a time
 //! (`TerrainChunk::heights`).
 
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
-use crate::protocol::{ChunkCoord, TerrainType, CHUNK_SIZE};
+use crate::{ChunkCoord, TerrainType, CHUNK_SIZE};
 use crate::terrain::Ground;
 
 /// Points to a tile's side.

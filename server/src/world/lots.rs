@@ -19,8 +19,8 @@
 //! stops at the door, unseen. See `docs/parking.md`.
 
 use rand::{Rng, SeedableRng};
-use crate::fixed::SmallRng;
-use crate::fixed::HashMap;
+use fixed::SmallRng;
+use fixed::HashMap;
 
 use crate::blueprint::FACINGS;
 use crate::engine::GameTime;

@@ -1,6 +1,5 @@
-use crate::protocol::{
-    Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing, TerrainType,
-};
+use crate::protocol::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing};
+use land::TerrainType;
 use crate::world::World;
 
 /// What lies behind a harbour's back, best first.
@@ -512,7 +511,7 @@ impl World {
     /// the order they are laid.
     pub fn stub(&self, kind: BuildingKind, tiles: &[GridCoord], facing: u8) -> Vec<(GridCoord, GridCoord)> {
         use std::cmp::Reverse;
-        use crate::fixed::HashMap;
+        use fixed::HashMap;
         /// How far it looks for a street to join, in tiles each way; and
         /// how far it runs inland where there is none.
         const REACH: i32 = 12;
@@ -704,7 +703,7 @@ impl World {
                 _ => None,
             })
             .collect();
-        let mut gone: crate::fixed::HashSet<EntityId> = Default::default();
+        let mut gone: fixed::HashSet<EntityId> = Default::default();
         for (id, tiles) in buildings {
             for tile in tiles {
                 let Some(node) = self.road_node_at(tile) else { continue };

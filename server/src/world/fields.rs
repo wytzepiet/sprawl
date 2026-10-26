@@ -23,7 +23,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
-use crate::fixed::HashSet;
+use fixed::HashSet;
 
 
 use crate::economy;
@@ -53,7 +53,7 @@ impl World {
     /// Open grass with nothing on it: what a farm claims, and what a tile
     /// of its land stays while it is one.
     fn is_open(&self, t: GridCoord) -> bool {
-        self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&crate::protocol::TerrainType::Grass)
+        self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&land::TerrainType::Grass)
     }
 
     /// A farm reached by a street claims its land: a rectangle round its
@@ -531,7 +531,7 @@ impl World {
             _ => true,
         };
         let start: State = ((from.x, from.y), heading);
-        let mut came: crate::fixed::HashMap<State, (u32, State)> = crate::fixed::HashMap::from_iter([(start, (0, start))]);
+        let mut came: fixed::HashMap<State, (u32, State)> = fixed::HashMap::from_iter([(start, (0, start))]);
         let mut queue = BinaryHeap::from([Reverse((0, start))]);
         while let Some(Reverse((cost, state @ ((x, y), heading)))) = queue.pop() {
             if came[&state].0 < cost {
@@ -723,7 +723,8 @@ mod bench;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, TerrainType};
+    use crate::protocol::BuildingKind;
+    use land::TerrainType;
 
     /// Grass either side of a street along y = 0, deep enough for a farm
     /// and its land.

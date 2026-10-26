@@ -1,10 +1,11 @@
-use crate::fixed::{HashMap, HashSet};
+use fixed::{HashMap, HashSet};
 
 use crate::car::simulation::handle_car_wake_up;
 use crate::resident::handle_resident_wake;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{CarRole, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
+use crate::protocol::{CarRole, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
+use land::ChunkCoord;
 use crate::view::{flush_dirty, handle_set_chunks, ClientState, Shared};
 use crate::world::World;
 

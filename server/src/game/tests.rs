@@ -6,7 +6,8 @@
 pub(crate) const WAKE_BUDGET: u64 = 120;
 use super::*;
 use std::time::Instant;
-use crate::protocol::{Build, BuildingKind, Good, GridCoord, Leg, TerrainType, Tool};
+use crate::protocol::{Build, BuildingKind, Good, GridCoord, Leg, Tool};
+use land::TerrainType;
 
 /// What a test's hand does: a step of road or the demolisher, or a
 /// building placed whole round a tile, the first way it fits.
@@ -1039,7 +1040,7 @@ pub(crate) fn building_of(world: &World, id: EntityId) -> crate::protocol::Build
 #[test]
 fn a_real_coast_is_called_at_as_often_as_ever() {
     let mut world = World::new();
-    world.terrain = crate::terrain::generate(7);
+    world.terrain = land::terrain::generate(7);
     world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 32 }).collect::<Vec<_>>());
     let harbour = world.place_on_street(GridCoord { x: -2, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
     let mut game = game(world);

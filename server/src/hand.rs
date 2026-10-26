@@ -224,7 +224,8 @@ mod tests {
     use crate::game::tests::*;
     use crate::game::tests::build;
     use crate::game::settle_and_wake;
-    use crate::protocol::{Good, TerrainType};
+    use crate::protocol::Good;
+    use land::TerrainType;
 
     /// May the mayor's hand take this step with this tool.
     fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
