@@ -8,6 +8,7 @@ import Meter from "./Meter";
 import Dock from "./Dock";
 import Board from "./Board";
 import Ring from "./Ring";
+import Arrival from "./Arrival";
 import { wide } from "./kit";
 
 /** Everything the GPU draws over the town, the first under the rest:
@@ -28,6 +29,7 @@ export default function Hud() {
       <Board />
       <Feed />
       <Ring />
+      <Arrival />
     </>
   );
 }

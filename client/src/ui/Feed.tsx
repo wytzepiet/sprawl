@@ -52,6 +52,12 @@ export default function Feed() {
     setFocus(focus() === key ? null : key);
   };
   createEffect(() => notes().length < 2 && setSpread(false));
+  // The guide greets a new mayor, once: the opening open, nothing done yet.
+  let greeted = false;
+  createEffect(() => {
+    const first = shownMissions().find((m) => m.key === "Opening" && !m.steps.some((s) => s.done));
+    if (first && !greeted) (greeted = true), setFocus(missionKey(first));
+  });
   return (
     <box at={wide() ? { right: 24, top: TOP() } : { left: 12, right: 12, top: TOP() }} w={wide() ? 340 : undefined} gap={8}>
       <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={20}>
@@ -103,6 +109,9 @@ const COINS = "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 9.5c0 1.7
 const GLOBE = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
 const LETTER = "M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2zM3 7l9 6 9-6";
 const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
+/** The guide who walks the mayor through the opening: a robot, nobody in
+ *  particular. */
+const GUIDE = "M11 1h2v3h-2zM5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM7.5 9h3v3h-3zM13.5 9h3v3h-3zM8 14.5h8V16H8zM1 10h1.5v4H1zM21.5 10H23v4h-1.5z";
 
 /** A partner's crest, or the world's globe; an envelope on it for a letter's deal. */
 export function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink?: string }) {
@@ -251,7 +260,7 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
     <box>
       <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
         <box dir="row" align="center" gap={10}>
-          <Tile color={color()} d={FLAG} />
+          <Tile color={color()} d={props.m.key === "Opening" ? GUIDE : FLAG} />
           <box grow={1} gap={2}>
             <text size={14.5} weight={600} lines={1}>{props.m.title}</text>
             <text size={12.5} soft lines={1}>{step()?.title ?? "Done"}</text>
