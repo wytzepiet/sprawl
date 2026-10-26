@@ -209,14 +209,15 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // hands' nine hours at eighteen crates an hour, a hundred and four
         // crates on its pad. Two docks by the barn, one for the lorry that
         // takes them and one the tractor stands in: the rest of the yard
-        // is the farm's own.
+        // is the farm's own. Three tiles square: the barn a row along the
+        // back, its middle the gate the tractor goes out to the fields by.
         (Farm, Blueprint {
             shelves: &[(Good::Crates, 2600)],
             makes: Some(Good::Crates),
             vehicles: &[CarRole::Tractor],
             farm: true,
             docks: 2,
-            ..row((3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
+            ..row((3, 1), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
         }),
         // The door: all yard, three tiles along the quay and two in, no
         // building. Down its middle a lane from the gate on the street to

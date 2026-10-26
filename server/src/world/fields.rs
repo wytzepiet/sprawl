@@ -121,11 +121,11 @@ impl World {
     }
 
     /// The open tiles within some ground the tractor can reach from the
-    /// yard, four ways.
+    /// gate, four ways.
     fn reach(&self, farm: EntityId, within: &dyn Fn(GridCoord) -> bool) -> HashSet<(i32, i32)> {
-        let yard = self.yard_tiles(farm);
-        let mut seen: HashSet<(i32, i32)> = yard.iter().map(|t| (t.x, t.y)).collect();
-        let mut queue: VecDeque<GridCoord> = yard.iter().copied().collect();
+        let gate = self.gate(farm);
+        let mut seen: HashSet<(i32, i32)> = gate.iter().map(|t| (t.x, t.y)).collect();
+        let mut queue: VecDeque<GridCoord> = gate.into_iter().collect();
         let mut reached: HashSet<(i32, i32)> = HashSet::default();
         while let Some(t) = queue.pop_front() {
             for (dx, dy) in AROUND[..4].iter() {
@@ -246,7 +246,7 @@ impl World {
         else {
             return;
         };
-        let Some(yard) = self.yard_gate(farm, &batch) else { return };
+        let Some(yard) = self.gate(farm) else { return };
         let Some((path, left)) = self.sweep(farm, yard, &batch, job) else { return };
         // A tile the tractor cannot work — a pocket it could not turn in,
         // or ground cut off by what was built since — is land no more:
@@ -283,7 +283,7 @@ impl World {
         let run = |world: &World, job: Job| {
             let Some(b) = world.building(farm) else { return None };
             let batch: Vec<GridCoord> = b.land.iter().filter(|t| wants(job, t.stage)).map(|t| t.at).collect();
-            let yard = world.yard_gate(farm, &batch)?;
+            let yard = world.gate(farm)?;
             world.sweep(farm, yard, &batch, job).map(|(path, _)| path)
         };
         let work = |world: &mut World, job: Job, tiles: &[GridCoord], at: GameTime| {
@@ -313,10 +313,10 @@ impl World {
         }
     }
 
-    /// The tiles the tractor may drive: the farm's land, its yard, and the
-    /// lane. Never the barn.
+    /// The tiles the tractor may drive: the farm's land, its gate, and the
+    /// lane. Never the yard or the rest of the barn row.
     fn drivable(&self, farm: EntityId) -> HashSet<(i32, i32)> {
-        let mut ground: HashSet<(i32, i32)> = self.yard_tiles(farm).into_iter().map(|t| (t.x, t.y)).collect();
+        let mut ground: HashSet<(i32, i32)> = self.gate(farm).into_iter().map(|t| (t.x, t.y)).collect();
         if let Some(b) = self.building(farm) {
             ground.extend(b.land.iter().map(|t| (t.at.x, t.at.y)));
         }
@@ -336,20 +336,21 @@ impl World {
             .collect()
     }
 
-    /// The farm's yard: its plot less the barn.
-    fn yard_tiles(&self, farm: EntityId) -> Vec<GridCoord> {
-        let Some(e) = self.objects.get(farm) else { return Vec::new() };
-        let GameObject::Building(b) = &e.object else { return Vec::new() };
+    /// Where a run leaves the farm and comes back to it: the middle of
+    /// the barn's back row, so the tractor goes out to the fields behind
+    /// and round, never through the yard to the street side.
+    fn gate(&self, farm: EntityId) -> Option<GridCoord> {
+        let Some(e) = self.objects.get(farm) else { return None };
+        let GameObject::Building(b) = &e.object else { return None };
         let (pos, p) = Self::lie(&b.tiles, b.kind, b.facing);
         let ((bx, by), (bw, bh)) = p.building;
-        let barn = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
-        b.tiles.iter().copied().filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
-    }
-
-    /// Where a run leaves the yard and comes back to it: the yard tile
-    /// nearest the batch.
-    fn yard_gate(&self, farm: EntityId, batch: &[GridCoord]) -> Option<GridCoord> {
-        self.yard_tiles(farm).into_iter().min_by_key(|&y| batch.iter().map(|&t| dist(y, t)).min().unwrap_or(i32::MAX))
+        let (fx, fy) = crate::blueprint::FACINGS[b.facing as usize % 4];
+        let back = |street: i32, size: u8| match street {
+            0 => size / 2,
+            1 => 0,
+            _ => size - 1,
+        };
+        Some(GridCoord { x: pos.x + (bx + back(fx, bw)) as i32, y: pos.y + (by + back(fy, bh)) as i32 })
     }
 
     /// A run over a batch of tiles as a farmer drives one, in two passes.
@@ -425,10 +426,6 @@ impl World {
         }
         let ground = self.drivable(farm);
         let safe = escapable(&ground, yard);
-        // The lot is where the tractor lives, not a way through: rows
-        // are joined over the field and the lane, never the lot.
-        let yard_tiles = self.yard_tiles(farm);
-        let field: HashSet<(i32, i32)> = ground.iter().copied().filter(|t| !yard_tiles.iter().any(|y| (y.x, y.y) == *t)).collect();
         // A run of tiles driven on from the path's end, each arrived at
         // heading for the tile after when that is a step away, so the row
         // runs straight — else any way it can; keeping to the given way
@@ -436,7 +433,7 @@ impl World {
         let drive = |path: &mut Vec<GridCoord>, run: &[GridCoord], way: &HashSet<(i32, i32)>| {
             for (i, &t) in run.iter().enumerate() {
                 let then = run.get(i + 1).copied().filter(|n| dist(t, *n) == 1);
-                if let Some(leg) = [then, None].into_iter().find_map(|heading| Self::over(&field, way, &safe, path, t, heading)) {
+                if let Some(leg) = [then, None].into_iter().find_map(|heading| Self::over(&ground, way, &safe, path, t, heading)) {
                     path.extend(leg);
                 }
             }
@@ -795,7 +792,7 @@ mod tests {
         let (_, tiles) = farm_at(&mut world, 10);
         let wanted = capacity(BuildingKind::Farm) as usize;
         let (x0, y0, x1, y1, _) = rect(&tiles);
-        assert_eq!(((x1 - x0 + 1) * (y1 - y0 + 1)) as usize, tiles.len() + 12, "the land is not the rectangle less the plot");
+        assert_eq!(((x1 - x0 + 1) * (y1 - y0 + 1)) as usize, tiles.len() + 9, "the land is not the rectangle less the plot");
         assert!(tiles.len() <= wanted && tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the farm claimed {} tiles of {wanted}", tiles.len());
         assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
         assert!(y0 == 1 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not round the plot");
@@ -935,7 +932,7 @@ mod tests {
         let now = 1_000;
         let (job, batch) = world.batch(farm, now).expect("a job");
         assert_eq!((job, batch.len()), (Job::Plough, tiles.len()));
-        let pos = world.yard_gate(farm, &batch).unwrap();
+        let pos = world.gate(farm).unwrap();
         let (path, left) = world.sweep(farm, pos, &batch, job).expect("a sweep");
         assert!(left.is_empty(), "tiles left: {left:?}");
         assert_eq!((path[0], *path.last().unwrap()), (pos, pos), "the run does not start and end at the yard");

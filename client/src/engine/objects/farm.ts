@@ -6,18 +6,17 @@ import type { RGB } from "../rgb";
 import { barnY, box, f, FLECKS, GLASS, hull, loose, LUMPS, PITCH, placing, sheet, tiled, TILES, WOOD, ZINC, ZINC_COLOUR, type V } from "./model";
 
 /**
- * A farm, whole: a farmyard over its plot, three tiles across (x, -1.5 to
- * 1.5) and four deep (y), the street at +y; its ground on z = 0. Down the
- * middle of its front half the lane from the gate, its crates on their
- * pad beside it (`pads.ts`), and by the barn its two docks, the lorry's
- * and the tractor's (`lots.rs`); its fields round it the town grid's
- * (`field.ts`), the tractor out to them through the gaps in its fence.
+ * A farm, whole: a farmyard over its plot, three tiles square (x and y,
+ * -1.5 to 1.5), the street at +y; its ground on z = 0. Its front two
+ * rows the yard, its crates on their pad (`pads.ts`) and its two docks,
+ * the lorry's and the tractor's (`lots.rs`); its fields round it the
+ * town grid's (`field.ts`), the tractor out to them by the gate in the
+ * middle of the back (`fields.rs`).
  *
  * - At the back on the left the barn, red, its doors to the yard, a
- *   cupola on its ridge; the silos behind it in the corner.
- * - Down the right side, toward the back, the machine shed, open to the
- *   yard, a bay a machine: the combine, the tractor's, the trailer and
- *   the plough.
+ *   cupola on its ridge; the silos beside it in the corner.
+ * - At the back on the right the machine shed, open to the yard, a bay
+ *   a machine: the combine, the tractor's, the trailer and the plough.
  * - In the front corner the farmhouse, white, its garden fenced to the
  *   street.
  * - Packed earth all over, a rail fence round it, trees in its corners
@@ -89,53 +88,53 @@ const FARM = solids(() => {
   const wheel = (x: number, y: number, r: number, w = 0.03) => Solid.cylinder(w, r, r, 14).translate([0, 0, -w / 2]).rotate([0, 90, 0]).translate([x, y, r]);
 
   // Packed earth all over, the asphalt under it.
-  earth.push([mesh(box(-1.49, 1.49, -1.98, 1.98, 0, 0.02), () => [0, 0]), [0, 0, 0], EARTH]);
+  earth.push([mesh(box(-1.49, 1.49, -1.49, 1.49, 0, 0.02), () => [0, 0]), [0, 0, 0], EARTH]);
 
   // The barn, at the back on the left: red, its doors to the yard, two
   // windows beside them and the loft's over them, its cupola.
-  const [bx0, bx1, by0, by1, be, br] = [-1.08, -0.18, -1.88, -0.78, 0.26, 0.5];
+  const [bx0, bx1, by0, by1, be, br] = [-1.12, -0.45, -1.42, -0.62, 0.22, 0.42];
   const bmid = (bx0 + bx1) / 2;
   gabled(bx0, bx1, by0, by1, be, br, RED, 0.05);
   const front = by1 + 0.004;
   for (const s of [-1, 1]) {
-    const [x0, x1] = s < 0 ? [bmid - 0.16, bmid] : [bmid, bmid + 0.16];
-    put(box(x0, x1, by1 - 0.002, front + 0.008, 0, 0.2), RED);
+    const [x0, x1] = s < 0 ? [bmid - 0.13, bmid] : [bmid, bmid + 0.13];
+    put(box(x0, x1, by1 - 0.002, front + 0.008, 0, 0.17), RED);
     put(Solid.union([
-      box(x0, x1, front + 0.006, front + 0.014, 0.19, 0.205), box(x0, x1, front + 0.006, front + 0.014, 0, 0.012),
-      box(x0, x0 + 0.014, front + 0.006, front + 0.014, 0, 0.2), box(x1 - 0.014, x1, front + 0.006, front + 0.014, 0, 0.2),
-      ...[[x0, 0, x1, 0.2], [x0, 0.2, x1, 0]].map(([a, za, b, zb]) => hull([[a, front + 0.008, za], [b, front + 0.008, zb]].flatMap(([x, y, z]): V[] => [[x, y, z - 0.009], [x, y, z + 0.009], [x, y + 0.006, z - 0.009], [x, y + 0.006, z + 0.009]])).intersect(box(x0, x1, front, front + 0.02, 0, 0.2))),
+      box(x0, x1, front + 0.006, front + 0.014, 0.16, 0.175), box(x0, x1, front + 0.006, front + 0.014, 0, 0.012),
+      box(x0, x0 + 0.014, front + 0.006, front + 0.014, 0, 0.17), box(x1 - 0.014, x1, front + 0.006, front + 0.014, 0, 0.17),
+      ...[[x0, 0, x1, 0.17], [x0, 0.17, x1, 0]].map(([a, za, b, zb]) => hull([[a, front + 0.008, za], [b, front + 0.008, zb]].flatMap(([x, y, z]): V[] => [[x, y, z - 0.009], [x, y, z + 0.009], [x, y + 0.006, z - 0.009], [x, y + 0.006, z + 0.009]])).intersect(box(x0, x1, front, front + 0.02, 0, 0.17))),
     ]), WHITE);
   }
-  for (const x of [bmid - 0.32, bmid + 0.32]) window(by1, x, 0.1, 0.06, 0.06);
-  window(by1, bmid, 0.31, 0.06, 0.07);
-  const cy = -1.62;
-  put(box(bmid - 0.06, bmid + 0.06, cy - 0.06, cy + 0.06, br - 0.02, br + 0.08), WHITE);
-  roof(hull([[bmid - 0.085, cy - 0.085, br + 0.08], [bmid + 0.085, cy - 0.085, br + 0.08], [bmid - 0.085, cy + 0.085, br + 0.08], [bmid + 0.085, cy + 0.085, br + 0.08], [bmid, cy - 0.085, br + 0.15], [bmid, cy + 0.085, br + 0.15]]));
-  // The silos in the corner behind it, domed, a ladder up the taller.
-  for (const [x, y, r, h] of [[-1.3, -1.66, 0.17, 0.68], [-1.32, -1.2, 0.13, 0.54]]) {
+  for (const x of [bmid - 0.24, bmid + 0.24]) window(by1, x, 0.09, 0.05, 0.05);
+  window(by1, bmid, 0.26, 0.05, 0.06);
+  const cy = (by0 + by1) / 2 - 0.1;
+  put(box(bmid - 0.05, bmid + 0.05, cy - 0.05, cy + 0.05, br - 0.02, br + 0.07), WHITE);
+  roof(hull([[bmid - 0.07, cy - 0.07, br + 0.07], [bmid + 0.07, cy - 0.07, br + 0.07], [bmid - 0.07, cy + 0.07, br + 0.07], [bmid + 0.07, cy + 0.07, br + 0.07], [bmid, cy - 0.07, br + 0.13], [bmid, cy + 0.07, br + 0.13]]));
+  // The silos in the corner beside it, domed, a ladder up the taller.
+  for (const [x, y, r, h] of [[-1.31, -1.28, 0.14, 0.6], [-1.33, -0.88, 0.1, 0.46]]) {
     zinc.push([silo(x, y, r, h), [0, 0, 0], ZINC_COLOUR]);
-    put(Solid.cylinder(0.11, r + 0.015, 0.02, 24).translate([x, y, h]), DOME);
+    put(Solid.cylinder(0.09, r + 0.015, 0.02, 24).translate([x, y, h]), DOME);
     put(Solid.cylinder(0.03, r + 0.012, r + 0.012, 24).translate([x, y, 0]), WHITE);
   }
   put(Solid.union([
-    ...[-1, 1].map((s) => box(-1.13, -1.12, -1.66 + s * 0.03 - 0.005, -1.66 + s * 0.03 + 0.005, 0, 0.74)),
-    ...Array.from({ length: 8 }, (_, k) => box(-1.13, -1.122, -1.69, -1.63, 0.06 + k * 0.08, 0.066 + k * 0.08)),
+    ...[-1, 1].map((s) => box(-1.31 + s * 0.03 - 0.005, -1.31 + s * 0.03 + 0.005, -1.135, -1.125, 0, 0.66)),
+    ...Array.from({ length: 7 }, (_, k) => box(-1.34, -1.28, -1.135, -1.127, 0.06 + k * 0.08, 0.066 + k * 0.08)),
   ]), WHITE);
-  // Round bales stacked beside its doors, a trough before them.
+  // Round bales stacked before it, a trough by the fence.
   put(Solid.union([
-    ...[-0.62, -0.48].flatMap((y) => [bale(-0.06, y, 0), bale(0.04, y, 0)]),
-    bale(-0.01, -0.55, 0.095),
+    ...[-0.5, -0.38].flatMap((y) => [bale(-1.3, y, 0), bale(-1.2, y, 0)]),
+    bale(-1.25, -0.44, 0.095),
   ]), STRAW);
-  put(box(-1.0, -0.82, -0.6, -0.52, 0, 0.05).subtract(box(-0.99, -0.83, -0.59, -0.53, 0.02, 0.06)), TIMBER);
-  put(box(-0.99, -0.83, -0.59, -0.53, 0, 0.04), WATER);
+  put(box(-1.42, -1.34, -0.2, -0.02, 0, 0.05).subtract(box(-1.41, -1.35, -0.19, -0.03, 0.02, 0.06)), TIMBER);
+  put(box(-1.41, -1.35, -0.19, -0.03, 0, 0.04), WATER);
 
-  // The machine shed down the right side, toward the back: a back wall,
-  // its ends, posts between its bays, a roof sloping back; open to the
-  // yard. Drawn along x, open to +y, then turned to stand along the side.
+  // The machine shed at the back on the right: a back wall, its ends,
+  // posts between its bays, a roof sloping back; open to the yard. Drawn
+  // larger, then brought down to the plot.
   {
-    const turned = (solid: Manifold) => solid.rotate([0, 0, 90]).translate([-0.45, -2.03, 0]);
-    const put = (solid: Manifold, rgb: RGB) => (rgb === PANE ? glass : wood).push([mesh(turned(solid)), [0, 0, 0], rgb]);
-    const roof = (solid: Manifold) => tiles.push([tiled(turned(solid)), [0, 0, 0], GREEN]);
+    const scaled = (solid: Manifold) => solid.scale([0.75, 0.75, 0.75]).translate([0.36, -0.03, 0]);
+    const put = (solid: Manifold, rgb: RGB) => (rgb === PANE ? glass : wood).push([mesh(scaled(solid)), [0, 0, 0], rgb]);
+    const roof = (solid: Manifold) => tiles.push([tiled(scaled(solid)), [0, 0, 0], GREEN]);
     const [mx0, mx1, my0, my1, mz] = [0.18, 1.45, -1.9, -1.45, 0.26];
     const bays = [mx0, 0.82, 1.13, mx1];
     put(box(mx0, mx1, my0, my0 + 0.03, 0, mz - 0.03), TIMBER);
@@ -167,34 +166,34 @@ const FARM = solids(() => {
   // The farmhouse in the front corner, white, its gable to the street: a
   // porch on posts over its door, a dormer, a chimney; its garden in
   // front, fenced, the plot's corner.
-  const [hx0, hx1, hy0, hy1, he, hr] = [-1.42, -0.82, 0.95, 1.55, 0.26, 0.44];
+  const [hx0, hx1, hy0, hy1, he, hr] = [-1.42, -0.9, 0.58, 1.08, 0.22, 0.38];
   gabled(hx0, hx1, hy0, hy1, he, hr, WHITE);
   const hmid = (hx0 + hx1) / 2;
-  put(box(hmid - 0.05, hmid + 0.05, hy1 - 0.002, hy1 + 0.008, 0, 0.14), DOOR);
-  for (const x of [hmid - 0.18, hmid + 0.18]) window(hy1, x, 0.05), window(hy1, x, 0.17, 0.06, 0.055);
-  put(box(hmid - 0.13, hmid + 0.13, hy1, hy1 + 0.1, 0, 0.02), TIMBER);
-  for (const x of [hmid - 0.12, hmid + 0.12]) put(box(x - 0.008, x + 0.008, hy1 + 0.085, hy1 + 0.1, 0.02, 0.15), WHITE);
-  roof(sheet([hmid - 0.15, hy1, 0.165], [0.3, 0, 0], [0, 0.12, -0.03], 0.014));
-  const [dy, dz] = [1.2, he + 0.04];
-  put(box(hx1 - 0.16, hx1 - 0.05, dy - 0.06, dy + 0.06, he - 0.02, dz + 0.06), WHITE);
-  roof(hull([[hx1 - 0.03, dy - 0.075, dz + 0.06], [hx1 - 0.03, dy + 0.075, dz + 0.06], [hx1 - 0.2, dy - 0.075, dz + 0.1], [hx1 - 0.2, dy + 0.075, dz + 0.1], [hx1 - 0.03, dy, dz + 0.11], [hx1 - 0.2, dy, dz + 0.14]]));
-  put(box(hx1 - 0.05, hx1 - 0.045, dy - 0.035, dy + 0.035, dz, dz + 0.05), PANE);
-  put(box(hx0 + 0.07, hx0 + 0.14, 1.0, 1.07, 0, hr + 0.08).add(box(hx0 + 0.062, hx0 + 0.148, 0.992, 1.078, hr + 0.06, hr + 0.08)), BRICK);
-  fence(-1.47, 1.95, hmid - 0.06, 1.95, true);
-  fence(hmid + 0.06, 1.95, -0.72, 1.95, true);
-  fence(-0.72, 1.95, -0.72, 0.9, true);
-  fence(-0.72, 0.9, -1.47, 0.9, true);
-  put(Solid.union([[-1.38, 1.78, 0.05], [-0.82, 1.72, 0.045], [-1.0, 1.82, 0.035], [-0.8, 1.0, 0.04]].map(([x, y, r]) => Solid.sphere(r, 12).scale([1, 1, 0.8]).translate([x, y, r * 0.7]))), LEAVES);
+  put(box(hmid - 0.045, hmid + 0.045, hy1 - 0.002, hy1 + 0.008, 0, 0.12), DOOR);
+  for (const x of [hmid - 0.16, hmid + 0.16]) window(hy1, x, 0.045, 0.05, 0.055), window(hy1, x, 0.15, 0.05, 0.05);
+  put(box(hmid - 0.11, hmid + 0.11, hy1, hy1 + 0.09, 0, 0.02), TIMBER);
+  for (const x of [hmid - 0.1, hmid + 0.1]) put(box(x - 0.008, x + 0.008, hy1 + 0.075, hy1 + 0.09, 0.02, 0.13), WHITE);
+  roof(sheet([hmid - 0.13, hy1, 0.145], [0.26, 0, 0], [0, 0.11, -0.03], 0.014));
+  const [dy, dz] = [(hy0 + hy1) / 2, he + 0.03];
+  put(box(hx1 - 0.14, hx1 - 0.05, dy - 0.05, dy + 0.05, he - 0.02, dz + 0.05), WHITE);
+  roof(hull([[hx1 - 0.03, dy - 0.065, dz + 0.05], [hx1 - 0.03, dy + 0.065, dz + 0.05], [hx1 - 0.18, dy - 0.065, dz + 0.08], [hx1 - 0.18, dy + 0.065, dz + 0.08], [hx1 - 0.03, dy, dz + 0.1], [hx1 - 0.18, dy, dz + 0.12]]));
+  put(box(hx1 - 0.05, hx1 - 0.045, dy - 0.03, dy + 0.03, dz, dz + 0.045), PANE);
+  put(box(hx0 + 0.06, hx0 + 0.12, hy0 + 0.05, hy0 + 0.11, 0, hr + 0.07).add(box(hx0 + 0.052, hx0 + 0.128, hy0 + 0.042, hy0 + 0.118, hr + 0.05, hr + 0.07)), BRICK);
+  fence(-1.47, 1.47, hmid - 0.05, 1.47, true);
+  fence(hmid + 0.05, 1.47, -0.78, 1.47, true);
+  fence(-0.78, 1.47, -0.78, 0.5, true);
+  fence(-0.78, 0.5, -1.47, 0.5, true);
+  put(Solid.union([[-1.38, 1.32, 0.045], [-0.88, 1.28, 0.04], [-1.02, 1.38, 0.032], [-0.86, 0.6, 0.035]].map(([x, y, r]) => Solid.sphere(r, 12).scale([1, 1, 0.8]).translate([x, y, r * 0.7]))), LEAVES);
 
-  // The rail fence round the rest, open at the gate and, either side of
-  // the yard, where the tractor goes out to the fields.
-  fence(-1.47, -1.95, 1.47, -1.95);
-  fence(-1.47, -1.95, -1.47, 0.05);
-  fence(-1.47, 0.9, -1.47, 1.95, true);
-  fence(1.47, -1.95, 1.47, -0.5);
-  fence(1.47, 0.35, 1.47, 1.95);
-  fence(0.45, 1.95, 1.47, 1.95);
-  fence(-0.72, 1.95, -0.45, 1.95);
+  // The rail fence round the rest, open to the street and, at the back
+  // between the barn and the shed, the gate the tractor goes out by.
+  fence(-1.47, -1.47, -0.42, -1.47);
+  fence(0.42, -1.47, 1.47, -1.47);
+  fence(-1.47, -1.47, -1.47, 0.5);
+  fence(-1.47, 0.5, -1.47, 1.47, true);
+  fence(1.47, -1.47, 1.47, 1.47);
+  fence(0.45, 1.47, 1.47, 1.47);
+  fence(-0.78, 1.47, -0.45, 1.47);
 
   return {
     wood: { shape: shape(wood), coat: WOOD },
@@ -207,5 +206,5 @@ const FARM = solids(() => {
 
 /** The farm, or its mirror, its barn and its house the other side. */
 export const farm = placing("farm", FARM);
-/** Its trees, `[x, y, scale]`: in the corners and by the fence's gaps. */
-export const FARM_TREES: [number, number, number][] = [[1.25, 1.65, 0.95], [1.3, 1.15, 0.75], [0.0, -1.75, 0.8], [0.32, -1.25, 0.6], [-1.28, -0.6, 0.75], [-0.55, 1.72, 0.6]];
+/** Its trees, `[x, y, scale]`: in its front corner, by the shed and the gate. */
+export const FARM_TREES: [number, number, number][] = [[1.25, 1.22, 0.85], [1.3, 0.78, 0.65], [1.3, -0.35, 0.55], [-0.6, 1.28, 0.55]];
