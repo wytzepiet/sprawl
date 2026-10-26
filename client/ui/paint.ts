@@ -85,15 +85,17 @@ export const SQUIRCLE_REACH = 1.8;
 
 /** The distance to a box of half size `half` round the origin, its corners
  *  squircles, not quarter circles: the corner's curve a superellipse (an
- *  L4 circle), reaching a little further to stand for a radius `r`, but
- *  never so far that its corners meet: only a pill, rounded all the way
- *  (`r` half its height), has round ends, and those are circles. */
+ *  L4 circle), reaching a little further to stand for a radius `r`. A
+ *  corner too big for its box eases toward meeting the other rather than
+ *  stopping at it, and rounds toward a circle as it nears, so a short
+ *  card leans to a pill; a pill (`r` half its height) is one, its ends
+ *  circles. */
 export const WGSL_SQUIRCLE = /* wgsl */ `
 fn squircle(p: vec2f, half: vec2f, r: f32) -> f32 {
   let m0 = min(half.x, half.y);
   let pill = r >= m0 - 0.5;
-  let k = select(min(r * ${SQUIRCLE_REACH}, m0 * 0.8), m0, pill);
-  let n = select(4.0, 2.0, pill);
+  let k = select(m0 * tanh(r * ${SQUIRCLE_REACH} / m0), m0, pill);
+  let n = select(mix(4.0, 2.0, smoothstep(0.7, 1.0, k / m0)), 2.0, pill);
   let q = abs(p) - half + k;
   let m = max(q, vec2f(1e-6));
   return pow(pow(m.x, n) + pow(m.y, n), 1 / n) + min(max(q.x, q.y), 0) - k;
