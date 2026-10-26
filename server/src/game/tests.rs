@@ -1162,7 +1162,11 @@ fn the_opening_from_the_harbour() {
     while car_of(&game.world, ferry).passengers.contains(&lorry) {
         assert!(game.step_to(day), "the lorry never rolled off");
     }
-    assert!(car_of(&game.world, lorry).spot.is_some(), "the lorry did not come off onto the quay");
+    assert!(car_of(&game.world, lorry).trip.is_some(), "the lorry did not drive off the ramp");
+    let off = game.now;
+    while car_of(&game.world, lorry).spot.is_none() {
+        assert!(game.step_to(day) && game.now - off < 60_000, "the lorry never pulled into its dock");
+    }
     // The forklifts unload it onto the quay while it is in, and it
     // sails on time.
     let mut lifted = false;

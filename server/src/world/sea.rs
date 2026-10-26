@@ -422,18 +422,21 @@ impl World {
         // street does not let out yet tries again with the next. Whoever is
         // still aboard when the ferry sails waits for the next sailing.
         let off = seat.and_then(|(k, at)| Some((self.way_off(harbour, 2 * k + (j & 1))?, at)));
-        let drove = home.is_some_and(|home| match off {
+        let drove = home.is_some_and(|home| home != harbour && match off {
             Some((out, at)) => {
                 self.update_position(car, GridCoord { x: at.at[0].floor() as i32, y: at.at[1].floor() as i32 });
                 crate::car::spawn::depart(self, events, car, out, Some(at), street, home, now, GameTime::MAX)
             }
             None => crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX),
         });
-        // The mayor's lorry has no road from the ramp round into its own
-        // quay: it stands there as it comes off.
+        // The mayor's lorry drives off into a dock of its own quay; with
+        // none free, it stands at the door.
         let lorry = home == Some(harbour) && !drove;
         if lorry {
-            self.park_in_lot(harbour, car, now);
+            let ashore = seat.and_then(|(k, at)| Some((self.way_ashore(harbour, car, 2 * k + (j & 1), now)?, at)));
+            if !ashore.is_some_and(|(way, at)| crate::car::spawn::manoeuvre(self, events, car, harbour, way, 1, Some(at), now)) {
+                self.park_in_lot(harbour, car, now);
+            }
         }
         if drove || lorry || home.is_none() {
             if let Some(c) = self.car_mut(ferry) {

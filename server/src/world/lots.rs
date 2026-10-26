@@ -892,6 +892,19 @@ impl World {
         Some([at, end].into_iter().chain(lane.iter().rev().copied()).chain([*street]).collect())
     }
 
+    /// The way off a harbour's moored ferry for its own lorry, into a dock
+    /// of its quay, claiming it: along the deck lane, over the ramp, down
+    /// the lane to the dock's mouth, and backed in. `None` with no dock
+    /// free.
+    pub fn way_ashore(&mut self, harbour: EntityId, car: EntityId, seat: usize, now: GameTime) -> Option<Vec<EntityId>> {
+        let Claim::Spot(i) = self.claim_spot(harbour, car, now, GameTime::MAX, |_| true)? else { return None };
+        let lot = self.lots.get(&harbour)?;
+        let Way::Yard { lane, bays, seats, .. } = &lot.way else { return None };
+        let [at, end] = *seats.get(seat)?;
+        let (mouth, stop) = bays[i];
+        Some([at, end].into_iter().chain(lane[mouth..].iter().rev().copied()).chain([stop, lot.spots[i].node]).collect())
+    }
+
     /// The ways from a node to a building, claiming nothing: the street
     /// route to its door, and to the entry of each kerb bay. `None` where
     /// no road leads there.
