@@ -77,10 +77,34 @@ jobs:
         if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      # The last build's target, our own crates and all, so a push builds
+      # only the crates it changed and those above them (CLAUDE.md,
+      # Structure). Saved by every push, found by the next on its branch
+      # or from main's.
+      - uses: actions/cache@v4
         if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         with:
-          workspaces: sprawl/server
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            sprawl/server/target/release
+            sprawl/server/target/wasm32-unknown-unknown/release
+            sprawl/server/target/sources.sha
+          key: rust-${{ hashFiles('sprawl/server/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            rust-${{ hashFiles('sprawl/server/Cargo.lock') }}-
+            rust-
+      # Cargo knows a file changed by its time, and a checkout makes every
+      # file new: each one as it was at that build goes back before it.
+      - name: Files that build saw, as old as they are
+        if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
+        working-directory: sprawl/server
+        run: |
+          [ -f target/sources.sha ] && sha1sum --quiet -c target/sources.sha 2>/dev/null | sed -n 's/: FAILED$//p' > /tmp/changed || true
+          if [ -f target/sources.sha ]; then
+            cut -c43- target/sources.sha | grep -vxFf /tmp/changed | xargs -d '\n' -r touch -c -d @1
+          fi
       - name: wasm-bindgen, the version Cargo.lock asks for
         if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         run: echo "BINDGEN=$(grep -A1 '^name = "wasm-bindgen"$' sprawl/server/Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')" >> $GITHUB_ENV
@@ -109,6 +133,7 @@ jobs:
           if [ "${{ steps.game.outputs.cache-hit }}" != true ]; then
             bun run wasm
             (cd ../server && cargo build --release -p sprawl-server)
+            (cd ../server && git ls-files -z | xargs -0 sha1sum > target/sources.sha)
           fi
           # Preview, not production: the clock keeps its speeds and resets (`ui/Clock.tsx`).
           bunx vite build --mode preview
