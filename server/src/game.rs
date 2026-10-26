@@ -324,7 +324,11 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
         wake_resident(world, events, id);
     }
     // A harbour reached, or cut off: the town's way out, and its ferry.
-    world.mark_harbours(events.now());
+    world.mark_harbours();
+    let standing: Vec<EntityId> = world.harbours.keys().copied().collect();
+    for h in standing {
+        world.commission(h, events.now());
+    }
     // A site reached, and not calling: it calls for its timber.
     world.sites.retain(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
     let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();

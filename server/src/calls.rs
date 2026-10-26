@@ -17,7 +17,7 @@ use model::blueprint::blueprint;
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use model::GameTime;
-use model::{Car, CarRole, EntityId, GameObject, Good, DAY_MS};
+use model::{CarRole, EntityId, GameObject, Good, DAY_MS};
 use crate::world::pathfinding::Routes;
 use crate::world::World;
 
@@ -165,35 +165,12 @@ fn nearest_seller(world: &mut World, at: EntityId, good: Good, now: GameTime) ->
         .map(|(_, depot, van)| (depot, van))
 }
 
-/// A facility's vehicles, standing in its yard from the day it is reached:
-/// the ones its row lists, each in a dock.
-pub fn stable(world: &mut World, facility: EntityId) {
-    let kind = match world.objects.get(facility).map(|e| &e.object) {
-        Some(GameObject::Building(b)) if b.site.is_none() => b.kind,
-        _ => return,
-    };
-    let bought = match world.objects.get(facility).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => b.lorries as usize,
-        _ => 0,
-    };
-    let vehicles: Vec<CarRole> = blueprint(kind).vehicles.iter().copied().chain(std::iter::repeat_n(CarRole::Truck, bought)).collect();
-    if vehicles.is_empty() {
-        return;
-    }
-    let tile = world.objects.get(facility).and_then(|e| e.position);
-    let have = world.objects.fleet(facility).filter(|&c| !matches!(world.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == CarRole::Ferry)).count();
-    for role in vehicles.into_iter().skip(have) {
-        let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
-        world.park_in_lot(facility, car, 0);
-    }
-}
-
 /// A facility's vehicle of a role standing free in its yard, no forklift
 /// at it, and the driveway it leaves from. None where no road reaches the
 /// yard.
 fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole, now: GameTime) -> Option<(EntityId, EntityId)> {
     let door = world.street_of(facility)?;
-    stable(world, facility);
+    world.stable(facility);
     let car = world.objects.fleet(facility).find(|&car| {
         world.claims.get(&car).is_none_or(|&b| b == facility)
             && !world.calls.iter().any(|c| c.answered_by == Some(car))

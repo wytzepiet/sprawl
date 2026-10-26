@@ -431,7 +431,7 @@ pub fn buy_lorry(world: &mut World, events: &mut EventQueue, depot: EntityId, no
     }
     b.lorries += 1;
     crate::economy::bought(world, depot, LORRY_PRICE, now);
-    crate::calls::stable(world, depot);
+    world.stable(depot);
     call_lorries(world, events);
 }
 

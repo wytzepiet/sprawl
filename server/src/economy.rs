@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
-use model::blueprint::{blueprint, crop, depot, farm, makes, rated, shelves, stocks};
+use model::blueprint::{blueprint, crop, depot, farm, makes, rated, shelves};
 use model::GameTime;
 use model::needs::{Need, Stock};
 use model::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS};
@@ -154,35 +154,6 @@ pub fn hiring(world: &World, building: EntityId) -> bool {
     match blueprint(b.kind).makes {
         Some(good) => b.stocks.get(&good).is_none_or(|s| s.short() >= lump(b.kind)),
         None => true,
-    }
-}
-
-/// A building saved before it had its shelves or its yard gets them the
-/// way a standing one does; one whose row changed a shelf gets the new
-/// one. A site has neither until it stands.
-pub fn open(world: &mut World, id: EntityId) {
-    let Some(b) = world.building_mut(id) else { return };
-    if b.site.is_some() {
-        return;
-    }
-    let caps = stocks(b.kind);
-    b.stocks.retain(|good, stock| caps.get(good) == Some(&stock.cap));
-    for (good, cap) in caps {
-        b.stocks.entry(good).or_insert(Stock { level: 0.0, cap });
-    }
-}
-
-/// The last of a site's materials landed: it stands, its shelves empty and
-/// calling; its vehicles stand in its yard, and a farm claims its land.
-pub fn stand(world: &mut World, id: EntityId) {
-    if let Some(b) = world.building_mut(id) {
-        b.site = None;
-    }
-    open(world, id);
-    world.unsettled.insert(id);
-    if world.street_of(id).is_some() {
-        crate::calls::stable(world, id);
-        world.claim_land(id);
     }
 }
 
@@ -321,7 +292,7 @@ pub fn delivered(world: &mut World, buyer: EntityId, good: Good, load: f64) -> f
     let units = load.min(whole(stock.short(), good) as f64 * good.per_package()).max(0.0);
     stock.add(units);
     if b.site.as_ref().is_some_and(|s| s.values().all(|s| s.short() <= 1e-9)) {
-        stand(world, buyer);
+        world.stand(buyer);
     }
     load - units
 }
@@ -718,7 +689,7 @@ mod tests {
             }
             let b = world.place_on_street(at(x), kind).unwrap();
             x += 8;
-            for (good, cap) in stocks(kind) {
+            for (good, cap) in model::blueprint::stocks(kind) {
                 let s = reorder(&world, b, good);
                 assert!(s < cap, "{kind:?} reorders {good:?} at {s} with a shelf of {cap}");
             }

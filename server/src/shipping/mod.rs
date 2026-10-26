@@ -4,6 +4,7 @@
 //! a line's round (`lines.rs`), and how a ship moves along a leg (here).
 //! Nothing in this module names `World` or `EventQueue`.
 
+pub mod ferry;
 pub mod lanes;
 pub mod voyage;
 pub mod water;

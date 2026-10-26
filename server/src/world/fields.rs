@@ -25,9 +25,6 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
 use fixed::HashSet;
 
-
-use crate::economy;
-use crate::engine::event_queue::EventQueue;
 use model::GameTime;
 use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
 use crate::world::World;
@@ -185,7 +182,7 @@ impl World {
     /// else the plough, for grass and stubble; else the seed, for bare
     /// ground. A batch is complete or it waits, so that one run takes it
     /// all and the cycle keeps in step.
-    fn batch(&self, farm: EntityId, now: GameTime) -> Option<(Job, Vec<GridCoord>)> {
+    pub fn batch(&self, farm: EntityId, now: GameTime) -> Option<(Job, Vec<GridCoord>)> {
         let Some(b) = self.building(farm) else { return None };
         let tiles = |stage: Stage| -> Vec<GridCoord> { b.land.iter().filter(|t| t.stage == stage).map(|t| t.at).collect() };
         let sown = tiles(Stage::Sown);
@@ -208,65 +205,6 @@ impl World {
             return Some((Job::Seed, bare));
         }
         None
-    }
-
-    /// The farm's turn for its tractor: with a hand on shift, the tractor
-    /// in its yard, and a batch wanting a job, it sets out on a run.
-    pub fn farm_run(&mut self, events: &mut EventQueue, farm: EntityId, now: GameTime) {
-        self.tend(farm);
-        let Some(kind) = self.objects.get(farm).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some(b.kind),
-            _ => None,
-        }) else {
-            return;
-        };
-        let Some((job, batch)) = self.batch(farm, now) else {
-            // A crop still ripening: the farm wakes when the last of it is.
-            if let Some(b) = self.building(farm)
-                && let Some(ripe) = b.land.iter().filter(|t| t.stage == Stage::Sown).map(|t| t.since + RIPEN).max()
-                && ripe > now
-            {
-                events.wake(ripe - now, farm);
-            }
-            return;
-        };
-        // The hands set out on a job only with half of it inside their
-        // shift: a job finished late in the day leaves the next for the
-        // morning.
-        let half = now + batch.len() as GameTime * PACE / 2;
-        let on_shift = model::blueprint::blueprint(kind).taps.iter().any(|t| t.need == model::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0 && t.curve.integral(half, half + 1_000) > 0.0);
-        if !on_shift || !crate::calls::staffed(self, farm) {
-            return;
-        }
-        let Some(tractor) = self
-            .objects
-            .iter()
-            .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == CarRole::Tractor && c.trip.is_none() && c.run.is_none()))
-            .map(|e| e.id)
-        else {
-            return;
-        };
-        let Some(yard) = self.yard_gate(farm, &batch) else { return };
-        let Some((path, left)) = self.sweep(farm, yard, &batch, job) else { return };
-        // A tile the tractor cannot work — a pocket it could not turn in,
-        // or ground cut off by what was built since — is land no more:
-        // the field is what the tractor can drive.
-        if !left.is_empty()
-            && let Some(b) = self.building_mut(farm)
-        {
-            b.land.retain(|t| !left.contains(&t.at));
-        }
-        // All of it left: nowhere to drive, and no run.
-        if path.len() < 2 {
-            return;
-        }
-        self.release_spot(tractor);
-        self.update_position(tractor, yard);
-        if let Some(c) = self.car_mut(tractor) {
-            c.spot = None;
-            c.run = Some(Run { job, path, started: now, pace: PACE });
-        }
-        events.wake(PACE, tractor);
     }
 
     /// The cycle played at once, for a fixture to show: each job a whole
@@ -348,7 +286,7 @@ impl World {
 
     /// Where a run leaves the yard and comes back to it: the yard tile
     /// nearest the batch.
-    fn yard_gate(&self, farm: EntityId, batch: &[GridCoord]) -> Option<GridCoord> {
+    pub fn yard_gate(&self, farm: EntityId, batch: &[GridCoord]) -> Option<GridCoord> {
         self.yard_tiles(farm).into_iter().min_by_key(|&y| batch.iter().map(|&t| dist(y, t)).min().unwrap_or(i32::MAX))
     }
 
@@ -367,7 +305,7 @@ impl World {
     /// tile it could not get home from that way — a pocket too narrow to
     /// turn in — and a tile there is no such way to is left, and named.
     /// `bun run fields` drives it over the fields in `server/fields/`.
-    fn sweep(&self, farm: EntityId, yard: GridCoord, batch: &[GridCoord], job: Job) -> Option<(Vec<GridCoord>, Vec<GridCoord>)> {
+    pub fn sweep(&self, farm: EntityId, yard: GridCoord, batch: &[GridCoord], job: Job) -> Option<(Vec<GridCoord>, Vec<GridCoord>)> {
         if batch.is_empty() {
             return None;
         }
@@ -567,59 +505,6 @@ impl World {
         None
     }
 
-    /// The tractor arrives at the tile of its run the clock names and does its job to
-    /// it: the plough turns grass or stubble to bare ground, the seed
-    /// starts a crop, the harvest lands a crop in the yard and leaves
-    /// stubble — or, with no room left in the yard, leaves the crop
-    /// standing. At the end of the run it is home, its path is the field
-    /// as drawn, and the farm takes its turn for the next run.
-    pub fn tractor_step(&mut self, events: &mut EventQueue, tractor: EntityId, now: GameTime) {
-        let Some(c) = self.car(tractor) else { return };
-        let (farm, Some(run)) = (c.owner, c.run.clone()) else { return };
-        // The tile is the clock's: the run began on the first, and reaches
-        // one more every pace. Nothing on the car changes from step to
-        // step, so nothing is resent until the run is over.
-        let k = ((now - run.started) / run.pace) as usize;
-        let Some(&here) = run.path.get(k) else { return };
-        self.update_position(tractor, here);
-        let crop = self.objects.get(farm).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some(model::blueprint::crop(b.kind, b.land.len())),
-            _ => None,
-        });
-        let mut cut = 0.0;
-        if let Some(b) = self.building_mut(farm)
-            && let Some(tile) = b.land.iter_mut().find(|t| t.at == here)
-        {
-            match (run.job, tile.stage) {
-                (Job::Plough, Stage::Grass | Stage::Cut) => (tile.stage, tile.since) = (Stage::Ploughed, now),
-                (Job::Seed, Stage::Ploughed) => (tile.stage, tile.since) = (Stage::Sown, now),
-                (Job::Harvest, Stage::Sown) => {
-                    let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
-                    if room {
-                        (tile.stage, tile.since) = (Stage::Cut, now);
-                        cut = crop.unwrap_or(0.0);
-                    }
-                }
-                _ => {}
-            }
-        }
-        if cut > 0.0 {
-            economy::harvested(self, farm, cut, now);
-        }
-        if k + 1 < run.path.len() {
-            events.wake(PACE, tractor);
-            return;
-        }
-        if let Some(c) = self.car_mut(tractor) {
-            c.run = None;
-        }
-        if let Some(b) = self.building_mut(farm) {
-            b.ruts = run.path;
-        }
-        self.park_in_lot(farm, tractor, now);
-        economy::refilled(self, tractor, now);
-        crate::calls::turn(self, events, farm, now);
-    }
 }
 
 /// Where the tractor is and how it got there: a tile and the way it came
@@ -723,6 +608,7 @@ mod bench;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::event_queue::EventQueue;
     use model::BuildingKind;
     use land::TerrainType;
 

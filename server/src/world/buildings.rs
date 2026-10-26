@@ -12,6 +12,58 @@ enum Behind {
 }
 
 impl World {
+    /// A building saved before it had its shelves or its yard gets them the
+    /// way a standing one does; one whose row changed a shelf gets the new
+    /// one. A site has neither until it stands.
+    pub fn open_shelves(&mut self, id: EntityId) {
+        let Some(b) = self.building_mut(id) else { return };
+        if b.site.is_some() {
+            return;
+        }
+        let caps = model::blueprint::stocks(b.kind);
+        b.stocks.retain(|good, stock| caps.get(good) == Some(&stock.cap));
+        for (good, cap) in caps {
+            b.stocks.entry(good).or_insert(model::needs::Stock { level: 0.0, cap });
+        }
+    }
+
+    /// The last of a site's materials landed: it stands, its shelves empty and
+    /// calling; its vehicles stand in its yard, and a farm claims its land.
+    pub fn stand(&mut self, id: EntityId) {
+        if let Some(b) = self.building_mut(id) {
+            b.site = None;
+        }
+        self.open_shelves(id);
+        self.unsettled.insert(id);
+        if self.street_of(id).is_some() {
+            self.stable(id);
+            self.claim_land(id);
+        }
+    }
+
+    /// A facility's vehicles, standing in its yard from the day it is reached:
+    /// the ones its row lists, each in a dock.
+    pub fn stable(&mut self, facility: EntityId) {
+        let kind = match self.objects.get(facility).map(|e| &e.object) {
+            Some(GameObject::Building(b)) if b.site.is_none() => b.kind,
+            _ => return,
+        };
+        let bought = match self.objects.get(facility).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.lorries as usize,
+            _ => 0,
+        };
+        let vehicles: Vec<model::CarRole> = model::blueprint::blueprint(kind).vehicles.iter().copied().chain(std::iter::repeat_n(model::CarRole::Truck, bought)).collect();
+        if vehicles.is_empty() {
+            return;
+        }
+        let tile = self.objects.get(facility).and_then(|e| e.position);
+        let have = self.objects.fleet(facility).filter(|&c| !matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == model::CarRole::Ferry)).count();
+        for role in vehicles.into_iter().skip(have) {
+            let car = self.insert_at(GameObject::Car(model::Car::new(facility, role)), tile);
+            self.park_in_lot(facility, car, 0);
+        }
+    }
+
     /// Tiles a footprint of this size covers when placed at `pos`.
     ///
     /// `pos` is always the min corner, which keeps every caller — spatial
@@ -326,7 +378,7 @@ impl World {
         }
         let standing = matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_none());
         if standing {
-            crate::economy::stand(self, id);
+            self.stand(id);
         }
     }
 
@@ -368,7 +420,7 @@ impl World {
             }
         }
         // Reached: a depot's lorries come with it, and a farm claims its land.
-        crate::calls::stable(self, id);
+        self.stable(id);
         self.claim_land(id);
         true
     }
@@ -416,7 +468,7 @@ impl World {
     /// in, its shelves full but for what its own land fills.
     pub fn finish(&mut self, id: EntityId) {
         if matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()) {
-            crate::economy::stand(self, id);
+            self.stand(id);
         }
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
             let kind = b.kind;

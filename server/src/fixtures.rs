@@ -274,7 +274,7 @@ fn stock_yards(world: &mut World) {
         if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
             for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
                 for _ in 0..n {
-                    let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: crate::world::sea::GIFT, partner: None, price: 0.0 };
+                    let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: crate::shipping::ferry::GIFT, partner: None, price: 0.0 };
                     world.building_mut(id).unwrap().pad.push(p);
                 }
             }

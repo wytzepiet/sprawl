@@ -17,7 +17,6 @@ pub mod segments;
 use std::collections::BTreeSet;
 use fixed::{HashMap, HashSet};
 
-use model::GameTime;
 
 use model::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, Resident, TerrainChunk};
 use land::{CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, TILE_ABSENT, TerrainType};
@@ -413,7 +412,7 @@ impl World {
     /// reaches one is joined, and drawn so; one that reaches none is red.
     /// Derived from the buildings rather than remembered: running this
     /// twice changes nothing.
-    pub fn mark_harbours(&mut self, now: GameTime) {
+    pub fn mark_harbours(&mut self) {
         let standing: Vec<EntityId> = self.of_kinds(|k| k == BuildingKind::Harbour).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id).collect();
         let was = std::mem::take(&mut self.harbours);
         for (h, node) in &was {
@@ -431,7 +430,6 @@ impl World {
                 self.mark_joined(turning.into_iter().chain([node]));
             }
             self.harbours.insert(h, node);
-            self.commission(h, now);
         }
     }
 

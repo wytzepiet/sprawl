@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use fixed::HashSet;
 
 use model::blueprint::blueprint;
-use crate::economy;
 use model::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
 use land::{ChunkCoord, CHUNK_SIZE};
 use crate::world::World;
@@ -45,7 +44,7 @@ impl World {
         }
         let buildings: Vec<EntityId> = self.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
         for id in buildings {
-            economy::open(self, id);
+            self.open_shelves(id);
             self.unsettled.insert(id);
         }
         self.unsettled.extend(self.people.keys());

@@ -18,6 +18,7 @@ pub mod replay;
 mod rows;
 pub mod resident;
 pub mod shipping;
+pub mod tractor;
 pub mod undo;
 pub mod view;
 pub mod world;

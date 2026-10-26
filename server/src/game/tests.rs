@@ -1086,7 +1086,7 @@ pub(crate) fn opening(game: &mut Game) -> Vec<bool> {
 fn the_opening_from_the_harbour() {
     use model::missions::Key;
     use crate::shipping::DWELL;
-    use crate::world::sea::FIRST_CALL;
+    use crate::shipping::ferry::FIRST_CALL;
     let mut game = game(street());
     let harbour = harbour_of(&game.world);
     assert_eq!(opening(&mut game), [true, false, false, false, false], "the harbour stands, and nothing else");
@@ -1101,7 +1101,7 @@ fn the_opening_from_the_harbour() {
     let world = &game.world;
     let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
     let lorry = lorries_of(world, depot)[0];
-    let starter: u32 = crate::world::sea::STARTER.iter().map(|&(_, n)| n).sum();
+    let starter: u32 = crate::shipping::ferry::STARTER.iter().map(|&(_, n)| n).sum();
     assert_eq!(car_of(world, ferry).booked.len(), starter as usize, "the starter pack is booked");
     // A settle with nothing new touches nothing: what it touches goes
     // to every client, and is written down, each tick.
