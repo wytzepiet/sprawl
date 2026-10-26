@@ -541,6 +541,18 @@ impl World {
         // docks on each side the yard reaches far enough.
         let (points, docks) = match self.berth_at(tiles, kind, facing) {
             Some(berth) => berth.park(),
+            // A yard one tile deep is all lane, along it from the gate
+            // toward its far end, its rows squeezed so the last is three
+            // quarters of a tile in from that end; its one dock is in the
+            // building, a lorry backed in, nose out to the lane.
+            None if d < 2.0 => {
+                let g = if 2.0 * u_gate > w { 1.0 } else { -1.0 };
+                let (gate_row, last_row) = (1.5, DOCK_ROWS[0]);
+                let squeeze = ((if g > 0.0 { u_gate } else { w - u_gate }) - 0.75) / (gate_row - last_row);
+                let (lane, mut docks) = park(|s, side| grid_at(u_gate - g * (gate_row - s) * squeeze, 0.5 + side), &[1.0]);
+                docks.drain(..docks.len() - 1);
+                (lane, docks)
+            }
             None => {
                 let sides: Vec<f64> = [1.0, -1.0].into_iter().filter(|&s| (if s > 0.0 { w - u_gate } else { u_gate }) >= DOCK_REACH).collect();
                 let (lane, mut docks) = park(|s, side| grid_at(u_gate + side, d - s), &sides);
@@ -1243,6 +1255,30 @@ mod tests {
         let world = World::meadow(-4..12, -4..8).street(-4..3);
         assert_eq!(world.fit(BuildingKind::Office, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
         assert!(world.fit(BuildingKind::Office, GridCoord { x: 2, y: 1 }, 0).is_ok());
+    }
+
+    /// A bakery's yard is one tile deep, all lane: its one dock is in the
+    /// building, three quarters of a tile in from the yard's far end, a
+    /// lorry in it nose out to the lane.
+    #[test]
+    fn a_bakery_docks_its_lorry_in_the_building() {
+        let mut world = street();
+        let bakery = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Bakery).unwrap();
+        let spots = &world.lot_mut(bakery).unwrap().spots;
+        assert_eq!(spots.len(), 1, "one dock");
+        let dock = spots[0].pose;
+        let b = match world.objects.get(bakery).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.clone(),
+            _ => unreachable!(),
+        };
+        let (gate, _) = world.door_of(bakery).unwrap();
+        let (pos, plot) = World::lie(&b.tiles, b.kind, b.facing);
+        let ((bx, by), (bw, bh)) = plot.building;
+        let inside = |p: [f64; 2]| p[0] > (pos.x + bx as i32) as f64 && p[0] < (pos.x + (bx + bw) as i32) as f64 && p[1] > (pos.y + by as i32) as f64 && p[1] < (pos.y + (by + bh) as i32) as f64;
+        assert!(inside(dock.at), "the dock is in the building: {:?}", dock.at);
+        let far = if gate.x == pos.x { pos.x + 2 } else { pos.x };
+        assert!(((dock.at[0] - far as f64).abs() - 0.75).abs() < 1e-9, "three quarters in from the far end: {:?}", dock.at);
+        assert!((dock.heading.sin() * (gate.y as f64 + 0.5 - dock.at[1])) > 0.0, "nose out, toward the lane and the street: {}", dock.heading);
     }
 
     /// A depot's lot is a yard, laid as a harbour's park: a gate in the

@@ -255,14 +255,15 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Bakers start before the town wakes: four hands, five to two,
         // opening bags of grain and baking them into crates of bread, a
         // bag a crate, as much a shift as a farm grows. It keeps ten bags
-        // in and ten crates out, a lorry's load each twice over. Its one
-        // dock is in its garage, where it loads out of sight.
+        // in and ten crates out, a lorry's load each twice over. A small
+        // plot, two tiles square: its yard one deep, all lane, and its one
+        // dock in its garage, open to the side its pad stands on.
         (Bakery, Blueprint {
             shelves: &[(Good::Grain, 250), (Good::Bread, 250)],
             makes: Some(Good::Bread),
             opens: Some(Good::Grain),
             docks: 1,
-            ..row((2, 1), (2, 2), &[(Timber, 8)], vec![shift(5, 14, 4)])
+            ..row((2, 1), (2, 1), &[(Timber, 8)], vec![shift(5, 14, 4)])
         }),
     ]
 });

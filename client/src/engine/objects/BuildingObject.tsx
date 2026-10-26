@@ -148,8 +148,8 @@ export function mountBuilding(
   // A depot too, its sheds round its bays, its gantry and its fence
   // (`depot.ts`); a shop round its courtyard (`shop.ts`), every other one
   // the other way round; a house, one of a few (`house.ts`); a quarry, its
-  // hut on the gate's side (`quarry.ts`); a bakery, its garage across the
-  // lane from its gate (`bakery.ts`).
+  // hut on the gate's side (`quarry.ts`); a bakery, its shop on the gate's
+  // side, its garage beyond (`bakery.ts`).
   const side = entry.id % 2 ? 1 : -1;
   const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : data.kind === "Farm" ? farm(ctx.engine, side) : data.kind === "Bakery" ? bakery(ctx.engine, gate) : null;
   const plot = model

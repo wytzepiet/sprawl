@@ -145,16 +145,16 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       continue;
     }
     // A bakery is a model of its own (`objects/bakery.ts`), but for the
-    // smoke from its oven's chimney: the model's (±0.66, -1.2), 0.66 up,
-    // on the other side from its gate; its building's middle a tile in
-    // from its plot's.
+    // smoke from its oven's chimney: the model's (±0.74, -0.6), 0.68 up,
+    // on its gate's side; its building's middle half a tile in from its
+    // plot's.
     if (mass.tile.kind === "Bakery") {
       const door = doorAt(mass.tile);
       const ring = polygon[0], mid = (k: 0 | 1) => (Math.min(...ring.map((p) => p[k])) + Math.max(...ring.map((p) => p[k]))) / 2;
       if (door) {
         const { way: [fx, fy], at: [gx, gy] } = door;
-        const x = (gx - mid(0)) * fy - (gy - mid(1)) * fx >= 0 ? -0.66 : 0.66;
-        prop("smoke", [mid(0) - fx * 0.2 + fy * x, mid(1) - fy * 0.2 - fx * x], 0.66, MILL.puff * 0.8, 0);
+        const x = (gx - mid(0)) * fy - (gy - mid(1)) * fx >= 0 ? 0.74 : -0.74;
+        prop("smoke", [mid(0) - fx * 0.1 + fy * x, mid(1) - fy * 0.1 - fx * x], 0.68, MILL.puff * 0.8, 0);
       }
       continue;
     }

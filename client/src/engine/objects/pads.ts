@@ -15,8 +15,8 @@ import type { Building, Good, Lift, Pose } from "../../generated";
  * - A depot is an open yard, no roof: a bay of each good on the ground
  *   where a hall would stand, its lorry's docks in its lot.
  * - A maker's pad runs down the side of its yard's lane the docks are
- *   not on: a farm's bags of grain stacked four high. A bakery's is in
- *   its garage, with the lorry, out of sight.
+ *   not on: a farm's bags of grain stacked four high. A bakery's
+ *   beside its garage, open on that side.
  * - A shop, a supermarket and a gas station keep theirs along the front
  *   wall, on the pavement; a site its materials there.
  */
@@ -77,8 +77,18 @@ export function padOf(b: Building): Pad {
   const f = frame(b);
   const kind = BLUEPRINTS[b.kind];
   const forklifts = (at: (k: number) => Pose) => Array.from({ length: kind.forklifts }, (_, k) => at(k));
-  // A bakery loads in its garage, out of sight (`bakery.ts`).
-  if (b.kind === "Bakery" && !b.site) return { bays: [], homes: [], yard: true };
+  if (b.kind === "Bakery" && !b.site && b.door) {
+    // Beside its garage, on the side open to the lorry, as its model has
+    // them (`bakery.ts`, its plot's frame, its gate at +x): the grain at
+    // the back, the bread before it, three across and two high.
+    const xs = b.tiles.map((t) => t.x), ys = b.tiles.map((t) => t.y);
+    const mid: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
+    const [dx, dy] = FACINGS[b.facing % 4];
+    const gate = (b.door.tile.x + 0.5 - mid[0]) * dy - (b.door.tile.y + 0.5 - mid[1]) * dx >= 0 ? 1 : -1;
+    const at = (x: number, y: number) => f.pose(mid, -gate * x, y);
+    const bay = (good: Good, y: number) => ({ good, slots: [0, 1].flatMap((r) => [0, 1, 2].map((c) => at(-0.86 + c * PITCH, y + r * PITCH))), stack: 2 });
+    return { bays: [bay("Grain", -0.86), bay("Bread", -0.56)], homes: forklifts(() => at(-0.74, 0.02)), yard: true };
+  }
   if (b.site) {
     // Along the front of the slab, each material after the last.
     const goods = Object.keys(b.site) as Good[];
