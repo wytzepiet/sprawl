@@ -12,6 +12,9 @@ import {
 import { daylight } from "./DayNightCycle";
 import { TILT } from "./Camera";
 import { TownLayer } from "./TownLayer";
+import { GroundTiles } from "./ground";
+import { theme } from "./theme";
+import { LAYERS, shapeKey } from "./objects/terrainGeometry";
 import { SOLID } from "./objects/look";
 import { BLUEPRINTS, KINDS, plot } from "../blueprints";
 import type { EngineContext } from "./Canvas";
@@ -25,6 +28,15 @@ const COLUMNS = 4;
 const NOON = 0.5;
 /** The lens: narrow, so a picture is nearly the plan, with a little depth. */
 const FOV = 0.35;
+/** Frames drawn before the first picture, while what it draws is built. */
+const WARM = 10;
+/** How far the street runs each way, in tiles: off any picture. */
+const STREET = 12;
+/** Room round a plot in its picture, in tiles. */
+const MARGIN = 0.4;
+/** The grass's layer of the land, and a tile of it with grass all round. */
+const GRASS = 2;
+const INSIDE = shapeKey({ base: "+", corners: [null, null, null, null], across: Array(8).fill("+"), near: Array(8).fill(null) });
 
 const [taken, setTaken] = createSignal<ReadonlySet<BuildingKind>>(new Set());
 
@@ -43,7 +55,7 @@ export function photo(kind: BuildingKind): [number, number, number, number] | un
  * the town grid draws each kind in turn on a street of its own, as the
  * town would (`TownLayer`), and a frame of it is copied into a sheet the
  * menu cuts them from (`ui/Build.tsx`). Nothing round it: the picture is
- * the building, its lot and its street, on the black. One kind a frame
+ * the building, its lot and its street, on grass. One kind a frame
  * of spare time, once, after the town has come in.
  */
 export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
@@ -86,6 +98,8 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
   const shoot = async () => {
     await registerSceneWithShadowSupport(scene);
     town = new TownLayer(ctx, lit.casters, (f) => entries.forEach(f), () => "Grass", () => SOLID);
+    lawn();
+    let first = true;
     for (const [i, kind] of KINDS.entries()) {
       if (stopped) return;
       // A harbour is its piers on the sea, which the town grid does not
@@ -104,6 +118,10 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
       // The shadow pass waits for a new set of casters to load, and a
       // frame drawn before it is all in shade.
       while (lit.shadows._preloadPending && !stopped) await idle();
+      // What the scene draws first is built over a few frames, and shows
+      // nothing until it is.
+      for (let n = 0; first && n < WARM; n++) renderFrame(main, 16, [surface]), await idle();
+      first = false;
       renderFrame(main, 16, [surface]);
       const [x, y] = [(i % COLUMNS) * CELL, Math.floor(i / COLUMNS) * CELL];
       device.queue.copyExternalImageToTexture({ source: canvas }, { texture: sheet, origin: [x, y], premultipliedAlpha: true }, [CELL, CELL]);
@@ -113,34 +131,40 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
     town.dispose();
   };
 
-  /** A kind set on its street, facing it, the street south of it. Where
-   *  to look, and how far round. */
+  // The street, the same for every kind and longer than any picture is
+  // wide, so it runs off both sides; and the grass under it all.
+  const street = Array.from({ length: 2 * STREET + 1 }, (_, k) => 100 + k);
+  const node = (k: number): RoadNode => {
+    const by = [street[k - 1], street[k + 1]].filter((n) => n !== undefined);
+    return { outgoing: by, incoming: by, joined: true, road: [], laid: true, height: 0, light: null, wide: [], side: [0, 0] };
+  };
+  const road = street.map((id, k): GameObjectEntry => ({ id, position: { x: k - STREET, y: 0 }, object: { kind: "RoadNode", data: node(k) } }));
+  const lawn = () => {
+    const ground = new GroundTiles(main, scene, ctx.beforeRender, cull);
+    ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
+    const side = 2 * STREET;
+    const at = new Float32Array(side * side * 2).map((_, k) => (k % 2 ? Math.floor(k / 2 / side) : (k / 2) % side) - STREET);
+    ground.set("studio", [0, 0], LAYERS.map((_, l) => (l === GRASS ? { at, shapes: Array(side * side).fill(INSIDE) } : { at: new Float32Array(), shapes: [] })));
+    for (const e of road) town!.touch(e.position!.x, e.position!.y);
+  };
+
+  /** A kind set on the street, facing it, the street south of it: where
+   *  to look, and how far round, the plot filling the picture. */
   const stage = (kind: BuildingKind) => {
     const old = entries;
     const [w, h] = plot(kind, 0).size;
-    const [x0, y0] = [0, 1];
-    const tiles = Array.from({ length: w * h }, (_, k) => ({ x: x0 + (k % w), y: y0 + Math.floor(k / w) }));
-    const front = { x: x0 + Math.floor(w / 2), y: y0 };
+    const x0 = -Math.floor(w / 2);
+    const tiles = Array.from({ length: w * h }, (_, k) => ({ x: x0 + (k % w), y: 1 + Math.floor(k / w) }));
+    const front = { x: 0, y: 1 };
     const building: Building = {
       kind, tiles, facing: 0, stocks: {}, site: null, pad: [], outgoing: [], lifts: [], lorries: 0, land: [], ruts: [],
-      door: { tile: front, street: { x: front.x, y: y0 - 1 } },
+      door: { tile: front, street: { x: 0, y: 0 } },
     };
-    const street = Array.from({ length: w + 2 }, (_, k) => 100 + k);
-    const node = (k: number): RoadNode => ({
-      outgoing: [street[k - 1], street[k + 1]].filter((n) => n !== undefined), incoming: [street[k - 1], street[k + 1]].filter((n) => n !== undefined),
-      joined: true, road: [], laid: true, height: 0, light: null, wide: [], side: [0, 0],
-    });
-    entries = [
-      { id: 1, position: tiles[0], object: { kind: "Building", data: building } },
-      ...street.map((id, k): GameObjectEntry => ({ id, position: { x: x0 - 1 + k, y: y0 - 1 }, object: { kind: "RoadNode", data: node(k) } })),
-    ];
-    for (const e of [...old, ...entries]) {
-      const at = e.object.kind === "Building" ? (e.object.data as Building).tiles : [e.position!];
-      for (const t of at) town!.touch(t.x, t.y);
-    }
-    // The plot and its street, a little round them.
-    const half = Math.max(w + 2, h + 1) / 2 + 0.25;
-    return { at: [x0 + w / 2, y0 - 1 + (h + 1) / 2] as [number, number], half };
+    entries = [{ id: 1, position: tiles[0], object: { kind: "Building", data: building } }, ...road];
+    for (const e of old.slice(0, 1).concat(entries.slice(0, 1))) for (const t of (e.object.data as Building).tiles) town!.touch(t.x, t.y);
+    // The plot and the street before it, a little round them.
+    const half = Math.max(w, h + 1) / 2 + MARGIN;
+    return { at: [x0 + w / 2, (h + 1) / 2] as [number, number], half };
   };
 
   const timer = setTimeout(() => void shoot(), 4000);
