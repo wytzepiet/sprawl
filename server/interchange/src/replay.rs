@@ -20,10 +20,10 @@ use std::hash::Hasher;
 
 use serde::{Deserialize, Serialize};
 
-use crate::car::{nose, tail};
+use sprawl::car::{nose, tail};
 use model::GameTime;
 use fixed::{HashMap, HashSet};
-use crate::game::Game;
+use sprawl::game::Game;
 use crate::level::Level;
 use model::{CarRole, ClientMessage, DAY_MS, EntityId, GameObject, OwnerId};
 
@@ -137,7 +137,7 @@ impl Session {
     /// As far as a replay was played.
     pub fn end(replay: &Replay) -> GameTime {
         let last = |v: Option<GameTime>| v.unwrap_or(0);
-        last(replay.prints.last().map(|p| p.0 + PRINT_MS)).max(last(replay.inputs.last().map(|i| i.0 + crate::game::STEP_MS)))
+        last(replay.prints.last().map(|p| p.0 + PRINT_MS)).max(last(replay.inputs.last().map(|i| i.0 + sprawl::game::STEP_MS)))
     }
 
     /// The replay to the moment it was last played to.
@@ -331,7 +331,7 @@ pub fn clock(now: GameTime) -> String {
 
 /// Whether a car comes to junction `j` on a priority road, if it comes to
 /// it at all.
-fn on_priority(world: &crate::world::World, car: EntityId, j: EntityId) -> Option<bool> {
+fn on_priority(world: &sprawl::world::World, car: EntityId, j: EntityId) -> Option<bool> {
     let Some(GameObject::Car(c)) = world.map.objects.get(car).map(|e| &e.object) else { return None };
     let t = c.trip.as_ref()?;
     let k = (1..t.route.len()).find(|&k| t.route[k] == j)?;
@@ -339,7 +339,7 @@ fn on_priority(world: &crate::world::World, car: EntityId, j: EntityId) -> Optio
 }
 
 /// Where a node is, as a tile.
-fn place(world: &crate::world::World, node: EntityId) -> String {
+fn place(world: &sprawl::world::World, node: EntityId) -> String {
     world.map.objects.get(node).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y))
 }
 
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn a_level_plays_again_as_it_was_played() {
         let name = "09-rush-hour";
-        let text = std::fs::read_to_string(format!("{}/levels/{name}.txt", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let text = std::fs::read_to_string(format!("{}/../levels/{name}.txt", env!("CARGO_MANIFEST_DIR"))).unwrap();
         let mut live = Session::new(name, &text, "");
         for _ in 0..7 {
             live.tick();
@@ -412,7 +412,7 @@ mod tests {
     /// that.
     #[test]
     fn nothing_goes_wrong_in_a_kept_replay() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/replays");
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../replays");
         // Each on a thread of its own: the slowest is the test's time.
         std::thread::scope(|t| {
             for path in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "json")) {

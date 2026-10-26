@@ -470,7 +470,7 @@ What runs, and where; the rest of the order above is still to come.
   `game::Game`; `server/host/` the server; `server/web/` the game for a
   Web Worker (`bun run wasm` in `client/` builds it). A trip may end on a
   road, driven off its end (`car::spawn::drive_through`).
-- **Levels** (`server/src/level.rs`, `server/levels/*.txt`): gates,
+- **Levels** (`server/interchange/src/level.rs`, `server/levels/*.txt`): gates,
   wants, our own solve (`%` rows, arrows for one-ways, `%#` for priority,
   `%^h` for a height) and its flow (`@flow`), Build and Test, a
   jam called by a backed-up gate or a stopped road, efficiency as flow

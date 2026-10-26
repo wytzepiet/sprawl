@@ -1,5 +1,5 @@
 //! A replay played to a moment, and what every car there is doing, and why
-//! (`sprawl::replay`).
+//! (`interchange::replay`).
 //!
 //! cargo run --bin replay -- <replay.json> [--to m:ss | --flag n] [--at x,y[,r]] [--car id]
 //!
@@ -14,7 +14,7 @@ use model::Cause;
 use model::GameTime;
 use sprawl::game::Game;
 use model::{DAY_MS, EntityId, GameObject};
-use sprawl::replay::{Playback, Replay, Session, Watch, clock};
+use interchange::replay::{Playback, Replay, Session, Watch, clock};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

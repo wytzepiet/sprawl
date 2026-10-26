@@ -419,6 +419,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "interchange"
+version = "0.1.0"
+dependencies = [
+ "fixed",
+ "map",
+ "model",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sprawl",
+ "ts-rs",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -936,6 +950,7 @@ dependencies = [
 name = "sprawl-web"
 version = "0.1.0"
 dependencies = [
+ "interchange",
  "js-sys",
  "map",
  "model",

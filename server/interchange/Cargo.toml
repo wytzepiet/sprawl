@@ -1,0 +1,16 @@
+# Interchange, the puzzle: levels played on the game, and the replays
+# that play them again (docs/plan-interchange.md).
+[package]
+name = "interchange"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sprawl = { path = ".." }
+fixed = { path = "../fixed" }
+model = { path = "../model" }
+map = { path = "../map" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = { version = "10", features = ["serde-compat"] }
+rand = { version = "0.9", default-features = false, features = ["std"] }

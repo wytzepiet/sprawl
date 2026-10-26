@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 sprawl = { path = ".." }
+interchange = { path = "../interchange" }
 model = { path = "../model" }
 map = { path = "../map" }
 wasm-bindgen = "0.2"

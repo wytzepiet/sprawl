@@ -47,6 +47,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
     map (`world::World`: the map, and who moves in and is hired, who goes
     first at a junction, the books, calls, market, missions and ferries)
     as `game::Game`, with no clock on the wall and no IO.
+  - `server/interchange/` — the puzzle: levels played on the game, and
+    replays of them. The game knows nothing of it.
   - `server/host/` — the server binary: `Game` on a tokio loop, over
     WebSocket, saved to SQLite. `cargo run` in `server/` runs it.
   - `server/web/` — `Game` for a Web Worker, built for wasm
@@ -216,7 +218,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   levels run in the browser on the sim compiled to wasm (`server/web`):
   `cd client && bun run wasm` after changing the server (`bun run dev`
   does it on start). A level is `server/levels/<name>.txt` (the format at
-  the top of `server/src/level.rs`); `cargo test level` runs every
+  the top of `server/interchange/src/level.rs`); `cargo test level` runs every
   level's own solve and asserts it flows as its `@flow` says, which is
   what scores 100; when cars change, it says what to write instead. A new level file needs
   Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
@@ -225,7 +227,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   its verdict, in `.dev/look/`.
 - **A replay of what went wrong:** in a level, F flags the moment and the
   tile under the pointer, and "Copy replay" puts everything played since
-  the level opened on the clipboard (`server/src/replay.rs`): the
+  the level opened on the clipboard (`server/interchange/src/replay.rs`): the
   player's inputs at the moments they came, and nothing else, since the
   game is the same from the same inputs on every machine (`server/fixed`: no
   `std` HashMap or `SmallRng`; settling by the steps, not the ticks).
@@ -235,7 +237,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   car through another, one standing for good, one on a priority road
   made to wait for a minor one: `Watch`), and every car
   there, how fast and what it slows or stops for (`why`, in
-  `bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
+  `interchange/src/bin/replay.rs`). `cargo test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.
 - **Generated types:** a full `cargo test` in `server/` writes them into
   `client/src/generated` (`server/.cargo/config.toml`), and beside them

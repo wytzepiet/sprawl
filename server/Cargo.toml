@@ -7,8 +7,8 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["fixed", "land", "model", "map", "host", "web"]
-default-members = [".", "fixed", "land", "model", "map", "host"]
+members = ["fixed", "land", "model", "map", "interchange", "host", "web"]
+default-members = [".", "fixed", "land", "model", "map", "interchange", "host"]
 
 [dependencies]
 fixed = { path = "fixed" }
