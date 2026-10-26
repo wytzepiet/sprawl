@@ -140,6 +140,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   5,86` (placed whole round the tile, the first way it fits; `build
   Depot 5,86 1` turned that way), `demolish 5,86` (the road there),
   `raze 5,86` (the building there, whole),
+  `haul 5 Timber 2 83` (your lorry, by building id),
   `undo`, `speed 0`, `run 2` (hours, or `--to 0.83` of a day), `reset`;
   `bun run act - < steps` reads one a line. Each says what it made and
   took away, and a building refused or an undo says why; a road step

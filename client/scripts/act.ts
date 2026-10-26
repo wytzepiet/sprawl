@@ -16,6 +16,7 @@
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
  *   bun run act lorry 79                another lorry for depot #79
+ *   bun run act haul 5 Timber 2 83     your lorry: two bundles from #5 to #83
  *   bun run act undo                    the hand's last road laid or taken up,
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
@@ -243,6 +244,12 @@ for (const line of lines) {
     case "lorry":
       send({ type: "BuyLorry", data: { depot: Number(args[0]) } });
       break;
+    case "haul": {
+      // Your lorry: so many packages of a good from one building to another, by id.
+      const [from, good, n, to] = args;
+      send({ type: "Haul", data: { from: Number(from), good: good as Good, packages: Number(n), to: Number(to) } });
+      break;
+    }
     case "undo":
       send({ type: "Undo" });
       break;

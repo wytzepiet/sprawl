@@ -80,11 +80,37 @@ you were doing by hand. That is the automation, felt.
 9. Later, **the construction company** takes the big builds (§plan-goods
    §Jobs, buildings that grow): builder-hours, crews in vans.
 
-What the sim needs: a lorry of the mayor's (`CarRole::Hand`) that is
-sent with one errand (load this at that pad, take it there), and a site
-it stands at is built after a while, as its forklift holds a lorry
-today. Steering is never asked for: a tap picks the destination and it
-drives the roads.
+What the sim needs: a lorry of the mayor's that is sent with one
+errand (load this at that pad, take it there), and a site it stands at
+is built after a while, as its forklift holds a lorry today. Steering
+is never asked for: a tap picks the destination and it drives the
+roads.
+
+**Built, 2026-10-26** (branch `claude/project-thread-09ohao`):
+
+- Spawn: `hand::seat_harbour` places the harbour, as the hand would, on
+  the sea tile nearest the origin where it fits with forest within
+  `WOODS` (24) tiles; the host does it for a fresh world and on reset.
+  Every one of the first twenty seeds seats one, in about 20 ms
+  (`every_seed_seats_a_harbour`). The floor is only the woods so far:
+  no check yet for flat land or room from neighbours.
+- Your lorry: the harbour's, a `Truck` with an `Errand` (`haul::send`,
+  `ClientMessage::Haul`): fetch, carry, and at a site stand
+  `BUILD_MS` a package. It takes no more than the destination takes.
+  It is not in the harbour's row: it stands on the quay as the first
+  ferry berths (`World::lorry_off`). It does not yet drive off the
+  ramp: a trip from the harbour's own street to the harbour has no
+  route.
+- The cutscene is the camera: a new town's camera follows the first
+  ferry in and then the lorry (`ui/Arrival.ts`). No letterbox, no skip
+  needed; a pan lets go.
+- The guide: the opening's card wears a robot's face, speaks its steps,
+  and opens itself once to greet a new mayor. The harbour step is gone:
+  the opening starts at the sawmill.
+- A pile of goods selects like a car or a building: hovered and
+  outlined, its card listing where your lorry can take it, and a tap on
+  such a building sends it.
+- Not built: the construction company; the night rule.
 
 ## The sawmill cut, built and timed
 

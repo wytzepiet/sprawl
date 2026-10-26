@@ -33,7 +33,8 @@ together.
 ## Sources
 
 1. **The trunk.** The opening, opened with the town, played with the
-   mayor's own lorry (`plan-opening.md`): a harbour; a sawmill, its
+   mayor's own lorry (`plan-opening.md`), its harbour seated by the
+   spawn: a sawmill, its
    timber brought from the quay and built by hand; houses for its hands,
    of its own timber; a bundle sold, the ferry waiting for it; a depot,
    whose lorry and vans take over. Then the market: a pallet of fuel
