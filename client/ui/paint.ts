@@ -80,10 +80,24 @@ function rgba(c: string | undefined, fade: number): [number, number, number, num
   return [r * a, g * a, b * a, a];
 }
 
+/** How much further a squircle's corner reaches than the circle it stands for. */
+export const SQUIRCLE_REACH = 1.3;
+
+/** The distance to a box of half size `half` round the origin, its corners
+ *  squircles, not quarter circles: the corner's curve a superellipse (an
+ *  L4 circle), reaching a little further to stand for a radius `r`. */
+export const WGSL_SQUIRCLE = /* wgsl */ `
+fn squircle(p: vec2f, half: vec2f, r: f32) -> f32 {
+  let k = min(r * ${SQUIRCLE_REACH}, min(half.x, half.y));
+  let q = abs(p) - half + k;
+  let m = max(q, vec2f(0)) * max(q, vec2f(0));
+  return sqrt(sqrt(dot(m, m))) + min(max(q.x, q.y), 0) - k;
+}`;
+
 const WGSL_CLIP = /* wgsl */ `
+${WGSL_SQUIRCLE}
 fn clipped(p: vec2f, b: vec4f, r: f32) -> f32 {
-  let q = abs(p - (b.xy + b.zw) * 0.5) - (b.zw - b.xy) * 0.5 + r;
-  return clamp(0.5 - (length(max(q, vec2f(0))) + min(max(q.x, q.y), 0) - r), 0, 1);
+  return clamp(0.5 - squircle(p - (b.xy + b.zw) * 0.5, (b.zw - b.xy) * 0.5, r), 0, 1);
 }`;
 
 const CORNERS = /* wgsl */ `var corners = array<vec2f, 6>(vec2f(-1, -1), vec2f(1, -1), vec2f(1, 1), vec2f(-1, -1), vec2f(1, 1), vec2f(-1, 1));`;
@@ -114,8 +128,7 @@ struct V {
 }
 ${WGSL_CLIP}
 fn dist(p: vec2f, rect: vec4f, r: f32) -> f32 {
-  let q = abs(p - rect.xy - rect.zw * 0.5) - rect.zw * 0.5 + r;
-  return length(max(q, vec2f(0))) + min(max(q.x, q.y), 0) - r;
+  return squircle(p - rect.xy - rect.zw * 0.5, rect.zw * 0.5, r);
 }
 @fragment fn frag(v: V) -> @location(0) vec4f {
   let r = min(v.form.x, min(v.rect.z, v.rect.w) * 0.5);

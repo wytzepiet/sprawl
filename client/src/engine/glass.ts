@@ -1,5 +1,5 @@
 import { addTask, buildFrameGraphTask, getFrameGraph, type EngineContext, type SceneContext, type Task } from "@babylonjs/lite";
-import type { Layer, Palette, Pane } from "~ui/paint";
+import { SQUIRCLE_REACH, WGSL_SQUIRCLE, type Layer, type Palette, type Pane } from "~ui/paint";
 
 /**
  * The UI's black, drawn by the GPU over the frame: the bezel round the
@@ -44,6 +44,7 @@ struct Black {
   size: vec4f,
 }
 @group(0) @binding(0) var<uniform> black: Black;
+${WGSL_SQUIRCLE}
 
 struct Out { @builtin(position) position: vec4f, @location(0) @interpolate(flat) run: u32 }
 @vertex fn whole(@builtin(vertex_index) i: u32, @builtin(instance_index) run: u32) -> Out {
@@ -55,9 +56,7 @@ struct Out { @builtin(position) position: vec4f, @location(0) @interpolate(flat)
 }
 
 fn box(p: vec2f, pane: Pane) -> f32 {
-  let r = pane.round.x;
-  let q = abs(p - pane.box.xy) - pane.box.zw + r;
-  let d = length(max(q, vec2f(0))) + min(max(q.x, q.y), 0) - r;
+  let d = squircle(p - pane.box.xy, pane.box.zw, pane.round.x);
   // A frame is black outside its box; a pane fading out sinks into the
   // rest rather than blinking.
   return select(d, -d, pane.round.w > 0.5) + (1 - pane.round.y) * pane.round.z;
@@ -113,13 +112,15 @@ export function underGlass(ctx: CanvasRenderingContext2D) {
   ctx.globalCompositeOperation = "destination-out";
   ctx.fillStyle = "#000";
   ctx.beginPath();
-  for (const p of glazed) if (!p.hole) ctx.roundRect(p.x, p.y, p.w, p.h, p.r);
+  // A circle's corner lies inside the squircle reaching as far: near enough.
+  const r = (p: (typeof glazed)[number]) => Math.min(p.r * SQUIRCLE_REACH, p.w / 2, p.h / 2);
+  for (const p of glazed) if (!p.hole) ctx.roundRect(p.x, p.y, p.w, p.h, r(p));
   ctx.fill();
   // A frame's black is all round its hole.
   for (const p of glazed.filter((p) => p.hole)) {
     ctx.beginPath();
     ctx.rect(-1e4, -1e4, 2e4 + p.x + p.w, 2e4 + p.y + p.h);
-    ctx.roundRect(p.x, p.y, p.w, p.h, p.r);
+    ctx.roundRect(p.x, p.y, p.w, p.h, r(p));
     ctx.fill("evenodd");
   }
   ctx.restore();
