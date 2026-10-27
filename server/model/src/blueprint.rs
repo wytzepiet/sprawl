@@ -38,9 +38,18 @@ pub struct Blueprint {
     /// Its shelves, a good each and the units it holds: what a counter
     /// serves from, what a depot keeps, what a farm's yard fills with.
     pub shelves: &'static [(Good, u32)],
-    /// What its land fills its shelf with: a farm's crates. None for a
-    /// row that buys its shelves in, or keeps none.
+    /// What its land or its hands fill its shelf with: a farm's grain, a
+    /// sawmill's timber, a bakery's bread. None for a row that buys its
+    /// shelves in, or keeps none.
     pub makes: Option<Good>,
+    /// What its hands open to make it, and how much of each a unit takes:
+    /// a bakery's grain, a steelworks' ore and coal. Bought in like a
+    /// counter's shelf. Empty for a maker off the land.
+    pub opens: &'static [(Good, f64)],
+    /// Units of its make an hour of a hand's work makes at best: off the
+    /// land, with all the ground in reach; opening goods, while its bins
+    /// hold them. A farm's grows on its fields instead (`crop`).
+    pub pace: f64,
     /// The vehicles it runs, each in a dock of its yard. A kind with
     /// shelves and vehicles delivers them (`economy::depot`).
     pub vehicles: &'static [CarRole],
@@ -160,21 +169,31 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
         let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
-        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, docks: usize::MAX, farm: false }
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, opens: &[], pace: 0.0, vehicles: &[], quay: false, forklifts: 1, docks: usize::MAX, farm: false }
     };
-    use Good::{Stone, Timber};
+    use Good::{Cement, Coal, Crude, Grain, Machinery, Ore, Steel, Stone, Timber};
     vec![
         (House, row((1, 1), (0, 0), &[(Timber, 4)], household(2))),
-        (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
+        (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8), (Cement, 8)], household(7))),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
-            shelves: &[(Good::Crates, 50)],
+            shelves: &[(Good::Bread, 50)],
             ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
         (Office, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], vec![shift(8, 17, 12)])),
-        (Factory, row((2, 1), (0, 0), &[(Timber, 16), (Stone, 8)], vec![shift(6, 15, 12)])),
+        // The machine works: twelve hands, six to three, making machine
+        // parts of steel, two units a part, a crate a hand a couple of
+        // days. Light and dear: what the oil and the port are built with.
+        (Factory, Blueprint {
+            shelves: &[(Steel, 20), (Machinery, 10)],
+            makes: Some(Machinery),
+            opens: &[(Steel, 2.0)],
+            pace: 0.05,
+            docks: 2,
+            ..row((3, 2), (3, 2), &[(Stone, 8), (Cement, 16), (Steel, 8)], vec![shift(6, 15, 12)])
+        }),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
         // Its shelf is tanks, four pallets of drums: a delivery is a van's
@@ -187,15 +206,28 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
         (Supermarket, Blueprint {
-            shelves: &[(Good::Crates, 150)],
-            ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 12)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
+            shelves: &[(Good::Bread, 150)],
+            ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 12), (Cement, 8)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
         // Where the town's goods are kept, in the open, a little of every
-        // good: eight crates, ten pallets of drums, fifteen bundles of
-        // timber, fifteen pallets of stone. Its lorry hauls packages from
-        // the harbour and its vans deliver to shops and sites.
+        // good, about ten packages of each: eight crates of bread and
+        // eight bags of grain, fifteen bundles of timber and fifteen
+        // pallets of stone. Its lorry hauls packages from the harbour and
+        // the makers' yards, and its vans deliver to shops, works and sites.
         (Depot, Blueprint {
-            shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
+            shelves: &[
+                (Good::Bread, 200),
+                (Good::Fuel, 100),
+                (Timber, 60),
+                (Stone, 60),
+                (Grain, 200),
+                (Cement, 40),
+                (Ore, 40),
+                (Coal, 40),
+                (Steel, 20),
+                (Machinery, 10),
+                (Crude, 100),
+            ],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
             ..row((2, 2), (3, 2), &[(Timber, 12)], vec![shift(6, 18, 6)])
         }),
@@ -213,8 +245,8 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // is the farm's own. Three tiles square: the barn a row along the
         // back, its middle the gate the tractor goes out to the fields by.
         (Farm, Blueprint {
-            shelves: &[(Good::Crates, 2600)],
-            makes: Some(Good::Crates),
+            shelves: &[(Grain, 2600)],
+            makes: Some(Grain),
             vehicles: &[CarRole::Tractor],
             farm: true,
             docks: 2,
@@ -240,6 +272,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
+            pace: 0.5,
             docks: 1,
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
@@ -250,11 +283,85 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Quarry, Blueprint {
             shelves: &[(Good::Stone, 120)],
             makes: Some(Good::Stone),
+            pace: 0.5,
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
         // Four at desks, eight to five: thirty-six researcher-hours a
         // day, the first rung's kind in two thirds of one.
         (Lab, row((2, 1), (0, 0), &[(Timber, 8)], vec![shift(8, 17, 4)])),
+        // Bakers start before the town wakes: four hands, five to two,
+        // opening bags of grain and baking them into crates of bread, a
+        // unit of grain a meal, as much a shift as a farm grows. It keeps
+        // ten bags in and ten crates out.
+        (Bakery, Blueprint {
+            shelves: &[(Grain, 250), (Good::Bread, 250)],
+            makes: Some(Good::Bread),
+            opens: &[(Grain, 1.0)],
+            pace: 18.0,
+            docks: 1,
+            ..row((2, 1), (2, 2), &[(Timber, 8)], vec![shift(5, 14, 4)])
+        }),
+        // A kiln and a mill: six hands, seven to four, burning stone into
+        // cement, a unit for a unit, as fast as a quarry breaks it.
+        (CementWorks, Blueprint {
+            shelves: &[(Stone, 60), (Cement, 60)],
+            makes: Some(Cement),
+            opens: &[(Stone, 1.0)],
+            pace: 0.5,
+            docks: 1,
+            ..row((2, 2), (2, 2), &[(Timber, 12), (Stone, 12)], vec![shift(7, 16, 6)])
+        }),
+        // The quarry's cousins, on mountains that have ore or coal in
+        // them: six hands, seven to four, as much a shift as a quarry.
+        (Mine, Blueprint {
+            shelves: &[(Ore, 120)],
+            makes: Some(Ore),
+            pace: 0.5,
+            ..row((2, 2), (2, 2), &[(Timber, 8), (Stone, 8)], vec![shift(7, 16, 6)])
+        }),
+        (Colliery, Blueprint {
+            shelves: &[(Coal, 120)],
+            makes: Some(Coal),
+            pace: 0.5,
+            ..row((2, 2), (2, 2), &[(Timber, 8), (Stone, 8)], vec![shift(7, 16, 6)])
+        }),
+        // Sixteen hands, six to three, a unit of ore and one of coal to a
+        // unit of steel: a mine's and a colliery's day a day. The works
+        // that make a district and a morning rush.
+        (Steelworks, Blueprint {
+            shelves: &[(Ore, 40), (Coal, 40), (Steel, 40)],
+            makes: Some(Steel),
+            opens: &[(Ore, 1.0), (Coal, 1.0)],
+            pace: 0.2,
+            docks: 2,
+            ..row((3, 2), (3, 2), &[(Timber, 12), (Stone, 16), (Cement, 24)], vec![shift(6, 15, 16)])
+        }),
+        // A nodding pump on oil ground: two hands, six to ten at night,
+        // tending it, a pallet of drums every few hours.
+        (OilWell, Blueprint {
+            shelves: &[(Crude, 100)],
+            makes: Some(Crude),
+            pace: 1.0,
+            ..row((2, 2), (2, 2), &[(Cement, 8), (Steel, 8), (Machinery, 2)], vec![shift(6, 22, 2)])
+        }),
+        // Eight hands, six to three, making fuel of crude a unit for a
+        // unit, as fast as several wells pump it.
+        (Refinery, Blueprint {
+            shelves: &[(Crude, 100), (Good::Fuel, 100)],
+            makes: Some(Good::Fuel),
+            opens: &[(Crude, 1.0)],
+            pace: 2.0,
+            docks: 2,
+            ..row((3, 2), (3, 2), &[(Cement, 24), (Steel, 16), (Machinery, 4)], vec![shift(6, 15, 8)])
+        }),
+        // The harbour grown: a crane on a deep quay, where a container
+        // ship berths, its yard stacked with boxes. Six hands, round the
+        // clock but the small hours.
+        (Port, Blueprint {
+            quay: true,
+            forklifts: 4,
+            ..row((3, 0), (3, 2), &[(Cement, 40), (Steel, 20), (Machinery, 6)], vec![shift(5, 23, 6)])
+        }),
     ]
 });
 
@@ -272,6 +379,8 @@ pub fn check() {
         // Its lane runs down its middle from the gate to the ramp.
         assert!(!b.quay || b.size.0 % 2 == 1, "{kind:?} has a quay and no middle tile for its ramp");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
+        assert!(b.opens.iter().all(|&(g, _)| b.makes.is_some() && b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} opens what it has no shelf for, or makes nothing of it");
+        assert!(b.makes.is_none() || b.farm || b.pace > 0.0, "{kind:?} makes at no pace");
         // Packages are whole: every shelf holds, and every site takes, so
         // many of them.
         for &(good, n) in b.shelves.iter().chain(b.materials) {
@@ -313,8 +422,10 @@ pub fn shelves(kind: BuildingKind) -> Vec<Good> {
 /// Units of a good a kind could pass on in a day: what its taps could
 /// serve with every slot busy, and a depot's shelf, turned once.
 pub fn rated(kind: BuildingKind, good: Good) -> f64 {
-    let over_the_counter: f64 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(Tap::rated).sum();
-    over_the_counter + if depot(kind) { stocks(kind).get(&good).copied().unwrap_or(0.0) } else { 0.0 }
+    let bp = blueprint(kind);
+    let over_the_counter: f64 = bp.taps.iter().filter(|t| t.need.good() == Some(good)).map(Tap::rated).sum();
+    let opened: f64 = bp.opens.iter().filter(|&&(g, _)| g == good).map(|&(_, per)| per * bp.pace * bp.jobs as f64 * shift_hours(kind)).sum();
+    over_the_counter + opened + if depot(kind) { stocks(kind).get(&good).copied().unwrap_or(0.0) } else { 0.0 }
 }
 
 /// Its land fills its shelf with this: it never calls for it. The only

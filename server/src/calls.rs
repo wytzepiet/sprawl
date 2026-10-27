@@ -273,7 +273,7 @@ mod tests {
     /// Sell `units` off a shop's shelf, as visits would, and let it call.
     fn sell(world: &mut World, events: &mut EventQueue, shop: EntityId, units: f64, now: GameTime) {
         if let Some(b) = world.map.building_mut(shop) {
-            b.stocks.get_mut(&Good::Crates).unwrap().take(units);
+            b.stocks.get_mut(&Good::Bread).unwrap().take(units);
         }
         crate::calls::turn(world, events, shop, now);
     }
@@ -299,7 +299,7 @@ mod tests {
         assert!(matches!(world.map.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
         // The shop learned how long a delivery from next door takes, and
         // reorders later for it.
-        let before = crate::economy::reorder(world, shop, Good::Crates);
+        let before = crate::economy::reorder(world, shop, Good::Bread);
 
         // Out through one ring and home through another, at lot speed, on
         // top of the drive: under three hours.
@@ -310,7 +310,7 @@ mod tests {
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
         assert_eq!(e.position, world.map.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
         assert_eq!(stock(world, shop), 1.0, "the shelves are full again");
-        assert!(crate::economy::reorder(world, shop, Good::Crates) < before, "the shop did not learn the lead time");
+        assert!(crate::economy::reorder(world, shop, Good::Bread) < before, "the shop did not learn the lead time");
     }
 
     /// The building's turn: a buyer takes the nearest seller with stock,
@@ -326,7 +326,7 @@ mod tests {
         let mut events = EventQueue::new();
         let empty = |world: &mut World, depot: EntityId| {
             if let Some(b) = world.map.building_mut(depot) {
-                b.stocks.get_mut(&Good::Crates).unwrap().level = 0.0;
+                b.stocks.get_mut(&Good::Bread).unwrap().level = 0.0;
             }
         };
         let answered_by = |world: &World| {

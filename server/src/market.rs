@@ -38,17 +38,20 @@ use model::GameTime;
 use model::{BuildingKind, EntityId, GameObject, Good, DAY_MS};
 use crate::world::World;
 
-/// The goods on the market, in the order the list shows them.
-pub const GOODS: [Good; 4] = [Good::Timber, Good::Stone, Good::Crates, Good::Fuel];
+/// The goods on the market, in the order the list shows them. Bread is
+/// fresh and never on it: every town bakes its own.
+pub const GOODS: [Good; 10] = [Good::Timber, Good::Stone, Good::Grain, Good::Fuel, Good::Cement, Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude];
 
 /// How far a good's price may stray from the world's, each way, as a
 /// share of it: the band. Never under freight, so the world's two prices
 /// are always at least as far apart as the market's buy and sell.
 fn band(good: Good) -> f64 {
     match good {
-        Good::Stone => 0.15,
-        Good::Timber | Good::Crates => 0.2,
-        Good::Fuel => 0.5,
+        Good::Stone | Good::Cement => 0.15,
+        Good::Timber | Good::Bread | Good::Grain | Good::Coal => 0.2,
+        Good::Ore | Good::Steel => 0.3,
+        Good::Machinery => 0.35,
+        Good::Fuel | Good::Crude => 0.5,
     }
 }
 

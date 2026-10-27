@@ -27,6 +27,10 @@ const MIGRATIONS: &[Migration] = &[
     // The core (docs/core.md): the missions gone and the lab's ladder in;
     // an old town has built what it may no longer, so it starts over.
     None,
+    // The chains: crates of food became bread baked of grain, and every
+    // depot keeps eleven goods; the ladder's rungs moved under what was
+    // built. It starts over.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

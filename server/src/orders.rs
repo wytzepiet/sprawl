@@ -33,8 +33,8 @@ const WHO: [Who; 4] = [
         town: "Saltmere",
         toward: Compass::West,
         colour: "#3f7fa8",
-        goods: &[Good::Crates, Good::Fuel],
-        sells: &[Good::Crates],
+        goods: &[Good::Grain, Good::Fuel, Good::Steel],
+        sells: &[Good::Grain, Good::Coal],
     },
     Who {
         mayor: Mayor::Mira,
@@ -42,8 +42,8 @@ const WHO: [Who; 4] = [
         town: "Northgate",
         toward: Compass::North,
         colour: "#6b5b7b",
-        goods: &[Good::Timber],
-        sells: &[Good::Stone],
+        goods: &[Good::Timber, Good::Coal, Good::Machinery],
+        sells: &[Good::Stone, Good::Ore, Good::Cement],
     },
     Who {
         mayor: Mayor::Bess,
@@ -51,8 +51,8 @@ const WHO: [Who; 4] = [
         town: "Fernhollow",
         toward: Compass::South,
         colour: "#c98a2b",
-        goods: &[Good::Stone, Good::Timber],
-        sells: &[Good::Crates, Good::Timber],
+        goods: &[Good::Stone, Good::Timber, Good::Cement, Good::Crude],
+        sells: &[Good::Grain, Good::Timber, Good::Steel],
     },
     Who {
         mayor: Mayor::Aldra,
@@ -60,8 +60,8 @@ const WHO: [Who; 4] = [
         town: "Port Aldra",
         toward: Compass::East,
         colour: "#a33b3b",
-        goods: &[Good::Crates, Good::Timber, Good::Stone, Good::Fuel],
-        sells: &[Good::Fuel, Good::Timber],
+        goods: &[Good::Grain, Good::Timber, Good::Stone, Good::Fuel, Good::Ore],
+        sells: &[Good::Fuel, Good::Timber, Good::Crude, Good::Machinery],
     },
 ];
 

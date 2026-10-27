@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use model::blueprint::blueprint;
-    use model::BuildingKind;
+    use model::{BuildingKind, Good};
 
     /// The game's half of each row, written where the client reads it,
     /// beside ts-rs's types (`.cargo/config.toml`): what a kind is built
@@ -20,18 +20,20 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {\n",
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; opens: Partial<Record<Good, number>>; jobs: number; forklifts: number }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
             let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
             let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
+            let opens: Vec<_> = b.opens.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
+            let opens = if opens.is_empty() { "{}".into() } else { format!("{{ {} }}", opens.join(", ")) };
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, jobs: {}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.jobs, b.forklifts);
         }
-        let packages: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
+        let packages: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
-        let names: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
+        let names: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
         ts += &format!("\n/** What a package of each good is called, one and several (`Good::package`). */\nexport const PACKAGE: Record<Good, [string, string]> = {{ {} }};\n", names.join(", "));
         ts += &format!(
             "\n/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */\nexport const LOAD = {};\nexport const VAN_LOAD = {};\nexport const HANDLE_MS = {};\n",

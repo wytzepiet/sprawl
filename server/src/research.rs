@@ -16,11 +16,20 @@ use crate::world::World;
 
 use BuildingKind::*;
 
-/// The ladder, a rung a row, and the researcher-hours each kind of it takes.
-const LADDER: [(&[BuildingKind], f64); 3] = [
+/// The ladder, a rung a row, and the researcher-hours each kind of it
+/// takes. Set from how long each rung should take in real hours (a game
+/// day is twenty minutes, a lab's four at their desks about 36
+/// researcher-hours of it): the first in about an hour of play, the
+/// second an evening, the third a day or two, the port about a week in
+/// all, oil a few days after. Every rung is built of a lot of the goods
+/// below it, so climbing grows the old chains too.
+const LADDER: [(&[BuildingKind], f64); 6] = [
     (&[Harbour, House, Depot, Sawmill, Lab], 0.0),
-    (&[Farm, Shop, Quarry, Office], 24.0),
-    (&[Apartment, GasStation, Supermarket, Factory], 96.0),
+    (&[Farm, Bakery, Shop, Quarry, Office], 24.0),
+    (&[CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery], 150.0),
+    (&[Steelworks, Factory], 2000.0),
+    (&[Port], 6000.0),
+    (&[OilWell, Refinery], 3000.0),
 ];
 
 /// The town's research, as it saves it.
@@ -92,7 +101,7 @@ mod tests {
     fn the_ladder_opens_a_rung_at_a_time() {
         let mut world = World::new();
         assert!(world.research.open.contains(&House) && !world.research.open.contains(&Farm));
-        assert_eq!(world.research.shown().next, [Farm, Shop, Quarry, Office]);
+        assert_eq!(world.research.shown().next, [Farm, Bakery, Shop, Quarry, Office]);
         choose(&mut world, Apartment);
         assert_eq!(world.research.at, None, "a kind two rungs up was taken up");
         choose(&mut world, Farm);
@@ -100,12 +109,12 @@ mod tests {
         hour(&mut world);
         assert_eq!(world.research.done, 0.0, "learned with nobody at a lab");
         world.research.done = 23.5;
-        world.research.open.extend([Shop, Quarry, Office]);
+        world.research.open.extend([Bakery, Shop, Quarry, Office]);
         world.research.done += 0.5;
         hour(&mut world);
         assert!(world.research.open.contains(&Farm), "a full day's hours did not open the farm");
-        assert_eq!(world.research.shown().next, [Apartment, GasStation, Supermarket, Factory]);
-        assert_eq!(world.research.shown().cost, 96.0);
+        assert_eq!(world.research.shown().next, [CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery]);
+        assert_eq!(world.research.shown().cost, 150.0);
     }
 
     /// A lab staffed from the flats beside it learns the farm, the hands

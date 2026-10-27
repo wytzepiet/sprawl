@@ -260,11 +260,28 @@ pub enum BuildingKind {
     /// putting researcher-hours into the next kind (`sprawl::research`).
     /// Placed by the mayor.
     Lab,
+    /// Opens grain and bakes it into bread for the shops.
+    Bakery,
+    /// Burns stone into cement.
+    CementWorks,
+    /// Breaks iron ore out of a mountain that has it.
+    Mine,
+    /// Digs coal out of a mountain that has it.
+    Colliery,
+    /// Makes steel of ore and coal: the first works that takes two goods.
+    Steelworks,
+    /// Pumps crude out of oil ground.
+    OilWell,
+    /// Makes fuel of crude.
+    Refinery,
+    /// The harbour grown: a crane on a deep quay, where a container ship
+    /// berths. Placed by the mayor, with its back to the sea.
+    Port,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 13] = [
+    pub const ALL: [BuildingKind; 21] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -278,6 +295,14 @@ impl BuildingKind {
         BuildingKind::Sawmill,
         BuildingKind::Quarry,
         BuildingKind::Lab,
+        BuildingKind::Bakery,
+        BuildingKind::CementWorks,
+        BuildingKind::Mine,
+        BuildingKind::Colliery,
+        BuildingKind::Steelworks,
+        BuildingKind::OilWell,
+        BuildingKind::Refinery,
+        BuildingKind::Port,
     ];
 }
 
@@ -536,8 +561,8 @@ pub struct Pose {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Good {
-    /// Food, in wooden crates: what a shop serves meals from.
-    Crates,
+    /// Food, baked: crates of bread, what a shop serves meals from.
+    Bread,
     /// What a pump fills a tank from, in drums on a pallet.
     Fuel,
     /// What buildings are built from, the first material: logs in a
@@ -546,28 +571,58 @@ pub enum Good {
     /// Broken rock in blocks on a pallet: what roads are laid on, and the
     /// masonry of the bigger buildings.
     Stone,
+    /// What a farm grows and a bakery opens: big bags of it.
+    Grain,
+    /// Stone burnt in a kiln and ground: bags of it on a pallet, what the
+    /// second rung's buildings stand on.
+    Cement,
+    /// Iron ore, broken out of the mountains that have it, in a skip.
+    Ore,
+    /// Coal, dug where the mountains have it, in a skip.
+    Coal,
+    /// Ore and coal made into beams, a strapped bundle: what heavy
+    /// industry is built of.
+    Steel,
+    /// Machine parts in a closed crate: what the steel is made into, light
+    /// and dear, wanted by the biggest works.
+    Machinery,
+    /// Oil as it comes out of the ground, in black drums: a refinery
+    /// makes fuel of it.
+    Crude,
 }
 
 impl Good {
+    /// Every good, in declaration order.
+    pub const ALL: [Good; 11] = [Good::Bread, Good::Fuel, Good::Timber, Good::Stone, Good::Grain, Good::Cement, Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude];
+
     /// Units one package holds: the thing that is traded, carried and
     /// stacked, whole (docs/plan-goods.md §Goods you can see). A crate is
     /// twenty-five meals' worth, a pallet of drums ten tanks, a bundle
     /// or a pallet of blocks a house's timber or four tiles of road.
     pub fn per_package(self) -> f64 {
         match self {
-            Good::Crates => 25.0,
-            Good::Fuel => 10.0,
-            Good::Timber | Good::Stone => 4.0,
+            Good::Bread | Good::Grain => 25.0,
+            Good::Fuel | Good::Crude => 10.0,
+            Good::Timber | Good::Stone | Good::Cement | Good::Ore | Good::Coal => 4.0,
+            Good::Steel => 2.0,
+            Good::Machinery => 1.0,
         }
     }
 
     /// What one package of it is called, and several.
     pub fn package(self) -> (&'static str, &'static str) {
         match self {
-            Good::Crates => ("crate of food", "crates of food"),
+            Good::Bread => ("crate of bread", "crates of bread"),
             Good::Fuel => ("pallet of fuel drums", "pallets of fuel drums"),
             Good::Timber => ("bundle of timber", "bundles of timber"),
             Good::Stone => ("pallet of stone", "pallets of stone"),
+            Good::Grain => ("bag of grain", "bags of grain"),
+            Good::Cement => ("pallet of cement", "pallets of cement"),
+            Good::Ore => ("skip of ore", "skips of ore"),
+            Good::Coal => ("skip of coal", "skips of coal"),
+            Good::Steel => ("bundle of steel beams", "bundles of steel beams"),
+            Good::Machinery => ("crate of machine parts", "crates of machine parts"),
+            Good::Crude => ("pallet of crude drums", "pallets of crude drums"),
         }
     }
 
@@ -931,6 +986,11 @@ pub struct TerrainChunk {
     #[serde(with = "serde_bytes")]
     #[ts(type = "Uint8Array")]
     pub heights: Vec<u8>,
+    /// What lies under each tile, as `tiles` is laid out: 0 nothing, else
+    /// `Deposit::to_byte`. Empty where nothing lies under the chunk.
+    #[serde(with = "serde_bytes", default)]
+    #[ts(type = "Uint8Array")]
+    pub deposits: Vec<u8>,
 }
 
 /// Someone who lives in the city, and the two buildings their day runs between.

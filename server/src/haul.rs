@@ -205,7 +205,7 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         if let Some(c) = world.map.car_mut(lorry) {
             c.cargo = out;
         }
-        for good in crate::market::GOODS {
+        for good in Good::ALL {
             let n = home_goods.iter().filter(|t| t.good == good).count() as u32;
             if n == 0 {
                 continue;
@@ -341,11 +341,11 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
     if let Some(c) = world.map.car_mut(lorry) {
         c.cargo = kept;
     }
-    for good in crate::market::GOODS {
+    for good in Good::ALL {
         let off = dropped.iter().filter(|t| t.good == good).count() as u32;
         world.map.lift(harbour, lorry, good, off, false, now);
     }
-    for good in crate::market::GOODS {
+    for good in Good::ALL {
         let on = taken.iter().filter(|(_, t)| t.good == good).count() as u32;
         world.map.lift(harbour, lorry, good, on, true, now);
     }

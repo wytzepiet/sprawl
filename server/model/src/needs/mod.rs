@@ -36,7 +36,7 @@ impl Need {
     /// draw no shelf.
     pub fn good(self) -> Option<Good> {
         match self {
-            Need::Eat => Some(Good::Crates),
+            Need::Eat => Some(Good::Bread),
             Need::Fuel => Some(Good::Fuel),
             _ => None,
         }

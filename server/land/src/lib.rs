@@ -46,6 +46,28 @@ impl TerrainType {
     }
 }
 
+/// What lies under a tile that a works can take out: iron ore and coal
+/// in some mountains, oil under some grass. Only some places have each,
+/// so a town that wants what its land lacks buys it (`terrain::deposits`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
+#[ts(export)]
+pub enum Deposit {
+    Ore,
+    Coal,
+    Oil,
+}
+
+impl Deposit {
+    /// Wire encoding in a chunk's `deposits`: none is 0.
+    pub fn to_byte(self) -> u8 {
+        match self {
+            Deposit::Ore => 1,
+            Deposit::Coal => 2,
+            Deposit::Oil => 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
 #[ts(export)]
 pub struct ChunkCoord {

@@ -170,7 +170,7 @@ mod tests {
         let mut events = EventQueue::new();
         let tractor = world.map.objects.fleet(farm).next().expect("a tractor in the yard");
         let yard = |world: &World| match world.map.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.stocks[&model::Good::Crates].level,
+            GameObject::Building(ref b) => b.stocks[&model::Good::Grain].level,
             _ => unreachable!(),
         };
         let stages = |world: &World| -> Vec<Stage> { self::tiles(world, farm).iter().map(|t| t.stage).collect() };
@@ -229,7 +229,7 @@ mod tests {
             for t in b.land.iter_mut() {
                 (t.stage, t.since) = (Stage::Sown, 0);
             }
-            let s = b.stocks.get_mut(&model::Good::Crates).unwrap();
+            let s = b.stocks.get_mut(&model::Good::Grain).unwrap();
             s.level = s.cap;
         }
         assert!(world.map.batch(farm, now).is_none(), "a harvest with no room in the yard");

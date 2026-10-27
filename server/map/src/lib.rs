@@ -67,6 +67,9 @@ pub struct Map {
     pub frame: Option<(GridCoord, GridCoord)>,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
+    /// What lies under the land (`land::terrain::deposits`), made from the
+    /// seed with the terrain, or drawn by a fixture.
+    pub deposits: HashMap<(i32, i32), land::Deposit>,
     /// The mountains' heights, eroded, made from the terrain the first time
     /// a chunk of it is sent (`mountains.rs`).
     pub peaks: std::sync::OnceLock<land::mountains::Peaks>,
@@ -199,6 +202,7 @@ impl Map {
             laid: 0,
             frame: None,
             terrain: HashMap::default(),
+            deposits: HashMap::default(),
             peaks: Default::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::default(),
@@ -469,9 +473,13 @@ impl Map {
                 });
             }
         }
+        let mut deposits = Vec::new();
+        if (0..CHUNK_STRIDE * CHUNK_STRIDE).any(|i| self.deposits.contains_key(&(origin_x + i % CHUNK_STRIDE, origin_y + i / CHUNK_STRIDE))) {
+            deposits = (0..CHUNK_STRIDE * CHUNK_STRIDE).map(|i| self.deposits.get(&(origin_x + i % CHUNK_STRIDE, origin_y + i / CHUNK_STRIDE)).map_or(0, |d| d.to_byte())).collect();
+        }
         let peaks = self.raise_mountains();
         let heights = peaks.chunk(coord).iter().flat_map(|h| h.to_le_bytes()).collect();
-        TerrainChunk { coord, tiles, heights }
+        TerrainChunk { coord, tiles, heights, deposits }
     }
 
     /// The mountains' heights, eroded from the terrain the first time they

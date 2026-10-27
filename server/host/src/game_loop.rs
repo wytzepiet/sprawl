@@ -31,6 +31,7 @@ fn new_seed() -> u32 {
 /// saved.
 fn island(world: &mut World) {
     world.map.terrain = land::terrain::generate(world.map.terrain_seed);
+    world.map.deposits = land::terrain::deposits(world.map.terrain_seed, &world.map.terrain);
     println!("terrain: {} tiles from seed {}", world.map.terrain.len(), world.map.terrain_seed);
     let started = std::time::Instant::now();
     world.map.raise_mountains();
