@@ -8,10 +8,9 @@ import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import PerfReport from "./PerfReport";
 import Signs from "./Signs";
-import Glass from "../ui/Glass";
 import Shipments from "../ui/Shipments";
-import Hud from "./Hud";
-import Gpu from "../ui/Hud";
+import { Root } from "~ui";
+import Hud from "../ui/Hud";
 
 function SceneInner() {
   return (
@@ -30,9 +29,10 @@ function SceneInner() {
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>
-        <Hud ui={Gpu} />
+        <Root>
+          <Hud />
+        </Root>
       </Canvas>
-      <Glass />
       <Shipments />
     </DayNightProvider>
   );

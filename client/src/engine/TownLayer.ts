@@ -178,6 +178,11 @@ export class TownLayer {
     if (this.tints.has(e.id)) this.tints.set(e.id, this.colourOf(e));
   }
 
+  /** Whether all asked for is drawn and shown. */
+  get settled() {
+    return this.frame === null && !this.drawing && !this.stale.size && !this.dirty.size;
+  }
+
   /** Something built changed on this tile: the road there and round it
    *  is drawn again, and the town, on the next frame. */
   touch(x: number, y: number) {

@@ -1,9 +1,9 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text, Icon } from "~ui";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { stocks } from "../state/market";
 import { aim } from "./buildMode";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { BAD, GOOD, onMap } from "./kit";
+import { BAD, GOOD, onMap, ROUND } from "./kit";
 import type { Good } from "../generated";
 
 /** What the town has of a good on its standing depots' shelves; or,
@@ -30,24 +30,24 @@ export default function Held() {
   const [size, setSize] = createSignal([0, 0]);
   return (
     <Show when={aim() && at()}>
-      <glass layer="toast" at={{ left: 0, top: 0 }} x={at()!.sx - size()[0] / 2} y={at()!.sy - size()[1]} round={16} pad={{ x: 14, y: 8 }} gap={2} onSize={(w, h) => setSize([w, h])}>
-        <box dir="row" align="center" gap={10}>
-          <text size={13} weight={600}>{BLUEPRINTS[aim()!.kind].label}</text>
+      <Ink layer="toast" at={{ left: 0, top: 0 }} x={at()!.sx - size()[0] / 2} y={at()!.sy - size()[1]} round={ROUND} pad={{ x: 14, y: 8 }} gap={2} onSize={(w, h) => setSize([w, h])}>
+        <Box dir="row" align="center" gap={10}>
+          <Text size={13} weight={600}>{BLUEPRINTS[aim()!.kind].label}</Text>
           <For each={lines()}>
             {(l) => (
-              <box dir="row" align="center" gap={4}>
-                <icon d={GOODS[l.good].glyph} size={13} ink={l.have >= l.n ? "ink" : BAD} />
-                <text size={13} ink={l.have >= l.n ? undefined : BAD}>{l.n}</text>
-                <text size={13} soft>/ {Math.floor(l.have)}</text>
-              </box>
+              <Box dir="row" align="center" gap={4}>
+                <Icon d={GOODS[l.good].glyph} size={13} ink={l.have >= l.n ? "ink" : BAD} />
+                <Text size={13} ink={l.have >= l.n ? undefined : BAD}>{l.n}</Text>
+                <Text size={13} soft>/ {Math.floor(l.have)}</Text>
+              </Box>
             )}
           </For>
           <Show when={!lines().length}>
-            <text serif size={13} soft>stands at once</text>
+            <Text serif size={13} soft>stands at once</Text>
           </Show>
-        </box>
-        <text size={12} ink={aim()!.why ? BAD : GOOD}>{aim()!.why ?? (aim()!.kind === "Harbour" && !aim()!.door ? "The ferry berths here; a street comes with it" : "Let go to build")}</text>
-      </glass>
+        </Box>
+        <Text size={12} ink={aim()!.why ? BAD : GOOD}>{aim()!.why ?? (aim()!.kind === "Harbour" && !aim()!.door ? "The ferry berths here; a street comes with it" : "Let go to build")}</Text>
+      </Ink>
     </Show>
   );
 }

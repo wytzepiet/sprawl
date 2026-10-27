@@ -2,7 +2,6 @@ import { createEffect, on, onCleanup } from "solid-js";
 import { getCameraPosition } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
-import { underGlass } from "./glass";
 import { projector, screenToWorld, viewArea } from "./view";
 import { setFade } from "./material";
 import { builtVersion, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
@@ -265,7 +264,6 @@ export function Brush() {
     }
     if (p.why) g.fill();
     g.stroke();
-    underGlass(g);
   });
   document.body.appendChild(plot);
 

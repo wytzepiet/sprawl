@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text, Icon } from "~ui";
 import { createEffect, createSignal, For, Index, Show } from "solid-js";
 import { eachEntity, groundOf, useGame } from "../state/gameObjects";
 import { missionKey, neighbours, shownMissions } from "../state/missions";
@@ -7,20 +7,21 @@ import { setFollowing } from "../state/selection";
 import { deals, letterOf, setSpread, spread, stepsOf, type Deal, type Piece } from "../state/deals";
 import { quoteOf, total } from "../state/market";
 import { toMarket } from "./Market";
+import { boardOpen } from "./Board";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
 import { eye } from "../engine/Camera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
-import { Appear, Btn, COIN, coins, Crest, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide } from "./kit";
+import { Appear, bezel, Btn, COIN, coins, Crest, CORNER, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide, ROUND } from "./kit";
 import { Stack } from "./stack";
 import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
-import type { JSX } from "~ui/jsx-runtime";
+import type { JSX } from "solid-js";
 
 /** Where the feed starts, and the room it leaves below it: on a wide
  *  screen the dock; on a phone the dial's row over it, and the dock and
  *  the sheet's head under it. */
-const TOP = () => (wide() ? 24 : 76);
+const TOP = () => bezel() + CORNER + (wide() ? 14 : 12);
 const BELOW = () => (wide() ? 112 : 180);
 
 /** A card of the feed: a line of news, a mission, or a deal. */
@@ -32,7 +33,7 @@ type Note =
 /**
  * The feed: everything that happens to
  * the town as a phone's notifications, top right, or across the top of a
- * phone. News drops in on top and goes by itself; a mission is pinned
+ * phone, under the corners; out of the way while the books are open. News drops in on top and goes by itself; a mission is pinned
  * while it is open; a deal stays while its packages are on their way. Folded,
  * the newest is in front and two more peek out under it, under its glass;
  * a tap spreads them out, a tap on one opens it.
@@ -52,8 +53,8 @@ export default function Feed() {
   };
   createEffect(() => notes().length < 2 && setSpread(false));
   return (
-    <box at={wide() ? { right: 24, top: TOP() } : { left: 12, right: 12, top: TOP() }} w={wide() ? 340 : undefined} gap={8}>
-      <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={20}>
+    <Box at={wide() ? { right: bezel() + 14, top: TOP() } : { left: bezel() + 10, right: bezel() + 10, top: TOP() }} w={wide() ? 340 : undefined} gap={8} opacity={boardOpen() ? 0 : 1}>
+      <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={ROUND}>
         {(n) => {
           const note = n();
           switch (note.kind) {
@@ -67,34 +68,34 @@ export default function Feed() {
         }}
       </Stack>
       <Show when={spread()}>
-        <box align="center">
-          <glass layer="note-fold" round={16} w={56} h={32} align="center" justify="center" onTap={() => (setSpread(false), setFocus(null))}>
+        <Box align="center">
+          <Ink layer="note-fold" round={16} w={56} h={32} align="center" justify="center" onTap={() => (setSpread(false), setFocus(null))}>
             <Line d="M6 15l6-6 6 6" size={17} width={2.6} />
-          </glass>
-        </box>
+          </Ink>
+        </Box>
       </Show>
-    </box>
+    </Box>
   );
 }
 
 /** A square of colour with a glyph on it: what a card is about. */
 const Tile = (props: { color: string; d: string; children?: JSX.Element }) => (
-  <box w={36} h={36} round={11} fill={props.color} align="center" justify="center">
-    <icon d={props.d} size={20} ink="white" />
+  <Box w={36} h={36} round={14} fill={props.color} align="center" justify="center">
+    <Icon d={props.d} size={20} ink="white" />
     {props.children}
-  </box>
+  </Box>
 );
 
 /** A line of news: the ferry in, the ferry gone, coins spent; a tap goes there. */
 function NewsCard(props: { news: News }) {
   return (
-    <box dir="row" align="center" gap={10} pad={{ y: 10, x: 12 }} onTap={() => setFollowing(props.news.at)}>
+    <Box dir="row" align="center" gap={10} pad={{ y: 10, x: 12 }} onTap={() => setFollowing(props.news.at)}>
       <Tile color={props.news.coins ? COIN : SEA} d={props.news.coins ? COINS : FERRY} />
-      <box grow={1} gap={2}>
-        <text size={14.5} weight={600} lines={1}>{props.news.text}</text>
-        <text size={12.5} soft lines={1}>{props.news.sub}</text>
-      </box>
-    </box>
+      <Box grow={1} gap={2}>
+        <Text size={14.5} weight={600} lines={1}>{props.news.text}</Text>
+        <Text size={12.5} soft lines={1}>{props.news.sub}</Text>
+      </Box>
+    </Box>
   );
 }
 
@@ -107,16 +108,16 @@ const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
 export function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink?: string }) {
   const n = () => props.partner && neighbours().find((n) => n.mayor === props.partner);
   return (
-    <box w={props.size} h={props.size}>
-      <Show when={n()} fallback={<box w={props.size} h={props.size} round={props.size / 2} fill="ink/0.1" align="center" justify="center"><Line d={GLOBE} size={props.size * 0.6} ink={props.ink} /></box>}>
+    <Box w={props.size} h={props.size}>
+      <Show when={n()} fallback={<Box w={props.size} h={props.size} round={props.size / 2} fill="ink/0.1" align="center" justify="center"><Line d={GLOBE} size={props.size * 0.6} ink={props.ink} /></Box>}>
         {(n) => <Crest n={n()} size={props.size} />}
       </Show>
       <Show when={props.letter}>
-        <box at={{ right: -6, bottom: -4 }} w={17} h={17} round={8.5} fill={COIN} align="center" justify="center">
+        <Box at={{ right: -6, bottom: -4 }} w={17} h={17} round={8.5} fill={COIN} align="center" justify="center">
           <Line d={LETTER} size={11} width={2.2} ink="white" />
-        </box>
+        </Box>
       </Show>
-    </box>
+    </Box>
   );
 }
 
@@ -160,66 +161,66 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   };
   const money = () => (d().coins >= 0 ? GOOD : "ink");
   return (
-    <box>
-      <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
-        <box dir="row" align="center" gap={10}>
+    <Box>
+      <Box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
+        <Box dir="row" align="center" gap={10}>
           <Tile color={GOODS[d().good].color} d={GOODS[d().good].glyph}>
-            <box at={{ right: -6, bottom: -6 }}>
+            <Box at={{ right: -6, bottom: -6 }}>
               <Who partner={d().partner} size={20} letter={d().letter !== null} ink="white" />
-            </box>
+            </Box>
           </Tile>
-          <box grow={1} gap={2}>
-            <box dir="row" align="center" gap={6}>
-              <text size={14.5} weight={600} lines={1}>{title()}</text>
-              <Show when={count() > 1}><text size={14.5} weight={600} soft>×{count()}</text></Show>
-            </box>
-            <text size={12.5} soft lines={1}>{status()}</text>
-          </box>
-          <Show when={d().done} fallback={<Show when={when()}>{(t) => <text serif size={17}>{until(t())}</text>}</Show>}>
-            <Pop><text serif size={18} ink={money()}>{coins(d().coins)}</text></Pop>
+          <Box grow={1} gap={2}>
+            <Box dir="row" align="center" gap={6}>
+              <Text size={14.5} weight={600} lines={1}>{title()}</Text>
+              <Show when={count() > 1}><Text size={14.5} weight={600} soft>×{count()}</Text></Show>
+            </Box>
+            <Text size={12.5} soft lines={1}>{status()}</Text>
+          </Box>
+          <Show when={d().done} fallback={<Show when={when()}>{(t) => <Text serif size={17}>{until(t())}</Text>}</Show>}>
+            <Pop><Text serif size={18} ink={money()}>{coins(d().coins)}</Text></Pop>
           </Show>
-        </box>
+        </Box>
         <StepBar steps={stepsOf(d().out)} at={d().done ? Infinity : lead()?.step ?? -1} color={color()} />
-      </box>
+      </Box>
       <Show when={props.open && !d().done}>
         <Appear pad={{ x: 12, bottom: 12 }} gap={8}>
-          <box>
+          <Box>
             <For each={rows()}>
               {(b) => (
-                <box dir="row" align="center" gap={8} pad={4} round={12} onTap={b.seen ? () => track(b.package) : undefined}>
+                <Box dir="row" align="center" gap={8} pad={4} round={12} onTap={b.seen ? () => track(b.package) : undefined}>
                   <GoodDot good={d().good} size={20} />
-                  <text size={13} lines={1} grow={1}>{b.n > 1 ? `${b.n} ${b.words}` : b.words}</text>
-                  <Show when={b.eta}>{(t) => <text serif size={13}>{until(t())}</text>}</Show>
+                  <Text size={13} lines={1} grow={1}>{b.n > 1 ? `${b.n} ${b.words}` : b.words}</Text>
+                  <Show when={b.eta}>{(t) => <Text serif size={13}>{until(t())}</Text>}</Show>
                   <Show when={b.seen}><Line d={EYE} size={14} width={2.4} ink="ink/0.72" /></Show>
-                </box>
+                </Box>
               )}
             </For>
-          </box>
-          <box dir="row" align="center" gap={6}>
+          </Box>
+          <Box dir="row" align="center" gap={6}>
             <Show when={d().pieces.length}>
-              <text serif size={17} ink={money()}>{coins(d().coins)}</text>
+              <Text serif size={17} ink={money()}>{coins(d().coins)}</Text>
             </Show>
-            <box grow={1} />
+            <Box grow={1} />
             <Show when={letter()}>
               {(l) => (
                 <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill={COIN} onTap={sendAll}>
-                  <text size={14} weight={600} ink="white">Send {l().packages}</text>
-                  <text serif size={14} ink="white">{coins(l().price * GOODS[d().good].per * l().packages)}</text>
+                  <Text size={14} weight={600} ink="white">Send {l().packages}</Text>
+                  <Text serif size={14} ink="white">{coins(l().price * GOODS[d().good].per * l().packages)}</Text>
                 </Press>
               )}
             </Show>
             <Show when={more()}>
               {(c) => (
                 <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => send({ type: "Trade", data: { good: d().good, packages: 1, out: d().out } })}>
-                  <text size={14} weight={600} soft>+ 1</text>
-                  <text serif size={14} soft>{coins((d().out ? 1 : -1) * c())}</text>
+                  <Text size={14} weight={600} soft>+ 1</Text>
+                  <Text serif size={14} soft>{coins((d().out ? 1 : -1) * c())}</Text>
                 </Press>
               )}
             </Show>
-          </box>
+          </Box>
         </Appear>
       </Show>
-    </box>
+    </Box>
   );
 }
 
@@ -228,10 +229,10 @@ function Reward(props: { m: Mission }) {
   const coins = () => (props.m.reward.kind === "Coins" ? props.m.reward.data : props.m.reward.data.coins);
   const lapsed = () => props.m.finished !== null && props.m.steps.some((s) => !s.done);
   return (
-    <Show when={props.m.finished !== null} fallback={<text size={12} weight={600} soft>+{coins()}</text>}>
-      <Show when={!lapsed()} fallback={<text size={11} weight={600} soft>lapsed</text>}>
+    <Show when={props.m.finished !== null} fallback={<Text size={12} weight={600} soft>+{coins()}</Text>}>
+      <Show when={!lapsed()} fallback={<Text size={11} weight={600} soft>lapsed</Text>}>
         <Appear pad={{ y: 2, x: 8 }} round={10} fill={GOOD}>
-          <text size={11} weight={700} ink="white">+{coins()} coins{props.m.reward.kind === "Order" ? `, +${props.m.reward.data.standing} standing` : ""}</text>
+          <Text size={11} weight={700} ink="white">+{coins()} coins{props.m.reward.kind === "Order" ? `, +${props.m.reward.data.standing} standing` : ""}</Text>
         </Appear>
       </Show>
     </Show>
@@ -247,27 +248,27 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
   const done = () => props.m.steps.filter((s) => s.done).length;
   const color = () => (props.m.finished !== null ? GOOD : GDP);
   return (
-    <box>
-      <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
-        <box dir="row" align="center" gap={10}>
+    <Box>
+      <Box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
+        <Box dir="row" align="center" gap={10}>
           <Tile color={color()} d={FLAG} />
-          <box grow={1} gap={2}>
-            <text size={14.5} weight={600} lines={1}>{props.m.title}</text>
-            <text size={12.5} soft lines={1}>{step()?.title ?? "Done"}</text>
-          </box>
+          <Box grow={1} gap={2}>
+            <Text size={14.5} weight={600} lines={1}>{props.m.title}</Text>
+            <Text size={12.5} soft lines={1}>{step()?.title ?? "Done"}</Text>
+          </Box>
           <Reward m={props.m} />
-        </box>
+        </Box>
         <StepBar steps={props.m.steps.length} at={done() - 1} color={color()} />
-      </box>
+      </Box>
       <Show when={props.open && step()}>
         {(s) => (
           <Appear pad={{ x: 12, bottom: 12 }} gap={8} align="start">
-            <Index each={s().text.split("\n\n")}>{(p) => <text size={12.5} soft lead={1.375}>{p()}</text>}</Index>
+            <Index each={s().text.split("\n\n")}>{(p) => <Text size={12.5} soft lead={1.375}>{p()}</Text>}</Index>
             <Act step={s()} />
           </Appear>
         )}
       </Show>
-    </box>
+    </Box>
   );
 }
 
@@ -324,14 +325,14 @@ function Act(props: { step: Step }) {
                 fallback={
                   <Show when={next()}>
                     {(s) => (
-                      <text size={12.5} soft>
-                        The first ferry is in at {clockAt(s().eta!)}, <text weight={700}>{until(s().eta!)}</text> from now.
-                      </text>
+                      <Text size={12.5} soft>
+                        The first ferry is in at {clockAt(s().eta!)}, <Text weight={700}>{until(s().eta!)}</Text> from now.
+                      </Text>
                     )}
                   </Show>
                 }
               >
-                <text size={12.5} soft>{parked().length === 1 ? "A package is" : `${parked().length} packages are`} on the quay.</text>
+                <Text size={12.5} soft>{parked().length === 1 ? "A package is" : `${parked().length} packages are`} on the quay.</Text>
                 <Btn big onTap={ride} color={BLUEPRINTS.Depot.color} disabled={props.step.at === null}>Ride with the lorry</Btn>
               </Show>
             );

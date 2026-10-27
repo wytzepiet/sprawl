@@ -1,6 +1,6 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Icon } from "~ui";
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
-import { follow } from "../engine/spring";
+import { follow, thrown } from "../engine/spring";
 import { useEngine } from "../engine/Canvas";
 import { eye } from "../engine/Camera";
 import { held, setTool, tool } from "./buildMode";
@@ -8,13 +8,13 @@ import { BLUEPRINTS } from "../blueprints";
 import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
 import { setBoardOpen } from "./Board";
-import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, take } from "./Roads";
-import { BuildBody, BuildHead } from "./Build";
-import { FROSTED, MarketBody, MarketHead, setView } from "./Market";
+import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsHead, take } from "./Roads";
+import { BuildBody, BuildHead, info } from "./Build";
+import { MarketBody, MarketHead } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
-import { Fade, Press, view, wide } from "./kit";
+import { bezel, DROP, Fade, Press, view, wide, ROUND } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
-import type { JSX } from "~ui/jsx-runtime";
+import type { JSX } from "solid-js";
 
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A hammer. */
@@ -27,23 +27,24 @@ const SLOT = 52;
 const BAR = 60;
 const WIDTH = SLOT * TABS.length + 8;
 const cx = (j: number) => 30 + SLOT * j;
-const barBottom = () => (wide() ? 28 : 20);
 
 /** Each tab's sheet: its head, peeking over the bar, and what is drawn up under it. */
 const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> = {
   select: { head: InspectHead, body: InspectBody },
+  roads: { head: () => <RoadsHead info={(k) => info({ road: k })} />, body: () => <></> },
   build: { head: BuildHead, body: BuildBody },
   market: { head: MarketHead, body: MarketBody },
 };
 
 /**
- * The dock: one sheet, the tabs fixed along its foot, the shown tab's
- * content grown up out of the bar over them, as the Find My app has it
+ * The dock: one sheet hanging from the bezel's foot, the tabs fixed
+ * along its foot, the shown tab's content grown up out of the bar over
+ * them, as the Find My app has it
  * (`sheet.ts`): its head peeking, drawn up by a finger or a tap, the
  * rest under it as tall as it is up to its room, and taller scrolls;
  * dragged down from its top, it sinks again. The bare hand, whose
- * sheet is the card of what it tapped; the build menu, roads and the
- * demolisher first; the market, the town's stock and its orders.
+ * sheet is the card of what it tapped; the road tools and the
+ * demolisher; the build menu; the market, the town's stock and its orders.
  *
  * What is in hand, in its colour, rides under its tab as dyed glass.
  */
@@ -57,7 +58,7 @@ export default function Dock() {
 
   /** A tab pressed: shown, or, shown already, drawn up or sunk. The bare
    *  hand puts down what it holds. */
-  const press = (t: Tab) => show(t, tab() === t ? !open() : t !== "select");
+  const press = (t: Tab) => show(t, tab() === t ? !open() : t !== "select" && t !== "roads");
   const onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
@@ -68,7 +69,6 @@ export default function Dock() {
     if (key === "X") return take("Demolish");
     if (key === "B") return press("build");
     if (key === "M") return press("market");
-    if (key === "S") return setView("stock"), show("market", true);
     if (key !== "R") return;
     // Again: the next road.
     const roads = ROAD_KINDS.filter((r) => r.id !== "Demolish");
@@ -93,7 +93,8 @@ export default function Dock() {
 
   const glyph = (t: Tab) =>
     t === "select" ? SELECT
-    : t === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : roadInHand() ? road(roadInHand()!).glyph : BUILD)
+    : t === "roads" ? road(roadInHand() ?? "Street").glyph
+    : t === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD)
     : MARKET;
 
   // The sheet's content, its height and the room it may take; with
@@ -108,14 +109,11 @@ export default function Dock() {
   const openH = () => headH() + Math.min(bodyH(), room());
   // Under a page it stands out over the page's top, smaller and blank.
   const under = () => (pages().length ? behind(front(), pages().length) : null);
-  const [h] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2 });
+  const [h, hv] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2, held: () => pull() !== null });
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
-  // The market's lines and moves, and the build menu's
-  // pictures, want more frosted glass under them.
-  const [frost] = follow(() => (tab() === "select" ? 0 : FROSTED), { rest: 0.001 });
-  createEffect(() => (eye.below = barBottom() + BAR + h()));
+  createEffect(() => (eye.below = bezel() + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
   /** A finger on the sheet: up draws it up, down sinks it; let go, it
@@ -124,49 +122,49 @@ export default function Dock() {
     if (held === undefined) return setOpen(by > 0);
     const p = pull();
     if (held) return setPull(Math.max(headH() * 0.6, Math.min(openH() + 24, (p ?? h()) + by)));
-    if (p !== null) setOpen(p > (headH() + openH()) / 2), setPull(null);
+    if (p !== null) setOpen(thrown(p, hv()) > (headH() + openH()) / 2), setPull(null);
   };
   /** The body scrolls, but a finger dragging it down from its top drags the sheet. */
   const scrolled = (by: number, held?: boolean) => (held !== undefined && (pull() !== null || (by < 0 && scroll() <= 0)) ? drag(by, held) : roll(by));
 
   return (
     <>
-      <box at={{ left: 0, right: 0, bottom: barBottom() }} align="center">
-        <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
-          {/* One glass: the shown tab's sheet, grown up out of the bar. */}
-          <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} frost={frost()} clip>
+      <Box at={{ left: 0, right: 0, bottom: bezel() }} align="center">
+        <Box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
+          {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
+          <Ink layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + bezel() + DROP} round={ROUND} clip>
             <Show when={shown()}>
-              <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
-              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
+              <Box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
+              <Box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
                 <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].head()}</Fade>}</Show>
-              </box>
-              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} opacity={ink()} clip onScroll={scrolled}>
-                <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
+              </Box>
+              <Box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} opacity={ink()} clip onScroll={scrolled}>
+                <Box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
                   <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].body()}</Fade>}</Show>
-                </box>
-              </box>
-              <box at={{ left: 16, right: 16, bottom: BAR }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
+                </Box>
+              </Box>
+              <Box at={{ left: 16, right: 16, bottom: BAR + bezel() + DROP }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
             </Show>
-          </glass>
+          </Ink>
           {/* The tabs, fixed along its foot. */}
-          <box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR} opacity={ink()}>
+          <Box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR} opacity={ink()}>
             <Show when={bead()}>
-              {(dye) => <glass layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
+              {(dye) => <Ink layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
             </Show>
             <For each={[...TABS]}>
               {(t, j) => {
                 const on = () => tab() === t;
                 return (
                   <Press at={{ left: cx(j()) - 22, bottom: 8 }} w={44} h={44} round={22} align="center" justify="center" onTap={() => press(t)}>
-                    <icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
+                    <Icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
                   </Press>
                 );
               }}
             </For>
-          </box>
-        </box>
-      </box>
-      <Pages bottom={barBottom()} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
+          </Box>
+        </Box>
+      </Box>
+      <Pages bottom={bezel()} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
     </>
   );
 }

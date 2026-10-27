@@ -2,8 +2,7 @@
  * A fixture's town drawn flat, layer on layer, from the town grid's own
  * code (`src/engine/town/`): the ground, the pavement, the roads, the
  * dressing, the buildings and their roofs' edges.
- * As SVG (`plan.ts` is the command), and as the shapes the GPU's UI draws
- * (the build menu's pictures, `src/ui/Build.tsx`).
+ * As SVG (`plan.ts` is the command).
  */
 import type { BuildingKind } from "../src/generated";
 import { parseTown, type Tile } from "../src/engine/town/grid";
@@ -26,37 +25,21 @@ const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", 
 type Traced = { points: P[]; tight: P[]; strobe: P[][] }[];
 type Options = { crop?: [number, number, number, number]; px: number; paths?: Traced };
 
-/** A shape the GPU's UI draws: its outline, its colour, and its line's
- *  width if it is drawn as a line. */
-export interface Shape {
-  d: string;
-  ink: string;
-  stroke?: number;
-}
-
 /** The plan as SVG. */
-export const planSvg = (text: string, options: Options): string => plan(text, options).svg;
-/** The plan as shapes: what the SVG fills and strokes, but its lines
- *  drawn through points, its outlines and its words. */
-export const shapes = (text: string, options: Options): Shape[] => plan(text, options).shapes;
-
-function plan(text: string, { crop, px, paths }: Options): { svg: string; shapes: Shape[] } {
+export function planSvg(text: string, { crop, px, paths }: Options): string {
   const town = parseTown(text);
   const [c0, r0, c1, r1] = crop ?? [0, 0, town.w, town.h];
   const out: string[] = [];
-  const shaped: Shape[] = [];
   const f = (v: number) => +v.toFixed(3);
   const d = (poly: Polygon) => poly.map((ring) => "M" + ring.map(([x, y]) => `${f(x)} ${f(y)}`).join("L") + "Z").join("");
   const fill = (polys: Polygon[], colour: string, rule = "evenodd") => {
     if (!polys.length) return;
     out.push(`<path fill="${colour}" fill-rule="${rule}" d="${polys.map(d).join("")}"/>`);
-    shaped.push({ d: polys.map(d).join(""), ink: colour });
   };
   /** Edges alone: a roof's faces'. */
   const edges = (polys: Polygon[], colour: string, opacity: number, w: number) => {
     if (!polys.length) return;
     out.push(`<path fill="none" stroke="${colour}" stroke-opacity="${opacity}" stroke-width="${w}" d="${polys.map(d).join("")}"/>`);
-    shaped.push({ d: polys.map(d).join(""), ink: `${colour}/${opacity}`, stroke: w });
   };
   const line = (pts: P[], colour: string, w: number) =>
     out.push(`<polyline fill="none" stroke="${colour}" stroke-width="${w}" points="${pts.map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}"/>`);
@@ -64,22 +47,14 @@ function plan(text: string, { crop, px, paths }: Options): { svg: string; shapes
   const box = (x: number, y: number, angle: number, l: number, w: number, colour: string) => {
     const deg = f((angle * 180) / Math.PI);
     out.push(`<rect x="${f(-l / 2)}" y="${f(-w / 2)}" width="${f(l)}" height="${f(w)}" fill="${colour}" transform="translate(${f(x)} ${f(y)}) rotate(${deg})"/>`);
-    const [c, s, tx, ty] = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180), f(x), f(y)];
-    const p = (u: number, v: number) => `${(tx + u * c - v * s).toFixed(3)} ${(ty + u * s + v * c).toFixed(3)}`;
-    const [u0, v0, u1, v1] = [f(-l / 2), f(-w / 2), f(-l / 2) + f(l), f(-w / 2) + f(w)];
-    shaped.push({ d: `M${p(u0, v0)}L${p(u1, v0)}L${p(u1, v1)}L${p(u0, v1)}Z`, ink: colour });
   };
   /** A disc, at a share of its colour. */
   const disc = (x: number, y: number, r: number, colour: string, share?: number) => {
     out.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${r}" fill="${colour}"${share === undefined ? "" : ` fill-opacity="${share}"`}/>`);
-    const p = (u: number) => `${(f(x) + u).toFixed(3)} ${f(y).toFixed(3)}`;
-    shaped.push({ d: `M${p(-r)}A${r} ${r} 0 1 0 ${p(r)}A${r} ${r} 0 1 0 ${p(-r)}Z`, ink: share === undefined ? colour : `${colour}/${share}` });
   };
   /** A straight line, at a share of its colour. */
   const segment = (x1: number, y1: number, x2: number, y2: number, colour: string, w: number, share?: number) => {
     out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${colour}"${share === undefined ? "" : ` stroke-opacity="${share}"`} stroke-width="${w}"/>`);
-    const p = (x: number, y: number) => `${x.toFixed(3)} ${y.toFixed(3)}`;
-    shaped.push({ d: `M${p(x1, y1)}L${p(x2, y2)}`, ink: share === undefined ? colour : `${colour}/${share}`, stroke: w });
   };
   const tiles = (pick: (t: Tile, c: number, r: number) => boolean): Polygon[] => {
     const squares: Polygon[] = [];
@@ -156,10 +131,5 @@ function plan(text: string, { crop, px, paths }: Options): { svg: string; shapes
 
   // The land under it all.
   const [w, h] = [c1 - c0, r1 - r0];
-  const p = (x: number, y: number) => `${x.toFixed(3)} ${y.toFixed(3)}`;
-  shaped.unshift({ d: `M${p(c0, r0)}L${p(c0 + w, r0)}L${p(c0 + w, r0 + h)}L${p(c0, r0 + h)}Z`, ink: hex(T.land) });
-  return {
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w * px}" height="${h * px}" viewBox="${c0} ${r0} ${w} ${h}" font-family="system-ui"><rect x="${c0}" y="${r0}" width="${w}" height="${h}" fill="${hex(T.land)}"/>${out.join("")}</svg>\n`,
-    shapes: shaped,
-  };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * px}" height="${h * px}" viewBox="${c0} ${r0} ${w} ${h}" font-family="system-ui"><rect x="${c0}" y="${r0}" width="${w}" height="${h}" fill="${hex(T.land)}"/>${out.join("")}</svg>\n`;
 }

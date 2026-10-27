@@ -80,7 +80,8 @@ for (const t of taps) {
   await page.waitForTimeout(SETTLE_MS);
 }
 for (let n = 0; n < frames; n++) {
-  await page.screenshot({ path: `${OUT}/frame-${n}.png` });
+  // Software rendering draws a tall frame slowly: room for it.
+  await page.screenshot({ path: `${OUT}/frame-${n}.png`, timeout: 180_000 });
   if (n + 1 < frames) await page.waitForTimeout(every);
 }
 if (frames > 1) {

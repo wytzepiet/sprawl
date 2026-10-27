@@ -144,7 +144,7 @@ its sell buttons and the order form, a wall of panels that each did a
 little of one job.
 
 The player sees it as **deals**, a stack of cards in the corner like a
-phone's notifications (`ui/Feed.tsx`, on `ui/stack.tsx`, drawn by the GPU), the one feed
+phone's notifications (`ui/Feed.tsx`, on `ui/stack.tsx`), the one feed
 at the top of the screen, with the missions and the ferry's news: a card is
 every box of one good from or for one partner, said plainly ("Timber
 from the world ×2"), where its furthest box is in words and on a bar of
