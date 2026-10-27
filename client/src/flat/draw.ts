@@ -31,8 +31,6 @@ export interface World {
   lanes?: Lane[];
   /** The towns beyond the edge, each a pin on the view's edge its way. */
   neighbours?: Neighbour[];
-  /** The town a box is marked for, by the box's order. */
-  marked?: (order: number) => Neighbour | undefined;
   now: number;
   dayMs: number;
 }
@@ -233,7 +231,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     for (const p of b.pad) {
       const i = seen.get(p.good) ?? 0;
       seen.set(p.good, i + 1);
-      const n = p.outbound ? world.marked?.(p.order) : undefined;
+      const n = p.outbound ? world.neighbours?.find((x) => x.mayor === p.partner) : undefined;
       const bay = bays.find((y) => y.good === p.good);
       if (n && bay) crested.push([placeIn(bay, i)[0], n]);
     }
@@ -275,7 +273,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     for (const n of world.neighbours ?? []) {
       const [px, py, align, dx, dy] = edge[n.toward];
       crest(g, n, px, py, r);
-      text(`${n.town}${n.writes ? "" : " (silent)"}`, px + dx, py + dy, 11, INK, align);
+      text(n.town, px + dx, py + dy, 11, INK, align);
     }
   };
   const text = (s: string, x: number, y: number, size: number, colour = INK, align: CanvasTextAlign = "center") => {

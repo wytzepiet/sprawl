@@ -6,10 +6,10 @@ import type { Good, Prices, Quote, Stock } from "../generated";
 /**
  * The market as the server last sent it (`market.rs`): each good's price,
  * its band, what the town pays and gets at its harbour, and the week of
- * hours behind it; and the orders waiting on a price. Sent on joining and
+ * hours behind it; and the lines it keeps, and its offices' desks. Sent on joining and
  * whenever it changes, an hour of the town's day at most.
  */
-const [market, setMarket] = createStore<Prices>({ goods: [], orders: [], hour: 0 });
+const [market, setMarket] = createStore<Prices>({ goods: [], lines: [], desks: 0, full: false, hour: 0 });
 
 /** Every standing depot's shelves added up, as the server counts them,
  *  wherever the camera is: none, no depot yet. */

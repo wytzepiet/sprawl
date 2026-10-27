@@ -14,7 +14,7 @@
 //! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
-//! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm
+//! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm  L lab
 //! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
@@ -67,12 +67,13 @@ fn building(c: char) -> Option<BuildingKind> {
         'W' => Sawmill,
         'Q' => Quarry,
         'B' => Farm,
+        'L' => Lab,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDPWQB".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOFGMDPWQBL".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {

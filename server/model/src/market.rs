@@ -5,17 +5,14 @@ use ts_rs::TS;
 
 use crate::Good;
 
-/// A "when" order: so many packages of a good, bought once the price falls
-/// to this, or sold once it rises to it.
+/// A line on a good's stock: the town buys up to it and sells what is
+/// over it, as far as its offices' desks go (docs/core.md §Trade).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct When {
-    #[ts(type = "number")]
-    pub id: u64,
+pub struct Line {
     pub good: Good,
-    pub out: bool,
-    pub packages: u32,
-    pub price: f64,
+    /// Units kept.
+    pub keep: f64,
 }
 
 /// A good on the market as the clients are sent it: the price, the
@@ -40,7 +37,12 @@ pub struct Quote {
 #[ts(export)]
 pub struct Prices {
     pub goods: Vec<Quote>,
-    pub orders: Vec<When>,
+    pub lines: Vec<Line>,
+    /// Packages a day the town's offices could trade for the lines, as
+    /// they are staffed, and whether the lines wanted more in the hour
+    /// just gone than the desks had.
+    pub desks: f64,
+    pub full: bool,
     /// The hour the last price is for, from the world's start.
     #[ts(type = "number")]
     pub hour: u64,

@@ -229,6 +229,11 @@ function Page(props: { good: Good }) {
   const share = () => Math.max(0, Math.min(1, (q().price - q().floor) / Math.max(1e-9, q().ceiling - q().floor)));
   const shelf = (v: number) => Math.max(0, Math.min(1, v / Math.max(1, stock()?.cap ?? 1)));
   const [shelfW, setShelfW] = createSignal(0);
+  // The line, stepped a lorry's load at a time; set first at what is held.
+  const kept = () => market.lines.find((l) => l.good === props.good)?.keep ?? null;
+  const per = () => GOODS[props.good].per * LOAD;
+  const keep = (k: number | null) => send({ type: "Line", data: { good: props.good, keep: k === null ? null : Math.max(0, k) } });
+  const start = () => Math.round((stock()?.level ?? 0) / per()) * per();
   return (
     <Box pad={{ x: 12, bottom: 14 }} gap={GAP}>
       <PageHead>
@@ -271,6 +276,9 @@ function Page(props: { good: Good }) {
           <Box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)}>
             <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf((stock()?.level ?? 0) + (stock()?.incoming ?? 0))} h={14} round={7} fill={`${accent()}59`} />
             <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf(stock()?.level ?? 0)} h={14} round={7} fill={accent()} />
+            <Show when={kept() !== null}>
+              <Box at={{ left: Math.max(0, shelfW() * shelf(kept()!) - 1.5), top: -3 }} w={3} h={20} round={1.5} fill="white" />
+            </Show>
           </Box>
           <Box dir="row">
             <Text size={12} weight={600} ink="ink/0.45" grow={1}>{stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</Text>
@@ -324,6 +332,26 @@ function Page(props: { good: Good }) {
           <Text size={12} weight={700} ink="ink/0.6">Sell</Text>
           <Text serif size={19}>{money(total(q(), n(), true))}</Text>
         </Press>
+      </Box>
+
+      {/* The line: kept by the offices (docs/core.md §Trade), there from the start, dimmed till one is staffed. */}
+      <Box pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={6} opacity={market.desks > 0 ? 1 : 0.5}>
+        <Box dir="row" align="center" gap={8}>
+          <Show when={kept() !== null} fallback={<Text size={14} weight={600} grow={1}>No line</Text>}>
+            <Text size={14} weight={600} grow={1}>Keep</Text>
+            <Stepper value={`${Math.round(kept()!)}`} less={() => keep(kept()! - per())} more={() => keep(kept()! + per())} />
+          </Show>
+          <Press h={30} pad={{ x: 12 }} round={15} justify="center" fill="ink/0.12" onTap={() => keep(kept() === null ? start() : null)}>
+            <Text size={13} weight={600}>{kept() === null ? "Set a line" : "Off"}</Text>
+          </Press>
+        </Box>
+        <Text size={12} ink="ink/0.5">
+          {market.desks <= 0
+            ? "An office keeps this stocked: it buys up to the line and sells what is over it."
+            : market.full
+              ? `Desks full: your offices trade ${Math.round(market.desks)} packages a day; another trades more.`
+              : `Your offices buy up to the line and sell over it, ${Math.round(market.desks)} packages a day.`}
+        </Text>
       </Box>
     </Box>
   );

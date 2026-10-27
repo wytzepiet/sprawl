@@ -22,18 +22,20 @@
 //! and the hour alone, so the same seed and the same trades give the same
 //! graph on every machine. A week of hours is kept, and saved.
 //!
-//! A "when" order waits for a price: buy so many packages when it falls to
-//! it, sell when it rises to it. It is read each hour, and booked as far
-//! as the deck and the treasury go.
+//! A line keeps a good (docs/core.md §Trade): each hour the town buys up
+//! to it what it has not got, and sells what it has over it, a package at a
+//! time and as far as its offices' desks go: every clerk at a desk an hour
+//! trades `CLERK` packages. The mayor's own Buy and Sell never wait on a
+//! desk.
 
-use model::market::{When, Quote, Prices};
+use model::market::{Line, Quote, Prices};
 use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
 use crate::economy::world_price;
 use model::GameTime;
-use model::{Good, DAY_MS};
+use model::{BuildingKind, EntityId, GameObject, Good, DAY_MS};
 use crate::world::World;
 
 /// The goods on the market, in the order the list shows them.
@@ -67,6 +69,9 @@ const LASTS: f64 = 0.85;
 /// of the way back to the world's it drifts each hour.
 const PUSH: f64 = 0.12;
 const BACK: f64 = 0.03;
+/// Packages a clerk trades in an hour at an office's desk: an office's
+/// twelve, eight to five, about forty a day.
+pub const CLERK: f64 = 0.4;
 
 /// The market as the world keeps it, and saves it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -79,7 +84,19 @@ pub struct Market {
     push: BTreeMap<Good, f64>,
     /// Each good's price at the end of each hour kept, oldest first.
     history: BTreeMap<Good, VecDeque<f64>>,
-    pub orders: Vec<When>,
+    /// Each good's line: units kept.
+    #[serde(default)]
+    pub lines: BTreeMap<Good, f64>,
+    /// Packages the desks may still trade, from the hours gone: the clerks'
+    /// work kept till a line wants it, a day's at most.
+    #[serde(default)]
+    desk: f64,
+    /// Packages a day the desks could trade, as staffed in the hour just
+    /// gone, and whether the lines wanted more than they had.
+    #[serde(skip)]
+    desks: f64,
+    #[serde(skip)]
+    full: bool,
     /// Something a client would draw changed since it was last sent.
     #[serde(skip)]
     pub changed: bool,
@@ -154,7 +171,8 @@ impl Market {
                 history: self.history.get(&good).map_or(Vec::new(), |h| h.iter().copied().collect()),
             })
             .collect();
-        Prices { goods, orders: self.orders.clone(), hour: self.hour }
+        let lines = self.lines.iter().map(|(&good, &keep)| Line { good, keep }).collect();
+        Prices { goods, lines, desks: self.desks, full: self.full, hour: self.hour }
     }
 }
 
@@ -168,31 +186,71 @@ fn noise(seed: u32, hour: u64, mayor: u64, good: u64) -> f64 {
 }
 
 /// Every hour gone by since the market last stepped, stepped, and the
-/// orders whose price came read. Read each step of the game: no wake of
-/// its own, so a level or a replay with no market plays as it did.
+/// lines kept. Read each step of the game: no wake of its own, so a level
+/// or a replay with no market plays as it did.
 pub fn hour(world: &mut World, events: &mut traffic::event_queue::EventQueue, now: GameTime) {
     let mut traded = false;
     while (world.market.hour + 1) * HOUR <= now {
         world.market.step(world.map.terrain_seed);
-        // An order is read at the hour's price, and booked as far as it goes.
-        for i in (0..world.market.orders.len()).rev() {
-            let o = world.market.orders[i];
-            let price = world.market.price(o.good);
-            if if o.out { price < o.price } else { price > o.price } {
-                continue;
-            }
-            let left = o.packages - trade(world, o.good, o.out, o.packages);
-            traded |= left < o.packages;
-            if left == 0 {
-                world.market.orders.remove(i);
-            } else {
-                world.market.orders[i].packages = left;
-            }
-        }
+        crate::research::hour(world);
+        traded |= keep(world);
     }
     if traded {
         crate::haul::call_lorries(world, events);
     }
+}
+
+/// The standing offices' clerks: those with a desk, and those at it now.
+fn clerks(world: &World) -> (usize, usize) {
+    let office = |b: Option<EntityId>| matches!(b.and_then(|b| world.map.objects.get(b)).map(|e| &e.object), Some(GameObject::Building(b)) if b.kind == BuildingKind::Office && b.site.is_none());
+    let hired: Vec<_> = world.map.resident_ids().into_iter().filter_map(|id| world.map.resident(id)).filter(|r| office(r.work)).collect();
+    let at_desk = hired.iter().filter(|r| r.at.is_some() && r.at == r.work).count();
+    (hired.len(), at_desk)
+}
+
+/// What the town has of a good, as a line reads it: on its depots'
+/// shelves and on its way in, less what waits at a harbour to go out.
+fn position(world: &World, good: Good) -> f64 {
+    let shelved: f64 = world.map.depots().into_iter().map(|(_, b)| b.stocks.get(&good).map_or(0.0, |s| s.level)).sum();
+    let coming = crate::haul::packages(world).iter().filter(|(t, ..)| t.good == good && !t.outbound).count() as f64;
+    let going: usize = world.map.harbours.keys().filter_map(|&h| world.map.building(h)).map(|b| b.outgoing.iter().filter(|t| t.good == good).count()).sum();
+    shelved + (coming - going as f64) * good.per_package()
+}
+
+/// An hour's clerks to the desk, and each line kept as far as the desk
+/// goes: a package bought for each one short of it, sold for each over.
+/// Whether anything was traded.
+fn keep(world: &mut World) -> bool {
+    let (hired, at_desk) = clerks(world);
+    let m = &mut world.market;
+    // A clerk's day is an office's shift, eight to five.
+    let desks = hired as f64 * 9.0 * CLERK;
+    m.changed |= desks != m.desks;
+    m.desks = desks;
+    m.desk = (m.desk + at_desk as f64 * CLERK).min(desks.max(1.0));
+    let mut traded = false;
+    let mut wanted = false;
+    let lines: Vec<(Good, f64)> = world.market.lines.iter().map(|(&g, &k)| (g, k)).collect();
+    for (good, keep) in lines {
+        let per = good.per_package();
+        let off = ((position(world, good) - keep) / per).trunc();
+        let out = off > 0.0;
+        let mut n = off.abs() as u32;
+        while n > 0 && world.market.desk >= 1.0 {
+            if trade(world, good, out, 1) == 0 {
+                break;
+            }
+            world.market.desk -= 1.0;
+            traded = true;
+            n -= 1;
+        }
+        wanted |= n > 0 && world.market.desk < 1.0;
+    }
+    if world.market.full != wanted {
+        world.market.full = wanted;
+        world.market.changed = true;
+    }
+    traded
 }
 
 /// Buy so many packages of a good from the market, on the next ferry in, or
@@ -202,7 +260,7 @@ pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
     let Some(&harbour) = world.map.harbours.keys().next() else { return 0 };
     for n in 0..packages {
         let price = world.market.next(good, out);
-        if !crate::orders::book(world, harbour, good, out, None, price, None) {
+        if !crate::orders::book(world, harbour, good, out, None, price) {
             return n;
         }
         world.market.traded(good, 1.0, out);
@@ -210,18 +268,12 @@ pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
     packages
 }
 
-/// A "when" order placed.
-pub fn order(world: &mut World, good: Good, out: bool, packages: u32, price: f64) {
-    if packages == 0 || !price.is_finite() {
-        return;
-    }
-    let id = world.map.objects.reserve_id();
-    world.market.orders.push(When { id, good, out, packages, price });
-    world.market.changed = true;
-}
-
-pub fn cancel(world: &mut World, order: u64) {
-    world.market.orders.retain(|o| o.id != order);
+/// A good's line set, or taken away.
+pub fn line(world: &mut World, good: Good, keep: Option<f64>) {
+    match keep.filter(|k| k.is_finite() && *k >= 0.0) {
+        Some(k) => world.market.lines.insert(good, k),
+        None => world.market.lines.remove(&good),
+    };
     world.market.changed = true;
 }
 
@@ -254,6 +306,36 @@ mod tests {
         let swing = |g: Good| (Market::ceiling(g) - Market::floor(g)) / world_price(g);
         assert!(swing(Good::Fuel) > 2.0 * swing(Good::Stone));
         assert_eq!(m.history[&Good::Fuel].len(), KEPT, "a week is kept");
+    }
+
+    /// A line on timber under what the town has: with no office nobody
+    /// sells what is over it; with one staffed, the clerks sell down to
+    /// the line within a day and stop there.
+    #[test]
+    fn an_office_keeps_a_line() {
+        use crate::game::tests::*;
+        use model::BuildingKind;
+        let run = |office: bool| {
+            let mut world = street();
+            build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
+            build(&mut world, 0, BuildingKind::Apartment);
+            build(&mut world, 6, BuildingKind::Apartment);
+            if office {
+                build(&mut world, 12, BuildingKind::Office);
+            }
+            let mut game = game(world);
+            game.run_to(DAY_MS as GameTime / 3);
+            let had = position(&game.world, Good::Timber);
+            line(&mut game.world, Good::Timber, Some(20.0));
+            game.run_to(2 * DAY_MS as GameTime);
+            (had, position(&game.world, Good::Timber), game.world.market.desks)
+        };
+        let (had, none, _) = run(false);
+        assert!(had > 40.0, "the town had only {had} timber to sell");
+        assert!((none - had).abs() < 1e-6, "{had} timber became {none} with no office to sell it");
+        let (had, kept, desks) = run(true);
+        println!("{had} timber kept to {kept}; desks {desks:.0} packages a day");
+        assert!((kept - 20.0).abs() <= Good::Timber.per_package(), "the line kept {kept}, not 20");
     }
 
     /// The same seed, the same graph; buying moves the price up, and the

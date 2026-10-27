@@ -16,8 +16,6 @@ pub(crate) fn handle_player_action(
     message: ClientMessage,
     now: GameTime,
 ) -> Option<News> {
-    // Anything the mayor does may do a mission's step.
-    world.missions.stir();
     match message {
         ClientMessage::Build(step) => return build(world, events, owner, step, now),
         ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, owner, stroke, now),
@@ -33,16 +31,12 @@ pub(crate) fn handle_player_action(
                 world.drive(events, |t, e| traffic::car::simulation::park_at_home(t, e, car_id));
             }
         }
+        ClientMessage::Research { kind } => crate::research::choose(world, kind),
         ClientMessage::Trade { good, packages, out } => {
             crate::market::trade(world, good, out, packages);
             crate::haul::call_lorries(world, events);
         }
-        ClientMessage::Send { letter, packages } => {
-            crate::orders::send(world, letter, packages);
-            crate::haul::call_lorries(world, events);
-        }
-        ClientMessage::Order { good, out, packages, price } => crate::market::order(world, good, out, packages, price),
-        ClientMessage::Cancel { order } => crate::market::cancel(world, order),
+        ClientMessage::Line { good, keep } => crate::market::line(world, good, keep),
         ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
         ClientMessage::SetSpeed(_) | ClientMessage::RunTo(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::Card(_) => {
             unreachable!("handled by Game::command")
@@ -85,6 +79,9 @@ fn build(world: &mut World, events: &mut EventQueue, owner: OwnerId, step: Build
 /// the hand that asked.
 fn place(world: &mut World, events: &mut EventQueue, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
     let refuse = |why: &str| Some(News { text: format!("No room for the {}", format!("{kind:?}").to_lowercase()), sub: why.to_string(), at: 0 });
+    if !world.research.open.contains(&kind) {
+        return Some(News { text: format!("The {} is not learned yet", format!("{kind:?}").to_lowercase()), sub: "a lab has to learn it first".into(), at: 0 });
+    }
     let facing = facing.or_else(|| world.map.facing_for(kind, at)).unwrap_or(2);
     let tiles = match world.map.fit(kind, at, facing) {
         Ok(tiles) => tiles,

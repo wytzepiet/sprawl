@@ -108,9 +108,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   its settlers come on the next ferry, a box bought at the market, a
   box sold is paid for.
   In a running game, `curl localhost:4801/sea` is the border and the
-  market as the server has it, and `bun run act buy|sell|send|order|cancel`
-  work them by hand;
-  `bun run act missions` lists the town's missions (`docs/missions.md`).
+  market as the server has it, and `bun run act buy|sell|line` work them
+  by hand; `bun run act research` says what is open and being learned,
+  `research Farm` sets the labs to it (`docs/core.md`).
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.

@@ -27,6 +27,7 @@ interface Form {
 const STREET: Form = { family: "street" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
   Office: { family: "office" },
+  Lab: { family: "office" },
   Factory: { family: "industry" },
   // A depot is an open yard, its goods on the ground in bays, no roof
   // over them; its lorries come and go at its docks in front.

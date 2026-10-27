@@ -1,6 +1,7 @@
 # Missions
 
-Status: built 2026-10-10 for the opening, the trunk and the town's
+Status: SHELVED 2026-10-26 by `core.md` (the code is gone; see
+`shelved.md`). Was: built 2026-10-10 for the opening, the trunk and the town's
 situation (`server/src/missions.rs`, `client/src/ui/Feed.tsx`);
 orders from the towns beyond the edge built 2026-10-12
 (`server/src/orders.rs`, §Orders). Dailies are designed here, not built.

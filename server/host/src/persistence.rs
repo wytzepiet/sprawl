@@ -24,6 +24,9 @@ type Migration = Option<fn(&mut [Value], &mut Value)>;
 const MIGRATIONS: &[Migration] = &[
     // Saves from before the stamp are version 0, and already today's.
     Some(|_, _| {}),
+    // The core (docs/core.md): the missions gone and the lab's ladder in;
+    // an old town has built what it may no longer, so it starts over.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -40,15 +43,15 @@ pub struct Meta {
     pub gdp: f64,
     /// The mayor's coins.
     pub treasury: f64,
-    /// The town's missions, open and finished, in order.
-    pub missions: Vec<model::missions::Mission>,
     /// The market's prices, their week and the orders waiting.
     pub market: sprawl::market::Market,
+    /// What the town may build, and what its labs are learning.
+    pub research: sprawl::research::Research,
 }
 
 impl Default for Meta {
     fn default() -> Self {
-        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, missions: Vec::new(), market: Default::default() }
+        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, market: Default::default(), research: Default::default() }
     }
 }
 
@@ -192,17 +195,14 @@ mod tests {
         assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
-    /// The rest of the world outlives a restart as it stood, the town's
-    /// missions with their steps and the market's week among it, whether or not an object
+    /// The rest of the world outlives a restart as it stood, the
+    /// market's week among it, whether or not an object
     /// changed with it; and a reset leaves nothing to load.
     #[test]
     fn the_world_beside_its_objects_is_saved() {
         let scratch = Scratch::new("meta");
-        let mut missions = sprawl::missions::Missions::default().list;
-        missions[0].steps[1].done = true;
-        missions[0].finished = Some(7);
         let market = serde_json::from_str(r#"{"hour":3,"at":{"Timber":0.5},"push":{"Timber":0.1},"history":{"Timber":[1.0,1.5,2.0]},"orders":[]}"#).unwrap();
-        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, missions, market };
+        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, market, research: Default::default() };
         let mut db = Db::open(&scratch.0);
         db.save(&[], &[], &meta);
         let (_, loaded) = Db::open(&scratch.0).load();
@@ -225,8 +225,12 @@ mod tests {
         db.save(&[], &[], &meta);
         db.conn.pragma_update(None, "user_version", 0).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
-        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
-        assert_eq!(version(&db), SAVE_VERSION);
+        // Kept, if every step from it keeps; else started over.
+        let kept = MIGRATIONS.iter().all(Option::is_some);
+        assert_eq!(loaded.next_id, if kept { 40 } else { 1 }, "a save from before the stamp was {}", if kept { "not kept" } else { "kept past a step that starts over" });
+        if kept {
+            assert_eq!(version(&db), SAVE_VERSION);
+        }
         assert!(backup(0).exists());
         db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();

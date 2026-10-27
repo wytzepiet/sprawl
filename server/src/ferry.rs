@@ -270,9 +270,6 @@ impl World {
         // street does not let out yet tries again with the next. Whoever is
         // still aboard when the ferry sails waits for the next sailing.
         let off = seat.and_then(|(k, at)| Some((self.map.way_off(harbour, 2 * k + (j & 1))?, at)));
-        // A settler off the ferry, the first time they are anywhere: a
-        // mission may have waited for them.
-        let settler = self.map.car(car).and_then(|c| self.map.resident(c.owner)).is_some_and(|r| r.at.is_none());
         let drove = home.is_some_and(|home| match off {
             Some((out, at)) => {
                 self.map.update_position(car, GridCoord { x: at.at[0].floor() as i32, y: at.at[1].floor() as i32 });
@@ -280,9 +277,6 @@ impl World {
             }
             None => self.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, street, home, now, GameTime::MAX)),
         });
-        if drove && settler {
-            self.missions.stir();
-        }
         if drove || home.is_none() {
             if let Some(c) = self.map.car_mut(ferry) {
                 c.passengers.remove(0);
@@ -324,13 +318,10 @@ impl World {
         }
         let Some(c) = self.map.car_mut(ferry) else { return };
         c.sail = None;
-        let harbour = c.owner;
         if !sail.astern {
             c.spot = Some(traffic::sea::pose(&sail, sail.ends));
             c.due = now + DWELL;
             self.map.update_position(ferry, tile(sail.ends));
-            // The post comes with it.
-            crate::orders::post(self, harbour, now);
             events.wake(0, ferry);
         } else {
             if let Some(at) = self.map.objects.get(ferry).and_then(|e| e.position) {
@@ -358,10 +349,8 @@ impl World {
         c.passengers.clear();
         c.spot = None;
         c.due = now + turn;
-        // Each package is paid for at its slot's price, by its partner;
-        // one for a letter counts to it.
+        // Each package is paid for at its slot's price, by its partner.
         for t in sold {
-            crate::orders::sailed(self, &t);
             crate::economy::exported(self, harbour, t.good, t.value(), now);
         }
         self.set_out(events, ferry, way, true, now);

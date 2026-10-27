@@ -52,6 +52,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let (mut world, sim_time) = if fixtures.is_some() { (World::new(), map::fixtures::NOON) } else { load_world(&mut db) };
     if let Some(dir) = &fixtures {
         map::fixtures::build(&mut world.map, Path::new(dir));
+        world.research = sprawl::research::Research::all();
     } else {
         if world.map.objects.is_empty() {
             world.map.terrain_seed = new_seed();
@@ -148,15 +149,14 @@ fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
         world.gdp = meta.gdp;
         world.treasury = meta.treasury;
-        if !meta.missions.is_empty() {
-            world.missions.list = meta.missions;
-        }
         world.market = meta.market;
+        world.research = meta.research;
         world
     };
     // SPRAWL_ALL: a bottomless treasury, to test any building.
     if std::env::var("SPRAWL_ALL").is_ok() {
         world.treasury = 1_000_000.0;
+        world.research = sprawl::research::Research::all();
     }
     (world, sim_time)
 }
@@ -173,8 +173,8 @@ fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
         sim_time,
         gdp: world.gdp,
         treasury: world.treasury,
-        missions: world.missions.list.clone(),
         market: world.market.clone(),
+        research: world.research.clone(),
     };
     db.save(&changed, &removed, &meta);
     if !changed.is_empty() || !removed.is_empty() {

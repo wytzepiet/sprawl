@@ -9,7 +9,6 @@ use land::ChunkCoord;
 pub mod blueprint;
 pub mod card;
 pub mod market;
-pub mod missions;
 pub mod needs;
 pub mod orders;
 
@@ -257,11 +256,15 @@ pub enum BuildingKind {
     /// beside it, the stone heaped in its yard for a depot's lorry.
     /// Placed by the mayor, at the mountain's foot.
     Quarry,
+    /// Where the town learns to build what it cannot yet: hands at desks
+    /// putting researcher-hours into the next kind (`sprawl::research`).
+    /// Placed by the mayor.
+    Lab,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 13] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -274,6 +277,7 @@ impl BuildingKind {
         BuildingKind::Harbour,
         BuildingKind::Sawmill,
         BuildingKind::Quarry,
+        BuildingKind::Lab,
     ];
 }
 
@@ -595,8 +599,7 @@ pub struct Package {
     pub to: Option<EntityId>,
     /// Going out: an export, brought to a harbour's quay for the ferry.
     pub outbound: bool,
-    /// The shipment it is part of: a booking, a pin's, a letter's, the
-    /// starter pack.
+    /// The shipment it is part of: a booking, or the starter pack.
     #[ts(type = "number")]
     pub order: u64,
     /// Who it is from or for: a mayor beyond the edge, or None, the world.
@@ -730,9 +733,6 @@ pub struct Sea {
     pub sailings: Vec<Sailing>,
     #[serde(default)]
     pub lanes: Vec<Lane>,
-    /// What the open letters still want.
-    #[serde(default)]
-    pub letters: Vec<crate::orders::Letter>,
 }
 
 /// A stretch of a line's way as it lies on the map (`traffic::sea::lanes`):
@@ -1033,11 +1033,10 @@ pub enum ClientMessage {
     DespawnAllCars,
     /// Packages of a good bought from the market or sold to it (`market::trade`).
     Trade { good: Good, packages: u32, out: bool },
-    /// Packages a letter wants, sent (`orders::send`).
-    Send { #[ts(type = "number")] letter: u64, packages: u32 },
-    /// Packages bought once the price falls to this, or sold once it rises to it.
-    Order { good: Good, out: bool, packages: u32, price: f64 },
-    Cancel { #[ts(type = "number")] order: u64 },
+    /// The kind the town's labs work at next (`research::choose`).
+    Research { kind: BuildingKind },
+    /// A good's line set, so many units kept, or taken away (`market::line`).
+    Line { good: Good, keep: Option<f64> },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// The card of one thing on the map, asked for again while it is open.
@@ -1133,6 +1132,24 @@ pub struct Lump {
     pub units: f64,
 }
 
+/// What the town may build, and what its labs are learning
+/// (docs/core.md §Unlocks).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Research {
+    /// Kinds the town may build.
+    pub open: Vec<BuildingKind>,
+    /// Kinds the labs may take up now: the next rung's, not yet open.
+    pub next: Vec<BuildingKind>,
+    /// What the labs are learning, if anything.
+    pub at: Option<BuildingKind>,
+    /// Researcher-hours put into it, and how many it takes.
+    pub done: f64,
+    pub of: f64,
+    /// Researcher-hours each of `next` takes.
+    pub cost: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StateUpdate {
@@ -1145,12 +1162,12 @@ pub struct StateUpdate {
     /// Every shipment on its way and every harbour's timetable.
     #[serde(default)]
     pub sea: Sea,
-    /// The town's open missions, and those just finished.
-    #[serde(default)]
-    pub missions: Vec<crate::missions::Mission>,
-    /// The mayors of the towns beyond the edge, and how they stand.
+    /// The mayors of the towns beyond the edge.
     #[serde(default)]
     pub neighbours: Vec<crate::orders::Neighbour>,
+    /// What the town may build, and what its labs are learning.
+    #[serde(default)]
+    pub research: Research,
     /// The island's map, which the client keeps its camera inside.
     pub island: ChunkBounds,
 }

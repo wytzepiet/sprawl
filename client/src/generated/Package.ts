@@ -27,8 +27,7 @@ to: number | null,
  */
 outbound: boolean, 
 /**
- * The shipment it is part of: a booking, a pin's, a letter's, the
- * starter pack.
+ * The shipment it is part of: a booking, or the starter pack.
  */
 order: number, 
 /**

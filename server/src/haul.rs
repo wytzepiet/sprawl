@@ -410,7 +410,7 @@ pub fn sea(world: &World) -> Sea {
         })
         .collect();
     let lanes = world.lanes.as_ref().map_or(Vec::new(), |lanes| world.lines.values().flat_map(|l| &l.legs).flat_map(|leg| lanes.drawn(leg)).collect());
-    Sea { shipments, sailings, lanes, letters: crate::orders::letters(world) }
+    Sea { shipments, sailings, lanes }
 }
 
 /// What a lorry costs from the world: a vehicle is an import like any
