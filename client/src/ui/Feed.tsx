@@ -13,7 +13,7 @@ import { eye } from "../engine/Camera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { hold, setTool } from "./buildMode";
 import { track } from "./Shipments";
-import { Appear, BEZEL, Btn, COIN, coins, Crest, CORNER, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide, ROUND } from "./kit";
+import { Appear, bezel, Btn, COIN, coins, Crest, CORNER, EYE, FERRY, GDP, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide, ROUND } from "./kit";
 import { Stack } from "./stack";
 import type { BuildingKind, Mission, Step, TerrainType, Mayor } from "../generated";
 import type { JSX } from "solid-js";
@@ -21,7 +21,7 @@ import type { JSX } from "solid-js";
 /** Where the feed starts, and the room it leaves below it: on a wide
  *  screen the dock; on a phone the dial's row over it, and the dock and
  *  the sheet's head under it. */
-const TOP = () => BEZEL + CORNER + (wide() ? 14 : 12);
+const TOP = () => bezel() + CORNER + (wide() ? 14 : 12);
 const BELOW = () => (wide() ? 112 : 180);
 
 /** A card of the feed: a line of news, a mission, or a deal. */
@@ -53,7 +53,7 @@ export default function Feed() {
   };
   createEffect(() => notes().length < 2 && setSpread(false));
   return (
-    <Box at={wide() ? { right: BEZEL + 14, top: TOP() } : { left: BEZEL + 10, right: BEZEL + 10, top: TOP() }} w={wide() ? 340 : undefined} gap={8} opacity={boardOpen() ? 0 : 1}>
+    <Box at={wide() ? { right: bezel() + 14, top: TOP() } : { left: bezel() + 10, right: bezel() + 10, top: TOP() }} w={wide() ? 340 : undefined} gap={8} opacity={boardOpen() ? 0 : 1}>
       <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={ROUND}>
         {(n) => {
           const note = n();

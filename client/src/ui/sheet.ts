@@ -1,7 +1,7 @@
 import { createRoot, createSignal, on, createEffect } from "solid-js";
 import { held, hold, tool } from "./buildMode";
 import { select, selected } from "../state/selection";
-import { BEZEL, view, wide } from "./kit";
+import { bezel, view, wide } from "./kit";
 import { clear } from "./pages";
 
 /**
@@ -31,7 +31,7 @@ export function show(t: Tab, opened: boolean) {
 
 /** The sheet's width: on a phone the screen's within the bezel, so the
  *  sheet rises as a chin of it. */
-export const sheetWidth = () => (wide() ? 440 : view().w - 2 * BEZEL);
+export const sheetWidth = () => (wide() ? 440 : view().w - 2 * bezel());
 
 // Whatever comes into the hand shows its tab: a thing tapped, its card,
 // open; a road tool, the roads; a building out of the menu, the build

@@ -12,7 +12,7 @@ import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsHead, take } fro
 import { BuildBody, BuildHead, info } from "./Build";
 import { MarketBody, MarketHead } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
-import { BEZEL, DROP, Fade, Press, view, wide, ROUND } from "./kit";
+import { bezel, DROP, Fade, Press, view, wide, ROUND } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "solid-js";
 
@@ -113,7 +113,7 @@ export default function Dock() {
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
-  createEffect(() => (eye.below = BEZEL + BAR + h()));
+  createEffect(() => (eye.below = bezel() + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
   /** A finger on the sheet: up draws it up, down sinks it; let go, it
@@ -129,10 +129,10 @@ export default function Dock() {
 
   return (
     <>
-      <Box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
+      <Box at={{ left: 0, right: 0, bottom: bezel() }} align="center">
         <Box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
-          <Ink layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={ROUND} clip>
+          <Ink layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + bezel() + DROP} round={ROUND} clip>
             <Show when={shown()}>
               <Box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
               <Box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
@@ -143,7 +143,7 @@ export default function Dock() {
                   <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].body()}</Fade>}</Show>
                 </Box>
               </Box>
-              <Box at={{ left: 16, right: 16, bottom: BAR + BEZEL + DROP }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
+              <Box at={{ left: 16, right: 16, bottom: BAR + bezel() + DROP }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
             </Show>
           </Ink>
           {/* The tabs, fixed along its foot. */}
@@ -164,7 +164,7 @@ export default function Dock() {
           </Box>
         </Box>
       </Box>
-      <Pages bottom={BEZEL} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
+      <Pages bottom={bezel()} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
     </>
   );
 }

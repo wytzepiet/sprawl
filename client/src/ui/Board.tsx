@@ -2,7 +2,7 @@ import { Box, Text } from "~ui";
 import { For, Show, createEffect, createSignal, on } from "solid-js";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { Header, Pane } from "./Card";
-import { BAD, BEZEL, CORNER, poll, view, wide } from "./kit";
+import { BAD, bezel, CORNER, poll, view, wide } from "./kit";
 import type { JSX } from "solid-js";
 import type { BuildingKind, Good } from "../generated";
 
@@ -52,7 +52,7 @@ export default function Board() {
   return (
     <Show when={open() && town()}>
       {(t) => (
-        <Pane layer="bezel" at={wide() ? { right: BEZEL, top: BEZEL + CORNER - 6 } : { left: BEZEL, right: BEZEL, top: BEZEL + CORNER - 6 }} w={wide() ? 288 : undefined} room={view().h - (wide() ? 240 : 260)}>
+        <Pane layer="bezel" at={wide() ? { right: bezel(), top: bezel() + CORNER - 6 } : { left: bezel(), right: bezel(), top: bezel() + CORNER - 6 }} w={wide() ? 288 : undefined} room={view().h - (wide() ? 240 : 260)}>
           <Header title="The town" sub={`${t().season.length} ${t().season.length === 1 ? "day" : "days"} of books`} onClose={() => setOpen(false)} />
           <Part title="GDP" today={sum(t().today.gdp)} season={mean(t().season, (p) => sum(p.gdp))}>
             <For each={keys(t(), (p) => p.gdp)}>{(kind) => <Line label={BLUEPRINTS[kind].label} today={t().today.gdp[kind] ?? 0} season={mean(t().season, (p) => p.gdp[kind] ?? 0)} />}</For>

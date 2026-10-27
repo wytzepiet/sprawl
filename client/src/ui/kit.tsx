@@ -24,9 +24,12 @@ export const GDP = "#A27BFF";
 export const SEA = "#0A84FF";
 export const COIN = "#FF9F0A";
 
-/** The black round the game, and how far what grows out of it reaches
- *  past the screen's edge, unseen, so it is one piece with it. */
-export const BEZEL = 9;
+/** The black round the game, on a wide screen: a phone's own edge is the
+ *  game's. And the game's corner inside it; and how far what grows out
+ *  of the black reaches past the screen's edge, unseen, so it is one
+ *  piece with it. */
+export const bezel = () => (wide() ? 5 : 0);
+export const WINDOW = 18;
 export const DROP = 40;
 /** How tall the corners are: the clock, the level and the purse. */
 export const CORNER = 40;

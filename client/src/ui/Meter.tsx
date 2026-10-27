@@ -3,7 +3,7 @@ import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { follow } from "../engine/spring";
 import { setBoardOpen } from "./Board";
-import { BAD, BEZEL, CORNER, DROP, elapsed, GDP, GOOD, keys, view, wide, ROUND } from "./kit";
+import { BAD, bezel, CORNER, DROP, elapsed, GDP, GOOD, keys, view, wide, ROUND } from "./kit";
 
 /** The level's ring, in its own 56-unit box, and how finely its arc is
  *  cut: each cut is a glyph of its own. */
@@ -53,7 +53,7 @@ export default function Meter() {
 
   return (
     <>
-      <Ink layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ right: DROP + BEZEL + 14, left: 10, top: DROP + BEZEL }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
+      <Ink layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + bezel() + CORNER} round={ROUND} pad={{ right: DROP + bezel() + 14, left: 10, top: DROP + bezel() }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
         <Box w={28} h={28} align="center" justify="center">
           <Icon at={{ left: 0, top: 0 }} d={RING} view={56} size={28} stroke={4.5} ink="ink/0.16" />
           <Show when={cut() > 0}>
@@ -76,11 +76,11 @@ function Drip(props: { n: number }) {
   const y = () => keys(t(), [[0, 0], [0.15, 0], [0.7, 44], [1, 60]]);
   const s = () => keys(t(), [[0, 0.3], [0.15, 1], [0.7, 0.85], [1, 0.3]]);
   const o = () => keys(t(), [[0, 0], [0.12, 1], [0.75, 1], [1, 0]]);
-  const at = { right: BEZEL + 70, top: BEZEL + CORNER - 22 };
+  const at = () => ({ right: bezel() + 70, top: bezel() + CORNER - 22 });
   return (
     <>
-      <Ink layer="bezel" dye={GOOD} at={at} w={40} h={26} round={13} y={y()} scale={s()} opacity={o()} />
-      <Box at={at} w={40} h={26} align="center" justify="center" y={y()} scale={s()} opacity={o()}>
+      <Ink layer="bezel" dye={GOOD} at={at()} w={40} h={26} round={13} y={y()} scale={s()} opacity={o()} />
+      <Box at={at()} w={40} h={26} align="center" justify="center" y={y()} scale={s()} opacity={o()}>
         <Text size={11.5} weight={700} ink="white">+{props.n}</Text>
       </Box>
     </>
