@@ -13,7 +13,12 @@ import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
 import { depot } from "./depot";
 import { shop } from "./shop";
-import { house } from "./house";
+import { HOUSES } from "./house";
+import { placing as placingWhole } from "./finishes";
+import type { Built } from "./kit";
+import { clearProps, placeProps } from "../props";
+import { PROP_FLOATS } from "../town/layer";
+import { PROP_KINDS } from "../town/roof";
 import { GLASS, glow, glowing, planted } from "./model";
 import { stand } from "../trees";
 import { farm, FARM_TREES } from "./farm";
@@ -27,6 +32,21 @@ import { HANDLE_MS } from "../../generated/rows";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated";
+
+/** A building drawn whole from the kit (`kit.ts`), by its kind: its
+ *  buckets' name and its model, one of a few by its id, as if at random,
+ *  so a street of them is mixed. */
+function wholeOf(kind: Building["kind"], id: number): [string, Built] | null {
+  const pick = <T,>(all: T[]) => all[(Math.imul(id, 0x9e3779b1) >>> 7) % all.length];
+  if (kind === "House") {
+    const it = pick(HOUSES);
+    return [`house${HOUSES.indexOf(it)}`, it];
+  }
+  return null;
+}
+/** Each model's finishes placed, made once. */
+const placings = new Map<string, ReturnType<typeof placingWhole>>();
+const placed_ = (key: string, it: Built) => placings.get(key) ?? (placings.set(key, placingWhole(key, it)), placings.get(key)!);
 
 /** Each engine's glass told the night, once a frame, from the first
  *  model with windows on (`model.ts`). */
@@ -150,7 +170,30 @@ export function mountBuilding(
   // the other way round; a house, one of a few (`house.ts`); a quarry, its
   // hut on the gate's side (`quarry.ts`).
   const side = entry.id % 2 ? 1 : -1;
-  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "House" ? house(entry.id)(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : data.kind === "Farm" ? farm(ctx.engine, side) : null;
+  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : data.kind === "Farm" ? farm(ctx.engine, side) : null;
+  const whole = data.site ? null : wholeOf(data.kind, entry.id);
+  const built = whole && (() => {
+    const [key, it] = whole;
+    const finishes = placed_(key, it)(ctx.engine, side).map((finish) => {
+      const one = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
+      if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
+      return one;
+    });
+    // Its lamps and its smoke, the town's props, where it has them.
+    const onMap = ([x, y]: number[]): [number, number] => [middle[0] + dx * y + dy * x * side, middle[1] + dy * y - dx * x * side];
+    const props = new Float32Array(it.props.length * PROP_FLOATS);
+    it.props.forEach((p, k) => {
+      const [x, y] = onMap(p.at), [tx, ty] = onMap(p.to ?? p.at);
+      props.set([PROP_KINDS.indexOf(p.kind), x - middle[0], y - middle[1], KERB_Z - 0.012 + p.at[2], p.size, p.high, tx - middle[0], ty - middle[1]], k * PROP_FLOATS);
+    });
+    const meshes = placeProps(ctx, `whole_${entry.id}`, props, middle, [middle[0] - 3, middle[1] - 3, middle[0] + 3, middle[1] + 3], pool.casters);
+    const trees = it.trees.length ? stand(ctx, `whole_${entry.id}`, it.trees.map(([x, y, scale], k) => ({ at: onMap([x, y]), scale, shade: k % 3 })), theme, pool.casters) : () => {};
+    return () => {
+      for (const one of finishes) one.remove();
+      clearProps(ctx, meshes, pool.casters);
+      trees();
+    };
+  })();
   const plot = model
     ? model.map((finish) => {
         const it = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
@@ -312,5 +355,6 @@ export function mountBuilding(
     for (const it of [...stood.flat(), ...(mill?.model ?? []), ...plot, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
     grove();
+    built?.();
   };
 }

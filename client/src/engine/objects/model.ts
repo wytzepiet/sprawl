@@ -1,12 +1,10 @@
-import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterialProps } from "@babylonjs/lite";
+import type { EngineContext, MaterialPlugin } from "@babylonjs/lite";
 import type { Manifold, Vec3 } from "manifold-3d";
 import { BARK_LONG, BARK_ROUND } from "../bark";
 import barkRecipe from "../bark.ts?raw";
 import { bakedTexture } from "../bakeCache";
 import type { MeshGeometry } from "../geometry";
 import { grain } from "../ground";
-import { night } from "../lights";
-import { WINDOW_GLOW } from "../TownLayer";
 import { mesh, Solid } from "../solid";
 import type { Shape } from "./sea";
 
@@ -179,33 +177,7 @@ N = normalize(N + (barkT * barkTilt.x + barkB * barkTilt.y) * barkInv);
 baseColor = baseColor * barkMap.b;
 roughness = 0.95;`, (engine) => ({ modelBark: bark(engine) }));
 
-/** Glass: dark and glossy by day, lit warm from inside at night, as the
- *  town's windows are (`TownLayer.ts`). Its materials are told when the
- *  night comes (`glowing`). */
-const GLASSES = new WeakMap<EngineContext, MaterialPlugin>();
-export const GLASS: Coat = (engine) => {
-  const made = GLASSES.get(engine);
-  if (made) return made;
-  const plugin: MaterialPlugin = {
-    name: "ModelGlass",
-    priority: 900,
-    getUniforms: () => ({ ubo: [{ name: "modelGlow", type: "f32" }] }),
-    writeUbo: (data, offsets) => void (data[offsets.get("modelGlow")! / 4] = night.on),
-    getCustomCode: (stage) => (stage === "fragment" ? { CUSTOM_FRAGMENT_UPDATE_DIFFUSE: "roughness = 0.15;", CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color += vec3f(${WINDOW_GLOW.join(", ")}) * material.modelGlow;` } : null),
-  };
-  GLASSES.set(engine, plugin);
-  return plugin;
-};
-/** Glass's materials, each told as the night comes and goes (`glow`). */
-const lit = new Set<PbrMaterialProps>();
-let shown = -1;
-export const glowing = (material: PbrMaterialProps) => void (lit.add(material), (shown = -1));
-/** Each frame: glass told the night, if it has changed. */
-export function glow() {
-  if (night.on === shown) return;
-  shown = night.on;
-  for (const m of lit) markMaterialUboDirty(m);
-}
+export { GLASS, glow, glowing } from "./finishes";
 
 /** A tiled roof's courses: how tall one is, up the roof, and how far
  *  each tips the light down its slope and shades its foot. */
