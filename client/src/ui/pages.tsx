@@ -108,7 +108,7 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
             const [sc] = follow(() => at().s, { rest: 0.001 });
             const [ink] = follow(() => at().ink, { rest: 0.001 });
             // In from below the screen, and out the same way.
-            const [y] = follow(() => (born() && !s.gone() ? pull() : fits() + props.bottom + 40), { feel: SLIDE });
+            const [y] = follow(() => (born() && !s.gone() ? pull() : fits() + props.bottom + 40), { feel: SLIDE, held: () => pull() > 0 });
             const roll = (by: number) => setScroll(Math.max(0, Math.min(own() - props.room, scroll() + by)));
             /** A finger dragging it down from its top takes it away, past a
              *  little way; short of that it springs back. Else it scrolls. */

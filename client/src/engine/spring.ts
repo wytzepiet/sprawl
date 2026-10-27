@@ -68,9 +68,11 @@ const REST = 0.1;
 /**
  * A number that follows `target` on a spring, a frame at a time, and its
  * speed. Waits `delay` ms after the target moves before it goes, so a
- * shelf's rows can come one after another; asleep when at rest.
+ * shelf's rows can come one after another; asleep when at rest. While
+ * `held` (a finger on it), it is where the target is, and let go, it
+ * springs on with the finger's speed.
  */
-export function follow(target: Accessor<number>, opts: { delay?: Accessor<number>; rest?: number; feel?: Feel } = {}): [Accessor<number>, Accessor<number>] {
+export function follow(target: Accessor<number>, opts: { delay?: Accessor<number>; rest?: number; feel?: Feel; held?: Accessor<boolean> } = {}): [Accessor<number>, Accessor<number>] {
   const { stiff, ratio } = opts.feel ?? TIGHT;
   const damp = 2 * Math.sqrt(stiff) * ratio;
   const d: Sprung = { s: target(), v: 0 };
@@ -91,10 +93,21 @@ export function follow(target: Accessor<number>, opts: { delay?: Accessor<number
     setValue(d.s);
     setSpeed(d.v);
   };
+  const hold = (t: number) => {
+    const now = performance.now();
+    // The finger's speed, smoothed over its last few moves.
+    d.v = d.v / 2 + (t - d.s) / Math.max(0.008, (now - last) / 1000) / 2;
+    [d.s, to, last, moving] = [t, t, now, false];
+    due.delete(tick);
+    setValue(t);
+    setSpeed(d.v);
+  };
   const go = (t: number) => {
     to = t;
     if (moving) return;
     moving = true;
+    // A finger that stood still before it let go threw nothing.
+    if (performance.now() - last > 100) d.v = 0;
     last = performance.now();
     nextFrame(tick);
   };
@@ -102,6 +115,7 @@ export function follow(target: Accessor<number>, opts: { delay?: Accessor<number
   // are made afresh with every growth update) must not restart the wait.
   createEffect(on(createMemo(target), (t) => {
     clearTimeout(wait);
+    if (opts.held?.()) return hold(t);
     const ms = opts.delay?.() ?? 0;
     if (ms > 0) wait = window.setTimeout(() => go(t), ms);
     else go(t);

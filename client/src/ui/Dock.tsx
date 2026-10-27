@@ -109,7 +109,7 @@ export default function Dock() {
   const openH = () => headH() + Math.min(bodyH(), room());
   // Under a page it stands out over the page's top, smaller and blank.
   const under = () => (pages().length ? behind(front(), pages().length) : null);
-  const [h] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2 });
+  const [h] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2, held: () => pull() !== null });
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
