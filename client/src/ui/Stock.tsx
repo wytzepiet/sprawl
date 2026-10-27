@@ -1,14 +1,14 @@
 /** @jsxImportSource ~ui */
 import { For, Show } from "solid-js";
 import { dayAgo, market, quoteOf } from "../state/market";
-import { goodPage, held, money, named, Order, percent, tint, Tile } from "./Market";
+import { goodPage, held, money, named, percent, tint, Tile } from "./Market";
 import { push } from "./pages";
 
 /**
- * The market's stock and orders, as a trading app's portfolio: what the
+ * The market's stock, as a trading app's portfolio: what the
  * town holds of each good across its depots, what that is worth at
- * today's price and how that moved since yesterday; and the orders
- * waiting on a price. A tap on a good opens its page.
+ * today's price and how that moved since yesterday. A tap on a good
+ * opens its page.
  */
 
 /** Each good held, with its worth now and a day ago. */
@@ -60,17 +60,6 @@ export function Holdings() {
             </box>
           );
         }}
-      </For>
-    </box>
-  );
-}
-
-/** The orders waiting on a price. */
-export function Orders() {
-  return (
-    <box pad={{ x: 12, bottom: 12 }} gap={6}>
-      <For each={market.orders} fallback={<box pad={{ x: 4, y: 8 }}><text size={14} weight={600} soft>No orders waiting. A good's page sets one.</text></box>}>
-        {(o) => <Order o={o} named />}
       </For>
     </box>
   );

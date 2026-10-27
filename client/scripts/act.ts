@@ -23,10 +23,8 @@
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act buy Timber 2            two bundles of timber from the market, on
  *       sell Crates                     the next ferry; or a crate of food sold
- *   bun run act order buy Fuel 3 0.9    three pallets of fuel bought once its
- *                                       price (a unit) falls to 0.9; `sell`,
- *                                       once it rises to it
- *   bun run act cancel 57               order 57 taken back
+ *   bun run act line Crates 100         a hundred units of crates kept by the
+ *                                       offices; with no number, the line gone
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -226,11 +224,8 @@ for (const line of lines) {
     case "sell":
       send({ type: "Trade", data: { good: args[0] as Good, packages: Number(args[1] ?? 1), out: verb === "sell" } });
       break;
-    case "order":
-      send({ type: "Order", data: { out: args[0] === "sell", good: args[1] as Good, packages: Number(args[2]), price: Number(args[3]) } });
-      break;
-    case "cancel":
-      send({ type: "Cancel", data: { order: Number(args[0]) } });
+    case "line":
+      send({ type: "Line", data: { good: args[0] as Good, keep: args[1] === undefined ? null : Number(args[1]) } });
       break;
     case "reset":
       send({ type: "ResetWorld" });
@@ -261,6 +256,6 @@ for (const line of lines) {
   const said = [...changes(await settled()), ...told.splice(0), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "order", "cancel"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "line", "research"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 game.close();

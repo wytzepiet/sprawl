@@ -1035,9 +1035,8 @@ pub enum ClientMessage {
     Trade { good: Good, packages: u32, out: bool },
     /// The kind the town's labs work at next (`research::choose`).
     Research { kind: BuildingKind },
-    /// Packages bought once the price falls to this, or sold once it rises to it.
-    Order { good: Good, out: bool, packages: u32, price: f64 },
-    Cancel { #[ts(type = "number")] order: u64 },
+    /// A good's line set, so many units kept, or taken away (`market::line`).
+    Line { good: Good, keep: Option<f64> },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// The card of one thing on the map, asked for again while it is open.

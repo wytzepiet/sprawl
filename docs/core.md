@@ -1,7 +1,10 @@
 # The core
 
 Status: agreed with Wytze 2026-10-26 (thread "Find the core game loop"),
-being built on `claude/project-thread-mv2dh8`, the core branch. Where
+being built on `claude/project-thread-mv2dh8`, the core branch. Built
+2026-10-27: the cuts, the lab's ladder (`server/src/research.rs`), and the
+line kept by offices (`market.rs` `keep`); the line is a stepper beside
+the shelf, not yet a handle dragged on it. Where
 this page and an older one disagree, this page wins; the older text
 moves to `shelved.md` as each piece is built.
 

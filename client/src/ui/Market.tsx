@@ -8,18 +8,19 @@ import { GOODS } from "../blueprints";
 import { LOAD } from "../generated/rows";
 import { BAD, Fade, GoodDot, Line, Press, Tabs } from "./kit";
 import { open, setOpen, show } from "./sheet";
-import { Holdings, Orders } from "./Stock";
+import { Holdings } from "./Stock";
 import { PageHead, push } from "./pages";
-import type { Good, Quote, When } from "../generated";
+import type { Good, Quote } from "../generated";
 
 /**
  * The market tab (docs/plan-market.md §The first version): every good,
  * what the town holds of it, its price and how it moved; a tap opens a
  * good's page: its week on a graph inside the world's band, what the
  * town pays and gets for a package at its harbour, its depots' room, Buy
- * and Sell so many packages, and orders that wait for a price.
+ * and Sell so many packages, and the line the town's offices keep it at
+ * (docs/core.md §Trade).
  *
- * Prices are a package's, the unit a deck and an order trade in.
+ * Prices are a package's, the unit a deck trades in.
  */
 
 /** How frosted the glass under a chart is: its red and green read over any town. */
@@ -104,8 +105,8 @@ export const Tile = (props: { good: Good; size?: number }) => (
   </box>
 );
 
-/** What the market tab shows: every good's price, what the town holds, or its orders. */
-const VIEWS = ["market", "stock", "orders"] as const;
+/** What the market tab shows: every good's price, or what the town holds. */
+const VIEWS = ["market", "stock"] as const;
 const [view, setView] = createSignal<(typeof VIEWS)[number]>("market");
 export { setView };
 
@@ -116,13 +117,12 @@ export const MarketBody = () => (
   <Switch>
     <Match when={view() === "market"}><Fade><List /></Fade></Match>
     <Match when={view() === "stock"}><Fade><Holdings /></Fade></Match>
-    <Match when={view() === "orders"}><Fade><Orders /></Fade></Match>
   </Switch>
 );
 
 /** A good's page, as the page stack shows it. */
 export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} />, frost: FROSTED });
-/** The market, and a good's page over it: a mission's step. */
+/** The market, and a good's page over it. */
 export const toMarket = (g: Good | null) => (setView("market"), show("market", true), g && push(goodPage(g)));
 
 /** Every good: what the town holds, the day's line, the price and its move. */
@@ -145,23 +145,6 @@ function List() {
           </Press>
         )}
       </For>
-    </box>
-  );
-}
-
-/** An order waiting on a price, as a sentence, and the cross that takes
- *  it back; `named`, with its good's name, where goods are mixed. */
-export function Order(props: { o: When; named?: boolean }) {
-  const { send } = useGame();
-  return (
-    <box dir="row" align="center" gap={10} pad={{ left: 10, right: 4, y: 4 }} round={14} fill="ink/0.05">
-      <box w={6} h={26} round={3} fill="#7A5BC0" />
-      <text size={13.5} grow={1}>
-        {props.o.out ? "Sell" : "Buy"} {props.o.packages}{props.named ? ` ${GOODS[props.o.good].label}` : ""} when it {props.o.out ? "rises to" : "falls to"} <text serif>{money(each(props.o.good, props.o.price))}</text>
-      </text>
-      <Press w={32} h={32} round={16} align="center" justify="center" onTap={() => send({ type: "Cancel", data: { order: props.o.id } })}>
-        <Line d="M7 7l10 10M17 7L7 17" size={14} width={2.4} ink="ink/0.6" />
-      </Press>
     </box>
   );
 }
@@ -190,19 +173,15 @@ function Page(props: { good: Good }) {
   const [week, setWeek] = createSignal(true);
   const [n, setN] = createSignal(1);
   const shown = () => (week() ? q().history : q().history.slice(-25));
-  const orders = () => market.orders.filter((o) => o.good === props.good);
+  const kept = () => market.lines.find((l) => l.good === props.good)?.keep ?? null;
   const trade = (out: boolean) => send({ type: "Trade", data: { good: props.good, packages: n(), out } });
   const cost = () => total(q(), n(), false);
   const harbour = () => home() !== null;
 
-  // The "when" order being written: buying or selling, at what price a
-  // unit, set a twentieth of the band at a tap, from just past today's.
-  const tick = () => (q().ceiling - q().floor) / 20;
-  const [out, setOut] = createSignal(false);
-  const [at, setAt] = createSignal<number | null>(null);
-  const price = () => at() ?? q().price + (out() ? tick() : -tick());
-  const nudge = (by: number) => setAt(Math.max(q().floor, Math.min(q().ceiling, price() + by * tick())));
-  const place = () => (send({ type: "Order", data: { good: props.good, out: out(), packages: n(), price: price() } }), setAt(null));
+  // The line, stepped a lorry's load at a time; set first at what is held.
+  const per = () => GOODS[props.good].per * LOAD;
+  const keep = (k: number | null) => send({ type: "Line", data: { good: props.good, keep: k === null ? null : Math.max(0, k) } });
+  const start = () => Math.round((stock()?.level ?? 0) / per()) * per();
 
   const range = () => {
     const pad = (q().ceiling - q().floor) * 0.08;
@@ -232,7 +211,6 @@ function Page(props: { good: Good }) {
             marks={[
               { at: q().ceiling, color: "ink/0.3", label: `world sells ${money(each(props.good, q().ceiling))}` },
               { at: q().floor, color: "ink/0.3", label: `world buys ${money(each(props.good, q().floor))}` },
-              ...orders().map((o) => ({ at: o.price, color: "#7A5BC0", dashed: true, label: `${o.out ? "sell" : "buy"} ${o.packages} at ${money(each(o.good, o.price))}` })),
             ]}
           />
         </Show>
@@ -247,7 +225,7 @@ function Page(props: { good: Good }) {
         </box>
       </box>
 
-      <Show when={stock()}>{(s) => <box pad={{ x: 4 }}><Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} /></box>}</Show>
+      <Show when={stock()}>{(s) => <box pad={{ x: 4 }}><Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} keep={kept()} /></box>}</Show>
 
       <box dir="row" align="center" gap={8}>
         <Stepper value={`${n()}`} less={() => setN(n() > LOAD ? n() - LOAD : Math.max(1, n() - 1))} more={() => setN(Math.min(DECK, n() < LOAD ? n() + 1 : n() + LOAD))} />
@@ -264,28 +242,37 @@ function Page(props: { good: Good }) {
         </Press>
       </box>
 
-      <box gap={6}>
-        <For each={orders()}>{(o) => <Order o={o} />}</For>
-        {/* An order, as a sentence: each part a tap to change. */}
-        <box dir="row" align="center" gap={6} wrap>
-          <Press h={30} pad={{ x: 12 }} round={15} justify="center" fill="ink/0.07" onTap={() => (setOut(!out()), setAt(null))}>
-            <text size={13.5} weight={600}>{out() ? "Sell" : "Buy"} {n()}</text>
-          </Press>
-          <text size={13.5} soft>when it {out() ? "rises to" : "falls to"}</text>
-          <Stepper value={money(each(props.good, price()))} less={() => nudge(-1)} more={() => nudge(1)} />
-          <box grow={1} />
-          <Press h={30} pad={{ x: 14 }} round={15} justify="center" fill="#7A5BC0" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && place()}>
-            <text size={13.5} weight={600} ink="white">Place</text>
+      {/* The line: kept by the offices, there from the start, dimmed till one is staffed. */}
+      <box gap={6} opacity={market.desks > 0 ? 1 : 0.5}>
+        <box dir="row" align="center" gap={8}>
+          <box w={6} h={26} round={3} fill={LINE} />
+          <Show when={kept() !== null} fallback={<text size={13.5} grow={1}>No line: only what you buy and sell</text>}>
+            <text size={13.5} grow={1}>Keep</text>
+            <Stepper value={`${Math.round(kept()!)}`} less={() => keep(kept()! - per())} more={() => keep(kept()! + per())} />
+          </Show>
+          <Press h={30} pad={{ x: 12 }} round={15} justify="center" fill="ink/0.07" onTap={() => keep(kept() === null ? start() : null)}>
+            <text size={13.5} weight={600}>{kept() === null ? "Set a line" : "Off"}</text>
           </Press>
         </box>
+        <text size={12} soft>
+          {market.desks <= 0
+            ? "An office keeps this stocked: it buys up to the line and sells what is over it."
+            : market.full
+              ? `Trade desks full: your offices trade ${Math.round(market.desks)} packages a day; another trades more.`
+              : `Bought up to the line and sold over it by your offices, ${Math.round(market.desks)} packages a day.`}
+        </text>
       </box>
       </box>
     </box>
   );
 }
 
-/** A good's shelf: how full, and what is on its way drawn faint beyond it. */
-function Shelf(props: { good: Good; level: number; cap: number; incoming: number }) {
+/** A line's colour, on the shelf and beside its stepper. */
+const LINE = "#7A5BC0";
+
+/** A good's shelf: how full, what is on its way drawn faint beyond it,
+ *  and the line it is kept at. */
+function Shelf(props: { good: Good; level: number; cap: number; incoming: number; keep: number | null }) {
   const share = (v: number) => Math.max(0, Math.min(1, v / props.cap));
   const [w, setW] = createSignal(0);
   const color = () => GOODS[props.good].color;
@@ -305,6 +292,9 @@ function Shelf(props: { good: Good; level: number; cap: number; incoming: number
       <box h={14} round={7} fill="ink/0.09" onSize={(x) => setW(x)}>
         <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
         <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
+        <Show when={props.keep !== null}>
+          <box at={{ left: Math.max(0, w() * share(props.keep!) - 1.5), top: -3 }} w={3} h={20} round={1.5} fill={LINE} />
+        </Show>
       </box>
     </box>
   );
