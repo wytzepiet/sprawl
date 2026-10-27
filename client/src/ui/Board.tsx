@@ -1,9 +1,9 @@
-/** @jsxImportSource ~ui */
+import { Box, Text } from "~ui";
 import { For, Show, createEffect, createSignal, on } from "solid-js";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { Header, Pane } from "./Card";
 import { BAD, BEZEL, CORNER, poll, view, wide } from "./kit";
-import type { JSX } from "~ui/jsx-runtime";
+import type { JSX } from "solid-js";
 import type { BuildingKind, Good } from "../generated";
 
 /** One day of the town's books: GDP, per kind of building it was added
@@ -75,25 +75,25 @@ export default function Board() {
 /** A heading with its total: today's, and a day's over the season. */
 function Part(props: { title: string; today: number; season: number; children: JSX.Element }) {
   return (
-    <box pad={{ x: 16, y: 8 }}>
-      <box at={{ left: 16, top: 0, right: 16 }} h={1} fill="ink/0.08" />
-      <box dir="row" align="center" gap={0} minH={20}>
-        <text grow={1} size={12} weight={600} soft>{props.title}</text>
-        <text w={COL} size={11} soft align="end">today</text>
-        <text w={COL} size={11} soft align="end">a day</text>
-      </box>
+    <Box pad={{ x: 16, y: 8 }}>
+      <Box at={{ left: 16, top: 0, right: 16 }} h={1} fill="ink/0.08" />
+      <Box dir="row" align="center" gap={0} minH={20}>
+        <Text grow={1} size={12} weight={600} soft>{props.title}</Text>
+        <Text w={COL} size={11} soft align="end">today</Text>
+        <Text w={COL} size={11} soft align="end">a day</Text>
+      </Box>
       <Line label="" today={props.today} season={props.season} bold />
       {props.children}
-    </box>
+    </Box>
   );
 }
 
 function Line(props: { label: string; today: number; season?: number; bold?: boolean }) {
   return (
-    <box dir="row" align="center" minH={20}>
-      <text grow={1} size={13} soft lines={1}>{props.label}</text>
-      <text w={COL} serif size={13} align="end" weight={props.bold ? 600 : undefined} ink={props.today < 0 ? BAD : undefined}>{num(props.today)}</text>
-      <text w={COL} serif size={13} align="end" soft>{props.season === undefined ? "" : num(props.season)}</text>
-    </box>
+    <Box dir="row" align="center" minH={20}>
+      <Text grow={1} size={13} soft lines={1}>{props.label}</Text>
+      <Text w={COL} serif size={13} align="end" weight={props.bold ? 600 : undefined} ink={props.today < 0 ? BAD : undefined}>{num(props.today)}</Text>
+      <Text w={COL} serif size={13} align="end" soft>{props.season === undefined ? "" : num(props.season)}</Text>
+    </Box>
   );
 }

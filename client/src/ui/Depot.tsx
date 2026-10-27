@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Text } from "~ui";
 import { createMemo, createSignal, Index, Show } from "solid-js";
 import { buildingAt, getEntity, useGame } from "../state/gameObjects";
 import { load, now, until } from "../state/sea";
@@ -46,23 +46,23 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
   const can = () => (b()?.lorries ?? 0) < MORE_LORRIES && growth().treasury >= LORRY_PRICE;
 
   return (
-    <Show when={b()} fallback={<Section title="Depot"><text size={13.5} soft>Out of sight.</text></Section>}>
+    <Show when={b()} fallback={<Section title="Depot"><Text size={13.5} soft>Out of sight.</Text></Section>}>
       <Section title={props.lorries.length > 1 ? `Lorries · ${props.lorries.length}` : "The lorry"}>
         <Index each={cars()}>
           {(l) => {
             const w = () => doing(props.id, l().car, l().at);
             return (
-              <box dir="row" align="center" gap={8} minH={26}>
-                <text grow={1} size={14.5} weight={600} lines={2}>{w().words[0].toUpperCase() + w().words.slice(1)}</text>
-                <Show when={w().eta}>{(eta) => <text serif size={18}>{until(eta())}</text>}</Show>
+              <Box dir="row" align="center" gap={8} minH={26}>
+                <Text grow={1} size={14.5} weight={600} lines={2}>{w().words[0].toUpperCase() + w().words.slice(1)}</Text>
+                <Show when={w().eta}>{(eta) => <Text serif size={18}>{until(eta())}</Text>}</Show>
                 <Follow id={l().id} />
-              </box>
+              </Box>
             );
           }}
         </Index>
-        <box dir="row" justify="end" pad={{ top: 6 }}>
+        <Box dir="row" justify="end" pad={{ top: 6 }}>
           <Btn onTap={buy} disabled={!can()}>{bought() ? "Bought ✓" : `+ lorry ${coins(-LORRY_PRICE)}`}</Btn>
-        </box>
+        </Box>
       </Section>
     </Show>
   );

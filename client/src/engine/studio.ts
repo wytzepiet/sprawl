@@ -21,9 +21,8 @@ import type { EngineContext } from "./Canvas";
 import type { Culler } from "./cull";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode } from "../generated";
 
-/** A picture's side, in pixels, and the sheet's columns. */
+/** A picture's side, in pixels. */
 const CELL = 256;
-const COLUMNS = 4;
 /** Noon: every picture in the one light. */
 const NOON = 0.5;
 /** The lens: narrow, so a picture is nearly the plan, with a little depth. */
@@ -36,32 +35,21 @@ const MARGIN = 0.9;
 const GRASS = 2;
 const INSIDE = shapeKey({ base: "+", corners: [null, null, null, null], across: Array(8).fill("+"), near: Array(8).fill(null) });
 
-const [taken, setTaken] = createSignal<ReadonlySet<BuildingKind>>(new Set());
+const [taken, setTaken] = createSignal<Partial<Record<BuildingKind, string>>>({});
 
-/** A kind's picture in the sheet, its corners 0–1, once it is taken. */
-export function photo(kind: BuildingKind): [number, number, number, number] | undefined {
-  if (!taken().has(kind)) return undefined;
-  const i = KINDS.indexOf(kind);
-  const rows = Math.ceil(KINDS.length / COLUMNS);
-  const [x, y] = [i % COLUMNS, Math.floor(i / COLUMNS)];
-  return [x / COLUMNS, y / rows, (x + 1) / COLUMNS, (y + 1) / rows];
-}
+/** A kind's picture, once it is taken: where the page finds it. */
+export const photo = (kind: BuildingKind) => taken()[kind];
 
 /**
  * The build menu's pictures, taken by the game itself: a scene of its own
  * on a canvas off the page, lit as the town at noon (`daylight`), where
  * the town grid draws each kind in turn on a street of its own, as the
- * town would (`TownLayer`), and a frame of it is copied into a sheet the
- * menu cuts them from (`ui/Build.tsx`). Nothing round it: the picture is
+ * town would (`TownLayer`), and a frame of it kept as a picture for the
+ * menu (`ui/Build.tsx`). Nothing round it: the picture is
  * the building, its lot and its street, on grass. One kind a frame
  * of spare time, once, after the town has come in.
  */
-export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
-  const device = main._device;
-  const rows = Math.ceil(KINDS.length / COLUMNS);
-  const sheet = device.createTexture({ size: [CELL * COLUMNS, CELL * rows], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
-  show(sheet);
-
+export function createStudio(main: Engine) {
   const canvas = new OffscreenCanvas(CELL, CELL);
   const surface = createSurface(main, canvas, { alphaMode: "premultiplied" });
   const scene = createSceneContext(surface);
@@ -94,14 +82,16 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
   let stopped = false;
 
   const shoot = async () => {
+    // A harbour is its piers on the sea, which the town grid does not
+    // draw: it keeps its icon. A kind taken once, on a page before, is kept.
+    const kinds = KINDS.filter((kind) => !BLUEPRINTS[kind].quay && !taken()[kind]);
+    if (!kinds.length) return;
     await registerSceneWithShadowSupport(scene);
     town = new TownLayer(ctx, lit.casters, (f) => entries.forEach(f), () => "Grass", () => SOLID);
     lawn();
-    // A harbour is its piers on the sea, which the town grid does not
-    // draw: it keeps its icon. The first picture is taken twice: what the
-    // scene draws, its light and sky, is still being built the first time.
-    const kinds = KINDS.flatMap((kind, i) => (BLUEPRINTS[kind].quay ? [] : [{ kind, i }]));
-    for (const [n, { kind, i }] of [kinds[0], ...kinds].entries()) {
+    // The first picture is taken twice: what the scene draws, its light
+    // and sky, is still being built the first time.
+    for (const [n, kind] of [kinds[0], ...kinds].entries()) {
       if (stopped) return;
       const { at, half } = stage(kind);
       // Asked to draw, then drawn: the chunks come in a frame at a time.
@@ -118,9 +108,9 @@ export function createStudio(main: Engine, show: (sheet: GPUTexture) => void) {
       while (lit.shadows._preloadPending && !stopped) await idle();
       renderFrame(main, 16, [surface]);
       if (n === 0) continue;
-      const [x, y] = [(i % COLUMNS) * CELL, Math.floor(i / COLUMNS) * CELL];
-      device.queue.copyExternalImageToTexture({ source: canvas }, { texture: sheet, origin: [x, y], premultipliedAlpha: true }, [CELL, CELL]);
-      setTaken((s) => new Set([...s, kind]));
+      // Kept as the frame stands, before the next is drawn over it.
+      const url = URL.createObjectURL(await canvas.convertToBlob());
+      setTaken((t) => ({ ...t, [kind]: url }));
       await idle();
     }
     town.dispose();

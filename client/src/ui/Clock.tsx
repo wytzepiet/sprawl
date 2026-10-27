@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text, Icon } from "~ui";
 import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { dayLengthMs, simNow, simSpeed } from "../network/clock";
@@ -36,17 +36,17 @@ export default function Clock() {
     setPicking(false);
     send({ type: "RunTo", data: simNow() + ((hour / 24 - timeOfDay() + 1) % 1) * dayLengthMs() });
   };
-  const time = () => <text serif size={19} w={52}>{clock(timeOfDay())}</text>;
+  const time = () => <Text serif size={19} w={52}>{clock(timeOfDay())}</Text>;
   return (
-    <glass layer="bezel" at={{ left: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ left: DROP + BEZEL + 12, right: 12, top: DROP + BEZEL }} dir="row" align="center" gap={3}>
+    <Ink layer="bezel" at={{ left: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ left: DROP + BEZEL + 12, right: 12, top: DROP + BEZEL }} dir="row" align="center" gap={3}>
       <Show when={TOOLS && wide()} fallback={time()}>
         <Press onTap={() => setPicking(!picking())}>{time()}</Press>
-        <box w={6} />
+        <Box w={6} />
         <Show when={!picking()} fallback={
           <For each={HOURS}>
             {(hour) => (
               <Press w={28} h={28} round={14} align="center" justify="center" onTap={() => runTo(hour)}>
-                <text size={11} weight={600} ink="ink/0.6">{String(hour).padStart(2, "0")}</text>
+                <Text size={11} weight={600} ink="ink/0.6">{String(hour).padStart(2, "0")}</Text>
               </Press>
             )}
           </For>
@@ -54,11 +54,11 @@ export default function Clock() {
           <For each={SPEEDS}>
             {(speed) => (
               <Press w={28} h={28} round={14} align="center" justify="center" fill={simSpeed() === speed ? "ink" : undefined} onTap={() => send({ type: "SetSpeed", data: speed })}>
-                {speed === 0 ? <icon d={PAUSE} size={13} ink={simSpeed() === 0 ? "glass" : "ink/0.6"} /> : <text size={11} weight={600} ink={simSpeed() === speed ? "glass" : "ink/0.6"}>{speed}×</text>}
+                {speed === 0 ? <Icon d={PAUSE} size={13} ink={simSpeed() === 0 ? "glass" : "ink/0.6"} /> : <Text size={11} weight={600} ink={simSpeed() === speed ? "glass" : "ink/0.6"}>{speed}×</Text>}
               </Press>
             )}
           </For>
-          <box w={1} h={16} fill="ink/0.15" />
+          <Box w={1} h={16} fill="ink/0.15" />
           <Press w={26} h={26} round={13} align="center" justify="center" onTap={() => send({ type: "DespawnAllCars" })}>
             <Line d={CARS_OFF} size={14} width={1.5} ink="ink/0.6" />
           </Press>
@@ -67,6 +67,6 @@ export default function Clock() {
           </Press>
         </Show>
       </Show>
-    </glass>
+    </Ink>
   );
 }

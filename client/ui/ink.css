@@ -1,0 +1,45 @@
+/* The UI's faces (`public/fonts`): Inter for words, Nunito for numbers. */
+@font-face { font-family: Inter; font-weight: 500; src: url(/fonts/Inter-500.ttf); }
+@font-face { font-family: Inter; font-weight: 600; src: url(/fonts/Inter-600.ttf); }
+@font-face { font-family: Inter; font-weight: 700; src: url(/fonts/Inter-700.ttf); }
+@font-face { font-family: Nunito; font-weight: 700; src: url(/fonts/Nunito-700.ttf); }
+
+/* Over the whole screen, letting through to the town what nothing on it
+   takes (`index.tsx`, `common`); white on black. */
+.ink {
+  position: fixed;
+  inset: 0;
+  /* Over what is drawn flat over the town: the hand's dots, the plot in hand. */
+  z-index: 10;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  font: 500 14px/1.25 Inter, system-ui, sans-serif;
+  color: #fff;
+  overflow: hidden;
+}
+.ink * { box-sizing: border-box; }
+
+/* A box: down, or across (`r`); none gives way but a row's words not
+   told their width, and only a row shares out its room. */
+.b { position: relative; display: flex; flex-direction: column; flex-shrink: 0; min-width: 0; }
+.b:not(.r) > * { flex-grow: 0 !important; flex-basis: auto !important; }
+/* Never wider than the room it is in, unless it is told how wide. */
+.b > * { max-width: 100%; }
+.t, .i { position: relative; flex-shrink: 0; }
+.r > .t { flex-shrink: 1; min-width: 0; }
+.t { overflow-wrap: break-word; }
+.t.one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t.some { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* A corner: a squircle where the page can draw one, reaching further to
+   stand for the radius it is given. */
+.sq { border-radius: var(--r); }
+@supports (corner-shape: squircle) {
+  .sq { border-radius: calc(var(--r) * 1.8); corner-shape: squircle; }
+}
+
+/* A Melt's black, under what is in it. */
+.melt { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text, Icon } from "~ui";
 import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { follow } from "../engine/spring";
@@ -53,17 +53,17 @@ export default function Meter() {
 
   return (
     <>
-      <glass layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ right: DROP + BEZEL + 14, left: 10, top: DROP + BEZEL }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
-        <box w={28} h={28} align="center" justify="center">
-          <icon at={{ left: 0, top: 0 }} d={RING} view={56} size={28} stroke={4.5} ink="ink/0.16" />
+      <Ink layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + BEZEL + CORNER} round={ROUND} pad={{ right: DROP + BEZEL + 14, left: 10, top: DROP + BEZEL }} dir="row" align="center" justify="end" gap={7} onTap={() => setBoardOpen((o) => !o)}>
+        <Box w={28} h={28} align="center" justify="center">
+          <Icon at={{ left: 0, top: 0 }} d={RING} view={56} size={28} stroke={4.5} ink="ink/0.16" />
           <Show when={cut() > 0}>
-            <icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={28} stroke={4.5} ink={GDP} />
+            <Icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={28} stroke={4.5} ink={GDP} />
           </Show>
-          <text serif size={13}>{growth().level}</text>
-        </box>
-        <text serif size={20} ink={low() ? BAD : undefined}>{Math.floor(treasury()).toLocaleString()}</text>
-        <text size={11.5} weight={600} soft>coins</text>
-      </glass>
+          <Text serif size={13}>{growth().level}</Text>
+        </Box>
+        <Text serif size={20} ink={low() ? BAD : undefined}>{Math.floor(treasury()).toLocaleString()}</Text>
+        <Text size={11.5} weight={600} soft>coins</Text>
+      </Ink>
       <For each={drips()}>{(d) => <Drip n={d.n} />}</For>
     </>
   );
@@ -79,10 +79,10 @@ function Drip(props: { n: number }) {
   const at = { right: BEZEL + 70, top: BEZEL + CORNER - 22 };
   return (
     <>
-      <glass layer="bezel" dye={GOOD} at={at} w={40} h={26} round={13} y={y()} scale={s()} opacity={o()} />
-      <box at={at} w={40} h={26} align="center" justify="center" y={y()} scale={s()} opacity={o()}>
-        <text size={11.5} weight={700} ink="white">+{props.n}</text>
-      </box>
+      <Ink layer="bezel" dye={GOOD} at={at} w={40} h={26} round={13} y={y()} scale={s()} opacity={o()} />
+      <Box at={at} w={40} h={26} align="center" justify="center" y={y()} scale={s()} opacity={o()}>
+        <Text size={11.5} weight={700} ink="white">+{props.n}</Text>
+      </Box>
     </>
   );
 }

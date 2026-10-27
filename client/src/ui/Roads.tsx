@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Text, Icon } from "~ui";
 import { createEffect, createRoot, createSignal, For } from "solid-js";
 import { priority, setPriority, setTool, tool } from "./buildMode";
 import { BAD, Info, Press } from "./kit";
@@ -41,21 +41,21 @@ export const lastRoad = createRoot(() => {
  *  in its colour, each with an i for its page. */
 export function RoadsHead(props: { info: (k: RoadKind) => void }) {
   return (
-    <box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
+    <Box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
       <For each={[...ROAD_KINDS]}>
         {(r) => {
           const on = () => inHand() === r.id;
           return (
             <Press grow={1} h={60} round={16} gap={4} align="center" justify="center" fill={on() ? r.color : "ink/0.05"} onTap={() => (on() ? setTool(null) : take(r.id))}>
-              <icon d={r.glyph} size={20} ink={on() ? "white" : r.id === "Demolish" ? r.color : "ink/0.72"} />
-              <box dir="row" align="center" gap={4}>
-                <text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</text>
+              <Icon d={r.glyph} size={20} ink={on() ? "white" : r.id === "Demolish" ? r.color : "ink/0.72"} />
+              <Box dir="row" align="center" gap={4}>
+                <Text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</Text>
                 <Info onTap={() => props.info(r.id)} />
-              </box>
+              </Box>
             </Press>
           );
         }}
       </For>
-    </box>
+    </Box>
   );
 }

@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Text } from "~ui";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { getEntity } from "../state/gameObjects";
 import { sea } from "../state/sea";
@@ -39,7 +39,7 @@ export default function Cargo() {
         return (
           <Show when={at()}>
             {(p) => (
-              <box
+              <Box
                 at={{ left: 0, top: 0 }}
                 x={p().sx - size()[0] / 2}
                 y={p().sy - size()[1] * 1.3}
@@ -54,15 +54,15 @@ export default function Cargo() {
               >
                 <For each={goodsOn(id)}>
                   {(g) => (
-                    <box dir="row" align="center">
+                    <Box dir="row" align="center">
                       <GoodDot good={g.good} size={16} />
                       <Show when={g.n > 1}>
-                        <box pad={{ x: 2 }}><text size={10} weight={700}>{g.n}</text></box>
+                        <Box pad={{ x: 2 }}><Text size={10} weight={700}>{g.n}</Text></Box>
                       </Show>
-                    </box>
+                    </Box>
                   )}
                 </For>
-              </box>
+              </Box>
             )}
           </Show>
         );

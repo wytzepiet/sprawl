@@ -1,8 +1,8 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink } from "~ui";
 import { createEffect, createMemo, createSignal, For, onCleanup, untrack, type Accessor } from "solid-js";
 import { follow, type Feel } from "../engine/spring";
 import { Line, Press, ROUND } from "./kit";
-import type { JSX } from "~ui/jsx-runtime";
+import type { JSX } from "solid-js";
 
 /**
  * Pages: whatever opens on its own, a building's page, a good's, slides
@@ -54,12 +54,12 @@ interface Shown {
 /** A page's head: the way back, and what the page is. */
 export function PageHead(props: { children: JSX.Element }) {
   return (
-    <box dir="row" align="center" gap={10} pad={{ left: 8, right: 16, top: 12, bottom: 10 }}>
+    <Box dir="row" align="center" gap={10} pad={{ left: 8, right: 16, top: 12, bottom: 10 }}>
       <Press w={36} h={36} round={18} align="center" justify="center" onTap={pop}>
         <Line d="M15 5l-7 7 7 7" size={20} width={2.6} />
       </Press>
       {props.children}
-    </box>
+    </Box>
   );
 }
 
@@ -90,8 +90,8 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
   const live = createMemo(() => shown().filter((s) => !s.gone()));
 
   return (
-    <box at={{ left: 0, right: 0, bottom: props.bottom }} align="center">
-      <box w={props.width} h={1}>
+    <Box at={{ left: 0, right: 0, bottom: props.bottom }} align="center">
+      <Box w={props.width} h={1}>
         <For each={shown()}>
           {(s) => {
             const depth = createMemo<number>((was) => (s.gone() ? was : live().length - 1 - live().indexOf(s)), 0);
@@ -119,16 +119,16 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
               setPull(0);
             };
             return (
-              <glass layer={`page:${s.page.key}`} round={ROUND} at={{ left: 0, bottom: 0 }} w={props.width} h={Math.max(1, h())} y={y()} scale={sc()} origin={[0.5, 1]} clip onScroll={drag}>
-                <box w={props.width} y={-scroll()} opacity={Math.max(0, Math.min(1, ink()))} onSize={(_, hh) => setOwn(hh)}>
-                  <box at={{ left: props.width / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
+              <Ink layer={`page:${s.page.key}`} round={ROUND} at={{ left: 0, bottom: 0 }} w={props.width} h={Math.max(1, h())} y={y()} scale={sc()} origin={[0.5, 1]} clip onScroll={drag}>
+                <Box w={props.width} y={-scroll()} opacity={Math.max(0, Math.min(1, ink()))} onSize={(_, hh) => setOwn(hh)}>
+                  <Box at={{ left: props.width / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
                   {untrack(() => s.page.view())}
-                </box>
-              </glass>
+                </Box>
+              </Ink>
             );
           }}
         </For>
-      </box>
-    </box>
+      </Box>
+    </Box>
   );
 }

@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text } from "~ui";
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import { BAD, Press, wide } from "./kit";
 
@@ -41,22 +41,22 @@ export default function Newer() {
   return (
     <Show when={newer()}>
       {(r) => (
-        <glass layer="newer" h={40} round={20} pad={{ left: 16, right: 4 }} dir="row" align="center" gap={10}>
+        <Ink layer="newer" h={40} round={20} pad={{ left: 16, right: 4 }} dir="row" align="center" gap={10}>
           <Show when={r().status !== "completed"}>
             <Building />
           </Show>
-          <text size={13} weight={600} ink={r().conclusion === "failure" ? BAD : "ink"}>
+          <Text size={13} weight={600} ink={r().conclusion === "failure" ? BAD : "ink"}>
             {r().status !== "completed" ? "Newer version building" : r().conclusion === "success" ? "Newer version ready" : "Newer version failed to build"}
-          </text>
+          </Text>
           <Show when={wide()}>
-            <text size={13} soft lines={1} w={240}>{r().display_title}</text>
+            <Text size={13} soft lines={1} w={240}>{r().display_title}</Text>
           </Show>
-          <Show when={r().conclusion === "success"} fallback={<box w={12} />}>
+          <Show when={r().conclusion === "success"} fallback={<Box w={12} />}>
             <Press h={32} round={16} pad={{ x: 14 }} align="center" justify="center" fill="ink" onTap={() => location.reload()}>
-              <text size={13} weight={600} ink="glass">Reload</text>
+              <Text size={13} weight={600} ink="glass">Reload</Text>
             </Press>
           </Show>
-        </glass>
+        </Ink>
       )}
     </Show>
   );
@@ -71,10 +71,10 @@ function Building() {
   });
   onCleanup(() => cancelAnimationFrame(frame));
   return (
-    <box dir="row" gap={4} align="center">
+    <Box dir="row" gap={4} align="center">
       <For each={[0, 1, 2]}>
-        {(i) => <box w={6} h={6} round={3} fill="ink" opacity={0.25 + 0.75 * Math.max(0, Math.sin(Math.PI * 2 * (t() - i / 6)))} />}
+        {(i) => <Box w={6} h={6} round={3} fill="ink" opacity={0.25 + 0.75 * Math.max(0, Math.sin(Math.PI * 2 * (t() - i / 6)))} />}
       </For>
-    </box>
+    </Box>
   );
 }

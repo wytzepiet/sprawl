@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Icon } from "~ui";
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { follow } from "../engine/spring";
 import { useEngine } from "../engine/Canvas";
@@ -14,7 +14,7 @@ import { MarketBody, MarketHead } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { BEZEL, DROP, Fade, Press, view, wide, ROUND } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
-import type { JSX } from "~ui/jsx-runtime";
+import type { JSX } from "solid-js";
 
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A hammer. */
@@ -129,41 +129,41 @@ export default function Dock() {
 
   return (
     <>
-      <box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
-        <box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
+      <Box at={{ left: 0, right: 0, bottom: BEZEL }} align="center">
+        <Box w={w()} h={h() + BAR} scale={sc()} origin={[0.5, 1]}>
           {/* One black: the shown tab's sheet, grown up out of the bar, and the bar out of the bezel. */}
-          <glass layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={ROUND} clip>
+          <Ink layer="bezel" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR + BEZEL + DROP} round={ROUND} clip>
             <Show when={shown()}>
-              <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
-              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
+              <Box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" opacity={ink()} />
+              <Box w={sheetWidth()} x={(w() - sheetWidth()) / 2} opacity={ink()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
                 <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].head()}</Fade>}</Show>
-              </box>
-              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} opacity={ink()} clip onScroll={scrolled}>
-                <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
+              </Box>
+              <Box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} opacity={ink()} clip onScroll={scrolled}>
+                <Box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
                   <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].body()}</Fade>}</Show>
-                </box>
-              </box>
-              <box at={{ left: 16, right: 16, bottom: BAR }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
+                </Box>
+              </Box>
+              <Box at={{ left: 16, right: 16, bottom: BAR + BEZEL + DROP }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
             </Show>
-          </glass>
+          </Ink>
           {/* The tabs, fixed along its foot. */}
-          <box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR} opacity={ink()}>
+          <Box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR} opacity={ink()}>
             <Show when={bead()}>
-              {(dye) => <glass layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
+              {(dye) => <Ink layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
             </Show>
             <For each={[...TABS]}>
               {(t, j) => {
                 const on = () => tab() === t;
                 return (
                   <Press at={{ left: cx(j()) - 22, bottom: 8 }} w={44} h={44} round={22} align="center" justify="center" onTap={() => press(t)}>
-                    <icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
+                    <Icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
                   </Press>
                 );
               }}
             </For>
-          </box>
-        </box>
-      </box>
+          </Box>
+        </Box>
+      </Box>
       <Pages bottom={BEZEL} width={sheetWidth()} room={wide() ? Math.min(640, view().h - 200) : view().h * 0.72} />
     </>
   );

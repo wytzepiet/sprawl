@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Text, Icon } from "~ui";
 import { createSignal, For, Show } from "solid-js";
 import { BLUEPRINTS, GOODS, KINDS, TABS, type Tab } from "../blueprints";
 import { held, hold } from "./buildMode";
@@ -37,11 +37,11 @@ export function BuildHead() {
         <Tabs tabs={groups.map((g) => g.tab)} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
       }
     >
-      <box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
-        <box h={44} round={16} align="center" justify="center" stroke={[2, over() ? BAD : "ink/0.2"]}>
-          <text size={13} weight={600} ink={over() ? BAD : "ink/0.6"}>Drop here to put it back</text>
-        </box>
-      </box>
+      <Box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
+        <Box h={44} round={16} align="center" justify="center" stroke={[2, over() ? BAD : "ink/0.2"]}>
+          <Text size={13} weight={600} ink={over() ? BAD : "ink/0.6"}>Drop here to put it back</Text>
+        </Box>
+      </Box>
     </Show>
   );
 }
@@ -60,20 +60,20 @@ export function BuildBody() {
     <Show when={group()} keyed>
       {(g) => (
         <Fade>
-          <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
+          <Box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
               <For each={kinds()}>
                 {(kind) => (
-                  <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+                  <Box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
                     <Picture kind={kind} />
-                    <box dir="row" align="center" gap={4}>
-                      <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
+                    <Box dir="row" align="center" gap={4}>
+                      <Text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</Text>
                       <Info onTap={() => info({ kind })} />
-                    </box>
+                    </Box>
                     <Materials kind={kind} />
-                  </box>
+                  </Box>
                 )}
               </For>
-            </box>
+            </Box>
         </Fade>
       )}
     </Show>
@@ -83,18 +83,18 @@ export function BuildBody() {
 /** What a kind is built of, a glyph and a number each; or "at once". */
 function Materials(props: { kind: BuildingKind }) {
   return (
-    <box dir="row" align="center" gap={6}>
-      <Show when={materials(props.kind).length} fallback={<text serif size={12} soft>at once</text>}>
+    <Box dir="row" align="center" gap={6}>
+      <Show when={materials(props.kind).length} fallback={<Text serif size={12} soft>at once</Text>}>
         <For each={materials(props.kind)}>
           {([g, n]) => (
-            <box dir="row" align="center" gap={2}>
-              <icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
-              <text serif size={12} soft>{n}</text>
-            </box>
+            <Box dir="row" align="center" gap={2}>
+              <Icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
+              <Text serif size={12} soft>{n}</Text>
+            </Box>
           )}
         </For>
       </Show>
-    </box>
+    </Box>
   );
 }
 
@@ -107,29 +107,29 @@ function Page(p: About) {
   const about = "kind" in p ? BLUEPRINTS[p.kind].about : road(p.road).about;
   const take = () => ("kind" in p ? hold(p.kind) : takeRoad(p.road));
   return (
-    <box pad={{ bottom: 14 }} gap={12}>
+    <Box pad={{ bottom: 14 }} gap={12}>
       <PageHead>
-        <text size={17} weight={700} grow={1}>{name}</text>
+        <Text size={17} weight={700} grow={1}>{name}</Text>
       </PageHead>
-      <box dir="row" align="center" gap={12} pad={{ x: 12 }}>
+      <Box dir="row" align="center" gap={12} pad={{ x: 12 }}>
         {"kind" in p ? (
           <Picture kind={p.kind} />
         ) : (
-          <box w={PIC} h={PIC} round={12} fill={road(p.road).color} align="center" justify="center">
-            <icon d={road(p.road).glyph} size={40} ink="white" />
-          </box>
+          <Box w={PIC} h={PIC} round={12} fill={road(p.road).color} align="center" justify="center">
+            <Icon d={road(p.road).glyph} size={40} ink="white" />
+          </Box>
         )}
-        <box grow={1} gap={8}>
-          <text size={14} soft lead={1.45}>{about}</text>
+        <Box grow={1} gap={8}>
+          <Text size={14} soft lead={1.45}>{about}</Text>
           {"kind" in p && <Materials kind={p.kind} />}
-        </box>
-      </box>
-      <box pad={{ x: 12 }}>
+        </Box>
+      </Box>
+      <Box pad={{ x: 12 }}>
         <Press h={44} round={16} align="center" justify="center" fill="ink/0.85" onTap={take}>
-          <text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</text>
+          <Text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</Text>
         </Press>
-      </box>
-    </box>
+      </Box>
+    </Box>
   );
 }
 
@@ -138,10 +138,10 @@ function Page(p: About) {
 function Picture(props: { kind: BuildingKind }) {
   const photo = () => photoOf(props.kind);
   return (
-    <box w={PIC} h={PIC} round={12} fill={photo() ? "white" : BLUEPRINTS[props.kind].color} photo={photo()} align="center" justify="center">
+    <Box w={PIC} h={PIC} round={12} fill={photo() ? "white" : BLUEPRINTS[props.kind].color} photo={photo()} align="center" justify="center">
       <Show when={!photo()}>
-        <icon d={BLUEPRINTS[props.kind].glyph} size={40} ink="white" />
+        <Icon d={BLUEPRINTS[props.kind].glyph} size={40} ink="white" />
       </Show>
-    </box>
+    </Box>
   );
 }

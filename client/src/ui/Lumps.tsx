@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Text, Icon } from "~ui";
 import { createSignal, For, Show } from "solid-js";
 import { getEntity, recentLumps } from "../state/gameObjects";
 import { GOODS, middle } from "../blueprints";
@@ -36,7 +36,7 @@ function Rise(props: { lump: Lump }) {
   return (
     <Show when={at()}>
       {(p) => (
-        <box
+        <Box
           at={{ left: 0, top: 0 }}
           x={p().sx - size()[0] / 2}
           y={p().sy - 48 - size()[1] / 2 + rise()}
@@ -50,14 +50,14 @@ function Rise(props: { lump: Lump }) {
           fill={ink}
           onSize={(w, h) => setSize([w, h])}
         >
-          <Show when={l.good}>{(g) => <icon d={GOODS[g()].glyph} size={big ? 18 : 11} ink="white" />}</Show>
-          <text size={big ? 15 : 11} weight={700} ink="white">
+          <Show when={l.good}>{(g) => <Icon d={GOODS[g()].glyph} size={big ? 18 : 11} ink="white" />}</Show>
+          <Text size={big ? 15 : 11} weight={700} ink="white">
             {`${l.coins < 0 || l.units < 0 ? "−" : "+"}${amount(Math.abs(l.units || l.gdp || l.coins))}`}
-          </text>
+          </Text>
           <Show when={big}>
-            <text size={15} weight={600} ink="white/0.9">{GOODS[l.good!].label}</text>
+            <Text size={15} weight={600} ink="white/0.9">{GOODS[l.good!].label}</Text>
           </Show>
-        </box>
+        </Box>
       )}
     </Show>
   );
