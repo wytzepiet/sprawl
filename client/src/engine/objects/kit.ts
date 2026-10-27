@@ -224,6 +224,11 @@ export const plate = (w: Wall, a0: number, a1: number, z0: number, z1: number, o
   return box(Math.min(p[0], q[0]), Math.max(p[0], q[0]), Math.min(p[1], q[1]), Math.max(p[1], q[1]), z0, z1);
 };
 
+/** A half disc on a wall, round (`at`, `z`), `r` out, up (or down) from
+ *  there, `o0` to `o1` out from its face: an arch's top, a scallop. */
+export const halfRound = (w: Wall, at: number, z: number, r: number, o0: number, o1: number, down = false, n = 10) =>
+  hull([o0, o1].flatMap((o) => Array.from({ length: n + 1 }, (_, k) => on(w, at + r * Math.cos((Math.PI * k) / n), z + (down ? -1 : 1) * r * Math.sin((Math.PI * k) / n), o))));
+
 /** Glass, dark by day and lit from inside at night, whatever the model. */
 export const PANE: RGB = [0.24, 0.29, 0.36];
 
@@ -231,10 +236,12 @@ export const PANE: RGB = [0.24, 0.29, 0.36];
  *  across and `h` high: its frame, its pane set back, its glazing bars
  *  (`bars` across, one up the middle if it is wide); a sill under it;
  *  and, if given, shutters either side and a box of flowers on its sill. */
-export function window(m: Model, wall: Wall, at: number, z: number, { w = 0.06, h = 0.07, frame = [0.95, 0.92, 0.86] as RGB, bars = 1, shutters, box: flowers }: { w?: number; h?: number; frame?: RGB; bars?: number; shutters?: RGB; box?: RGB } = {}) {
+export function window(m: Model, wall: Wall, at: number, z: number, { w = 0.06, h = 0.07, frame = [0.95, 0.92, 0.86] as RGB, bars = 1, shutters, box: flowers, arch = false }: { w?: number; h?: number; frame?: RGB; bars?: number; shutters?: RGB; box?: RGB; arch?: boolean } = {}) {
   const f = 0.01;
-  put(m, "matte", plate(wall, at - w / 2 - f, at + w / 2 + f, z - f, z + h + f, -0.004, 0.006).subtract(plate(wall, at - w / 2, at + w / 2, z, z + h, -0.002, 0.01)), frame);
-  put(m, "glass", plate(wall, at - w / 2, at + w / 2, z, z + h, -0.004, 0.002), PANE);
+  const outer = plate(wall, at - w / 2 - f, at + w / 2 + f, z - f, z + h + (arch ? 0 : f), -0.004, 0.006);
+  const inner = plate(wall, at - w / 2, at + w / 2, z, z + h + (arch ? 0.001 : 0), -0.002, 0.01);
+  put(m, "matte", (arch ? outer.add(halfRound(wall, at, z + h, w / 2 + f, -0.004, 0.006)) : outer).subtract(arch ? inner.add(halfRound(wall, at, z + h, w / 2, -0.002, 0.01)) : inner), frame);
+  put(m, "glass", arch ? plate(wall, at - w / 2, at + w / 2, z, z + h, -0.004, 0.002).add(halfRound(wall, at, z + h, w / 2, -0.004, 0.002)) : plate(wall, at - w / 2, at + w / 2, z, z + h, -0.004, 0.002), PANE);
   const glazing = [...Array.from({ length: bars }, (_, k) => plate(wall, at - w / 2, at + w / 2, z + (h * (k + 1)) / (bars + 1) - 0.002, z + (h * (k + 1)) / (bars + 1) + 0.002, -0.002, 0.004))];
   if (w > 0.045) glazing.push(plate(wall, at - 0.002, at + 0.002, z, z + h, -0.002, 0.004));
   if (glazing.length) put(m, "matte", Solid.union(glazing), frame);
@@ -246,13 +253,27 @@ export function window(m: Model, wall: Wall, at: number, z: number, { w = 0.06, 
   }
 }
 
+/** A round window on a wall, its middle `at` along it and `z` up, `r`
+ *  round: a ring of frame, its pane, a bar across. */
+export function oculus(m: Model, wall: Wall, at: number, z: number, r: number, frame: RGB = [0.95, 0.92, 0.86]) {
+  const disc = (rr: number, o0: number, o1: number) => halfRound(wall, at, z, rr, o0, o1, false, 12).add(halfRound(wall, at, z, rr, o0, o1, true, 12));
+  put(m, "matte", disc(r + 0.01, -0.004, 0.007).subtract(disc(r, -0.002, 0.01)), frame);
+  put(m, "glass", disc(r, -0.004, 0.002), PANE);
+  put(m, "matte", plate(wall, at - r, at + r, z - 0.002, z + 0.002, -0.002, 0.004), frame);
+}
+
 /** A door on a wall, its middle `at` along it: its frame, its leaf (`w`
  *  across, `h` high), its handle; a step out front; and, if given, a
  *  little roof over it on brackets. */
-export function door(m: Model, wall: Wall, at: number, rgb: RGB, { w = 0.07, h = 0.15, frame = [0.95, 0.92, 0.86] as RGB, z = 0, hood, step = true }: { w?: number; h?: number; frame?: RGB; z?: number; hood?: Cover; step?: boolean } = {}) {
-  put(m, "matte", plate(wall, at - w / 2 - 0.01, at + w / 2 + 0.01, z, z + h + 0.01, -0.004, 0.006).subtract(plate(wall, at - w / 2, at + w / 2, z - 0.01, z + h, -0.002, 0.01)), frame);
-  put(m, "matte", plate(wall, at - w / 2, at + w / 2, z, z + h, -0.004, 0.003), rgb);
-  put(m, "glass", plate(wall, at - w * 0.3, at + w * 0.3, z + h * 0.62, z + h * 0.9, 0, 0.0035), PANE);
+export function door(m: Model, wall: Wall, at: number, rgb: RGB, { w = 0.07, h = 0.15, frame = [0.95, 0.92, 0.86] as RGB, z = 0, hood, step = true, arch = false }: { w?: number; h?: number; frame?: RGB; z?: number; hood?: Cover; step?: boolean; arch?: boolean } = {}) {
+  // An arched door's leaf rises to `h`, its fanlight over it in the arch.
+  const top = arch ? h - w / 2 : h;
+  const outer = plate(wall, at - w / 2 - 0.01, at + w / 2 + 0.01, z, z + top + (arch ? 0 : 0.01), -0.004, 0.006);
+  const inner = plate(wall, at - w / 2, at + w / 2, z - 0.01, z + top + 0.001, -0.002, 0.01);
+  put(m, "matte", (arch ? outer.add(halfRound(wall, at, z + top, w / 2 + 0.01, -0.004, 0.006)) : outer).subtract(arch ? inner.add(halfRound(wall, at, z + top, w / 2, -0.002, 0.01)) : inner), frame);
+  put(m, "matte", plate(wall, at - w / 2, at + w / 2, z, z + top, -0.004, 0.003), rgb);
+  if (arch) put(m, "glass", halfRound(wall, at, z + top, w / 2, -0.004, 0.002), PANE);
+  else put(m, "glass", plate(wall, at - w * 0.3, at + w * 0.3, z + h * 0.62, z + h * 0.9, 0, 0.0035), PANE);
   put(m, "matte", plate(wall, at + w * 0.3, at + w * 0.38, z + h * 0.45, z + h * 0.5, 0, 0.008), [0.85, 0.72, 0.38]);
   if (step && z === 0) put(m, "matte", plate(wall, at - w / 2 - 0.015, at + w / 2 + 0.015, 0, 0.012, 0, 0.035), [0.78, 0.75, 0.7]);
   if (hood) leanTo(m, wall, at - w / 2 - 0.03, at + w / 2 + 0.03, z + h + 0.035, 0.07, 0.025, hood);
@@ -278,16 +299,40 @@ export const leanTo = (m: Model, wall: Wall, a0: number, a1: number, z: number, 
   slope(m, o, u, v, cover, 0.012);
 };
 
+/** A little gabled roof out from a wall, over a door or a dormer's
+ *  window: its ridge straight out from the wall, `rise` over its eaves
+ *  at `z`, `w` across and `depth` out, `over` past them; and the gable's
+ *  triangle filled in, if a colour is given, at its open end. */
+export function gablet(m: Model, wall: Wall, at: number, z: number, w: number, depth: number, rise: number, cover: Cover, infill?: RGB, over = 0.015) {
+  const top = on(wall, at, z + rise, -0.005);
+  const out = add(on(wall, at, z + rise, depth + over), scale(top, -1));
+  for (const s of [-1, 1]) slope(m, top, out, add(on(wall, at + s * (w / 2 + over), z - (over * rise) / (w / 2), -0.005), scale(top, -1)), cover, 0.012);
+  if (infill) put(m, "matte", hull([0, depth].flatMap((o) => [on(wall, at - w / 2, z, o), on(wall, at + w / 2, z, o), on(wall, at, z + rise, o)])), infill);
+}
+
+/** A dormer in a roof, its face on `wall`, its middle `at` along it: a
+ *  box back into the roof `back` deep, a gablet over it, and its window,
+ *  its sill at `sill`, `w` across and `h` high. */
+export function dormer(m: Model, wall: Wall, at: number, sill: number, rgb: RGB, cover: Cover, { w = 0.06, h = 0.06, back = 0.14, frame = [0.95, 0.92, 0.86] as RGB, box: flowers }: { w?: number; h?: number; back?: number; frame?: RGB; box?: RGB } = {}) {
+  const [half, top] = [w / 2 + 0.025, sill + h + 0.02];
+  put(m, "matte", plate(wall, at - half, at + half, sill - 0.04, top, -back, 0), rgb);
+  const behind: Wall = { face: wall.face, at: wall.at + (wall.face[0] === "+" ? -back : back) };
+  gablet(m, behind, at, top, 2 * half, back + 0.01, half * 0.9, cover, rgb);
+  window(m, wall, at, sill, { w, h, frame, box: flowers });
+}
+
 /** An awning over a wall from `a0` to `a1` along it, hung at `z`, out
  *  `depth` and dropping `drop`: canvas in stripes of `colours` by turns,
  *  its front edge a valance. */
-export function awning(m: Model, wall: Wall, a0: number, a1: number, z: number, colours: RGB[], { depth = 0.1, drop = 0.045, stripes = 7 } = {}) {
+export function awning(m: Model, wall: Wall, a0: number, a1: number, z: number, colours: RGB[], { depth = 0.1, drop = 0.045, stripes = 7, scallops = false } = {}) {
   for (let k = 0; k < stripes; k++) {
     const [s0, s1] = [a0 + ((a1 - a0) * k) / stripes, a0 + ((a1 - a0) * (k + 1)) / stripes];
     const o = on(wall, s0, z, 0);
     const rgb = colours[k % colours.length];
     put(m, "matte", sheet(o, add(on(wall, s1, z, 0), scale(o, -1)), add(on(wall, s0, z - drop, depth), scale(o, -1)), 0.006), rgb);
-    put(m, "matte", plate(wall, s0, s1, z - drop - 0.022, z - drop, depth - 0.004, depth), rgb);
+    const valance = plate(wall, s0, s1, z - drop - 0.018, z - drop, depth - 0.004, depth);
+    // Its valance's foot rounded off, a scallop a stripe.
+    put(m, "matte", scallops ? valance.add(halfRound(wall, (s0 + s1) / 2, z - drop - 0.018, (s1 - s0) / 2, depth - 0.004, depth, true, 8)) : valance, rgb);
   }
 }
 
@@ -304,6 +349,7 @@ export const sign = (m: Model, wall: Wall, at: number, z: number, w: number, h: 
  *  cap round its top; smoking, if the hearth is lit. */
 export function chimney(m: Model, x: number, y: number, top: number, rgb: RGB, { w = 0.06, smoke = 0 } = {}) {
   put(m, "matte", box(x - w / 2, x + w / 2, y - w / 2, y + w / 2, 0, top).add(box(x - w / 2 - 0.008, x + w / 2 + 0.008, y - w / 2 - 0.008, y + w / 2 + 0.008, top - 0.025, top)), rgb);
+  put(m, "matte", post(x, y, top, 0.022, w * 0.26, 10).subtract(post(x, y, top + 0.006, 0.03, w * 0.17, 10)), [0.32, 0.3, 0.3]);
   if (smoke) m.props.push({ kind: "smoke", at: [x, y, top], size: smoke, high: 0 });
 }
 
@@ -320,7 +366,7 @@ export function fence(m: Model, path: P[], rgb: RGB, kind: keyof typeof FENCES =
   for (let i = 0; i + 1 < path.length; i++) {
     const [[x0, y0], [x1, y1]] = [path[i], path[i + 1]];
     const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / every));
-    for (const z of rails) solids.push(hull([[x0, y0], [x1, y1]].flatMap(([x, y]): V[] => [[x - 0.005, y - 0.005, z], [x + 0.005, y + 0.005, z + 0.012]])));
+    for (const z of rails) solids.push(rod([x0, y0, z + 0.006], [x1, y1, z + 0.006], 0.011));
     for (let k = i ? 1 : 0; k <= n; k++) {
       const [x, y] = [x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n];
       solids.push(kind === "picket" ? hull([[x - t, y - t, 0], [x + t, y + t, 0], [x - t, y + t, h - 0.012], [x + t, y - t, h - 0.012], [x, y, h]]) : box(x - t, x + t, y - t, y + t, 0, h));
@@ -362,6 +408,15 @@ export const shrub = (m: Model, x: number, y: number, r: number, rgb: RGB = HEDG
     const t = seed * 2.1 + k * 2.09, d = k ? r * 0.45 : 0;
     return Solid.sphere(r * (k ? 0.75 : 1), 12).scale([1, 1, 0.85]).translate([x + Math.cos(t) * d, y + Math.sin(t) * d, r * 0.8]);
   })), rgb);
+/** A tree in a tub at (x, y): a terracotta pot, its stem, a clipped ball
+ *  of leaves `r` round. */
+export function topiary(m: Model, x: number, y: number, r: number, pot: RGB = [0.66, 0.4, 0.28]) {
+  put(m, "matte", Solid.cylinder(r * 0.8, r * 0.5, r * 0.68, 14).translate([x, y, 0]).add(post(x, y, r * 0.72, r * 0.12, r * 0.72, 14)), pot);
+  put(m, "matte", post(x, y, r * 0.8, r * 0.7, r * 0.08, 6), [0.4, 0.3, 0.22]);
+  put(m, "leaves", Solid.sphere(r, 16).translate([x, y, r * 1.35 + r]), HEDGE);
+}
+/** A little conifer at (x, y), `r` round at its foot and `h` high. */
+export const cone = (m: Model, x: number, y: number, r: number, h: number, rgb: RGB = [0.22, 0.38, 0.27]) => put(m, "leaves", Solid.cylinder(h, r, 0.004, 12).translate([x, y, 0]), rgb);
 
 /** Flowers: a few soft colours, never loud. */
 export const BLOOMS: RGB[] = [[0.9, 0.5, 0.52], [0.95, 0.85, 0.5], [0.92, 0.9, 0.88], [0.7, 0.55, 0.8]];

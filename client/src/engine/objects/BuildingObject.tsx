@@ -11,19 +11,18 @@ import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
-import { depot } from "./depot";
-import { shop } from "./shop";
+import { DEPOT } from "./depot";
+import { SHOP } from "./shop";
 import { HOUSES } from "./house";
-import { placing as placingWhole } from "./finishes";
+import { FARM } from "./farm";
+import { QUARRY } from "./quarry";
+import { BARN_DOOR, SAWMILL } from "./sawmill";
+import { glow, glowing, placing } from "./finishes";
 import type { Built } from "./kit";
 import { clearProps, placeProps } from "../props";
 import { PROP_FLOATS } from "../town/layer";
 import { PROP_KINDS } from "../town/roof";
-import { GLASS, glow, glowing, planted } from "./model";
 import { stand } from "../trees";
-import { farm, FARM_TREES } from "./farm";
-import { quarry } from "./quarry";
-import { BARN_DOOR, sawmill } from "./sawmill";
 import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
 import { carried, deckSeen, slotOn } from "./motion";
 import { getEntity } from "../../state/gameObjects";
@@ -34,22 +33,29 @@ import type { Theme } from "../theme";
 import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated";
 
 /** A building drawn whole from the kit (`kit.ts`), by its kind: its
- *  buckets' name and its model, one of a few by its id, as if at random,
- *  so a street of them is mixed. */
-function wholeOf(kind: Building["kind"], id: number): [string, Built] | null {
-  const pick = <T,>(all: T[]) => all[(Math.imul(id, 0x9e3779b1) >>> 7) % all.length];
+ *  buckets' name, its model and which way round. A house is one of a few
+ *  by its id, as if at random, so a street of them is mixed; a house, a
+ *  shop and a farm every other one the other way round; a sawmill's wing
+ *  and a quarry's hut on the gate's side. */
+function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1] | null {
+  const odd = id % 2 ? 1 : -1;
   if (kind === "House") {
-    const it = pick(HOUSES);
-    return [`house${HOUSES.indexOf(it)}`, it];
+    const k = (Math.imul(id, 0x9e3779b1) >>> 7) % HOUSES.length;
+    return [`house${k}`, HOUSES[k], odd];
   }
+  if (kind === "Shop") return ["shop", SHOP, odd];
+  if (kind === "Depot") return ["depot", DEPOT, 1];
+  if (kind === "Farm") return ["farm", FARM, odd];
+  if (kind === "Sawmill") return ["sawmill", SAWMILL, gate];
+  if (kind === "Quarry") return ["quarry", QUARRY, gate];
   return null;
 }
 /** Each model's finishes placed, made once. */
-const placings = new Map<string, ReturnType<typeof placingWhole>>();
-const placed_ = (key: string, it: Built) => placings.get(key) ?? (placings.set(key, placingWhole(key, it)), placings.get(key)!);
+const placings = new Map<string, ReturnType<typeof placing>>();
+const placed_ = (key: string, it: Built) => placings.get(key) ?? (placings.set(key, placing(key, it)), placings.get(key)!);
 
 /** Each engine's glass told the night, once a frame, from the first
- *  model with windows on (`model.ts`). */
+ *  model with windows on (`finishes.ts`). */
 const told = new WeakSet<EngineContext>();
 const lights = (ctx: EngineContext) => void (told.has(ctx) || (told.add(ctx), ctx.beforeRender(glow)));
 
@@ -73,9 +79,7 @@ const SLAB = hex("#BDB2A0");
 const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
 const CRANE = hex("#E9B530");
-/** A shop's tub, its flowers, its parasol and table. */
-const TUB = hex("#8A6A4A");
-const BLOOM = hex("#E5A24A");
+/** A shop's lunch table and its parasol. */
 const PARASOL = hex("#F1EADB");
 const WHITE_RGB = hex("#FFFFFF");
 /** How many packages of what it makes each building had when last
@@ -143,37 +147,17 @@ export function mountBuilding(
     at("roof", [0.4, 0.3, 0.025], TOWER, -(wide / 2 - 0.32), -0.18, KERB_Z + 0.17);
   }
 
-  // A model's plot's middle (`model.ts`).
+  // A model's plot's middle (`kit.ts`).
   const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
   const middle: [number, number] = [(Math.min(...xs) + Math.max(...xs) + 1) / 2, (Math.min(...ys) + Math.max(...ys) + 1) / 2];
   /** Which way a model on its plot is turned: its +x the gate's side,
    *  across the way it faces. */
   const gate: 1 | -1 = !data.door || (data.door.tile.x + 0.5 - middle[0]) * dy - (data.door.tile.y + 0.5 - middle[1]) * dx >= 0 ? 1 : -1;
 
-  // A sawmill is a model of its own, hall, wing and yard (`sawmill.ts`),
-  // on its whole plot, its front to the street, its wing on the gate's
-  // side; the town grid leaves it.
-  const mill = data.kind === "Sawmill" && !data.site
-    ? (() => {
-        const [at, side] = [middle, gate];
-        const [x, y] = [BARN_DOOR[0] * side, BARN_DOOR[1]];
-        return {
-          model: sawmill(ctx.engine, side).map((finish) => placeShape(pool, finish, { at, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012)),
-          // Out of its barn door, toward the street.
-          door: { at: [at[0] + dx * y + dy * x, at[1] + dy * y - dx * x], heading: Math.atan2(dy, dx) } as Pose,
-        };
-      })()
-    : null;
-
-  // A depot too, its sheds round its bays, its gantry and its fence
-  // (`depot.ts`); a shop round its courtyard (`shop.ts`), every other one
-  // the other way round; a house, one of a few (`house.ts`); a quarry, its
-  // hut on the gate's side (`quarry.ts`).
-  const side = entry.id % 2 ? 1 : -1;
-  const model = data.site ? null : data.kind === "Depot" ? depot(ctx.engine, 1) : data.kind === "Shop" ? shop(ctx.engine, side) : data.kind === "Quarry" ? quarry(ctx.engine, gate) : data.kind === "Farm" ? farm(ctx.engine, side) : null;
-  const whole = data.site ? null : wholeOf(data.kind, entry.id);
+  // Its model, whole, on its plot (`kit.ts`); the town grid leaves it.
+  const whole = data.site ? null : wholeOf(data.kind, entry.id, gate);
   const built = whole && (() => {
-    const [key, it] = whole;
+    const [key, it, side] = whole;
     const finishes = placed_(key, it)(ctx.engine, side).map((finish) => {
       const one = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
       if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
@@ -194,26 +178,18 @@ export function mountBuilding(
       trees();
     };
   })();
-  const plot = model
-    ? model.map((finish) => {
-        const it = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
-        if (finish.coat === GLASS(ctx.engine)) glowing(pool.finish(finish.key)!.material), lights(ctx);
-        return it;
-      })
-    : [];
+  // A sawmill's barn door, its forklift's way out toward the street.
+  const mill = data.kind === "Sawmill" && !data.site
+    ? { door: { at: [middle[0] + dx * BARN_DOOR[1] + dy * BARN_DOOR[0] * gate, middle[1] + dy * BARN_DOOR[1] - dx * BARN_DOOR[0] * gate], heading: Math.atan2(dy, dx) } as Pose }
+    : null;
 
-  // A farm's trees, the town's own kind (`trees.ts`), round its yard.
-  const grove = data.kind === "Farm" && !data.site ? stand(ctx, `farm_${entry.id}`, planted(FARM_TREES, middle, [dx, dy], side), theme, pool.casters) : () => {};
-
-  // A shop's front: at the far end from its crates, a tub of flowers by
-  // its awning and, through lunch, a table out under a parasol.
+  // A shop's front: at the far end from its crates, through lunch, a
+  // table out under a parasol.
   const lunch = data.kind === "Shop" && !data.site
     ? (() => {
         const w = dx === 0 ? bw : bh, d = dx === 0 ? bh : bw;
         const [a, o] = [w / 2 - 0.1, d / 2 - INSET / 2];
         const at = (name: string, size: number[], colour: Rgb, across: number, z: number) => put(name, size, colour, [mx, my], [dx, dy], across, o, z);
-        at("tub", [0.06, 0.06, 0.035], TUB, a - 0.13, KERB_Z);
-        at("bloom", [0.05, 0.05, 0.03], BLOOM, a - 0.13, KERB_Z + 0.035);
         let out: ReturnType<typeof put>[] = [];
         return ctx.beforeRender(() => {
           const t = shownTimeOfDay() * 24;
@@ -352,9 +328,8 @@ export function mountBuilding(
     stop();
     lunch();
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    for (const it of [...stood.flat(), ...(mill?.model ?? []), ...plot, ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
+    for (const it of [...stood.flat(), ...forks.flatMap((f) => [f.truck, f.load])]) it?.remove();
     field?.();
-    grove();
     built?.();
   };
 }

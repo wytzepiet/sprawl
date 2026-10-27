@@ -40,8 +40,6 @@ type Line = [number, number, number];
  *  stands, which is its breadth, and how high; and how broad its puffs of
  *  smoke grow. */
 const MILL = { stack: 0.09, stackHigh: 0.62, puff: 0.15 } as const;
-/** How high a sawmill's chimney stands (`objects/sawmill.ts`). */
-const CHIMNEY = 0.72;
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
@@ -114,39 +112,23 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     }
   };
 
-  /** The way from a building to the street its door opens onto, by its
-   *  id, and the middle of the tile it opens from, its gate's. */
-  let doors: Map<number, { way: P; at: P }> | undefined;
-  const doorAt = (t: Tile) => {
+  /** The way from a building to the street its door opens onto, by its id. */
+  let doors: Map<number, P> | undefined;
+  const doorOf = (t: Tile) => {
     if (!doors) {
       doors = new Map();
       for (let r = 0; r < painted.h; r++)
         for (let c = 0; c < painted.w; c++) {
           const d = painted.door?.(c, r), id = painted.tile(c, r).id;
-          if (d && id !== undefined) doors.set(id, { way: [d[0] / Math.hypot(...d), d[1] / Math.hypot(...d)], at: [c + 0.5, r + 0.5] });
+          if (d && id !== undefined) doors.set(id, [d[0] / Math.hypot(...d), d[1] / Math.hypot(...d)]);
         }
     }
     return t.id === undefined ? undefined : doors.get(t.id);
   };
-  const doorOf = (t: Tile) => doorAt(t)?.way;
   for (const { mass, polygon, outline } of plans(known)) {
-    // A sawmill is a model of its own (`objects/sawmill.ts`), but for the
-    // smoke from its chimney: the model's (±0.84, -1.56), its plot's middle
-    // a tile out from the hall's.
-    if (mass.tile.kind === "Sawmill") {
-      const door = doorAt(mass.tile);
-      const ring = polygon[0], mid = (k: 0 | 1) => (Math.min(...ring.map((p) => p[k])) + Math.max(...ring.map((p) => p[k]))) / 2;
-      if (door) {
-        // On the gate's side, as its wing is.
-        const { way: [fx, fy], at: [gx, gy] } = door;
-        const x = (gx - mid(0)) * fy - (gy - mid(1)) * fx >= 0 ? 0.84 : -0.84;
-        prop("smoke", [mid(0) + fx * (1 - 1.56) + fy * x, mid(1) + fy * (1 - 1.56) - fx * x], CHIMNEY, MILL.puff, 0);
-      }
-      continue;
-    }
-    // A shop, a house, a quarry and a farm are models of their own too
-    // (`objects/shop.ts`, `house.ts`, `quarry.ts`, `farm.ts`).
-    if (["Shop", "House", "Quarry", "Farm"].includes(mass.tile.kind)) continue;
+    // A shop, a house, a sawmill, a quarry and a farm are models of their
+    // own, their chimneys' smoke and all (`objects/kit.ts`).
+    if (["Shop", "House", "Sawmill", "Quarry", "Farm"].includes(mass.tile.kind)) continue;
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);

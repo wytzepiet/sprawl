@@ -37,7 +37,7 @@ if (!models.length) throw new Error(`${file}.ts exports no model`);
 
 /** The sun, toward it: high, from behind on the right, as the game's
  *  afternoon; shadows fall forward and left. */
-const SUN = norm([0.45, -0.5, 0.74]);
+const SUN = norm([0.5, -0.32, 0.8]);
 const [AMBIENT, DIRECT] = [[0.5, 0.53, 0.6] as V, [0.72, 0.68, 0.6] as V];
 
 function norm(v: number[]): V {
@@ -49,7 +49,7 @@ const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] 
 
 /** A triangle to draw: its corners, their facings, their colours, their
  *  map, and its finish. */
-interface Tri { p: V[]; n: V[]; c: V[]; uv: [number, number][]; finish: Finish | "ground" | "road" | "pavement" | "smoke" }
+interface Tri { p: V[]; n: V[]; c: V[]; uv: [number, number][]; finish: Finish | "ground" | "road" | "pavement" | "smoke" | "plot" }
 
 /** Every triangle of a model, mirrored if it stands the other way, and
  *  its plot and the street before it. */
@@ -81,7 +81,8 @@ function scene(built: Built): { tris: Tri[]; plot: [number, number, number, numb
     tris.push({ p: [[a, c, z], [b, d, z], [a, d, z]], n, c: [rgb, rgb, rgb], uv: [[0, 0], [0, 0], [0, 0]], finish });
   };
   // The land round it, the pavement and the street before it.
-  quad(plot[0] - 2, plot[1] + 2, plot[2] - 2, plot[3], -0.002, rgb(theme.land), "ground");
+  quad(plot[0] - 2, plot[1] + 2, plot[2] - 2, plot[3], -0.004, [0.5, 0.62, 0.38], "ground");
+  quad(plot[0], plot[1], plot[2], plot[3], -0.002, rgb(theme.paved), "plot");
   quad(plot[0] - 2, plot[1] + 2, plot[3], plot[3] + 0.18, 0, rgb(theme.paved), "pavement");
   quad(plot[0] - 2, plot[1] + 2, plot[3] + 0.18, plot[3] + 0.82, -0.01, rgb(theme.road), "road");
   // Its props and trees as the town draws them, roughly.
@@ -157,7 +158,7 @@ function look(finish: Tri["finish"], base: V, uv: [number, number], p: V, n: V, 
     }
     case "lawn": case "ground": return k(0.94 + 0.12 * Math.abs(noise(Math.floor(p[0] * 60), Math.floor(p[1] * 60))));
     case "earth": case "dust": case "gravel": case "chips": case "rock": return k(0.92 + 0.16 * Math.abs(noise(Math.floor(p[0] * 90), Math.floor(p[1] * 90))));
-    case "paving": case "pavement": {
+    case "paving": case "pavement": case "plot": {
       const [a, b] = [p[0] / 0.125 + 0.5 * Math.floor(p[1] / 0.125), p[1] / 0.125];
       const joint = Math.min(a - Math.floor(a), 1 - a + Math.floor(a), b - Math.floor(b), 1 - b + Math.floor(b)) < 0.06;
       return k(joint ? 0.86 : 1);
@@ -204,7 +205,7 @@ function draw(tris: Tri[], plot: [number, number, number, number], cam: ReturnTy
     }
   };
   const toSun = (p: V): [number, number, number] => [(dot(p, sr) - ml) * ss2 + 1, (mt - dot(p, su)) * ss2 + 1, dot(p, SUN)];
-  raster(tris.filter((t) => t.finish !== "ground" && t.finish !== "road" && t.finish !== "pavement"), S, S, toSun, (i, z) => void (z > sun[i] && (sun[i] = z)));
+  raster(tris.filter((t) => !["ground", "road", "pavement", "smoke", "plot"].includes(t.finish)), S, S, toSun, (i, z) => void (z > sun[i] && (sun[i] = z)));
   const lit = (p: V, n: V) => {
     let sum = 0;
     const [x, y, z] = toSun([p[0] + n[0] * 0.004, p[1] + n[1] * 0.004, p[2] + n[2] * 0.004]);

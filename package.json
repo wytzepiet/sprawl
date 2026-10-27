@@ -7,6 +7,7 @@
     "plan": "bun client/scripts/plan.ts",
     "flat": "bun client/scripts/flat.ts",
     "fields": "bun client/scripts/fields.ts",
+    "model": "bun client/scripts/model.ts",
     "jolt": "bun client/scripts/jolt.ts",
     "act": "bun client/scripts/act.ts",
     "look": "bun client/scripts/look.ts",

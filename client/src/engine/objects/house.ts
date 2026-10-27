@@ -1,93 +1,136 @@
 import type { RGB } from "../rgb";
-import { barn, box, chimney, door, flowers, hipped, hull, model, pitched, put, shrub, window, type Built, type Cover, type Model } from "./kit";
+import { barn, box, chimney, cone, door, dormer, flowers, gablet, ground, model, pitched, post, put, shrub, window, type Built, type Cover, type Model, type Wall } from "./kit";
+import { theme } from "../theme";
 
 /**
- * A house, whole, on its tile, one of a few, as `docs/style.md`'s board
- * drew them. Its tile x -0.5 to 0.5, y the same, the street at +y; its
- * ground on z = 0; the hedges round its garden are the town grid's.
+ * A house, whole, on its tile, one of a few (`refresh/refs/houses-gpt.png`).
+ * Its tile x -0.5 to 0.5, y the same, the street at +y; its ground on
+ * z = 0. The hedges round its garden are the town grid's, and so is its
+ * drive, down the middle of its front from the front wall to the street,
+ * its cars on it: the garden either side of it.
  *
- * - The cottage: an L, its gable end to the street, a lower wing across
- *   beside it, the chimney up its side, a porch over the door.
- * - The villa: square, two storeys under a hipped roof, two dormers to
- *   the street, the chimney up through the middle.
- * - The farmhouse: long, its ridge along the street, a gable over the
- *   door in its middle.
+ * Every one cream under a big terracotta roof, on a grey plinth; white
+ * windows with flower boxes; its door under a little gable; a chimney;
+ * a lawn round it, shrubs and flowers, a shed at the back.
  *
- * Each a garden shed at the back. Brick and tile, a door of its own.
+ * - The cottage: its ridge along the street, a cross gable out over the
+ *   door in the middle.
+ * - The dormer house: taller, two dormers to the street, a porch, a wing
+ *   out the back.
+ * - The corner house: an L, its wing's gable end to the street on the
+ *   left, a cross gable over the door on the right.
  */
 
-const BRICK: RGB = [0.66, 0.34, 0.25];
-const TILE: Cover = { finish: "tiles", rgb: [0.72, 0.37, 0.26] };
-const SHED: RGB = [0.5, 0.38, 0.27];
-const SHED_ROOF: RGB = [0.32, 0.3, 0.29];
-const DOORS: RGB[] = [[0.3, 0.45, 0.36], [0.33, 0.42, 0.58], [0.6, 0.3, 0.26]];
+const WALL: RGB = [0.92, 0.87, 0.76];
+const PLINTH: RGB = [0.6, 0.57, 0.54];
+const ROOF: Cover = { finish: "tiles", rgb: [0.82, 0.43, 0.26] };
+const BOXES: RGB = [0.36, 0.42, 0.3];
+const SHED: RGB = [0.5, 0.37, 0.26];
+const SHED_ROOF: Cover = { finish: "matte", rgb: [0.36, 0.29, 0.25], ribs: 40, rib: [0.3, 0.24, 0.21] };
+const POSTS: RGB = [0.95, 0.92, 0.86];
+const DOORS: RGB[] = [[0.68, 0.26, 0.22], [0.27, 0.46, 0.33], [0.3, 0.45, 0.66]];
+const LAWN = [theme.land.r, theme.land.g, theme.land.b] as RGB;
+/** How far either side of the middle the drive runs to the street. */
+const DRIVE = 0.22;
 
-/** The garden shed at the back, its roof a lean-to. */
+/** A body under its roof: a barn's walls on a plinth, and its roof. */
+function body(m: Model, along: "x" | "y", x0: number, x1: number, y0: number, y1: number, eave: number, ridge: number, over = 0.05) {
+  put(m, "matte", barn(along, x0, x1, y0, y1, eave, ridge), WALL);
+  put(m, "matte", box(x0 - 0.008, x1 + 0.008, y0 - 0.008, y1 + 0.008, 0, 0.028), PLINTH);
+  pitched(m, along, x0, x1, y0, y1, eave, ridge, ROOF, { over });
+}
+/** A window on the ground floor, its flower box under it. */
+const lower = (m: Model, wall: Wall, at: number) => window(m, wall, at, 0.055, { w: 0.075, h: 0.075, box: BOXES });
+
+/** The garden: lawn round the house, but for the drive; shrubs and
+ *  flowers before it, either side of the drive, from `front`. */
+function garden(m: Model, front: number) {
+  ground(m, "lawn", [[-0.48, -DRIVE, front - 0.04, 0.48], [DRIVE, 0.48, front - 0.04, 0.48], [-0.48, 0.48, -0.48, front]], LAWN, { round: 0.02 });
+  for (const s of [-1, 1]) {
+    shrub(m, s * 0.27, front + 0.09, 0.04, undefined, s + 2);
+    shrub(m, s * 0.42, front + 0.06, 0.035, undefined, s + 4);
+    flowers(m, s * 0.36, front + 0.22, 4, 0.055);
+    cone(m, s * (DRIVE + 0.035), front + 0.03, 0.022, 0.09);
+  }
+}
+/** The shed at the back: timber, gabled, its door to the house. */
 function shed(m: Model, x: number) {
-  put(m, "matte", box(x - 0.08, x + 0.08, -0.45, -0.33, 0, 0.1), SHED);
-  put(m, "matte", hull([[x - 0.1, -0.47, 0.1], [x + 0.1, -0.47, 0.1], [x - 0.1, -0.31, 0.125], [x + 0.1, -0.31, 0.125], [x - 0.1, -0.47, 0.112], [x + 0.1, -0.47, 0.112], [x - 0.1, -0.31, 0.137], [x + 0.1, -0.31, 0.137]]), SHED_ROOF);
-  door(m, { face: "-x", at: x - 0.08 }, -0.39, SHED, { w: 0.05, h: 0.08, step: false });
+  const [y0, y1] = [-0.46, -0.33];
+  put(m, "matte", barn("x", x - 0.085, x + 0.085, y0, y1, 0.09, 0.15), SHED);
+  pitched(m, "x", x - 0.085, x + 0.085, y0, y1, 0.09, 0.15, SHED_ROOF, { over: 0.02 });
+  door(m, { face: "+y", at: y1 }, x, [0.36, 0.27, 0.2], { w: 0.05, h: 0.075, frame: [0.4, 0.3, 0.22], step: false });
 }
 
-const cottage = (doorColour: RGB) => model((m) => {
-  // The main body, its gable end to the street.
-  const [x0, x1, y0, y1, eave, ridge] = [-0.04, 0.32, -0.28, 0.3, 0.2, 0.42];
-  put(m, "matte", barn("y", x0, x1, y0, y1, eave, ridge), BRICK);
-  pitched(m, "y", x0, x1, y0, y1, eave, ridge, TILE);
-  // The wing across beside it, lower.
-  const [wx0, wy0, wy1, we, wr] = [-0.34, -0.28, 0.08, 0.15, 0.32];
-  put(m, "matte", barn("x", wx0, x0 + 0.02, wy0, wy1, we, wr), BRICK);
-  pitched(m, "x", wx0, x0, wy0, wy1, we, wr, TILE);
-  chimney(m, wx0 - 0.005, -0.1, wr + 0.1, BRICK, { smoke: 0.1 });
-  // The front: windows up and down, the door on the wing under its porch.
-  const front = { face: "+y", at: y1 } as const;
-  window(m, front, (x0 + x1) / 2, 0.04, { w: 0.1, box: [0.55, 0.4, 0.28] });
-  window(m, front, (x0 + x1) / 2, 0.19, { w: 0.07 });
-  window(m, { face: "+y", at: wy1 }, -0.26, 0.04);
-  door(m, { face: "+y", at: wy1 }, -0.13, doorColour, { hood: TILE });
-  for (const y of [-0.15, 0.12]) window(m, { face: "+x", at: x1 }, y, 0.06);
-  flowers(m, -0.27, 0.2, 4, 0.05);
-  shrub(m, 0.38, 0.38, 0.05);
+const cottage = (colour: RGB) => model((m) => {
+  const [y0, y1] = [-0.24, 0.12];
+  body(m, "x", -0.37, 0.37, y0, y1, 0.17, 0.42);
+  // The cross gable over the door, in the middle.
+  const gy = 0.21;
+  body(m, "y", -0.12, 0.12, 0, gy, 0.17, 0.37, 0.035);
+  const front: Wall = { face: "+y", at: gy };
+  door(m, front, 0, colour, { w: 0.075 });
+  gablet(m, front, 0, 0.175, 0.11, 0.055, 0.045, ROOF, WALL);
+  window(m, front, 0, 0.235, { w: 0.035, h: 0.035, bars: 0 });
+  for (const s of [-1, 1]) {
+    lower(m, { face: "+y", at: y1 }, s * 0.25);
+    window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.37 }, -0.06, 0.055);
+    window(m, { face: "-y", at: y0 }, s * 0.18, 0.055);
+  }
+  chimney(m, -0.24, -0.09, 0.53, WALL, { smoke: 0.1 });
+  garden(m, y1);
+  shed(m, -0.26);
+});
+
+const dormers = (colour: RGB) => model((m) => {
+  const [y0, y1, eave, ridge, ridgeAt] = [-0.24, 0.14, 0.2, 0.5, -0.05];
+  body(m, "x", -0.36, 0.36, y0, y1, eave, ridge);
+  // A wing out the back, lower.
+  body(m, "y", 0.04, 0.3, -0.44, y0 + 0.02, 0.17, 0.36, 0.035);
+  // Two dormers in the front slope, where the roof stands this high.
+  const roofAt = (y: number) => ridge - ((y - ridgeAt) * (ridge - eave)) / (y1 - ridgeAt);
+  for (const s of [-1, 1]) dormer(m, { face: "+y", at: 0.1 }, s * 0.17, roofAt(0.1) + 0.012, WALL, ROOF, { w: 0.055, h: 0.06, back: 0.13, box: BOXES });
+  // The porch: a gable on two posts over the door.
+  const front: Wall = { face: "+y", at: y1 };
+  door(m, front, 0, colour, { w: 0.075 });
+  gablet(m, front, 0, 0.185, 0.15, 0.085, 0.055, ROOF, WALL);
+  for (const s of [-1, 1]) put(m, "matte", post(s * 0.068, y1 + 0.075, 0, 0.185, 0.009, 8), POSTS);
+  for (const s of [-1, 1]) {
+    lower(m, front, s * 0.22);
+    window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.36 }, -0.05, 0.055);
+    window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.36 }, -0.05, 0.27, { w: 0.05, h: 0.05 });
+  }
+  window(m, { face: "+x", at: 0.3 }, -0.34, 0.055);
+  chimney(m, -0.22, -0.13, 0.6, WALL, { smoke: 0.1 });
+  garden(m, y1);
   shed(m, -0.24);
 });
 
-const villa = (doorColour: RGB) => model((m) => {
-  const [x0, x1, y0, y1, eave, ridge] = [-0.33, 0.33, -0.3, 0.28, 0.24, 0.44];
-  put(m, "matte", box(x0, x1, y0, y1, 0, eave), BRICK);
-  hipped(m, x0, x1, y0, y1, eave, ridge, TILE);
-  chimney(m, 0.06, -0.06, ridge + 0.07, BRICK, { smoke: 0.1 });
-  // Two dormers to the street, a window in each.
-  for (const x of [-0.17, 0.17]) {
-    const [dy0, dy1, dz] = [0.08, y1 + 0.01, eave + 0.05];
-    put(m, "matte", box(x - 0.055, x + 0.055, dy0, dy1, eave - 0.02, dz + 0.04), BRICK);
-    put(m, "tiles", hull([[x - 0.07, dy0, dz + 0.03], [x + 0.07, dy0, dz + 0.03], [x - 0.07, dy1 + 0.02, dz + 0.03], [x + 0.07, dy1 + 0.02, dz + 0.03], [x, dy0, dz + 0.09], [x, dy1 + 0.02, dz + 0.09]]), TILE.rgb);
-    window(m, { face: "+y", at: dy1 }, x, dz - 0.01, { w: 0.05, h: 0.05 });
-  }
-  const front = { face: "+y", at: y1 } as const;
-  for (const x of [-0.2, 0.2]) window(m, front, x, 0.05, { box: [0.55, 0.4, 0.28] });
-  window(m, front, 0, 0.14, { w: 0.05, h: 0.05 });
-  door(m, front, 0, doorColour);
-  for (const s of [-1, 1]) for (const y of [-0.15, 0.1]) window(m, { face: s > 0 ? "+x" : "-x", at: s * x1 }, y, 0.05);
-  shed(m, 0.24);
+const corner = (colour: RGB) => model((m) => {
+  // The wing on the left, its gable end to the street.
+  const [wx0, wx1, wy0, wy1] = [-0.37, -0.1, -0.32, 0.18];
+  body(m, "y", wx0, wx1, wy0, wy1, 0.18, 0.45);
+  // The main body across, on the right, and its cross gable over the door.
+  const [y0, y1] = [-0.22, 0.08];
+  body(m, "x", -0.12, 0.37, y0, y1, 0.17, 0.4);
+  const gy = 0.17;
+  body(m, "y", 0.01, 0.23, -0.02, gy, 0.17, 0.36, 0.035);
+  const front: Wall = { face: "+y", at: gy };
+  door(m, front, 0.12, colour, { w: 0.075 });
+  gablet(m, front, 0.12, 0.175, 0.11, 0.055, 0.045, ROOF, WALL);
+  window(m, front, 0.12, 0.235, { w: 0.035, h: 0.035, bars: 0 });
+  // The wing's front: a window down, one up in its gable.
+  const end: Wall = { face: "+y", at: wy1 };
+  lower(m, end, (wx0 + wx1) / 2);
+  window(m, end, (wx0 + wx1) / 2, 0.26, { w: 0.05, h: 0.05 });
+  lower(m, { face: "+y", at: y1 }, 0.31);
+  window(m, { face: "-x", at: wx0 }, -0.05, 0.055);
+  window(m, { face: "-x", at: wx0 }, -0.22, 0.055);
+  window(m, { face: "+x", at: 0.37 }, -0.07, 0.055);
+  chimney(m, 0.27, -0.12, 0.5, WALL, { smoke: 0.1 });
+  garden(m, Math.min(wy1, gy) - 0.02);
+  shed(m, 0.25);
 });
 
-const farmhouse = (doorColour: RGB) => model((m) => {
-  const [x0, x1, y0, y1, eave, ridge] = [-0.36, 0.36, -0.22, 0.2, 0.17, 0.4];
-  put(m, "matte", barn("x", x0, x1, y0, y1, eave, ridge), BRICK);
-  pitched(m, "x", x0, x1, y0, y1, eave, ridge, TILE);
-  // A gable over the door, out from the front.
-  const [gx0, gx1, gy1] = [-0.11, 0.11, y1 + 0.06];
-  put(m, "matte", barn("y", gx0, gx1, 0, gy1, eave, ridge - 0.04), BRICK);
-  pitched(m, "y", gx0, gx1, 0, gy1, eave, ridge - 0.04, TILE, { over: 0.03 });
-  door(m, { face: "+y", at: gy1 }, 0, doorColour);
-  window(m, { face: "+y", at: gy1 }, 0, 0.2, { w: 0.05, h: 0.05 });
-  for (const x of [-0.26, -0.18, 0.18, 0.26]) window(m, { face: "+y", at: y1 }, x, 0.05, { w: 0.05 });
-  for (const s of [-1, 1]) chimney(m, s * (x1 - 0.06), 0, ridge + 0.06, BRICK, { smoke: s > 0 ? 0.1 : 0 });
-  shed(m, -0.22);
-});
-
-export const COTTAGE: Built = cottage(DOORS[0]);
-export const VILLA: Built = villa(DOORS[1]);
-export const FARMHOUSE: Built = farmhouse(DOORS[2]);
 /** Every kind of house in every door. */
-export const HOUSES: Built[] = [cottage, villa, farmhouse].flatMap((make, k) => DOORS.map((d, j) => (j === k ? [COTTAGE, VILLA, FARMHOUSE][k] : make(d))));
+export const HOUSES: Built[] = [cottage, dormers, corner].flatMap((make) => DOORS.map((d) => make(d)));
+export const [COTTAGE, DORMERS, CORNER] = [HOUSES[0], HOUSES[4], HOUSES[8]];
