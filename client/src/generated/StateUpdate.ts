@@ -5,6 +5,7 @@ import type { Growth } from "./Growth";
 import type { Lump } from "./Lump";
 import type { Neighbour } from "./Neighbour";
 import type { Operation } from "./Operation";
+import type { Research } from "./Research";
 import type { Sea } from "./Sea";
 
 export type StateUpdate = { ops: Array<Operation>, 
@@ -20,6 +21,10 @@ sea: Sea,
  * The mayors of the towns beyond the edge.
  */
 neighbours: Array<Neighbour>, 
+/**
+ * What the town may build, and what its labs are learning.
+ */
+research: Research, 
 /**
  * The island's map, which the client keeps its camera inside.
  */

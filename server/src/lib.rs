@@ -8,6 +8,7 @@ pub mod haul;
 pub mod hint;
 pub mod market;
 pub mod orders;
+pub mod research;
 mod rows;
 pub mod resident;
 mod settle;

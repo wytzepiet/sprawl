@@ -266,11 +266,22 @@ const LOOKS: Record<BuildingKind, Look> = {
     heights: [0.3],
     tab: "work",
   },
+  Lab: {
+    label: "Lab",
+    about: "Learns to build what the town cannot yet: tap a kind still to learn in the menu, and every lab works at it. Four at desks, eight to five.",
+    color: "#4E8F8B",
+    material: "#6F8C8A",
+    // A flask: the neck, the round body, the liquid's line.
+    glyph: "M9 2h6v2h-1v5.2l5.6 8.4A2.8 2.8 0 0 1 17.3 22H6.7a2.8 2.8 0 0 1-2.3-4.4L10 9.2V4H9zM7.4 16l-1.3 2a.9.9 0 0 0 .7 1.4h10.4a.9.9 0 0 0 .7-1.4l-1.3-2z",
+    shape: "box",
+    heights: [0.5],
+    tab: "work",
+  },
 };
 
 export const BLUEPRINTS = Object.fromEntries(Object.entries(LOOKS).map(([k, look]) => [k, { ...look, ...ROWS[k as BuildingKind] }])) as Record<BuildingKind, Blueprint>;
 
-/** Every kind the mayor may put down, the opening's first: the harbour, the depot. */
+/** Every kind the mayor may put down. */
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
 
 /**

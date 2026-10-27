@@ -31,6 +31,7 @@ pub(crate) fn handle_player_action(
                 world.drive(events, |t, e| traffic::car::simulation::park_at_home(t, e, car_id));
             }
         }
+        ClientMessage::Research { kind } => crate::research::choose(world, kind),
         ClientMessage::Trade { good, packages, out } => {
             crate::market::trade(world, good, out, packages);
             crate::haul::call_lorries(world, events);
@@ -79,6 +80,9 @@ fn build(world: &mut World, events: &mut EventQueue, owner: OwnerId, step: Build
 /// the hand that asked.
 fn place(world: &mut World, events: &mut EventQueue, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
     let refuse = |why: &str| Some(News { text: format!("No room for the {}", format!("{kind:?}").to_lowercase()), sub: why.to_string(), at: 0 });
+    if !world.research.open.contains(&kind) {
+        return Some(News { text: format!("The {} is not learned yet", format!("{kind:?}").to_lowercase()), sub: "a lab has to learn it first".into(), at: 0 });
+    }
     let facing = facing.or_else(|| world.map.facing_for(kind, at)).unwrap_or(2);
     let tiles = match world.map.fit(kind, at, facing) {
         Ok(tiles) => tiles,

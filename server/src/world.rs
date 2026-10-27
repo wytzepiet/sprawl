@@ -60,6 +60,8 @@ pub struct World {
     pub sites: std::collections::BTreeSet<EntityId>,
     /// The market's prices and the orders waiting on them (`market.rs`). Saved.
     pub market: crate::market::Market,
+    /// What the town may build, and what its labs are learning (`research.rs`). Saved.
+    pub research: crate::research::Research,
 }
 
 /// A town on this map, from its first day: the mayor's stake, nothing booked.
@@ -91,10 +93,11 @@ impl World {
             vacancies: Default::default(),
             sites: Default::default(),
             market: Default::default(),
+            research: Default::default(),
         }
     }
 
-    /// A saved world's map; its coins and market are the save's to set.
+    /// A saved world's map; its coins, market and research are the save's to set.
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
         Self { map: Map::from_loaded(objects, terrain_seed), treasury: 0.0, ..Self::new() }
     }

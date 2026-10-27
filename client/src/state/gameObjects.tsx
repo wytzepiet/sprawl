@@ -13,6 +13,7 @@ import { syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
 import { hearMarket, hearStocks } from "./market";
 import { hearNeighbours } from "./neighbours";
+import { hearResearch } from "./research";
 import { selected } from "./selection";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
@@ -292,6 +293,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         hearStocks(msg.data.growth.held);
         hearSea(msg.data.sea);
         hearNeighbours(msg.data.neighbours);
+        hearResearch(msg.data.research);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;

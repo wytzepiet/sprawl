@@ -30,6 +30,7 @@ pub fn state_update(world: &World, clk: Clock) -> StateUpdate {
         growth: crate::economy::growth(world, clk.now),
         sea: crate::haul::sea(world),
         neighbours: crate::orders::neighbours(),
+        research: world.research.shown(),
         island: ChunkBounds { min_cx: land::terrain::CHUNKS_MIN, min_cy: land::terrain::CHUNKS_MIN, max_cx: land::terrain::CHUNKS_MAX, max_cy: land::terrain::CHUNKS_MAX },
     }
 }

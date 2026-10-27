@@ -231,6 +231,7 @@ impl Level {
     pub fn parse(name: &str, text: &str) -> (Level, World) {
         let mut world = World::new();
         world.treasury = f64::MAX / 4.0;
+        world.research = sprawl::research::Research::all();
 
         let mut gates_said: HashMap<char, (Way, Lanes)> = HashMap::default();
         let mut wants_said: Vec<(char, char, f64)> = Vec::new();

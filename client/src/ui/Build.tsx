@@ -4,7 +4,10 @@ import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { shapes, type Shape } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
-import { BAD, Fade, Info, Press, Tabs } from "./kit";
+import { lockOf, research } from "../state/research";
+import { home } from "../state/deals";
+import { useGame } from "../state/gameObjects";
+import { BAD, Fade, GDP, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
@@ -43,8 +46,13 @@ function picture(kind: BuildingKind) {
 
 const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materials) as [Good, number][];
 
-/** The kinds of building opened, by the menu's own groups. */
-const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
+/** The kinds of building, by the menu's own groups: the harbour alone
+ *  while the town has none, since nothing stands without the door; then
+ *  every other kind, open or still to learn (docs/core.md). */
+const groups = () => {
+  const shown = home() === null ? ["Harbour" as BuildingKind] : KINDS.filter((k) => k !== "Harbour");
+  return TABS.map((t) => ({ tab: t, kinds: shown.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
+};
 /** The group shown: the roads, or a group of buildings. */
 const [group, setGroup] = createSignal<Tab | "roads">("roads");
 // A road taken up, by a key or the head's row, shows the roads.
@@ -62,7 +70,7 @@ export function BuildHead() {
       when={held()}
       fallback={
         <Show when={!inHand()} fallback={<RoadsHead />}>
-          <Tabs tabs={["roads" as const, ...groups.map((g) => g.tab)]} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
+          <Tabs tabs={["roads" as const, ...groups().map((g) => g.tab)]} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
         </Show>
       }
     >
@@ -85,7 +93,8 @@ export function BuildHead() {
 export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
-  const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
+  const kinds = () => groups().find((g) => g.tab === group())?.kinds ?? [];
+  const { send } = useGame();
   const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
   return (
     <Show when={group()} keyed>
@@ -95,13 +104,25 @@ export function BuildBody() {
             <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
               <For each={kinds()}>
                 {(kind) => (
-                  <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+                  <box
+                    w={cell()}
+                    pad={{ x: 6, top: 6, bottom: 8 }}
+                    gap={4}
+                    align="center"
+                    round={18}
+                    fill="ink/0.04"
+                    opacity={lockOf(kind) === "open" ? 1 : lockOf(kind) === "next" ? 0.75 : 0.4}
+                    onTap={() => (lockOf(kind) === "open" ? hold(kind) : lockOf(kind) === "next" && send({ type: "Research", data: { kind } }))}
+                    onDrag={() => lockOf(kind) === "open" && hold(kind)}
+                  >
                     <Picture kind={kind} />
                     <box dir="row" align="center" gap={4}>
                       <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
                       <Info onTap={() => info({ kind })} />
                     </box>
-                    <Materials kind={kind} />
+                    <Show when={lockOf(kind) === "open"} fallback={<Lock kind={kind} />}>
+                      <Materials kind={kind} />
+                    </Show>
                   </box>
                 )}
               </For>
@@ -131,6 +152,21 @@ function Materials(props: { kind: BuildingKind }) {
   );
 }
 
+/** A kind not yet open: what learning it takes, how far the labs have
+ *  got, or that it waits on the rung below. */
+function Lock(props: { kind: BuildingKind }) {
+  const r = research;
+  return (
+    <Show when={lockOf(props.kind) === "next"} fallback={<text size={12} soft>later</text>}>
+      <Show when={r().at === props.kind} fallback={<text size={12} soft>learn · {r().cost}h</text>}>
+        <box w={56} h={5} round={2.5} fill="ink/0.12">
+          <box w={(56 * r().done) / Math.max(1, r().of)} h={5} round={2.5} fill={GDP} />
+        </box>
+      </Show>
+    </Show>
+  );
+}
+
 type About = { kind: BuildingKind } | { road: RoadKind };
 
 /** A building's or a road tool's page: what it is and what it does,
@@ -157,11 +193,13 @@ function Page(p: About) {
           {"kind" in p && <Materials kind={p.kind} />}
         </box>
       </box>
-      <box pad={{ x: 12 }}>
-        <Press h={44} round={16} align="center" justify="center" fill="ink/0.85" onTap={take}>
-          <text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</text>
-        </Press>
-      </box>
+      <Show when={!("kind" in p) || lockOf(p.kind) === "open"} fallback={<box pad={{ x: 12 }}><text size={13} soft>{"kind" in p && lockOf(p.kind) === "next" ? `A lab learns it in ${research().cost} researcher-hours: tap it in the menu.` : "A lab learns it once the kinds before it are learned."}</text></box>}>
+        <box pad={{ x: 12 }}>
+          <Press h={44} round={16} align="center" justify="center" fill="ink/0.85" onTap={take}>
+            <text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</text>
+          </Press>
+        </box>
+      </Show>
     </box>
   );
 }

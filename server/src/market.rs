@@ -174,6 +174,7 @@ pub fn hour(world: &mut World, events: &mut traffic::event_queue::EventQueue, no
     let mut traded = false;
     while (world.market.hour + 1) * HOUR <= now {
         world.market.step(world.map.terrain_seed);
+        crate::research::hour(world);
         // An order is read at the hour's price, and booked as far as it goes.
         for i in (0..world.market.orders.len()).rev() {
             let o = world.market.orders[i];

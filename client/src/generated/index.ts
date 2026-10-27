@@ -50,6 +50,7 @@ export type * from "./Pose";
 export type * from "./Present";
 export type * from "./Prices";
 export type * from "./Quote";
+export type * from "./Research";
 export type * from "./Resident";
 export type * from "./ResidentCard";
 export type * from "./RoadNode";

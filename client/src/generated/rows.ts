@@ -16,6 +16,7 @@ export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number
   Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, forklifts: 3 },
   Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", forklifts: 1 },
   Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", forklifts: 1 },
+  Lab: { materials: { Timber: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
 };
 
 /** Units a package of each good holds (`Good::per_package`). */

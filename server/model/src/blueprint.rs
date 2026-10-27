@@ -244,6 +244,9 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             makes: Some(Good::Stone),
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
+        // Four at desks, eight to five: thirty-six researcher-hours a
+        // day, the first rung's kind in two thirds of one.
+        (Lab, row((2, 1), (0, 0), &[(Timber, 8)], vec![shift(8, 17, 4)])),
     ]
 });
 

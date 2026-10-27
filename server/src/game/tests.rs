@@ -39,8 +39,9 @@ pub(crate) fn does(game: &mut Game, d: Do) {
 pub(crate) const PLAYER: ClientId = 0;
 
 /// A world brought to life as the game brings one, its clock at nought,
-/// and a player at it.
-pub(crate) fn game(world: World) -> Game {
+/// and a player at it: a town that may build anything.
+pub(crate) fn game(mut world: World) -> Game {
+    world.research = crate::research::Research::all();
     let mut game = Game::new(world, 0, 1, Box::new(World::new));
     game.connect(PLAYER, PLAYER);
     game
