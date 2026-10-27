@@ -35,6 +35,9 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Sawmill: { family: "industry", yard: { fill: "docks" } },
   // A quarry's yard is its heaps of broken stone, a lorry backed to them.
   Quarry: { family: "industry", yard: { fill: "docks" } },
+  // A farm is a farmyard, a model of its own (`objects/farm.ts`), its
+  // fence its own: no hedge round it.
+  Farm: { family: "farm", yard: { fill: "docks" } },
   // A supermarket is a big box, its customers parked at the kerb.
   Supermarket: { family: "box" },
   GasStation: { family: "box" },
@@ -60,17 +63,21 @@ export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
 export function slope(t: Tile) {
   if (formOf(t).family !== "street") return { pitch: 1, height: 0 };
   if (t.storeys > 3) return { pitch: 0.5, height: 0.03 };
-  // A place on the street, a shop or a pub, wears a mansard: a short
-  // slope at its eaves and flat on top, where its sign lies.
-  return mansard(t) ? { pitch: 0.75, height: 0.06 } : { pitch: 0.75, height: 0.225 };
+  return { pitch: 0.75, height: 0.225 };
 }
-/** Whether a building wears a mansard: a place on the high street. At
- *  its slope's top a flat band BAND wide runs round, and inside it the
- *  flat sits RECESS down, as a mansard hides its roof, an AC unit in a
- *  corner (`roof.ts`). */
-export const mansard = (t: Tile) => formOf(t).family === "street" && t.storeys <= 3 && SIGNED.has(t.kind as BuildingKind);
-const SIGNED = new Set<BuildingKind>(["Shop"]);
-export const RECESS = 0.03, BAND = 0.035;
+
+/** A wall's windows and doors (`roof.ts`), in tiles: a window's width and
+ *  height, how far apart they stand and how far in from the wall's ends,
+ *  their frames' width; a door's width and height; a shed's big door. */
+export const OPENING = { wide: 0.06, high: 0.065, pitch: 0.15, end: 0.06, frame: 0.012, door: 0.07, doorHigh: 0.15, shedDoor: 0.26, shedHigh: 0.17 } as const;
+
+
+/** Whether a shed wears a sawtooth roof, as a mill's or a works' does:
+ *  ridges across it, each a slope up from the back to a glazed face
+ *  toward its door, TOOTH high and about SPAN deep (`roof.ts`). */
+export const sawtooth = (t: Tile) => SAWTOOTH.has(t.kind as BuildingKind);
+const SAWTOOTH = new Set<BuildingKind>(["Factory"]);
+export const TOOTH = 0.14, SPAN = 0.55;
 
 /** An office tower's flat roof carries its plant, as a real one does: a
  *  lift room at one end, AC units at the other, vents along a side
@@ -80,11 +87,11 @@ export const planted = (t: Tile) => t.kind === "Office";
 export const PARAPET_W = 0.045, PARAPET_H = 0.05;
 
 /** Where a sign lies on a building's roof: how high; how far in from the
- *  walls the flat it lies on begins (a mansard's slope); and that it is
- *  painted on, as roof markings are. */
+ *  walls the flat it lies on begins; and that it is painted on, as roof
+ *  markings are. */
 export function seat(t: Tile): { z: number; inset: number; painted: boolean } {
   const { pitch, height } = slope(t);
-  return mansard(t) ? { z: eaves(t) + height - RECESS, inset: height / pitch + BAND, painted: true } : { z: eaves(t) + height, inset: height / pitch, painted: true };
+  return { z: eaves(t) + height, inset: height / pitch, painted: true };
 }
 
 /** Buildings that may join, where no stroke says: tiles of one kind, as

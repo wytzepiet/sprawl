@@ -76,6 +76,9 @@ export default defineConfig({
       "/town": { target: `http://${server}` },
     },
   },
+  // Manifold finds its wasm beside its script (`new URL(…, import.meta.url)`),
+  // which pre-bundling would move away from it.
+  optimizeDeps: { exclude: ["manifold-3d"], esbuildOptions: { target: "esnext" } },
   build: {
     target: "esnext",
   },

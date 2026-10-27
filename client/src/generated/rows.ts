@@ -12,7 +12,7 @@ export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number
   GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
   Supermarket: { materials: { Timber: 16, Stone: 12 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
   Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, forklifts: 1 },
-  Farm: { materials: { Timber: 8 }, size: [3, 2], lot: [2, 2], quay: false, makes: "Crates", forklifts: 1 },
+  Farm: { materials: { Timber: 8 }, size: [3, 1], lot: [2, 2], quay: false, makes: "Crates", forklifts: 1 },
   Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, forklifts: 3 },
   Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", forklifts: 1 },
   Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", forklifts: 1 },

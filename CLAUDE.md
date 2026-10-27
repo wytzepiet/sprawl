@@ -200,6 +200,17 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   zooming, and prints each phase's frames, CPU and GPU time and where the
   JavaScript went, from the reports a tab it names sends
   (`PerfReport.tsx`, `.dev/perf.jsonl`); no other tab sends any.
+- **A building's model:** a building drawn whole (house, shop, depot,
+  farm, sawmill, quarry) is built of the kit's parts
+  (`client/src/engine/objects/kit.ts`: walls, roofs, windows, doors,
+  awnings, fences, hedges, lamps, trees, and the ground in the town's own
+  grass, paving, earth, dust, rock and gravel), one file a kind, from its
+  reference (`/mnt/project-files/refresh/refs/`). `bun run model house`
+  draws every model a file exports, from the game's camera and from near,
+  on a CPU in a few seconds, no browser: `.dev/model/<file>-<NAME>.png`
+  (`--ref <img>` beside it, `--side -1` mirrored). Finishes' looks are
+  faked there; their coats are `finishes.ts`'s.
+- **Building something that is seen:**
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main

@@ -47,8 +47,8 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
 /** A bucket of a vehicle's shape in its colour, its material lacquered
  *  and its edges rounded tight (a lit bucket's is the town's,
  *  `InstancePool`); its key. */
-export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT): string {
-  pool.ensureBucket(key, geo, colour, true, true, undefined, [coat]);
+export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true): string {
+  pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat]);
   const bucket = pool.finish(key)!;
   bucket.bevel.width = ROUNDING;
   lacquer(bucket.material, "car");
@@ -85,8 +85,10 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
 }
 
 /** A shape with colours of its own (`sea.ts`, `goods.ts`) standing at a
- *  pose, its base at `z`. It is the world's: no building's look is on it. */
-export const placeShape = (pool: InstancePool, { key, geo }: { key: string; geo: MeshGeometry }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE) }], p, z);
+ *  pose, its base at `z`, in its own finish or a vehicle's paint, casting
+ *  a shadow unless it lies too flat to. It is
+ *  the world's: no building's look is on it. */
+export const placeShape = (pool: InstancePool, { key, geo, coat, cast }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs

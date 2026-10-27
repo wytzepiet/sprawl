@@ -46,7 +46,7 @@ impl World {
         else {
             return;
         };
-        let Some(yard) = self.map.yard_gate(farm, &batch) else { return };
+        let Some(yard) = self.map.gate(farm) else { return };
         let Some((path, left)) = self.map.sweep(farm, yard, &batch, job) else { return };
         // A tile the tractor cannot work — a pocket it could not turn in,
         // or ground cut off by what was built since — is land no more:
@@ -181,7 +181,7 @@ mod tests {
         let now = 1_000;
         let (job, batch) = world.map.batch(farm, now).expect("a job");
         assert_eq!((job, batch.len()), (Job::Plough, tiles.len()));
-        let pos = world.map.yard_gate(farm, &batch).unwrap();
+        let pos = world.map.gate(farm).unwrap();
         let (path, left) = world.map.sweep(farm, pos, &batch, job).expect("a sweep");
         assert!(left.is_empty(), "tiles left: {left:?}");
         assert_eq!((path[0], *path.last().unwrap()), (pos, pos), "the run does not start and end at the yard");
