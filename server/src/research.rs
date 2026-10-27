@@ -39,7 +39,7 @@ impl Default for Research {
 }
 
 impl Research {
-    /// Everything open: a test's town, or a bottomless treasury's.
+    /// Everything open: a test's town, the fixtures', or a bottomless treasury's.
     pub fn all() -> Self {
         Self { open: BuildingKind::ALL.into_iter().collect(), ..Self::default() }
     }

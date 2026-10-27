@@ -24,6 +24,9 @@ type Migration = Option<fn(&mut [Value], &mut Value)>;
 const MIGRATIONS: &[Migration] = &[
     // Saves from before the stamp are version 0, and already today's.
     Some(|_, _| {}),
+    // The core (docs/core.md): the missions gone and the lab's ladder in;
+    // an old town has built what it may no longer, so it starts over.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -42,9 +45,7 @@ pub struct Meta {
     pub treasury: f64,
     /// The market's prices, their week and the orders waiting.
     pub market: sprawl::market::Market,
-    /// What the town may build. A save from before research is a town that
-    /// had built anything it liked: all open.
-    #[serde(default = "sprawl::research::Research::all")]
+    /// What the town may build, and what its labs are learning.
     pub research: sprawl::research::Research,
 }
 
@@ -224,8 +225,12 @@ mod tests {
         db.save(&[], &[], &meta);
         db.conn.pragma_update(None, "user_version", 0).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
-        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
-        assert_eq!(version(&db), SAVE_VERSION);
+        // Kept, if every step from it keeps; else started over.
+        let kept = MIGRATIONS.iter().all(Option::is_some);
+        assert_eq!(loaded.next_id, if kept { 40 } else { 1 }, "a save from before the stamp was {}", if kept { "not kept" } else { "kept past a step that starts over" });
+        if kept {
+            assert_eq!(version(&db), SAVE_VERSION);
+        }
         assert!(backup(0).exists());
         db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
