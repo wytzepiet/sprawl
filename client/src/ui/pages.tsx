@@ -1,6 +1,6 @@
 import { Box, Ink } from "~ui";
 import { createEffect, createMemo, createSignal, For, onCleanup, untrack, type Accessor } from "solid-js";
-import { follow, type Feel } from "../engine/spring";
+import { follow, thrown, type Feel } from "../engine/spring";
 import { Line, Press, ROUND } from "./kit";
 import type { JSX } from "solid-js";
 
@@ -108,14 +108,14 @@ export function Pages(props: { bottom: number; width: number; room: number }) {
             const [sc] = follow(() => at().s, { rest: 0.001 });
             const [ink] = follow(() => at().ink, { rest: 0.001 });
             // In from below the screen, and out the same way.
-            const [y] = follow(() => (born() && !s.gone() ? pull() : fits() + props.bottom + 40), { feel: SLIDE, held: () => pull() > 0 });
+            const [y, yv] = follow(() => (born() && !s.gone() ? pull() : fits() + props.bottom + 40), { feel: SLIDE, held: () => pull() > 0 });
             const roll = (by: number) => setScroll(Math.max(0, Math.min(own() - props.room, scroll() + by)));
             /** A finger dragging it down from its top takes it away, past a
              *  little way; short of that it springs back. Else it scrolls. */
             const drag = (by: number, held?: boolean) => {
               if (held === undefined || (pull() === 0 && (by > 0 || scroll() > 0))) return roll(by);
               if (held) return setPull(Math.max(0, pull() - by));
-              if (pull() > 60) pop();
+              if (thrown(pull(), yv()) > 60) pop();
               setPull(0);
             };
             return (

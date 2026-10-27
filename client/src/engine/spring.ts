@@ -121,5 +121,10 @@ export function follow(target: Accessor<number>, opts: { delay?: Accessor<number
     else go(t);
   }, { defer: true }));
   onCleanup(() => { due.delete(tick); clearTimeout(wait); });
-  return [value, speed];
+  // A finger held still has no speed, though it moved nothing to say so.
+  return [value, () => (opts.held?.() && performance.now() - last > 100 ? 0 : speed())];
 }
+
+/** Where a value let go at `s`, going `v` a second, is thrown toward:
+ *  what a release decides by, so a flick goes the way it was flicked. */
+export const thrown = (s: number, v: number) => s + v * 0.2;

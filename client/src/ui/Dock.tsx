@@ -1,6 +1,6 @@
 import { Box, Ink, Icon } from "~ui";
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
-import { follow } from "../engine/spring";
+import { follow, thrown } from "../engine/spring";
 import { useEngine } from "../engine/Canvas";
 import { eye } from "../engine/Camera";
 import { held, setTool, tool } from "./buildMode";
@@ -109,7 +109,7 @@ export default function Dock() {
   const openH = () => headH() + Math.min(bodyH(), room());
   // Under a page it stands out over the page's top, smaller and blank.
   const under = () => (pages().length ? behind(front(), pages().length) : null);
-  const [h] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2, held: () => pull() !== null });
+  const [h, hv] = follow(() => (under() ? under()!.h - BAR : shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2, held: () => pull() !== null });
   const [w] = follow(() => (shown() || under() ? sheetWidth() : WIDTH), { rest: 0.2 });
   const [sc] = follow(() => under()?.s ?? 1, { rest: 0.001 });
   const [ink] = follow(() => under()?.ink ?? 1, { rest: 0.001 });
@@ -122,7 +122,7 @@ export default function Dock() {
     if (held === undefined) return setOpen(by > 0);
     const p = pull();
     if (held) return setPull(Math.max(headH() * 0.6, Math.min(openH() + 24, (p ?? h()) + by)));
-    if (p !== null) setOpen(p > (headH() + openH()) / 2), setPull(null);
+    if (p !== null) setOpen(thrown(p, hv()) > (headH() + openH()) / 2), setPull(null);
   };
   /** The body scrolls, but a finger dragging it down from its top drags the sheet. */
   const scrolled = (by: number, held?: boolean) => (held !== undefined && (pull() !== null || (by < 0 && scroll() <= 0)) ? drag(by, held) : roll(by));
