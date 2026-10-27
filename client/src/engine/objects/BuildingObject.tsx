@@ -34,8 +34,8 @@ import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated
 
 /** A building drawn whole from the kit (`kit.ts`), by its kind: its
  *  buckets' name, its model and which way round. A house is one of a few
- *  by its id, as if at random, so a street of them is mixed; a house, a
- *  shop and a farm every other one the other way round; a sawmill's wing
+ *  by its id, as if at random, so a street of them is mixed; a house and
+ *  a farm every other one the other way round; a sawmill's wing
  *  and a quarry's hut on the gate's side. */
 function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1] | null {
   const odd = id % 2 ? 1 : -1;
@@ -43,7 +43,8 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
     const k = (Math.imul(id, 0x9e3779b1) >>> 7) % HOUSES.length;
     return [`house${k}`, HOUSES[k], odd];
   }
-  if (kind === "Shop") return ["shop", SHOP, odd];
+  // A shop's door at the end its lunch table stands, its goods before its window.
+  if (kind === "Shop") return ["shop", SHOP, -1];
   if (kind === "Depot") return ["depot", DEPOT, 1];
   if (kind === "Farm") return ["farm", FARM, odd];
   if (kind === "Sawmill") return ["sawmill", SAWMILL, gate];

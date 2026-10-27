@@ -1,6 +1,6 @@
 import type { RGB } from "../rgb";
 import { Solid } from "../solid";
-import { barn, box, door, ground, heap, hull, jitter, lamp, leanTo, model, pitched, put, rod, window, type Cover, type Model, type V, type Wall } from "./kit";
+import { barn, box, door, ground, heap, hull, jitter, lamp, leanTo, model, pitched, put, rod, window, PANE, type Cover, type Model, type V, type Wall } from "./kit";
 
 /**
  * A quarry, whole, the sawmill's twin at the mountain's foot
@@ -28,7 +28,6 @@ const STONES: RGB = [0.8, 0.78, 0.74];
 const BLOCKS: RGB = [0.86, 0.84, 0.8];
 const YELLOW: RGB = [0.94, 0.74, 0.22];
 const TRACK: RGB = [0.24, 0.24, 0.26];
-const CAB: RGB = [0.24, 0.29, 0.36];
 const FRAME: RGB = [0.33, 0.42, 0.6];
 const STEEL: RGB = [0.5, 0.52, 0.56];
 const BELT: RGB = [0.25, 0.25, 0.27];
@@ -65,8 +64,8 @@ function crag(m: Model) {
   }));
   put(m, "rock", hull(points).subtract(cut), ROCK);
   // Boulders on the rim and the benches, and on the floor, broken off the face.
-  for (const [x, y, r, s, z] of [[-0.78, -1.62, 0.05, 6, 0.38], [0.66, -1.7, 0.045, 7, 0.4], [0.78, -0.92, 0.04, 8, 0.24], [-0.74, -0.7, 0.035, 9, 0.12], [0.55, -0.62, 0.045, 10, 0.1],
-    [-0.28, -0.72, 0.05, 1, 0], [-0.2, -0.64, 0.03, 2, 0], [0.32, -0.9, 0.045, 3, 0], [-0.38, -1.15, 0.035, 4, 0], [0.42, -0.5, 0.03, 5, 0]])
+  for (const [x, y, r, s, z] of [[-0.78, -1.62, 0.09, 6, 0.36], [0.66, -1.7, 0.08, 7, 0.38], [0.78, -0.92, 0.075, 8, 0.22], [-0.74, -0.7, 0.07, 9, 0.1], [0.55, -0.62, 0.08, 10, 0.08], [-0.2, -1.72, 0.07, 13, 0.42],
+    [-0.28, -0.72, 0.07, 1, 0], [-0.2, -0.64, 0.045, 2, 0], [0.32, -0.9, 0.065, 3, 0], [-0.38, -1.15, 0.05, 4, 0], [0.42, -0.5, 0.045, 5, 0]])
     boulder(m, x, y, r, s, z + 0.008);
 }
 
@@ -79,7 +78,7 @@ function digger(m: Model, ex: number, ey: number) {
   }))))), TRACK);
   put(m, "matte", box(ex - 0.085, ex + 0.085, ey - 0.06, ey + 0.11, 0.05, 0.1).add(box(ex - 0.08, ex - 0.01, ey - 0.06, ey + 0.02, 0.1, 0.18)), YELLOW);
   put(m, "matte", box(ex - 0.08, ex + 0.08, ey + 0.08, ey + 0.13, 0.05, 0.125), STEEL);
-  put(m, "glass", box(ex - 0.077, ex - 0.013, ey - 0.064, ey + 0.016, 0.115, 0.17), CAB);
+  put(m, "matte", box(ex - 0.077, ex - 0.013, ey - 0.064, ey + 0.016, 0.115, 0.17), PANE);
   const [b0, b1, b2]: V[] = [[ex + 0.03, ey - 0.03, 0.11], [ex + 0.03, ey - 0.2, 0.27], [ex + 0.03, ey - 0.3, 0.13]];
   put(m, "matte", rod(b0, b1, 0.034).add(rod(b1, b2, 0.026)), YELLOW);
   put(m, "matte", hull([[b2[0] - 0.03, b2[1] + 0.01, b2[2]], [b2[0] + 0.03, b2[1] + 0.01, b2[2]], [b2[0] - 0.03, b2[1] - 0.04, b2[2] - 0.02], [b2[0] + 0.03, b2[1] - 0.04, b2[2] - 0.02], [b2[0] - 0.03, b2[1] - 0.01, b2[2] - 0.06], [b2[0] + 0.03, b2[1] - 0.01, b2[2] - 0.06]]), STEEL);

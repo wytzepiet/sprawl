@@ -172,8 +172,8 @@ export const SAWMILL = model((m) => {
   put(m, "glass", plate(gable, 0.475, 0.505, 0.225, 0.245, 0, 0.025), [0.95, 0.85, 0.6]);
   window(m, gable, 0.49, 0.29, { w: 0.08, h: 0.04, frame: TRIM });
   for (const y of [-0.7, -0.35]) window(m, { face: "-x", at: wx0 + 0.02 }, y, 0.08, { w: 0.08, h: 0.06, frame: TRIM });
-  put(m, "zinc", golf([wx1 + 0.005, -1.25, 0.18], [0, 1.4, 0], [0.22, 0, -0.07], 0.01), ZINC);
-  for (const y of [-1.15, -0.5, 0.1]) put(m, "matte", box(0.95, 0.975, y - 0.012, y + 0.012, 0, 0.11), TIMBER);
+  put(m, "zinc", golf([wx1 + 0.005, -1.25, 0.18], [0, 1.23, 0], [0.22, 0, -0.07], 0.01), ZINC);
+  for (const y of [-1.15, -0.5]) put(m, "matte", box(0.95, 0.975, y - 0.012, y + 0.012, 0, 0.11), TIMBER);
   // Its chimney, brick, behind the wing, smoking.
   chimney(m, 0.84, -1.56, 0.72, BRICK, { w: 0.12, smoke: 0.15 });
 
@@ -209,5 +209,5 @@ export const SAWMILL = model((m) => {
   rack(m, -0.6, 1.72, "x", 0.44, 2, 3);
   // A fence along the side.
   fence(m, [[-0.985, -0.72], [-0.985, 1.92]], TIMBER);
-  lamp(m, -0.6, 0.5, [-0.54, 0.5]);
+  lamp(m, -0.95, 0.95, [-0.89, 0.95]);
 });

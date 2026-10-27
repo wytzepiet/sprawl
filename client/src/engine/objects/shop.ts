@@ -1,5 +1,5 @@
 import type { RGB } from "../rgb";
-import { awning, barn, bench, box, chimney, crate, door, halfRound, leanTo, model, pitched, plate, put, rod, topiary, window, type Cover, type Wall } from "./kit";
+import { awning, barn, bench, box, chimney, crate, door, halfRound, leanTo, model, pitched, plate, put, rod, topiary, window, PANE, type Cover, type Wall } from "./kit";
 
 /**
  * A shop, whole, on its tile (`refresh/refs/shop-gpt.png`): the shop
@@ -36,7 +36,7 @@ const [X0, X1, Y0, Y1, EAVE, RIDGE] = [-0.1, 0.42, -0.3, 0.3, 0.36, 0.56];
 export const SHOP = model((m) => {
   put(m, "matte", barn("y", X0, X1, Y0, Y1, EAVE, RIDGE), WALL);
   put(m, "matte", box(X0 - 0.008, X1 + 0.008, Y0 - 0.008, Y1 + 0.008, 0, 0.03), STONE);
-  pitched(m, "y", X0, X1, Y0, Y1 + 0.03, EAVE, RIDGE, ROOF, { over: 0.045 });
+  pitched(m, "y", X0, X1, Y0, Y1, EAVE, RIDGE, ROOF, { over: 0.025 });
   const front: Wall = { face: "+y", at: Y1 };
   const mid = (X0 + X1) / 2;
   // The band between the floors, and its hood over the door.
@@ -47,11 +47,11 @@ export const SHOP = model((m) => {
   // The shop window, its frame and sill, its awning; the stall before it.
   const [w0, w1] = [X0 + 0.03, doorAt - 0.06];
   put(m, "matte", plate(front, w0 - 0.012, w1 + 0.012, 0.035, 0.19, -0.004, 0.008).subtract(plate(front, w0, w1, 0.05, 0.18, -0.002, 0.012)), WOOD);
-  put(m, "glass", plate(front, w0, w1, 0.05, 0.18, -0.004, 0.002), [0.24, 0.29, 0.36]);
+  put(m, "glass", plate(front, w0, w1, 0.05, 0.18, -0.004, 0.002), PANE);
   put(m, "matte", plate(front, (w0 + w1) / 2 - 0.004, (w0 + w1) / 2 + 0.004, 0.05, 0.18, -0.002, 0.006), WOOD);
   // The display behind the glass: shelves of the same produce.
   PRODUCE.forEach((fill, k) => put(m, "matte", plate(front, w0 + 0.01 + ((w1 - w0 - 0.02) * k) / 3, w0 + 0.01 + ((w1 - w0 - 0.02) * (k + 1)) / 3 - 0.006, 0.05, 0.085, -0.03, -0.006), fill));
-  awning(m, front, w0 - 0.025, w1 + 0.025, 0.205, STRIPES, { depth: 0.1, drop: 0.045, stripes: 8, scallops: true });
+  awning(m, front, w0 - 0.025, w1 + 0.025, 0.235, STRIPES, { depth: 0.1, drop: 0.045, stripes: 8, scallops: true });
   put(m, "matte", plate(front, w0 - 0.005, w1 + 0.005, 0, 0.025, 0, 0.07), WOOD);
   PRODUCE.forEach((fill, k) => crate(m, w0 + 0.04 + ((w1 - w0 - 0.08) * k) / 2, Y1 + 0.036, 0.025, 0.068, WOOD, fill));
   // Up in the gable: the arched window over its flowers, a small one either side.

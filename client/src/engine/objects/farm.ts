@@ -1,7 +1,7 @@
 import type { RGB } from "../rgb";
 import { Solid } from "../solid";
 import { theme } from "../theme";
-import { barn, bench, box, cask, chimney, cone, crate, door, drum, fence, flowers, gate, ground, hull, lamp, lying, model, pitched, post, put, rod, shrub, slope, tree, window, type Cover, type Model, type V, type Wall } from "./kit";
+import { barn, bench, box, cask, chimney, cone, crate, door, drum, fence, flowers, gate, ground, hull, lamp, lying, model, pitched, post, put, rod, shrub, slope, tree, window, PANE, type Cover, type Model, type V, type Wall } from "./kit";
 
 /**
  * A farm, whole (`refresh/refs/farm-gpt.png`): a farmyard over its plot,
@@ -89,7 +89,7 @@ function gambrel(m: Model, x0: number, x1: number, y0: number, y1: number, eave:
  *  it in green. */
 function tractor(m: Model, x: number, y: number) {
   put(m, "matte", box(x - 0.045, x + 0.045, y - 0.05, y + 0.08, 0.04, 0.09).add(box(x - 0.045, x + 0.045, y - 0.07, y + 0.0, 0.09, 0.17)), TRACTOR);
-  put(m, "glass", box(x - 0.04, x + 0.04, y - 0.066, y + 0.004, 0.11, 0.16), [0.24, 0.29, 0.36]);
+  put(m, "matte", box(x - 0.04, x + 0.04, y - 0.066, y + 0.004, 0.11, 0.16), PANE);
   put(m, "matte", box(x - 0.05, x + 0.05, y - 0.075, y + 0.008, 0.165, 0.178), TRACTOR);
   put(m, "matte", Solid.union([
     lying([x - 0.055, y - 0.04, 0.055], 0.055, 0.03, "x"), lying([x + 0.055, y - 0.04, 0.055], 0.055, 0.03, "x"),

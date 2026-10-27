@@ -1,6 +1,6 @@
 import type { RGB } from "../rgb";
 import { Solid } from "../solid";
-import { add, barn, barrel, box, door, fence, gablet, halfRound, hull, model, oculus, pitched, plate, put, scale, sheet, shrub, shutter, window, type Cover, type Model, type V, type Wall } from "./kit";
+import { add, barrel, box, door, fence, halfRound, hull, model, oculus, on, plate, put, scale, sheet, shutter, window, PANE, type Model, type V, type Wall } from "./kit";
 
 /**
  * A depot, whole (`refresh/refs/depot-gpt.png`): its sheds round its
@@ -13,17 +13,14 @@ import { add, barn, barrel, box, door, fence, gablet, halfRound, hull, model, oc
  *   metal, each end's arch picked out in cream: along the back the tall
  *   one, three arched loading doors in it, a lamp over each, vents on its
  *   roof; a wing down either side, roof lights along its outer slope, its
- *   end to the yard a round window over two arched ones.
+ *   end to the yard a round window over a door between two arched ones.
  * - Over the bays the gantry crane, yellow, its trolley on its beam.
- * - In the corner by the right wing, the office: brick, a slate roof, a
- *   blue door, a lit window over a box of flowers, a shrub either side.
  * - Round the yard a green rail fence, open at the gate.
  */
 
 const BRICK: RGB = [0.6, 0.32, 0.24];
 const TRIM: RGB = [0.93, 0.88, 0.76];
 const ROOF: RGB = [0.42, 0.46, 0.55];
-const SLATE: Cover = { finish: "tiles", rgb: [0.4, 0.44, 0.52] };
 const SHUTTER: RGB = [0.36, 0.47, 0.64];
 const CRANE: RGB = [0.92, 0.72, 0.24];
 const CABLE: RGB = [0.22, 0.22, 0.24];
@@ -52,7 +49,6 @@ function arched(m: Model, end: Wall, b0: number, b1: number, eave: number, rise:
     }))));
   put(m, "matte", Solid.union([...pieces, plate(end, b0 - 0.015, b0 + 0.02, 0, eave, 0, 0.012), plate(end, b1 - 0.02, b1 + 0.015, 0, eave, 0, 0.012)]), TRIM);
 }
-const on = (w: Wall, along: number, up: number, out = 0): V => (w.face[1] === "y" ? [along, w.at + (w.face[0] === "+" ? out : -out), up] : [w.at + (w.face[0] === "+" ? out : -out), along, up]);
 
 /** A roof light lying on a wing's outer slope, `y` along it. */
 function rooflight(m: Model, s: number, y: number) {
@@ -67,26 +63,9 @@ function rooflight(m: Model, s: number, y: number) {
   const out: V = [n[0] / l, 0, n[1] / l];
   const up: V = [-out[2], 0, out[0]];
   const [w, h] = [0.07, 0.09];
-  const o = add(add([b, y - w / 2, z], scale(up, -h / 2)), [0, 0, 0]);
+  const o = add([b, y - w / 2, z], scale(up, -h / 2));
   put(m, "matte", sheet(o, [0, w, 0], scale(up, h), 0.008, out), TRIM);
-  put(m, "glass", sheet(add(add(o, [0, 0.01, 0]), add(scale(up, 0.01), scale(out, 0.008))), [0, w - 0.02, 0], scale(up, h - 0.02), 0.003, out), [0.24, 0.29, 0.36]);
-}
-
-/** The office, in the corner of the yard by the right wing. */
-function office(m: Model) {
-  const [x0, x1, y0, y1] = [0.42, INNER, -0.34, FRONT];
-  put(m, "matte", barn("x", x0, x1 + 0.02, y0, y1, 0.16, 0.29), BRICK);
-  put(m, "matte", box(x0 - 0.006, x1, y0 - 0.006, y1 + 0.006, 0, 0.02), TRIM);
-  pitched(m, "x", x0, x1, y0, y1, 0.16, 0.29, SLATE, { over: 0.03 });
-  const front: Wall = { face: "+y", at: y1 };
-  door(m, front, x0 + 0.06, DOOR, { w: 0.065, h: 0.14 });
-  window(m, front, x1 - 0.1, 0.06, { w: 0.1, h: 0.065, bars: 1, box: [0.42, 0.3, 0.22] });
-  put(m, "glass", plate(front, x0 + 0.11, x0 + 0.13, 0.13, 0.155, 0, 0.018), LAMP);
-  // A dormer, its window arched, in the front slope.
-  put(m, "matte", plate(front, x0 + 0.12, x0 + 0.22, 0.13, 0.24, -0.1, -0.06), BRICK);
-  gablet(m, { face: "+y", at: y1 - 0.1 }, x0 + 0.17, 0.24, 0.1, 0.045, 0.04, SLATE, BRICK, 0.01);
-  window(m, { face: "+y", at: y1 - 0.06 }, x0 + 0.17, 0.165, { w: 0.045, h: 0.03, arch: true, bars: 0 });
-  for (const x of [x0 - 0.02, x1 - 0.21]) shrub(m, x, y1 + 0.045, 0.03);
+  put(m, "glass", sheet(add(add(o, [0, 0.01, 0]), add(scale(up, 0.01), scale(out, 0.008))), [0, w - 0.02, 0], scale(up, h - 0.02), 0.003, out), PANE);
 }
 
 export const DEPOT = model((m) => {
@@ -117,10 +96,10 @@ export const DEPOT = model((m) => {
     const mid = (b0 + b1) / 2;
     oculus(m, end, mid, WING_EAVE + 0.06, 0.04, TRIM);
     for (const d of [-1, 1]) window(m, end, mid + d * 0.13, 0.06, { w: 0.07, h: 0.07, arch: true, frame: TRIM });
+    door(m, end, mid, DOOR, { w: 0.07, h: 0.15, frame: TRIM });
     put(m, "matte", plate(end, b0, b1, 0, 0.025, 0, 0.012), TRIM);
     for (const y of [-1.45, -1.05, -0.65, -0.25]) rooflight(m, s, y);
   }
-  office(m);
 
   // The gantry over the bays: a leg either side, splayed, a beam across,
   // its trolley and the hook hanging from it.
@@ -136,6 +115,6 @@ export const DEPOT = model((m) => {
   put(m, "matte", box(0.14, 0.22, gy - 0.05, gy + 0.05, 0.285, 0.3), CRANE);
 
   // The yard's fence, down its sides and along its front, open at the gate.
-  const [fx, fy, gate] = [1.37, 1.87, 0.5];
+  const [fx, fy, gate] = [1.45, 1.87, 0.5];
   for (const s of [-1, 1]) fence(m, [[s * fx, FRONT + 0.05], [s * fx, fy], [s * gate, fy]], FENCE);
 });

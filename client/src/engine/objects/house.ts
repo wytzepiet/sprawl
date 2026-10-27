@@ -1,5 +1,5 @@
 import type { RGB } from "../rgb";
-import { barn, box, chimney, cone, door, dormer, flowers, gablet, ground, model, pitched, post, put, shrub, window, type Built, type Cover, type Model, type Wall } from "./kit";
+import { barn, box, chimney, cone, door, dormer, flowers, gablet, ground, model, pitched, plate, post, put, shrub, window, type Built, type Cover, type Model, type Wall } from "./kit";
 import { theme } from "../theme";
 
 /**
@@ -15,8 +15,7 @@ import { theme } from "../theme";
  *
  * - The cottage: its ridge along the street, a cross gable out over the
  *   door in the middle.
- * - The dormer house: taller, two dormers to the street, a porch, a wing
- *   out the back.
+ * - The dormer house: taller, two dormers to the street, a porch.
  * - The corner house: an L, its wing's gable end to the street on the
  *   left, a cross gable over the door on the right.
  */
@@ -42,11 +41,13 @@ function body(m: Model, along: "x" | "y", x0: number, x1: number, y0: number, y1
 /** A window on the ground floor, its flower box under it. */
 const lower = (m: Model, wall: Wall, at: number) => window(m, wall, at, 0.055, { w: 0.075, h: 0.075, box: BOXES });
 
-/** The garden: lawn round the house, but for the drive; shrubs and
- *  flowers before it, either side of the drive, from `front`. */
+/** The garden: lawn round the house, but for the drive; a row of round
+ *  shrubs along the front wall, more shrubs and flowers before it, either
+ *  side of the drive, from `front`. */
 function garden(m: Model, front: number) {
   ground(m, "lawn", [[-0.48, -DRIVE, front - 0.04, 0.48], [DRIVE, 0.48, front - 0.04, 0.48], [-0.48, 0.48, -0.48, front]], LAWN, { round: 0.02 });
   for (const s of [-1, 1]) {
+    for (const x of [0.3, 0.36]) shrub(m, s * x, front + 0.025, 0.026, undefined, Math.round(x * 50) + s);
     shrub(m, s * 0.27, front + 0.09, 0.04, undefined, s + 2);
     shrub(m, s * 0.42, front + 0.06, 0.035, undefined, s + 4);
     flowers(m, s * 0.36, front + 0.22, 4, 0.055);
@@ -58,7 +59,7 @@ function shed(m: Model, x: number) {
   const [y0, y1] = [-0.46, -0.33];
   put(m, "matte", barn("x", x - 0.085, x + 0.085, y0, y1, 0.09, 0.15), SHED);
   pitched(m, "x", x - 0.085, x + 0.085, y0, y1, 0.09, 0.15, SHED_ROOF, { over: 0.02 });
-  door(m, { face: "+y", at: y1 }, x, [0.36, 0.27, 0.2], { w: 0.05, h: 0.075, frame: [0.4, 0.3, 0.22], step: false });
+  put(m, "matte", plate({ face: "+y", at: y1 }, x - 0.025, x + 0.025, 0, 0.075, 0, 0.006), [0.36, 0.27, 0.2]);
 }
 
 const cottage = (colour: RGB) => model((m) => {
@@ -84,8 +85,6 @@ const cottage = (colour: RGB) => model((m) => {
 const dormers = (colour: RGB) => model((m) => {
   const [y0, y1, eave, ridge, ridgeAt] = [-0.24, 0.14, 0.2, 0.5, -0.05];
   body(m, "x", -0.36, 0.36, y0, y1, eave, ridge);
-  // A wing out the back, lower.
-  body(m, "y", 0.04, 0.3, -0.44, y0 + 0.02, 0.17, 0.36, 0.035);
   // Two dormers in the front slope, where the roof stands this high.
   const roofAt = (y: number) => ridge - ((y - ridgeAt) * (ridge - eave)) / (y1 - ridgeAt);
   for (const s of [-1, 1]) dormer(m, { face: "+y", at: 0.1 }, s * 0.17, roofAt(0.1) + 0.012, WALL, ROOF, { w: 0.055, h: 0.06, back: 0.13, box: BOXES });
@@ -99,7 +98,6 @@ const dormers = (colour: RGB) => model((m) => {
     window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.36 }, -0.05, 0.055);
     window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.36 }, -0.05, 0.27, { w: 0.05, h: 0.05 });
   }
-  window(m, { face: "+x", at: 0.3 }, -0.34, 0.055);
   chimney(m, -0.22, -0.13, 0.6, WALL, { smoke: 0.1 });
   garden(m, y1);
   shed(m, -0.24);

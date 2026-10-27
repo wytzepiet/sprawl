@@ -14,12 +14,14 @@ import { shape, type Shape } from "./sea";
  *
  * A model's frame: its plot's middle at the origin, the street at +y, its
  * ground at z = 0; one unit a tile. Every triangle wound clockwise seen
- * from outside, as the town's are (`solid.ts`'s `mesh`).
+ * from outside, as the town's are (`solid.ts`'s `mesh`). Its +x is on the
+ * left seen from the street; a model stands that way round on side 1,
+ * mirrored on side -1 (`finishes.ts`'s `placing`).
  *
  * - Bodies: a box, a barn (walls and gable ends), a barrel shed.
- * - Roofs over them: pitched (tiles, zinc, or boards ribbed), hipped, a
+ * - Roofs over them: pitched (tiles, zinc, or boards ribbed), a
  *   lean-to off a wall, all `over` past the walls.
- * - On a wall: windows, doors, roller shutters, an awning, a sign.
+ * - On a wall: windows, doors, roller shutters, an awning.
  * - Round the plot: fences and their gates, hedges, flowers, lamps that
  *   light at night and smoke from chimneys (the town's props, `props.ts`),
  *   trees (the town's, `trees.ts`), and the ground itself in the town's
@@ -149,18 +151,6 @@ export function pitched(m: Model, along: "x" | "y", x0: number, x1: number, y0: 
   }
 }
 
-/** A hipped roof over a box's walls, `over` past them: four slopes up to
- *  a ridge along its longer side, as deep in as the shorter is half. */
-export function hipped(m: Model, x0: number, x1: number, y0: number, y1: number, eave: number, ridge: number, cover: Cover, over = 0.04) {
-  const [a0, a1, b0, b1] = [x0 - over, x1 + over, y0 - over, y1 + over];
-  const drop = over * ((ridge - eave) / (Math.min(x1 - x0, y1 - y0) / 2));
-  const run = Math.min(a1 - a0, b1 - b0) / 2;
-  const [rx0, rx1, ry0, ry1] = a1 - a0 >= b1 - b0 ? [a0 + run, a1 - run, (b0 + b1) / 2, (b0 + b1) / 2] : [(a0 + a1) / 2, (a0 + a1) / 2, b0 + run, b1 - run];
-  const z = eave - drop;
-  const solid = hull([[a0, b0, z], [a1, b0, z], [a0, b1, z], [a1, b1, z], ...([[a0, b0], [a1, b0], [a0, b1], [a1, b1]] as P[]).map(([x, y]): V => [x, y, z + 0.018]), [rx0, ry0, ridge], [rx1, ry1, ridge]]);
-  put(m, cover.finish === "tiles" ? "tiles" : "matte", cover.finish === "tiles" ? mesh(solid, (p) => [p[2] / COURSE, (p[0] + p[1]) / (COURSE * 1.4)]) : solid, cover.rgb);
-}
-
 /** A zinc sheet `t` thick on the parallelogram from `o` along `u` and
  *  `v`, up or out the way `out` is, its waves running down `v`: mapped by
  *  how many waves across `u`. */
@@ -242,7 +232,7 @@ export function window(m: Model, wall: Wall, at: number, z: number, { w = 0.06, 
   const inner = plate(wall, at - w / 2, at + w / 2, z, z + h + (arch ? 0.001 : 0), -0.002, 0.01);
   put(m, "matte", (arch ? outer.add(halfRound(wall, at, z + h, w / 2 + f, -0.004, 0.006)) : outer).subtract(arch ? inner.add(halfRound(wall, at, z + h, w / 2, -0.002, 0.01)) : inner), frame);
   put(m, "glass", arch ? plate(wall, at - w / 2, at + w / 2, z, z + h, -0.004, 0.002).add(halfRound(wall, at, z + h, w / 2, -0.004, 0.002)) : plate(wall, at - w / 2, at + w / 2, z, z + h, -0.004, 0.002), PANE);
-  const glazing = [...Array.from({ length: bars }, (_, k) => plate(wall, at - w / 2, at + w / 2, z + (h * (k + 1)) / (bars + 1) - 0.002, z + (h * (k + 1)) / (bars + 1) + 0.002, -0.002, 0.004))];
+  const glazing = Array.from({ length: bars }, (_, k) => plate(wall, at - w / 2, at + w / 2, z + (h * (k + 1)) / (bars + 1) - 0.002, z + (h * (k + 1)) / (bars + 1) + 0.002, -0.002, 0.004));
   if (w > 0.045) glazing.push(plate(wall, at - 0.002, at + 0.002, z, z + h, -0.002, 0.004));
   if (glazing.length) put(m, "matte", Solid.union(glazing), frame);
   put(m, "matte", plate(wall, at - w / 2 - f - 0.004, at + w / 2 + f + 0.004, z - f - 0.006, z - f, -0.004, 0.016), frame);
@@ -335,13 +325,6 @@ export function awning(m: Model, wall: Wall, a0: number, a1: number, z: number, 
     put(m, "matte", scallops ? valance.add(halfRound(wall, (s0 + s1) / 2, z - drop - 0.018, (s1 - s0) / 2, depth - 0.004, depth, true, 8)) : valance, rgb);
   }
 }
-
-/** A sign on a wall, its middle `at` along it, `w` across and `h` high
- *  from `z`: a board in a frame. */
-export const sign = (m: Model, wall: Wall, at: number, z: number, w: number, h: number, board: RGB, frame: RGB) => {
-  put(m, "matte", plate(wall, at - w / 2 - 0.006, at + w / 2 + 0.006, z - 0.006, z + h + 0.006, 0, 0.008), frame);
-  put(m, "matte", plate(wall, at - w / 2, at + w / 2, z, z + h, 0.004, 0.011), board);
-};
 
 // --- Up from the roof -----------------------------------------------------
 
@@ -458,7 +441,7 @@ export function crate(m: Model, x: number, y: number, z: number, s: number, wood
 /** A barrel standing at (x, y): staves, two hoops. */
 export function cask(m: Model, x: number, y: number, r: number, h: number, wood: RGB, hoop: RGB = [0.32, 0.33, 0.36]) {
   put(m, "matte", Solid.cylinder(h / 2, r * 0.88, r, 14).translate([x, y, 0]).add(Solid.cylinder(h / 2, r, r * 0.88, 14).translate([x, y, h / 2])), wood);
-  put(m, "matte", Solid.union([0.2, 0.8].map((k) => post(x, y, h * k - 0.004, 0.008, r * (k === 0.5 ? 1 : 0.97) + 0.003, 14))), hoop);
+  put(m, "matte", Solid.union([0.2, 0.8].map((k) => post(x, y, h * k - 0.004, 0.008, r * 0.97 + 0.003, 14))), hoop);
 }
 
 // --- The ground ------------------------------------------------------------
@@ -467,7 +450,7 @@ export function cask(m: Model, x: number, y: number, r: number, h: number, wood:
 export type Rect = [number, number, number, number];
 /** How fine a patch of ground is cut, so how far in each point is reads
  *  true between its corners. */
-const CELL = 0.05;
+const CELL = 0.1;
 /**
  * A patch of ground in one of the town's finishes, its grass, its
  * paving, earth or dust, lying `z` up: the rectangles `rects` together,
