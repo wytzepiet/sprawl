@@ -1,12 +1,12 @@
 /** @jsxImportSource ~ui */
 import { createMemo, createRoot, createSignal, For, Index, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { sea } from "../state/sea";
+import { sea, until, voyage } from "../state/sea";
 import { change, dayAgo, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { LOAD } from "../generated/rows";
-import { BAD, GOOD, Line, Press } from "./kit";
+import { BAD, GOOD, Line, Press, SEA } from "./kit";
 import { show } from "./sheet";
 import { PageHead, push } from "./pages";
 import type { Good, Quote } from "../generated";
@@ -159,23 +159,54 @@ export function MarketBody() {
   );
 }
 
+/** A widget's ground on the black: the page is a stack of them. */
+const TILE = "#1C1C1E";
+/** The gap between widgets, and their corners. */
+const GAP = 10;
+const CORNER = 26;
+/** The two squares' height: the page whole above the dock on a laptop. */
+const BOX = 132;
+
 /** A number to set with a tap either side. */
 function Stepper(props: { value: string; less: () => void; more: () => void }) {
   const Side = (p: { d: string; onTap: () => void }) => (
-    <Press w={36} h={36} round={18} align="center" justify="center" onTap={p.onTap}>
-      <Line d={p.d} size={14} width={2.6} />
+    <Press w={42} h={42} round={21} align="center" justify="center" onTap={p.onTap}>
+      <Line d={p.d} size={14} width={2.8} />
     </Press>
   );
   return (
-    <box dir="row" align="center" h={46} pad={5} round={23} fill="ink/0.14">
+    <box dir="row" align="center" h={54} pad={6} round={27} fill={TILE}>
       <Side d="M5 12h14" onTap={props.less} />
-      <box minW={30} align="center"><text serif size={16}>{props.value}</text></box>
+      <box minW={28} align="center"><text serif size={19}>{props.value}</text></box>
       <Side d="M5 12h14M12 5v14" onTap={props.more} />
     </box>
   );
 }
 
-/** A good's page. */
+/** A ring, `share` of it drawn round from the top, the rest faint: a
+ *  countdown's face. */
+function Ring(props: { share: number; size: number; color: string }) {
+  const STEPS = 40;
+  const r = () => props.size / 2 - 3;
+  const at = (k: number) => [props.size / 2 + r() * Math.sin((k / STEPS) * Math.PI * 2), props.size / 2 - r() * Math.cos((k / STEPS) * Math.PI * 2)];
+  const piece = (k: number, color: string) => {
+    const [[ax, ay], [bx, by]] = [at(k), at(k + 1)];
+    return <box at={{ left: 0, top: 0 }} w={props.size} h={props.size} round={3} seg={[ax, ay, bx, by]} fill={color} />;
+  };
+  return (
+    <box w={props.size} h={props.size}>
+      <box at={{ left: 0, top: 0 }} w={props.size} h={props.size} round={props.size / 2} stroke={[6, `${props.color}38`]} />
+      <Index each={Array.from({ length: Math.round(props.share * STEPS) })}>{(_, k) => piece(k, props.color)}</Index>
+    </box>
+  );
+}
+
+/**
+ * A good's page, as a stack of widgets, each one thing: its price and its
+ * line; what the depots hold of it; where the price stands in the world's
+ * band; when a box bought now lands; and Buy and Sell so many packages,
+ * the buttons their prices.
+ */
 function Page(props: { good: Good }) {
   const { send, growth } = useGame();
   const q = () => quoteOf(props.good)!;
@@ -185,83 +216,108 @@ function Page(props: { good: Good }) {
   const shown = () => (week() ? q().history : q().history.slice(-25));
   const trade = (out: boolean) => send({ type: "Trade", data: { good: props.good, packages: n(), out } });
   const cost = () => total(q(), n(), false);
-  const harbour = () => home() !== null;
-  const range = () => {
-    const pad = (q().ceiling - q().floor) * 0.08;
-    return [q().floor - pad, q().ceiling + pad];
-  };
-  const stock = () => held().get(props.good);
+  const ferry = () => sea.sailings.find((s) => s.harbour === home());
   const accent = () => glow(props.good);
+  const stock = () => held().get(props.good);
+  // Where today's price stands between what the world buys and sells at.
+  const share = () => Math.max(0, Math.min(1, (q().price - q().floor) / Math.max(1e-9, q().ceiling - q().floor)));
+  const shelf = (v: number) => Math.max(0, Math.min(1, v / Math.max(1, stock()?.cap ?? 1)));
+  const [shelfW, setShelfW] = createSignal(0);
   return (
-    <box pad={{ bottom: 14 }} gap={10}>
+    <box pad={{ x: 12, bottom: 14 }} gap={GAP}>
       <PageHead>
-        <Tile good={props.good} />
-        <text size={17} weight={700} grow={1} ink={accent()}>{named(props.good)}</text>
+        <text size={17} weight={700} grow={1}>{named(props.good)}</text>
+        <box dir="row" pad={3} round={16} fill={TILE}>
+          <For each={[false, true]}>
+            {(wk) => (
+              <Press h={26} pad={{ x: 12 }} round={13} justify="center" fill={week() === wk ? "ink/0.2" : undefined} onTap={() => setWeek(wk)}>
+                <text size={12.5} weight={600} ink={week() === wk ? "ink" : "ink/0.55"}>{wk ? "Week" : "Day"}</text>
+              </Press>
+            )}
+          </For>
+        </box>
       </PageHead>
-      <box pad={{ x: 16 }} gap={12}>
-        {/* The price now, big, how it moved, and the week or day behind it. */}
+
+      {/* The price: a big number and its line. */}
+      <box pad={{ x: 18, top: 16, bottom: 12 }} round={CORNER} fill={TILE} gap={6}>
         <box dir="row" align="end" gap={8}>
-          <text serif size={40} ink={accent()}>{money(each(props.good, q().price))}</text>
-          <box grow={1} pad={{ bottom: 7 }}>
-            <text size={13} weight={600} soft>{percent(change(q()))} today</text>
-          </box>
-          <box dir="row" gap={12} pad={{ bottom: 7 }}>
-            <For each={[false, true]}>
-              {(wk) => (
-                <box onTap={() => setWeek(wk)}>
-                  <text size={13} weight={600} ink={week() === wk ? "ink" : "ink/0.4"}>{wk ? "Week" : "Day"}</text>
-                </box>
-              )}
-            </For>
-          </box>
+          <text serif size={44} ink={accent()}>{money(each(props.good, q().price))}</text>
+          <box grow={1} pad={{ bottom: 8 }}><text size={14} weight={700} ink={`${accent()}bb`}>coins</text></box>
+          <box pad={{ bottom: 8 }}><text size={14} weight={700} ink={tint(change(q()))}>{percent(change(q()))}</text></box>
         </box>
         <box onSize={(x) => setW(x)}>
           <Show when={w() > 0}>
-            <Chart history={shown().length > 1 ? shown() : [q().price, q().price]} lo={range()[0]} hi={range()[1]} w={w() - 6} h={140} thick={3} color={accent()} />
+            <Chart history={shown().length > 1 ? shown() : [q().price, q().price]} lo={Math.min(...shown(), q().price) - 0.02} hi={Math.max(...shown(), q().price) + 0.02} w={w() - 6} h={96} thick={3} color={accent()} />
           </Show>
         </box>
-        {/* The band the world keeps it in: the chart's bottom and top. */}
         <box dir="row">
-          <text size={12} soft grow={1}>World buys at <text serif>{money(each(props.good, q().floor))}</text></text>
-          <text size={12} soft>World sells at <text serif>{money(each(props.good, q().ceiling))}</text></text>
-        </box>
-
-        <Show when={stock()}>{(s) => <Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} />}</Show>
-
-        {/* So many packages, bought or sold at once. */}
-        <box dir="row" align="center" gap={8}>
-          <Stepper value={`${n()}`} less={() => setN(n() > LOAD ? n() - LOAD : Math.max(1, n() - 1))} more={() => setN(Math.min(DECK, n() < LOAD ? n() + 1 : n() + LOAD))} />
-          <Press grow={1} dir="row" align="center" justify="center" gap={8} h={46} round={23} fill={`${accent()}3d`} opacity={harbour() && growth().treasury >= cost() ? 1 : 0.4} onTap={() => harbour() && growth().treasury >= cost() && trade(false)}>
-            <text size={15} weight={700} ink={accent()}>Buy</text>
-            <text serif size={16} ink={accent()}>{money(cost())}</text>
-          </Press>
-          <Press grow={1} dir="row" align="center" justify="center" gap={8} h={46} round={23} fill="ink/0.14" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && trade(true)}>
-            <text size={15} weight={700}>Sell</text>
-            <text serif size={16}>{money(total(q(), n(), true))}</text>
-          </Press>
+          <text size={11.5} weight={600} ink="ink/0.35" grow={1}>{week() ? "a week ago" : "a day ago"}</text>
+          <text size={11.5} weight={600} ink="ink/0.35">now</text>
         </box>
       </box>
-    </box>
-  );
-}
 
-/** A good's shelf: how full, and what is on its way drawn faint beyond it. */
-function Shelf(props: { good: Good; level: number; cap: number; incoming: number }) {
-  const share = (v: number) => Math.max(0, Math.min(1, v / props.cap));
-  const [w, setW] = createSignal(0);
-  const color = () => glow(props.good);
-  return (
-    <box pad={{ y: 6 }} gap={8}>
-      <box dir="row" align="center" gap={6}>
-        <text serif size={20}>{Math.floor(props.level)}</text>
-        <text size={12.5} soft grow={1}>of {props.cap} held</text>
-        <Show when={props.incoming > 0}>
-          <text size={12.5} weight={600} ink={color()}>+{Math.round(props.incoming)} coming</text>
-        </Show>
+      {/* Two squares: the depots, and the world's band. */}
+      <box dir="row" gap={GAP}>
+        <box grow={1} h={BOX} pad={16} round={CORNER} fill={TILE} gap={4}>
+          <text size={13} weight={600} ink="ink/0.5">In your depots</text>
+          <text serif size={34}>{Math.floor(stock()?.level ?? 0).toLocaleString()}</text>
+          <box grow={1} />
+          <box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)}>
+            <box at={{ left: 0, top: 0 }} w={shelfW() * shelf((stock()?.level ?? 0) + (stock()?.incoming ?? 0))} h={14} round={7} fill={`${accent()}59`} />
+            <box at={{ left: 0, top: 0 }} w={shelfW() * shelf(stock()?.level ?? 0)} h={14} round={7} fill={accent()} />
+          </box>
+          <box dir="row">
+            <text size={12} weight={600} ink="ink/0.45" grow={1}>{stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</text>
+            <Show when={(stock()?.incoming ?? 0) > 0}>
+              <text size={12} weight={600} ink={accent()}>+{Math.round(stock()!.incoming)} coming</text>
+            </Show>
+          </box>
+        </box>
+        <box grow={1} h={BOX} pad={16} round={CORNER} fill={TILE} dir="row" gap={12}>
+          <box grow={1} justify="between">
+            <box>
+              <text size={12} weight={600} ink="ink/0.45">World sells</text>
+              <text serif size={20}>{money(each(props.good, q().ceiling))}</text>
+            </box>
+            <text size={13} weight={700} ink={accent()}>{share() > 0.66 ? "Dear" : share() < 0.33 ? "Cheap" : "Fair"}</text>
+            <box>
+              <text size={12} weight={600} ink="ink/0.45">World buys</text>
+              <text serif size={20}>{money(each(props.good, q().floor))}</text>
+            </box>
+          </box>
+          {/* The band upright, the price a dot on it. */}
+          <box w={18} h={BOX - 32} round={9} fill="ink/0.12">
+            <box at={{ left: 0, top: (BOX - 32) * (1 - share()) }} w={18} h={(BOX - 32) * share()} round={9} fill={`${accent()}66`} />
+            <box at={{ left: -3, top: Math.min(BOX - 56, Math.max(0, (BOX - 32) * (1 - share()) - 12)) }} w={24} h={24} round={12} fill="white" />
+          </box>
+        </box>
       </box>
-      <box h={14} round={7} fill="ink/0.14" onSize={(x) => setW(x)}>
-        <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
-        <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
+
+      {/* When a box bought now lands: the ferry it rides. */}
+      <Show when={ferry()}>
+        {(f) => (
+          <box dir="row" align="center" gap={12} h={64} pad={{ left: 12, right: 22 }} round={32} fill={TILE}>
+            <Ring share={voyage(f())} size={42} color={SEA} />
+            <box grow={1}>
+              <text size={14} weight={700} ink={SEA}>{f().berthed ? "Ferry at the ramp" : "Bought now, lands in"}</text>
+              <text size={12} ink="ink/0.5">{f().packages} of {f().deck} on its deck</text>
+            </box>
+            <text serif size={32} ink={SEA}>{until(f().berthed ? f().departs : f().lands)}</text>
+          </box>
+        )}
+      </Show>
+
+      {/* The trade: how many, and what it comes to either way. */}
+      <box dir="row" align="center" gap={8} pad={{ top: 4 }}>
+        <Stepper value={`${n()}`} less={() => setN(n() > LOAD ? n() - LOAD : Math.max(1, n() - 1))} more={() => setN(Math.min(DECK, n() < LOAD ? n() + 1 : n() + LOAD))} />
+        <Press grow={1} h={54} round={27} align="center" justify="center" fill={accent()} opacity={home() !== null && growth().treasury >= cost() ? 1 : 0.4} onTap={() => home() !== null && growth().treasury >= cost() && trade(false)}>
+          <text size={12} weight={700} ink="#000000b0">Buy</text>
+          <text serif size={19} ink="#000">{money(cost())}</text>
+        </Press>
+        <Press grow={1} h={54} round={27} align="center" justify="center" fill={TILE} opacity={home() !== null ? 1 : 0.4} onTap={() => home() !== null && trade(true)}>
+          <text size={12} weight={700} ink="ink/0.6">Sell</text>
+          <text serif size={19}>{money(total(q(), n(), true))}</text>
+        </Press>
       </box>
     </box>
   );
