@@ -99,7 +99,13 @@ impl World {
             // their first wake drives them in from beyond the frontier.
             // Nobody materialises out of thin air — they arrive the way
             // everyone arrives, by road. Nor into a home late with its
-            // bread, which the last household left (`give_up`).
+            // bread or an outing, which the last household left (`give_up`).
+            // A park standing is somewhere to go for every home that had
+            // nowhere.
+            if kind == model::BuildingKind::Park {
+                let homes = self.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref h) if h.waits.iter().any(|w| w.what == Wanted::Outing))).map(|e| e.id);
+                self.waiting.extend(homes.collect::<Vec<_>>());
+            }
             let rooms = if self.map.building(b).and_then(late).is_some() { 0 } else { bp.homes as usize };
             for _ in self.map.household(b).len()..rooms {
                 touched.push(self.move_in(b));
@@ -254,7 +260,7 @@ impl World {
         }
     }
 
-    /// A home late `LATE_MS` with its bread, its pin's ring full: its
+    /// A home late `LATE_MS` with its bread or an outing, its pin's ring full: its
     /// household moves out, and their desks are free for whoever else
     /// lives nearest. Settlers come again once it is filled (`settle`).
     pub fn give_up(&mut self, home: EntityId, now: GameTime) {
@@ -314,10 +320,10 @@ impl World {
     }
 }
 
-/// Since when a building has waited late on a shelf of its own: a
-/// home's pantry. Not a site's materials, which it stood without.
+/// Since when a home has waited late on what its people live on: its
+/// pantry, or an outing. Not a site's materials, which it stood without.
 fn late(b: &Building) -> Option<GameTime> {
-    b.waits.iter().filter(|w| matches!(w.what, Wanted::Good(g) if b.stocks.contains_key(&g))).filter_map(|w| w.late).min()
+    b.waits.iter().filter(|w| matches!(w.what, Wanted::Good(g) if b.stocks.contains_key(&g)) || w.what == Wanted::Outing).filter_map(|w| w.late).min()
 }
 
 /// The drive between two buildings in hours, as the road roughly runs:

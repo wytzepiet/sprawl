@@ -279,11 +279,14 @@ pub enum BuildingKind {
     /// The harbour grown: a crane on a deep quay, where a container ship
     /// berths. Placed by the mayor, with its back to the sea.
     Port,
+    /// Lawns, paths and trees: where people go out to, an hour or two now
+    /// and then, and are glad of it. Placed by the mayor.
+    Park,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 20] = [
+    pub const ALL: [BuildingKind; 21] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -304,6 +307,7 @@ impl BuildingKind {
         BuildingKind::OilWell,
         BuildingKind::Refinery,
         BuildingKind::Port,
+        BuildingKind::Park,
     ];
 }
 
@@ -349,6 +353,9 @@ pub struct Building {
     /// Lorries bought for it beyond the one its row comes with.
     #[serde(default)]
     pub lorries: u8,
+    /// Vans bought for it beyond the two its row comes with.
+    #[serde(default)]
+    pub vans: u8,
     /// How many of its jobs are held (`Map::staffed`): a works far from
     /// the town's homes may stand with none.
     #[serde(default)]
@@ -400,6 +407,9 @@ pub enum Why {
     OnTheWay(#[ts(type = "number")] EntityId),
     /// A depot has it and no van there is free.
     NoVan(#[ts(type = "number")] EntityId),
+    /// Landed on the quay, and no lorry is on its way for it: the nearest
+    /// depot, its lorries all out.
+    NoLorry(#[ts(type = "number")] EntityId),
     /// None in town; some is coming, where the nearest is now: a ship,
     /// the quay, a lorry.
     Coming(#[ts(type = "number")] EntityId),
@@ -417,6 +427,9 @@ pub enum Why {
 pub enum Wanted {
     Good(Good),
     Hands,
+    /// Somewhere to go out to: a home whose people have had no outing
+    /// for days.
+    Outing,
 }
 
 /// A building's door: its tile a drive runs onto, and the street tile the
@@ -510,6 +523,7 @@ impl Building {
             outgoing: Vec::new(),
             lifts: Vec::new(),
             lorries: 0,
+            vans: 0,
             hands: 0,
             waits: Vec::new(),
             land: Vec::new(),
@@ -651,16 +665,16 @@ impl Good {
     pub const ALL: [Good; 11] = [Good::Bread, Good::Fuel, Good::Timber, Good::Stone, Good::Grain, Good::Cement, Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude];
 
     /// Units one package holds: the thing that is traded, carried and
-    /// stacked, whole (docs/plan-goods.md §Goods you can see). A crate is
-    /// twenty-five meals' worth, a pallet of drums ten tanks, a bundle
-    /// or a pallet of blocks a house's timber or four tiles of road.
+    /// stacked, whole (docs/plan-goods.md §Goods you can see). Small, so
+    /// a town's goods are many trips, and its roads are busy with them: a
+    /// crate is ten meals' worth, a pallet of drums five tanks, a bundle
+    /// or a pallet of blocks half a house's timber or two tiles of road.
     pub fn per_package(self) -> f64 {
         match self {
-            Good::Bread | Good::Grain => 25.0,
-            Good::Fuel | Good::Crude => 10.0,
-            Good::Timber | Good::Stone | Good::Cement | Good::Ore | Good::Coal => 4.0,
-            Good::Steel => 2.0,
-            Good::Machinery => 1.0,
+            Good::Bread | Good::Grain => 10.0,
+            Good::Fuel | Good::Crude => 5.0,
+            Good::Timber | Good::Stone | Good::Cement | Good::Ore | Good::Coal => 2.0,
+            Good::Steel | Good::Machinery => 1.0,
         }
     }
 
@@ -1148,8 +1162,8 @@ pub enum ClientMessage {
     DespawnAllCars,
     /// The kind the town's labs work at next (`research::choose`).
     Research { kind: BuildingKind },
-    /// Buy a depot another lorry from the world.
-    BuyLorry { #[ts(type = "number")] depot: EntityId },
+    /// Buy a depot another lorry, or another van, from the world.
+    Buy { #[ts(type = "number")] depot: EntityId, role: CarRole },
     /// The card of one thing on the map, asked for again while it is open.
     Card(#[ts(type = "number")] EntityId),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.

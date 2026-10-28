@@ -103,15 +103,7 @@ fn waiting_for(world: &World, depot: EntityId, lorry: EntityId) -> Option<Entity
             let b = world.map.building(h)?;
             let p = world.map.objects.get(h)?.position?;
             let fits = b.pad.iter().filter(|t| for_depot(world, t, depot) && room(world, depot, t.good, &[]) > 0).count() as u32;
-            let coming: u32 = world.map
-                .objects
-                .iter()
-                .filter(|e| e.id != lorry)
-                .filter_map(|e| match e.object {
-                    GameObject::Car(ref c) if c.role == CarRole::Truck && c.trip.as_ref().is_some_and(|t| t.destination == h) => Some(LOAD.saturating_sub(c.cargo.iter().filter(|t| !t.outbound).count() as u32)),
-                    _ => None,
-                })
-                .sum();
+            let coming = coming_for(world, h) - world.map.car(lorry).filter(|c| c.trip.as_ref().is_some_and(|t| t.destination == h)).map_or(0, |c| room_aboard(c));
             (fits > coming).then_some(((p.x - at.x).abs() + (p.y - at.y).abs(), h))
         })
         .min()
@@ -413,26 +405,49 @@ pub fn sea(world: &World) -> Sea {
     Sea { shipments, sailings, lanes }
 }
 
-/// What a lorry costs from the world: a vehicle is an import like any
-/// other, paid as it is bought.
-pub const LORRY_PRICE: f64 = 40.0;
-/// Lorries a depot can keep beyond its own: its yard has eight docks, and
-/// its vans want two of them.
-pub const MORE_LORRIES: u8 = 3;
+/// Packages the lorries on their way to a harbour have room for.
+pub fn coming_for(world: &World, harbour: EntityId) -> u32 {
+    world.map
+        .objects
+        .iter()
+        .filter_map(|e| match e.object {
+            GameObject::Car(ref c) if c.role == CarRole::Truck && c.trip.as_ref().is_some_and(|t| t.destination == harbour) => Some(room_aboard(c)),
+            _ => None,
+        })
+        .sum()
+}
 
-/// Buy the depot another lorry from the world, while its yard has a dock
-/// for one and the treasury can pay. It stands in the yard at once, and
-/// goes about the depot's work.
-pub fn buy_lorry(world: &mut World, events: &mut EventQueue, depot: EntityId, now: GameTime) {
+/// Packages a lorry has room for, what it brings in.
+fn room_aboard(c: &model::Car) -> u32 {
+    LOAD.saturating_sub(c.cargo.iter().filter(|t| !t.outbound).count() as u32)
+}
+
+/// What a lorry or a van costs from the world: a vehicle is an import
+/// like any other, paid as it is bought.
+pub const LORRY_PRICE: f64 = 40.0;
+/// Vehicles a depot can keep beyond its own lorry and two vans: its yard
+/// has eight docks.
+pub const MORE_LORRIES: u8 = 5;
+
+/// Buy the depot another lorry, to fetch, or another van, to deliver,
+/// from the world, while its yard has a dock for one and the treasury
+/// can pay. It stands in the yard at once, and goes about the depot's
+/// work.
+pub fn buy(world: &mut World, events: &mut EventQueue, depot: EntityId, role: CarRole, now: GameTime) {
     let treasury = world.treasury;
     let Some(b) = world.map.building_mut(depot) else { return };
-    if !model::blueprint::depot(b.kind) || b.lorries >= MORE_LORRIES || treasury < LORRY_PRICE {
+    if !model::blueprint::depot(b.kind) || b.lorries + b.vans >= MORE_LORRIES || treasury < LORRY_PRICE {
         return;
     }
-    b.lorries += 1;
+    match role {
+        CarRole::Truck => b.lorries += 1,
+        CarRole::Van => b.vans += 1,
+        _ => return,
+    }
     crate::economy::bought(world, depot, LORRY_PRICE, now);
     world.map.stable(depot);
     call_lorries(world, events);
+    crate::calls::dispatch(world, events, now);
 }
 
 /// The sea as the server has it, for reading: the summary the client gets,

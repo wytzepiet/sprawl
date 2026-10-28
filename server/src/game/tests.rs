@@ -19,6 +19,8 @@ pub(crate) enum Do {
     Raze(GridCoord),
     /// Another lorry for a depot.
     Lorry(EntityId),
+    /// Another van for a depot.
+    Van(EntityId),
 }
 /// The hand's act done, as a player's command is; a building refused is
 /// a test gone wrong.
@@ -27,7 +29,8 @@ pub(crate) fn does(game: &mut Game, d: Do) {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
         Do::Raze(at) => ClientMessage::Raze { building: game.world.map.occupied[&(at.x, at.y)] },
-        Do::Lorry(depot) => ClientMessage::BuyLorry { depot },
+        Do::Lorry(depot) => ClientMessage::Buy { depot, role: model::CarRole::Truck },
+        Do::Van(depot) => ClientMessage::Buy { depot, role: model::CarRole::Van },
     };
     game.command(PLAYER, message);
     if let Do::Place(kind, at) = d {
@@ -204,6 +207,8 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     let lunch = build(&mut world, 64, BuildingKind::Shop);
     // Fuel, or every few days the town goes without.
     build(&mut world, 18, BuildingKind::GasStation);
+    // Somewhere to go out to, or by the third day they have had none.
+    build(&mut world, 40, BuildingKind::Park);
 
     let mut game = game(world);
     // Fourteen households in the two blocks, and three desks over that
@@ -320,9 +325,9 @@ pub(crate) fn town_mix() -> Vec<BuildingKind> {
     use BuildingKind::*;
     vec![
         House, Apartment, Lab, House, Apartment, Shop, House, Lab, Apartment, House,
-        House, Apartment, House, Shop, Lab, House, Apartment, House, House, Bakery,
+        House, Apartment, House, Shop, Lab, House, Apartment, Park, House, Bakery,
         Apartment, House, GasStation, Apartment, Lab, House, Supermarket, Apartment, House, Lab,
-        Farm, House, Apartment, Depot, House, Apartment, House, Apartment, House, Apartment,
+        Farm, House, Apartment, Depot, House, Apartment, Park, Apartment, House, Apartment,
     ]
 }
 /// A street drawn to a house that was standing dormant moves people in.
@@ -743,9 +748,10 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     build(&mut world, SAWMILL_X + 20, BuildingKind::Farm);
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
-    // street beside it; and, as a player reads the pins of a depot whose
-    // vans are all out, a lorry more for the one with fewest, once a
-    // dozen calls stand unanswered.
+    // street beside it; and, as a player reads the pins, a van more for
+    // the depot with fewest vehicles once a dozen calls stand unanswered,
+    // and a lorry more for the depot the quay's late pins point at once
+    // half a deck waits there with no lorry coming.
     let hand = |world: &World, day: u64| -> Steps {
         let x = 112 + 4 * (day as i32 - 1);
         let at = |x, y| GridCoord { x, y };
@@ -756,7 +762,14 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             Do::Step(Tool::Street, at(x + 2, -2), at(x + 2, -3)),
         ];
         if world.calls.iter().filter(|c| c.answered_by.is_none()).count() >= 12 {
-            steps.extend(world.map.depots().into_iter().min_by_key(|(_, b)| b.lorries).map(|(id, _)| Do::Lorry(id)));
+            steps.extend(world.map.depots().into_iter().min_by_key(|(_, b)| b.lorries + b.vans).map(|(id, _)| Do::Van(id)));
+        }
+        let quay: Vec<EntityId> = world.map.harbours.keys().filter_map(|&h| world.map.building(h)).flat_map(|b| b.waits.iter().filter_map(|w| match w.why {
+            Some(model::Why::NoLorry(d)) => Some(d),
+            _ => None,
+        })).collect();
+        if quay.len() >= map::sea::DECK / 2 {
+            steps.push(Do::Lorry(quay[0]));
         }
         steps
     };
@@ -939,6 +952,8 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     build(&mut world, 3, BuildingKind::House);
     let farm = build(&mut world, 10, BuildingKind::Farm);
     let depot = build(&mut world, 30, BuildingKind::Depot);
+    // An evening out, or the hands leave before the harvest.
+    build(&mut world, 40, BuildingKind::Park);
     let mut game = game(world);
     game.world.treasury = 1000.0;
     let yard = |world: &World| world.map.building(farm).unwrap().stocks[&Good::Grain].level;
@@ -1118,7 +1133,7 @@ fn the_opening_from_the_harbour() {
 
     // A second lorry, bought from the world: the two fetch the rest.
     let before = game.world.treasury;
-    game.command(PLAYER, ClientMessage::BuyLorry { depot });
+    game.command(PLAYER, ClientMessage::Buy { depot, role: model::CarRole::Truck });
     assert_eq!(lorries_of(&game.world, depot).len(), 2, "no second lorry");
     assert!((before - game.world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
     let until = game.now + day / 4;
@@ -1178,12 +1193,13 @@ fn the_opening_from_the_harbour() {
 /// One lorry, its depot a short street from the harbour, fetches the
 /// starter pack: each load is lifted off in the yard and the lorry is
 /// off again once the forklift is done, and the whole pack is home
-/// within eight hours of the first ferry sailing. A round trip is two
-/// drives, each ending in a backing into a dock; it once also stood
-/// ten minutes at the depot, a van's unloading, and the pack took more
-/// than eight hours.
+/// within fourteen hours of the first ferry sailing: ten loads, more
+/// than one lorry keeps up with, so a second is the opening's first
+/// want. A round trip is two drives, each ending in a backing into a
+/// dock; it once also stood ten minutes at the depot, a van's
+/// unloading, and every load took longer.
 #[test]
-fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
+fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
     let mut world = street();
     let harbour = harbour_of(&world);
     let x = HARBOUR_X - 12;
@@ -1199,7 +1215,7 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
     let (sailed, hour) = (game.now, day / 24);
     let left = |w: &World| crate::haul::packages(w).iter().filter(|(t, ..)| !t.outbound).count();
     let mut parked_home = None;
-    while left(&game.world) > 0 && game.step_to(sailed + 8 * hour) {
+    while left(&game.world) > 0 && game.step_to(sailed + 14 * hour) {
         let (c, now) = (car_of(&game.world, lorry), game.now);
         match (c.trip.is_none() && game.world.map.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
@@ -1210,7 +1226,7 @@ fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
             _ => {}
         }
     }
-    assert_eq!(left(&game.world), 0, "{} packages still out after eight hours", left(&game.world));
+    assert_eq!(left(&game.world), 0, "{} packages still out after fourteen hours", left(&game.world));
     eprintln!("the starter pack home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }
 
@@ -1228,7 +1244,7 @@ fn a_lorry_scrapped_on_its_way_leaves_its_load() {
     let depot = world.map.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
     world.map.orient(depot);
     let mut game = game(world);
-    crate::haul::buy_lorry(&mut game.world, &mut game.events, depot, 0);
+    crate::haul::buy(&mut game.world, &mut game.events, depot, model::CarRole::Truck, 0);
     let ferry = game.world.ferry_of(harbour).unwrap();
     let day = DAY_MS as u64;
     while car_of(&game.world, ferry).spot.is_none() && game.step_to(day) {}

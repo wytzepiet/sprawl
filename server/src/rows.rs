@@ -30,7 +30,7 @@ mod tests {
             let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
             let opens: Vec<_> = b.opens.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let opens = if opens.is_empty() { "{}".into() } else { format!("{{ {} }}", opens.join(", ")) };
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, jobs: {}, day: {}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.jobs, (b.jobs as f64 * model::blueprint::shift_hours(kind) * b.pace * 100.0).round() / 100.0, b.forklifts);
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, jobs: {}, day: {}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.jobs, (model::blueprint::hand_hours(kind) * b.pace * 100.0).round() / 100.0, b.forklifts);
         }
         let packages: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));

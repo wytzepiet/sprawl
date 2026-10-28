@@ -100,7 +100,7 @@ pub fn lump(kind: BuildingKind) -> f64 {
     if farm(kind) {
         crop(kind, map::fields::capacity(kind) as usize)
     } else if blueprint(kind).makes.is_some() {
-        blueprint(kind).jobs as f64 * blueprint(kind).pace
+        model::blueprint::crew(kind) as f64 * blueprint(kind).pace
     } else {
         0.0
     }
@@ -575,16 +575,17 @@ mod tests {
         let shop = world.map.place_on_street(at(4), Shop).unwrap();
         let depot = world.map.place_on_street(at(20), Depot).unwrap();
         world.treasury = 100.0;
-        take(&mut world, shop, Good::Bread, 25.0);
+        let per = Good::Bread.per_package();
+        take(&mut world, shop, Good::Bread, per);
         let load = loaded(&mut world, depot, Good::Bread, 1) as f64 * Good::Bread.per_package();
         assert_eq!(delivered(&mut world, shop, Good::Bread, load), 0.0, "the load did not fit");
         assert_eq!(world.treasury, 100.0, "a delivery inside the town moved money");
         assert!(world.lumps.is_empty(), "a delivery inside the town landed coins");
         assert_eq!(shelf(&world, shop, Good::Bread).short(), 0.0, "the shelf is full");
-        assert_eq!(shelf(&world, depot, Good::Bread).short(), 25.0, "the depot's shelf went down by the same");
+        assert_eq!(shelf(&world, depot, Good::Bread).short(), per, "the depot's shelf went down by the same");
         // What does not fit, whole, comes back.
-        take(&mut world, shop, Good::Bread, 10.0);
-        assert_eq!(delivered(&mut world, shop, Good::Bread, 25.0), 25.0);
+        take(&mut world, shop, Good::Bread, per / 2.0);
+        assert_eq!(delivered(&mut world, shop, Good::Bread, per), per);
         // A crate lands at the harbour, which here is the depot: paid for.
         landed(&mut world, depot, Good::Bread, import(Good::Bread, 100.0), 0);
         assert!((100.0 - world.treasury - import(Good::Bread, 100.0)).abs() < 1e-9, "the crates cost {}", 100.0 - world.treasury);

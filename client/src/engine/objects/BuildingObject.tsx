@@ -15,6 +15,7 @@ import { DEPOT } from "./depot";
 import { SHOP } from "./shop";
 import { HOUSES } from "./house";
 import { FARM } from "./farm";
+import { PARK } from "./park";
 import { QUARRY } from "./quarry";
 import { BARN_DOOR, SAWMILL } from "./sawmill";
 import { BAKERY, CEMENT, COLLIERY, MACHINE, MINE, REFINERY, STEELWORKS, WELL } from "./works";
@@ -48,6 +49,7 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
   if (kind === "Shop") return ["shop", SHOP, -1];
   if (kind === "Depot") return ["depot", DEPOT, 1];
   if (kind === "Farm") return ["farm", FARM, odd];
+  if (kind === "Park") return ["park", PARK, odd];
   if (kind === "Sawmill") return ["sawmill", SAWMILL, gate];
   if (kind === "Quarry") return ["quarry", QUARRY, gate];
   const works: Partial<Record<Building["kind"], [string, Built]>> = { Mine: ["mine", MINE], Colliery: ["colliery", COLLIERY], CementWorks: ["cement", CEMENT], Steelworks: ["steelworks", STEELWORKS], Factory: ["machine", MACHINE], OilWell: ["well", WELL], Refinery: ["refinery", REFINERY], Bakery: ["bakery", BAKERY] };

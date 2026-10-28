@@ -58,6 +58,10 @@ lifts: Array<Lift>,
  */
 lorries: number, 
 /**
+ * Vans bought for it beyond the two its row comes with.
+ */
+vans: number, 
+/**
  * How many of its jobs are held (`Map::staffed`): a works far from
  * the town's homes may stand with none.
  */

@@ -16,6 +16,7 @@
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
  *   bun run act lorry 79                another lorry for depot #79
+ *   bun run act van 79                  another van for depot #79
  *   bun run act research Farm           the labs set to learning the farm;
  *                                       alone, what is open and being learned
  *   bun run act undo                    the hand's last road laid or taken up,
@@ -206,7 +207,10 @@ for (const line of lines) {
       else report = [`open: ${learned.open.join(", ")}`, `next: ${learned.next.join(", ")}, ${learned.cost} researcher-hours each`, learned.at ? `learning ${learned.at}: ${learned.done} of ${learned.of}` : "learning nothing"];
       break;
     case "lorry":
-      send({ type: "BuyLorry", data: { depot: Number(args[0]) } });
+      send({ type: "Buy", data: { depot: Number(args[0]), role: "Truck" } });
+      break;
+    case "van":
+      send({ type: "Buy", data: { depot: Number(args[0]), role: "Van" } });
       break;
     case "undo":
       send({ type: "Undo" });

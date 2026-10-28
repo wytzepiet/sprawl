@@ -28,6 +28,11 @@ pub enum Need {
     Eat,
     /// The tank. Used by the mile rather than the hour, and refilled at a pump.
     Fuel,
+    /// Going out: an hour or so a day somewhere that is not home or work,
+    /// a park's lawns. What a free evening is for, and what sends a town
+    /// out on its roads when the shifts are done. Never what keeps anyone
+    /// from work.
+    Outing,
 }
 
 impl Need {
@@ -43,10 +48,10 @@ impl Need {
     }
 
     /// Baseline first, so ties fall to staying put.
-    pub const ALL: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Fuel];
+    pub const ALL: [Need; 6] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Fuel, Need::Outing];
     /// The needs a person carries. The tank is the car's, though its
     /// driver is the one who decides to stop for it.
-    pub const OWN: [Need; 4] = [Need::Home, Need::Work, Need::Rest, Need::Eat];
+    pub const OWN: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Outing];
     /// The needs a car carries: used by the tile, and weighed by whoever
     /// drives it.
     pub const DRIVEN: [Need; 1] = [Need::Fuel];
@@ -84,6 +89,8 @@ impl Need {
             // owed ten hours after the last, and lunch out is worth the
             // drive about six hours after breakfast.
             Need::Eat => 0.05,
+            // An hour a day.
+            Need::Outing => 1.0 / 23.0,
         }
     }
 
@@ -93,6 +100,8 @@ impl Need {
             Need::Work | Need::Home => 24.0 * HOUR as f64,
             Need::Rest => 12.0 * HOUR as f64,
             Need::Eat => 0.5 * HOUR as f64,
+            // Three days' worth: a week without one shows (`waits.rs`).
+            Need::Outing => 3.0 * HOUR as f64,
             // What an empty tank costs: the afternoon it takes to be towed
             // and filled. A near-empty tank then beats an evening in and
             // loses to a shift, as it should.
@@ -104,7 +113,7 @@ impl Need {
     /// tank, an hour of labour. A shelf counts them.
     pub fn unit(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Rest => HOUR as f64,
+            Need::Work | Need::Home | Need::Rest | Need::Outing => HOUR as f64,
             Need::Eat | Need::Fuel => self.cap(),
         }
     }
@@ -120,7 +129,7 @@ impl Need {
             Need::Work => 0.5 * cap,
             Need::Home => 0.7 * cap,
             // Everyone drives in with a full tank.
-            Need::Rest | Need::Eat | Need::Fuel => cap,
+            Need::Rest | Need::Eat | Need::Fuel | Need::Outing => cap,
         };
         Stock { level, cap }
     }

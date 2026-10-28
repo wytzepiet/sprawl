@@ -13,7 +13,9 @@ import type { Building, Wait, Wanted, Why } from "../generated";
  * Motorways shows a house wanting a car: an order on its way is a dot in
  * its good's colour; a trip late, the building unable to go on without
  * it, a pin, its ring filling red as it stays late. A seat nobody holds
- * is a pin of someone, with no ring: nothing gives up for want of one. A tap opens the building's card, which says what
+ * is a pin of someone, with no ring: nothing gives up for want of one.
+ * A home whose people have had no outing in days is a pin of someone
+ * going out, its ring filling as for its bread. A tap opens the building's card, which says what
  * holds each up (`Why`), and from the building a line runs to each thing
  * holding one up: the van on its way, the depot with no van free, the
  * ship bringing it.
@@ -35,8 +37,9 @@ export default function Pins() {
 }
 
 /** What holds a late trip up, said, and the thing on the map it is. */
-export function says(why: Why): string {
+export function says(what: Wanted, why: Why): string {
   if (why === "NoRoad") return "no road reaches it";
+  if (what === "Outing") return why === "Nobody" ? "no park in town" : "no park they can get to";
   if (why === "Nobody") return "none in town and none coming";
   if (why === "NoHands") return "nobody in town is free to work";
   if (why === "TooFar") return "the town's free hands live too far off";
@@ -67,10 +70,15 @@ function Lead(props: { from: Building; to: number }) {
   );
 }
 
-/** Someone, for a seat nobody holds. */
-const HANDS = { color: "#8E8E93", glyph: "M12 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM3 22c0-5 4-8.5 9-8.5s9 3.5 9 8.5z" };
-const look = (w: Wanted) => (w === "Hands" ? HANDS : GOODS[w.Good]);
-const key = (w: Wanted) => (w === "Hands" ? "Hands" : w.Good);
+/** Someone, for a seat nobody holds; someone in the park's green, for a
+ *  home with nowhere to go out to. People pins both: a car's trip, not a
+ *  lorry's. */
+const PERSON = "M12 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM3 22c0-5 4-8.5 9-8.5s9 3.5 9 8.5z";
+const PEOPLE = { Hands: { color: "#8E8E93", glyph: PERSON, label: "hands" }, Outing: { color: "#3F8F4E", glyph: PERSON, label: "an outing" } };
+const look = (w: Wanted) => (typeof w === "string" ? PEOPLE[w] : GOODS[w.Good]);
+const key = (w: Wanted) => (typeof w === "string" ? w : w.Good);
+/** What a wait is for, said. */
+export const wanted = (w: Wanted) => look(w).label;
 /** Pins over one building, at most; the rest a count. */
 const MOST = 5;
 

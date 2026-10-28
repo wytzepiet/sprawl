@@ -1,7 +1,7 @@
 import { Box, Ink, Text, Icon, type BoxProps } from "~ui";
 import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
-import { BLUEPRINTS, GOODS } from "../blueprints";
-import { says, target } from "./Pins";
+import { BLUEPRINTS } from "../blueprints";
+import { says, target, wanted } from "./Pins";
 import { select, setFollowing, setSubject } from "../state/selection";
 import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
@@ -222,10 +222,10 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
     const by = new Map<string, { what: string; n: number; says: string; to: number | null }>();
     for (const w of buildingOf(props.id)?.waits ?? []) {
       if (!w.why) continue;
-      const label = w.what === "Hands" ? "hands" : GOODS[w.what.Good].label;
+      const label = wanted(w.what);
       const what = label[0].toUpperCase() + label.slice(1);
       const k = `${what} ${JSON.stringify(w.why)}`;
-      by.set(k, { what, n: (by.get(k)?.n ?? 0) + 1, says: says(w.why), to: target(w.why) });
+      by.set(k, { what, n: (by.get(k)?.n ?? 0) + 1, says: says(w.what, w.why), to: target(w.why) });
     }
     return [...by.values()];
   });

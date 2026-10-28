@@ -188,7 +188,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Factory: {
     label: "Machine works",
-    about: "Builds machines of steel, for the oil wells, the refinery and the port. Twelve jobs, six to three.",
+    about: "Builds machines of steel, for the oil wells, the refinery and the port. Twelve jobs a shift, six to two and two to ten.",
     color: "#5C6470",
     material: "#7A7F86",
     // Sawtooth roofs and a chimney.
@@ -199,7 +199,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   GasStation: {
     label: "Gas station",
-    about: "Fills the town's tanks from its fuel, round the clock. One job at the kiosk, six to ten.",
+    about: "Fills the town's tanks from its fuel, round the clock. A job at the kiosk a shift, six to two and two to ten.",
     color: "#F2C230",
     material: "#C7A24E",
     // A pump: the body with its display, and the hose hooked to the side.
@@ -232,7 +232,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Sawmill: {
     label: "Sawmill",
-    about: "Fells and saws the forest round it into timber. Built beside the woods. Four jobs, seven to four.",
+    about: "Fells and saws the forest round it into timber. Built beside the woods. Four jobs a shift, six to two and two to ten.",
     color: "#8A5A2B",
     material: "#7A5A3A",
     // A saw blade over a log: the teeth round, the log's rings below.
@@ -243,7 +243,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Quarry: {
     label: "Quarry",
-    about: "Breaks stone from the mountain beside it. Built at the mountain's foot. Four jobs, seven to four.",
+    about: "Breaks stone from the mountain beside it. Built at the mountain's foot. Four jobs a shift, six to two and two to ten.",
     color: "#7D7F86",
     material: "#8C8A84",
     // A rock face, benched, a pick across the heap below.
@@ -276,7 +276,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   CementWorks: {
     label: "Cement works",
-    about: "Burns stone into cement, for flats, big shops and everything heavier. Six jobs, seven to four.",
+    about: "Burns stone into cement, for flats, big shops and everything heavier. Six jobs a shift, six to two and two to ten.",
     color: "#8C969E",
     material: "#A3A6A3",
     // A kiln's silo and its stack, the shed beneath.
@@ -287,7 +287,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Mine: {
     label: "Ore mine",
-    about: "Digs ore from the vein in the mountain beside it, rust in the rock. Six jobs, seven to four.",
+    about: "Digs ore from the vein in the mountain beside it, rust in the rock. Six jobs a shift, six to two and two to ten.",
     color: "#A24B2A",
     material: "#8A6A58",
     // A headframe over the shaft: its legs, the wheel on top.
@@ -298,7 +298,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Colliery: {
     label: "Coal mine",
-    about: "Digs coal from the seam in the mountain beside it. Six jobs, seven to four.",
+    about: "Digs coal from the seam in the mountain beside it. Six jobs a shift, six to two and two to ten.",
     color: "#3A3A40",
     material: "#5A5A5E",
     // A mine cart heaped with coal, on its wheels.
@@ -309,7 +309,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Steelworks: {
     label: "Steelworks",
-    about: "Smelts ore with coal into steel. Built of cement. Sixteen jobs, six to three.",
+    about: "Smelts ore with coal into steel. Built of cement. Sixteen jobs a shift, six to two and two to ten.",
     color: "#5A7FA6",
     material: "#6E7A86",
     // A blast furnace: its tapering stack, the hall, its glow.
@@ -320,7 +320,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   OilWell: {
     label: "Oil well",
-    about: "Pumps crude from the oil under the grass. Two jobs, six to ten.",
+    about: "Pumps crude from the oil under the grass. Two jobs a shift, six to two and two to ten.",
     color: "#4B3A5A",
     material: "#6A5E70",
     // A pumpjack: the walking beam on its post, the horse's head nodding.
@@ -331,7 +331,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Refinery: {
     label: "Refinery",
-    about: "Refines crude into fuel for the pumps and the market. Eight jobs, six to three.",
+    about: "Refines crude into fuel for the pumps and the market. Eight jobs a shift, six to two and two to ten.",
     color: "#7A4E8C",
     material: "#8A8288",
     // A column and a tank, piped together.
@@ -350,6 +350,17 @@ const LOOKS: Record<BuildingKind, Look> = {
     shape: "box",
     heights: [0.5],
     tab: "trade",
+  },
+  Park: {
+    label: "Park",
+    about: "Lawns, paths and benches, open seven till ten: where people drive to for an hour or two out. A home whose people have nowhere to go for days empties. Nobody works it.",
+    color: "#3F8F4E",
+    material: "#6E9A5A",
+    // A round tree on its trunk, a bench beside it.
+    glyph: "M10 2a6 6 0 0 1 3.9 10.6V18h-2v-4.5a6 6 0 0 1-3.8 0V18h-2v-5.4A6 6 0 0 1 10 2zM14 16h8v2h-1v4h-1.5v-4h-3v4H15v-4h-1zM2 20h20v2H2z",
+    shape: "box",
+    heights: [0.05],
+    tab: "services",
   },
 };
 

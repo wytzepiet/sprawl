@@ -35,7 +35,7 @@ pub struct Blueprint {
     /// How many the settlement moves in of its own accord: whom it gives a
     /// bed (its Rest tap). Zero for anything nobody moves into.
     pub homes: u32,
-    /// How many work here: its shift's places.
+    /// How many work here: every shift's places.
     pub jobs: u32,
     /// The building's own footprint in tiles, wide along its frontage.
     pub size: (u8, u8),
@@ -172,6 +172,10 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     let always = Curve::always;
     // A shift: work on offer between these hours, with a place for each of the staff.
     let shift = |open: u32, close: u32, jobs: u32| tap(Work, hours(open * H, close * H), jobs);
+    // A works that runs from six till ten at night: a day shift and an
+    // evening one, each its own crew, as works keep their machines
+    // busy. Twice the hands a row of one shift has, and twice the make.
+    let two = |jobs: u32| vec![shift(6, 14, jobs), shift(14, 22, jobs)];
     // A household: sleep on offer through the night; being home and the
     // kitchen on offer always, to everyone who lives there.
     let household = |homes: u32| {
@@ -183,7 +187,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     };
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
-        let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
+        let slots = |need: Need| taps.iter().filter(|t| t.need == need).map(|t| t.slots).sum();
         Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, opens: &[], pace: 0.0, vehicles: &[], quay: false, forklifts: 1, docks: usize::MAX, farm: false }
     };
     use Good::{Cement, Coal, Crude, Grain, Machinery, Ore, Steel, Stone, Timber};
@@ -198,25 +202,26 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             shelves: &[(Good::Bread, 50)],
             ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
-        // The machine works: twelve hands, six to three, making machine
-        // parts of steel, two units a part, a crate a hand a couple of
-        // days. Light and dear: what the oil and the port are built with.
+        // The machine works: twelve hands a shift, day and evening,
+        // making machine parts of steel, two units a part, a crate a hand
+        // a couple of days. Light and dear: what the oil and the port are built with.
         (Factory, Blueprint {
             shelves: &[(Steel, 20), (Machinery, 10)],
             makes: Some(Machinery),
             opens: &[(Steel, 2.0)],
             pace: 0.05,
             docks: 2,
-            ..row((3, 2), (3, 2), &[(Stone, 8), (Cement, 16), (Steel, 8)], vec![shift(6, 15, 12)])
+            ..row((3, 2), (3, 2), &[(Stone, 8), (Cement, 16), (Steel, 8)], two(12))
         }),
-        // The pumps run round the clock; the kiosk keeps shop hours. Where
+        // The pumps run round the clock; the kiosk a hand a shift, six till
+        // ten. Where
         // the tanks are filled is where the driving is — beside the homes.
         // Its shelf is tanks, four pallets of drums: a delivery is a van's
         // worth, and more than four pumps could sell in the two hours a
         // van is away with the lot full, or it would never stop ordering.
         (GasStation, Blueprint {
             shelves: &[(Good::Fuel, 40)],
-            ..row((1, 1), (0, 0), &[(Timber, 8), (Stone, 4)], vec![shift(6, 22, 1), pump(always(), 4)])
+            ..row((1, 1), (0, 0), &[(Timber, 8), (Stone, 4)], [two(1), vec![pump(always(), 4)]].concat())
         }),
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
@@ -274,34 +279,34 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // the ramp, kept clear for what comes off the ferry; on one side
         // of it the docks lorries back into, on the other the quay's pad,
         // the pallets standing on it; in the corner on the quay the
-        // terminal (`map/sea.rs`). Two hands work the ramp and its three
-        // forklifts, dawn to late. Built from nothing: it is where timber
+        // terminal (`map/sea.rs`). Two hands a shift work the ramp and its
+        // three forklifts, six till ten. Built from nothing: it is where timber
         // first comes in.
         (Harbour, Blueprint {
             quay: true,
             forklifts: 3,
-            ..row((3, 0), (3, 2), &[], vec![shift(6, 22, 2)])
+            ..row((3, 0), (3, 2), &[], two(2))
         }),
-        // Four hands, seven to four, felling and sawing the forest round it:
-        // with woods all round, five bundles of timber a shift and a half, a
-        // house every hour and a bit. Its yard holds thirty bundles; full,
-        // it stops.
+        // Four hands a shift, day and evening, felling and sawing the
+        // forest round it: with woods all round, two units of timber a
+        // shift's hour, sixteen bundles a day. Its yard holds sixty
+        // bundles; full, it stops.
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
             pace: 0.5,
             docks: 1,
-            ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
+            ..row((2, 2), (2, 2), &[(Timber, 8)], two(4))
         }),
-        // The sawmill's twin at the mountain's foot: four hands, seven to
-        // four, breaking the rock within reach, as much stone a shift as the
-        // sawmill makes timber. Built of timber alone, so the town can
+        // The sawmill's twin at the mountain's foot: four hands a shift,
+        // breaking the rock within reach, as much stone as the sawmill
+        // makes timber. Built of timber alone, so the town can
         // build its quarry before it has any stone.
         (Quarry, Blueprint {
             shelves: &[(Good::Stone, 120)],
             makes: Some(Good::Stone),
             pace: 0.5,
-            ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
+            ..row((2, 2), (2, 2), &[(Timber, 8)], two(4))
         }),
         // Four at desks, eight to five: thirty-six researcher-hours a
         // day, the first rung's kind in two thirds of one.
@@ -320,67 +325,72 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             docks: 2,
             ..row((2, 1), (2, 2), &[(Timber, 8)], vec![shift(5, 14, 4)])
         }),
-        // A kiln and a mill: six hands, seven to four, burning stone into
-        // cement, a unit for a unit, as fast as a quarry breaks it.
+        // A kiln and a mill: six hands a shift, burning stone into cement,
+        // a unit for a unit, half as fast again as a quarry breaks it.
         (CementWorks, Blueprint {
             shelves: &[(Stone, 60), (Cement, 60)],
             makes: Some(Cement),
             opens: &[(Stone, 1.0)],
             pace: 0.5,
             docks: 1,
-            ..row((2, 2), (2, 2), &[(Timber, 12), (Stone, 12)], vec![shift(7, 16, 6)])
+            ..row((2, 2), (2, 2), &[(Timber, 12), (Stone, 12)], two(6))
         }),
         // The quarry's cousins, on mountains that have ore or coal in
-        // them: six hands, seven to four, as much a shift as a quarry.
+        // them: six hands a shift, half as much again as a quarry.
         (Mine, Blueprint {
             shelves: &[(Ore, 120)],
             makes: Some(Ore),
             pace: 0.5,
-            ..row((2, 2), (2, 2), &[(Timber, 8), (Stone, 8)], vec![shift(7, 16, 6)])
+            ..row((2, 2), (2, 2), &[(Timber, 8), (Stone, 8)], two(6))
         }),
         (Colliery, Blueprint {
             shelves: &[(Coal, 120)],
             makes: Some(Coal),
             pace: 0.5,
-            ..row((2, 2), (2, 2), &[(Timber, 8), (Stone, 8)], vec![shift(7, 16, 6)])
+            ..row((2, 2), (2, 2), &[(Timber, 8), (Stone, 8)], two(6))
         }),
-        // Sixteen hands, six to three, a unit of ore and one of coal to a
-        // unit of steel: a mine's and a colliery's day a day. The works
-        // that make a district and a morning rush.
+        // Sixteen hands a shift, a unit of ore and one of coal to a unit
+        // of steel: a mine's and a colliery's day a day. The works that
+        // make a district, and a rush at six and at two.
         (Steelworks, Blueprint {
             shelves: &[(Ore, 40), (Coal, 40), (Steel, 40)],
             makes: Some(Steel),
             opens: &[(Ore, 1.0), (Coal, 1.0)],
             pace: 0.2,
             docks: 2,
-            ..row((3, 2), (3, 2), &[(Timber, 12), (Stone, 16), (Cement, 24)], vec![shift(6, 15, 16)])
+            ..row((3, 2), (3, 2), &[(Timber, 12), (Stone, 16), (Cement, 24)], two(16))
         }),
-        // A nodding pump on oil ground: two hands, six to ten at night,
-        // tending it, a pallet of drums every few hours.
+        // A nodding pump on oil ground: two hands a shift, six till ten,
+        // tending it, a pallet of drums every couple of hours.
         (OilWell, Blueprint {
             shelves: &[(Crude, 100)],
             makes: Some(Crude),
             pace: 1.0,
-            ..row((2, 2), (2, 2), &[(Cement, 8), (Steel, 8), (Machinery, 2)], vec![shift(6, 22, 2)])
+            ..row((2, 2), (2, 2), &[(Cement, 8), (Steel, 8), (Machinery, 2)], two(2))
         }),
-        // Eight hands, six to three, making fuel of crude a unit for a
-        // unit, as fast as several wells pump it.
+        // Eight hands a shift, making fuel of crude a unit for a unit, as
+        // fast as several wells pump it.
         (Refinery, Blueprint {
             shelves: &[(Crude, 100), (Good::Fuel, 100)],
             makes: Some(Good::Fuel),
             opens: &[(Crude, 1.0)],
             pace: 2.0,
             docks: 2,
-            ..row((3, 2), (3, 2), &[(Cement, 24), (Steel, 16), (Machinery, 4)], vec![shift(6, 15, 8)])
+            ..row((3, 2), (3, 2), &[(Cement, 24), (Steel, 16), (Machinery, 4)], two(8))
         }),
         // The harbour grown: a crane on a deep quay, where a container
-        // ship berths, its yard stacked with boxes. Six hands, round the
-        // clock but the small hours.
+        // ship berths, its yard stacked with boxes. Six hands a shift, six
+        // till ten.
         (Port, Blueprint {
             quay: true,
             forklifts: 4,
-            ..row((3, 0), (3, 2), &[(Cement, 40), (Steel, 20), (Machinery, 6)], vec![shift(5, 23, 6)])
+            ..row((3, 0), (3, 2), &[(Cement, 40), (Steel, 20), (Machinery, 6)], two(6))
         }),
+        // Lawns and paths, benches and a few trees, open from seven till
+        // ten: an hour or two out for whoever drives there, as many at once
+        // as the kerb parks. Nobody works it; a bundle or two of timber for
+        // its benches and fences.
+        (Park, row((2, 2), (0, 0), &[(Timber, 4)], vec![tap(Outing, hours(7 * H, 22 * H), 7)])),
     ]
 });
 
@@ -423,9 +433,19 @@ pub fn check() {
     assert_eq!(BLUEPRINTS.len(), BuildingKind::ALL.len(), "a kind has no blueprint");
 }
 
-/// Hours of the shift a kind's row posts.
+/// Hours of the first shift a kind's row posts.
 pub fn shift_hours(kind: BuildingKind) -> f64 {
     blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / H as f64)
+}
+
+/// Hours of work a kind's row posts a day, every place of every shift.
+pub fn hand_hours(kind: BuildingKind) -> f64 {
+    blueprint(kind).taps.iter().filter(|t| t.need == Need::Work).map(|t| t.slots as f64 * t.curve.per_day() / H as f64).sum()
+}
+
+/// Hands at work at once: a shift's crew.
+pub fn crew(kind: BuildingKind) -> u32 {
+    blueprint(kind).taps.iter().filter(|t| t.need == Need::Work).map(|t| t.slots).max().unwrap_or(0)
 }
 
 /// The shelves a kind keeps, and their caps.
@@ -443,7 +463,7 @@ pub fn shelves(kind: BuildingKind) -> Vec<Good> {
 pub fn rated(kind: BuildingKind, good: Good) -> f64 {
     let bp = blueprint(kind);
     let over_the_counter: f64 = bp.taps.iter().filter(|t| t.need.good() == Some(good)).map(Tap::rated).sum();
-    let opened: f64 = bp.opens.iter().filter(|&&(g, _)| g == good).map(|&(_, per)| per * bp.pace * bp.jobs as f64 * shift_hours(kind)).sum();
+    let opened: f64 = bp.opens.iter().filter(|&&(g, _)| g == good).map(|&(_, per)| per * bp.pace * hand_hours(kind)).sum();
     over_the_counter + opened + if depot(kind) { stocks(kind).get(&good).copied().unwrap_or(0.0) } else { 0.0 }
 }
 

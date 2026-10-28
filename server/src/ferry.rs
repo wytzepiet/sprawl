@@ -21,7 +21,7 @@ pub const ROLL_MS: GameTime = 4_000;
 /// The starter pack, the first harbour's first sailing: timber for the
 /// first houses, stone for the first streets, crates for the first shop,
 /// fuel; so many packages of each.
-pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 15), (Good::Stone, 5), (Good::Bread, 4), (Good::Fuel, 5)];
+pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 24), (Good::Stone, 8), (Good::Bread, 8), (Good::Fuel, 6)];
 
 impl World {
     /// A harbour's line to the world: out from its berth to the map's

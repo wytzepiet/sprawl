@@ -55,11 +55,14 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Steelworks: { family: "industry", yard: { fill: "docks" } },
   OilWell: { family: "industry", yard: { fill: "docks" } },
   Refinery: { family: "industry", yard: { fill: "docks" } },
+  // A park is lawn and paths, its own hedge round it (`objects/park.ts`):
+  // no hedge of a home's, no street tree in it.
+  Park: { family: "park" },
 };
 /** Kinds drawn whole from the kit (`objects/BuildingObject.tsx`): the
  *  town grid lays their ground and yard and raises no walls of its own,
  *  and no sign lies on them, the model saying what it is. */
-export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Sawmill", "Quarry", "Farm", "Mine", "Colliery", "CementWorks", "Steelworks", "Factory", "OilWell", "Refinery", "Bakery"]);
+export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Sawmill", "Quarry", "Farm", "Mine", "Colliery", "CementWorks", "Steelworks", "Factory", "OilWell", "Refinery", "Bakery", "Park"]);
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 /** What stands in a tile of yard, if it is one: where the server lays a
  *  building's lot (`Tile.yard`), docks unless its kind says; or anywhere
@@ -116,5 +119,5 @@ export const kin = (a: Tile, b: Tile) =>
 /** A kind placed whole, one building: it joins only itself, and never on
  *  the diagonal. */
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
-const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm", "Bakery", "CementWorks", "Mine", "Colliery", "Steelworks", "OilWell", "Refinery", "Port"]);
+const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm", "Bakery", "CementWorks", "Mine", "Colliery", "Steelworks", "OilWell", "Refinery", "Port", "Park"]);
 

@@ -3,4 +3,4 @@
 /**
  * What holds a late trip up, each a thing on the map to go and see.
  */
-export type Why = "NoRoad" | { "OnTheWay": number } | { "NoVan": number } | { "Coming": number } | "Nobody" | "NoHands" | "TooFar";
+export type Why = "NoRoad" | { "OnTheWay": number } | { "NoVan": number } | { "NoLorry": number } | { "Coming": number } | "Nobody" | "NoHands" | "TooFar";

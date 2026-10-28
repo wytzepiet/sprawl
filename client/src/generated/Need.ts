@@ -9,4 +9,4 @@
  * meanwhile; a **driven** need is used up by the road, a little per tile,
  * and is the car's rather than the day's: the tank.
  */
-export type Need = "Home" | "Work" | "Rest" | "Eat" | "Fuel";
+export type Need = "Home" | "Work" | "Rest" | "Eat" | "Fuel" | "Outing";

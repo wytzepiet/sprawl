@@ -7,7 +7,7 @@
 use fixed::HashMap;
 use model::blueprint::blueprint;
 use model::needs::Need;
-use model::{EntityId, GameTime, Good, Leg, Wait, Wanted, Why, LATE_MS};
+use model::{BuildingKind, EntityId, GameObject, GameTime, Good, Leg, Wait, Wanted, Why, LATE_MS};
 use traffic::event_queue::EventQueue;
 use crate::world::World;
 
@@ -27,6 +27,7 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
     // and only if a late trip needs it.
     let mut coming: Option<Vec<(Good, EntityId)>> = None;
     let mut free: Option<bool> = None;
+    let mut parks: Option<bool> = None;
     for id in std::mem::take(&mut world.waiting) {
         let Some(b) = world.map.building(id) else { continue };
         let road = world.map.street_of(id).is_some();
@@ -53,9 +54,26 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
             });
             waits.push((Wanted::Good(good), why));
         }
-        // The quay: packages landed for a depot's lorry, and slots booked
-        // out for one to fill.
-        waits.extend(b.pad.iter().filter(|p| !p.outbound).chain(&b.outgoing).map(|p| (Wanted::Good(p.good), None)));
+        // A home whose people have had no outing in days: somewhere to go
+        // is what it waits on, until a park stands if they left for it.
+        if blueprint(b.kind).homes > 0 {
+            let bored = household.iter().any(|&r| world.map.resident(r).is_some_and(|r| r.buckets.iter().any(|b| b.need == Need::Outing && b.stock.level <= 0.0)));
+            let was = b.waits.iter().any(|w| w.what == Wanted::Outing);
+            let park = *parks.get_or_insert_with(|| world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref p) if p.kind == BuildingKind::Park && p.site.is_none())));
+            if bored || (household.is_empty() && was && !park) {
+                waits.push((Wanted::Outing, Some(if !road { Why::NoRoad } else if !park { Why::Nobody } else { Why::TooFar })));
+            }
+        }
+        // The quay: packages landed for a depot's lorry, as many as the
+        // lorries on their way here have room for, and late past that;
+        // and slots booked out for one to fill.
+        let landed: Vec<Good> = b.pad.iter().filter(|p| !p.outbound).map(|p| p.good).collect();
+        if !landed.is_empty() {
+            let room = crate::haul::coming_for(world, id) as usize;
+            let why = if road { world.map.objects.get(id).and_then(|e| e.position).and_then(|here| world.map.nearest(here, world.map.depots().into_iter().map(|(d, _)| d)).first().map(|&(_, d)| Why::NoLorry(d))).unwrap_or(Why::Nobody) } else { Why::NoRoad };
+            waits.extend(landed.into_iter().enumerate().map(|(k, good)| (Wanted::Good(good), (k >= room).then_some(why))));
+        }
+        waits.extend(b.outgoing.iter().map(|p| (Wanted::Good(p.good), None)));
         if b.site.is_none() {
             let empty = blueprint(b.kind).jobs.saturating_sub(b.hands);
             let why = if !road {
@@ -152,6 +170,30 @@ mod tests {
         game.run_to(model::DAY_MS as u64 + 1000);
         assert!(game.world.map.household(house).is_empty(), "settlers came to a house with nothing to eat");
         assert!(bread(&game).is_some_and(|w| w.late == Some(late)), "the pin went out over an empty pantry");
+    }
+
+    /// A town with nowhere to go out to: three days on, the house's two
+    /// have had no outing, and it pins one, nobody having a park; a
+    /// quarter of a day on they have left. A park built, the pin is gone,
+    /// and settlers come again.
+    #[test]
+    fn a_house_with_nowhere_to_go_pins_an_outing_and_empties() {
+        let mut world = street();
+        let house = build(&mut world, 20, BuildingKind::House);
+        let mut game = game(world);
+        let outing = |game: &crate::game::Game| game.world.map.building(house).unwrap().waits.iter().find(|w| w.what == Wanted::Outing).copied();
+        let day = model::DAY_MS as u64;
+        game.run_to(2 * day);
+        assert!(outing(&game).is_none(), "two days on, they pin an outing already");
+        game.run_to(4 * day);
+        let late = outing(&game).and_then(|w| w.late).expect("four days without an outing, and no pin");
+        assert_eq!(outing(&game).and_then(|w| w.why), Some(Why::Nobody));
+        game.run_to(late + model::LATE_MS + 1000);
+        assert!(game.world.map.household(house).is_empty(), "they stayed with nowhere to go");
+        game.world.map.place_on_street(model::GridCoord { x: 40, y: 1 }, BuildingKind::Park).expect("room for a park");
+        game.run_to(6 * day);
+        assert!(outing(&game).is_none(), "a park stands and the house still pins an outing");
+        assert_eq!(game.world.map.household(house).len(), 2, "nobody came back to a town with a park");
     }
 }
 

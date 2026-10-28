@@ -50,19 +50,24 @@ impl Map {
             Some(GameObject::Building(b)) if b.site.is_none() => b.kind,
             _ => return,
         };
-        let bought = match self.objects.get(facility).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.lorries as usize,
-            _ => 0,
+        let (lorries, vans) = match self.objects.get(facility).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => (b.lorries as usize, b.vans as usize),
+            _ => (0, 0),
         };
-        let vehicles: Vec<model::CarRole> = model::blueprint::blueprint(kind).vehicles.iter().copied().chain(std::iter::repeat_n(model::CarRole::Truck, bought)).collect();
-        if vehicles.is_empty() {
-            return;
-        }
+        let row = model::blueprint::blueprint(kind).vehicles;
         let tile = self.objects.get(facility).and_then(|e| e.position);
-        let have = self.objects.fleet(facility).filter(|&c| !matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == model::CarRole::Ferry)).count();
-        for role in vehicles.into_iter().skip(have) {
-            let car = self.insert_at(GameObject::Car(model::Car::new(facility, role)), tile);
-            self.park_in_lot(facility, car, 0);
+        // Of each role, the row's and those bought, less what stands.
+        for role in [model::CarRole::Truck, model::CarRole::Van, model::CarRole::Tractor] {
+            let bought = match role {
+                model::CarRole::Truck => lorries,
+                model::CarRole::Van => vans,
+                _ => 0,
+            };
+            let have = self.objects.fleet(facility).filter(|&c| matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role)).count();
+            for _ in have..row.iter().filter(|&&r| r == role).count() + bought {
+                let car = self.insert_at(GameObject::Car(model::Car::new(facility, role)), tile);
+                self.park_in_lot(facility, car, 0);
+            }
         }
     }
 

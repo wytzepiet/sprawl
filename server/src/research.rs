@@ -24,9 +24,10 @@ use BuildingKind::*;
 /// all, oil a few days after. Every rung is built of a lot of the goods
 /// below it, so climbing grows the old chains too.
 const LADDER: [(&[BuildingKind], f64); 6] = [
-    (&[Harbour, House, Depot, Sawmill, Lab], 0.0),
+    // Cars burn fuel from the first drive, so the pumps are open too.
+    (&[Harbour, House, Depot, Sawmill, Lab, GasStation, Park], 0.0),
     (&[Farm, Bakery, Shop, Quarry], 8.0),
-    (&[CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery], 150.0),
+    (&[CementWorks, Apartment, Supermarket, Mine, Colliery], 150.0),
     (&[Steelworks, Factory], 2000.0),
     (&[Port], 6000.0),
     (&[OilWell, Refinery], 3000.0),
@@ -121,7 +122,7 @@ mod tests {
         world.research.done += 0.5;
         hour(&mut world);
         assert!(world.research.open.contains(&Farm), "a full day's hours did not open the farm");
-        assert_eq!(world.research.shown().next, [CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery]);
+        assert_eq!(world.research.shown().next, [CementWorks, Apartment, Supermarket, Mine, Colliery]);
         assert_eq!(world.research.shown().cost, 150.0);
         assert!(!world.research.may(Tool::Wide) && world.research.may(Tool::Street), "two lanes open before the third rung");
         world.research.open.insert(CementWorks);

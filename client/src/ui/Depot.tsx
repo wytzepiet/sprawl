@@ -5,7 +5,7 @@ import { buildingAt, getEntity, useGame } from "../state/gameObjects";
 import { load, now, until } from "../state/sea";
 import { Btn, coins, Follow, Section } from "./kit";
 import { LORRY_PRICE, MORE_LORRIES } from "../generated/rows";
-import type { Building, Car } from "../generated";
+import type { Building, Car, CarRole } from "../generated";
 
 /** A building of the client's, read again four times a second. */
 const building = (id: number) =>
@@ -23,7 +23,8 @@ const atHarbour = (car: { x: number; y: number } | null) => {
 };
 
 /**
- * A depot's card: its lorries and what each is doing, another bought.
+ * A depot's card: its lorries and what each is doing, another lorry or
+ * van bought.
  * The lorries go about their work of their own accord: what comes in
  * and goes out is the feed's deals, and what the depots hold is the
  * market's (docs/plan-market.md: a building never gets a panel of its own).
@@ -38,13 +39,13 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
       return { id, car: e?.object.kind === "Car" ? (e.object.data as Car) : null, at: e?.position ?? null };
     });
   });
-  const [bought, setBought] = createSignal(false);
-  const buy = () => {
-    send({ type: "BuyLorry", data: { depot: props.id } });
-    setBought(true);
-    setTimeout(() => setBought(false), 1800);
+  const [bought, setBought] = createSignal<CarRole | null>(null);
+  const buy = (role: CarRole) => {
+    send({ type: "Buy", data: { depot: props.id, role } });
+    setBought(role);
+    setTimeout(() => setBought(null), 1800);
   };
-  const can = () => (b()?.lorries ?? 0) < MORE_LORRIES && growth().treasury >= LORRY_PRICE;
+  const can = () => (b()?.lorries ?? 0) + (b()?.vans ?? 0) < MORE_LORRIES && growth().treasury >= LORRY_PRICE;
 
   return (
     <Show when={b()} fallback={<Section title="Depot"><Text size={13.5} soft>Out of sight.</Text></Section>}>
@@ -61,8 +62,9 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
             );
           }}
         </Index>
-        <Box dir="row" justify="end" pad={{ top: 6 }}>
-          <Btn onTap={buy} disabled={!can()}>{bought() ? "Bought ✓" : `+ lorry ${coins(-LORRY_PRICE)}`}</Btn>
+        <Box dir="row" justify="end" gap={8} pad={{ top: 6 }}>
+          <Btn onTap={() => buy("Van")} disabled={!can()}>{bought() === "Van" ? "Bought ✓" : `+ van ${coins(-LORRY_PRICE)}`}</Btn>
+          <Btn onTap={() => buy("Truck")} disabled={!can()}>{bought() === "Truck" ? "Bought ✓" : `+ lorry ${coins(-LORRY_PRICE)}`}</Btn>
         </Box>
       </Section>
     </Show>

@@ -312,7 +312,8 @@ mod tests {
         let e = world.map.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
         assert_eq!(e.position, world.map.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
-        assert_eq!(stock(world, shop), 1.0, "the shelves are full again");
+        let vanload = crate::economy::VAN_LOAD as f64 * Good::Bread.per_package() / 50.0;
+        assert_eq!(stock(world, shop), vanload, "a vanload is on the shelves");
         assert!(crate::economy::reorder(world, shop, Good::Bread) < before, "the shop did not learn the lead time");
     }
 

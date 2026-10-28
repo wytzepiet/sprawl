@@ -73,9 +73,9 @@ const DEALS: usize = 200;
 /// Packages the town trades to move a price from the world's to its
 /// ceiling or floor. A town that buys a lorry of fuel a sailing barely
 /// moves it, the drift back taking each step away again within the day;
-/// a whole deck of sixty bought at once moves it most of a third of its
+/// a whole deck of sixty bought at once moves it most of a sixth of its
 /// band.
-const DEPTH: f64 = 200.0;
+const DEPTH: f64 = 400.0;
 /// How much deeper the market is to a town with a container port
 /// standing: bulk, its trades moving the price a third as far.
 const PORT_DEPTH: f64 = 3.0;
@@ -317,7 +317,7 @@ fn position(world: &World, good: Good) -> f64 {
 }
 
 /// What the town will want of a good before the ferry after next can
-/// bring more, `ahead` from now: what it uses over what it makes, at the
+/// bring more, `ahead` from now, and `KEEP` over: what it uses over what it makes, at the
 /// last day's rate, and what its sites still wait for and its counters'
 /// and works' bins have room for; a pantry's only once it is bare: a
 /// town's homes are never all full at once, and what they eat is the
@@ -336,8 +336,13 @@ fn want(world: &World, good: Good, ahead: GameTime) -> f64 {
             _ => None,
         })
         .sum();
-    (world.market.rate(good) * ahead as f64 / HOUR as f64).max(0.0) + owed
+    (world.market.rate(good) * (ahead + KEEP) as f64 / HOUR as f64).max(0.0) + owed
 }
+
+/// What the town keeps over what it will use before the next ferry: half
+/// a day's use, for the land leg, harbour to depot to door, and for a
+/// depot that runs out while another still has some.
+const KEEP: GameTime = DAY_MS as GameTime / 2;
 
 /// What the depots hold of a good at most.
 fn room(world: &World, good: Good) -> f64 {
@@ -352,11 +357,32 @@ fn keep(world: &mut World, now: GameTime) -> bool {
     let (Some(lands), Some(line)) = (world.next_ferry(harbour).and_then(|f| world.next_call(f)), world.lines.get(&harbour)) else { return false };
     let ahead = lands.saturating_sub(now) + line.cycle() / line.every_call() as GameTime;
     let mut traded = false;
+    let mut buys = Vec::new();
     for good in GOODS {
         let (have, want, per) = (position(world, good), want(world, good, ahead), good.per_package());
         let sell = (2.0 * want).max(want + room(world, good));
-        let (out, n) = if have < want { (false, ((want - have) / per).ceil()) } else { (true, ((have - sell) / per).floor().max(0.0)) };
-        traded |= trade(world, harbour, good, out, n as u32) > 0;
+        if have < want {
+            buys.push((good, ((want - have) / per).ceil() as u32));
+        } else {
+            traded |= trade(world, harbour, good, true, ((have - sell) / per).floor().max(0.0) as u32) > 0;
+        }
+    }
+    // The deck is shared: a package of each good wanted in turn, so one
+    // empty bin's want never takes the whole of it from the pumps' fuel.
+    while buys.iter().any(|&(_, n)| n > 0) {
+        let mut booked = false;
+        for (good, n) in buys.iter_mut().filter(|(_, n)| *n > 0) {
+            if trade(world, harbour, *good, false, 1) == 0 {
+                *n = 0;
+                continue;
+            }
+            *n -= 1;
+            booked = true;
+        }
+        traded |= booked;
+        if !booked {
+            break;
+        }
     }
     traded
 }

@@ -17,7 +17,7 @@
 //! H house  A apartment  S shop  F factory  G gas station
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm  L lab
 //! K bakery  C cement works  I mine  J colliery  X steelworks  U oil well
-//! R refinery  N port
+//! R refinery  N port  V park
 //! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
@@ -78,12 +78,13 @@ fn building(c: char) -> Option<BuildingKind> {
         'U' => OilWell,
         'R' => Refinery,
         'N' => Port,
+        'V' => Park,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASFGMDPWQBLKCIJXURN".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASFGMDPWQBLKCIJXURNV".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
