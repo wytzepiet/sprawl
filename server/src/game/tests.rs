@@ -257,6 +257,26 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
     log
 }
 
+/// A works on two shifts: its staff split between them as they are
+/// hired, and each shift's hours land on its books, the evening's too.
+#[test]
+fn both_shifts_are_worked() {
+    let mut world = street();
+    build(&mut world, 0, BuildingKind::Apartment);
+    let pumps = build(&mut world, 10, BuildingKind::GasStation);
+    build(&mut world, 20, BuildingKind::Park);
+    let mut game = game(world);
+    let staff = game.world.map.staff(pumps);
+    let shifts: Vec<u8> = staff.iter().map(|&id| game.world.map.resident(id).unwrap().shift).collect();
+    assert_eq!(shifts.len(), 2);
+    assert!(shifts.contains(&0) && shifts.contains(&1), "both hands on one shift: {shifts:?}");
+    let day = DAY_MS as u64;
+    game.run_to(2 * day);
+    let worked = game.world.books[&pumps].before(2 * day).served.get(&model::needs::Need::Work).copied().unwrap_or(0.0);
+    // Two eight-hour shifts, less the odd late start.
+    assert!(worked > 12.0, "the kiosk was worked {worked}h");
+}
+
 /// Nobody wants for anything: everyone has a job, and whatever they
 /// owe of a need of their own that runs down has somewhere to be met.
 pub(crate) fn wants_nothing(world: &World, now: GameTime) {

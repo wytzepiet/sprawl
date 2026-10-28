@@ -15,6 +15,11 @@ export type Resident = { home: number,
  */
 work: number | null, 
 /**
+ * Which of their line's shifts they work, given as they are hired
+ * and kept: its work taps counted in order.
+ */
+shift: number, 
+/**
  * Where they are: a building, or the car they are riding in. `None` is
  * off-map — someone who exists but has not driven in yet.
  */

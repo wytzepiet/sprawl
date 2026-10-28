@@ -63,7 +63,7 @@ pub fn handle_resident_wake(
     settle(world, id, at, now, &crowd);
     let Some(r) = world.map.resident(id).cloned() else { return };
     let buckets = buckets(world, &r);
-    let verdicts = verdicts(world, id, &r, &buckets, at, now, &crowd, &mut routes_from(world, at));
+    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     store(world, id, r.car, &buckets);
 
     // Actionable: can be set out for now, or is right here — where waiting
@@ -154,7 +154,7 @@ fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
 }
 
 /// One verdict per bucket: the best any of its candidates offers.
-fn verdicts(world: &World, id: EntityId, r: &Resident, buckets: &[Bucket], at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
+fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
     buckets
         .iter()
         .map(|b| match b.need {
@@ -163,7 +163,7 @@ fn verdicts(world: &World, id: EntityId, r: &Resident, buckets: &[Bucket], at: E
             Need::Work => r
                 .work
                 .filter(|&w| economy::hiring(world, w))
-                .map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, shift(world, id, w), now, crowd, routes, true)),
+                .map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, tap_for(world, r, w, Need::Work).map_or(&[], std::slice::from_ref), now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, taps_of(world, r.home), now, crowd, routes, true),
             Need::Eat | Need::Fuel | Need::Outing => search(world, r, at, b, now, crowd, routes),
         })
@@ -437,10 +437,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     let elapsed = (now - last) as f64;
     let serving: Option<(f64, f64)> = selected.and_then(|need| {
         let company = crowd.get(&(at, need)).copied().unwrap_or(0).max(1);
-        taps_of(world, at)
-            .iter()
-            .find(|t| t.need == need)
-            .map(|t| (t.serving(seats_at(world, at, t), company), t.curve.integral(last, now)))
+        tap_for(world, r, at, need).map(|t| (t.serving(seats_at(world, at, t), company), t.curve.integral(last, now)))
     });
     // What the building put out is what it put out, whether or not the
     // stock had room for it: a shift worked is labour received.
@@ -532,7 +529,7 @@ pub fn needs(world: &World, id: EntityId, now: GameTime) -> Vec<model::card::Nee
     let Some((r, at)) = world.map.resident(id).and_then(|r| Some((r, r.at?))) else { return Vec::new() };
     let crowd = headcount(world);
     let buckets = buckets(world, r);
-    let verdicts = verdicts(world, id, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
+    let verdicts = verdicts(world, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     buckets
         .iter()
         .zip(&verdicts)
@@ -598,17 +595,17 @@ fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
     world.map.building(building).map(|b| b.kind).map_or(&[], |k| &blueprint(k).taps)
 }
 
-/// A worker's shift at their line: a row's shifts are its work taps, and
-/// its staff, by id, take them in turn, so each shift fills as the line
-/// does. The one tap they may work at.
-fn shift(world: &World, id: EntityId, line: EntityId) -> &'static [Tap] {
-    let taps = taps_of(world, line);
-    let shifts: Vec<usize> = (0..taps.len()).filter(|&i| taps[i].need == Need::Work).collect();
-    let mut staff = world.map.staff(line);
-    staff.sort_unstable();
-    match (staff.iter().position(|&s| s == id), shifts.len()) {
-        (Some(k), n) if n > 0 => std::slice::from_ref(&taps[shifts[k % n]]),
-        _ => &[],
+/// The tap a resident is served a need by at a building: at their own
+/// line, the shift they were hired to (`Resident::shift`), one of its
+/// row's work taps in order; anywhere else, the first for the need.
+fn tap_for(world: &World, r: &Resident, at: EntityId, need: Need) -> Option<&'static Tap> {
+    let mut taps = taps_of(world, at).iter().filter(|t| t.need == need);
+    match need {
+        Need::Work if r.work == Some(at) => {
+            let all: Vec<&'static Tap> = taps.collect();
+            all.get(r.shift as usize).or(all.last()).copied()
+        }
+        _ => taps.next(),
     }
 }
 

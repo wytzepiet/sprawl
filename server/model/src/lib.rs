@@ -1075,6 +1075,10 @@ pub struct Resident {
     /// `None` while nowhere within reach has a job going.
     #[ts(type = "number | null")]
     pub work: Option<EntityId>,
+    /// Which of their line's shifts they work, given as they are hired
+    /// and kept: its work taps counted in order.
+    #[serde(default)]
+    pub shift: u8,
     /// Where they are: a building, or the car they are riding in. `None` is
     /// off-map — someone who exists but has not driven in yet.
     #[ts(type = "number | null")]

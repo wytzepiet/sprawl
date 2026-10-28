@@ -238,7 +238,7 @@ impl World {
 
     /// A household, carless until the settle ends (`issue_car`).
     fn move_in(&mut self, home: EntityId) -> EntityId {
-        let id = self.map.objects.insert(GameObject::Resident(Resident { home, work: None, at: None, car: 0, buckets: model::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
+        let id = self.map.objects.insert(GameObject::Resident(Resident { home, work: None, shift: 0, at: None, car: 0, buckets: model::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
         self.map.tie(id, home);
         id
     }
@@ -313,6 +313,14 @@ impl World {
             self.vacancies.insert(w);
         }
         if let Some(w) = work {
+            // The shift fewest work, the first of them at a tie.
+            let kind = self.map.building(w).map(|b| b.kind);
+            let shifts = kind.map_or(0, |k| blueprint(k).taps.iter().filter(|t| t.need == model::needs::Need::Work).count()).max(1);
+            let held: Vec<u8> = self.map.staff(w).into_iter().filter_map(|s| self.map.resident(s).map(|r| r.shift)).collect();
+            let shift = (0..shifts as u8).min_by_key(|&k| held.iter().filter(|&&h| h == k).count()).unwrap_or(0);
+            if let Some(r) = self.map.resident_mut(id) {
+                r.shift = shift;
+            }
             self.map.tie(id, w);
             self.map.staffed(w);
             self.waiting.insert(w);
