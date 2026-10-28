@@ -21,10 +21,6 @@
  *   bun run act undo                    the hand's last road laid or taken up,
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
- *   bun run act buy Timber 2            two bundles of timber from the market, on
- *       sell Bread                     the next ferry; or a crate of food sold
- *   bun run act line Bread 100         a hundred units of crates kept by the
- *                                       offices; with no number, the line gone
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -49,7 +45,7 @@ import { PORT, ROOT } from "./lib";
 import { connect } from "./game";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
 import type { P } from "../src/engine/geometry";
-import type { BuildingKind, GameObjectEntry, Good, Operation, Research, Tool } from "../src/generated";
+import type { BuildingKind, GameObjectEntry, Operation, Research, Tool } from "../src/generated";
 
 /** Quiet this long and the server has said all it will about a command;
  *  silent this long, and it will say nothing. */
@@ -217,15 +213,6 @@ for (const line of lines) {
       break;
     case "speed":
       send({ type: "SetSpeed", data: Number(args[0]) });
-      break;
-    // The border: the market. The sea's state, and the
-    // market's, is at /sea.
-    case "buy":
-    case "sell":
-      send({ type: "Trade", data: { good: args[0] as Good, packages: Number(args[1] ?? 1), out: verb === "sell" } });
-      break;
-    case "line":
-      send({ type: "Line", data: { good: args[0] as Good, keep: args[1] === undefined ? null : Number(args[1]) } });
       break;
     case "reset":
       send({ type: "ResetWorld" });

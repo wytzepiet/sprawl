@@ -1,12 +1,10 @@
 import { Box, Text } from "~ui";
-import { createSignal, For, Show } from "solid-js";
-import { useGame } from "../state/gameObjects";
+import { For, Show } from "solid-js";
 import { clockAt, sea, until } from "../state/sea";
 import { pieceOf } from "../state/deals";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS, packages } from "../blueprints";
-import { quoteOf, total } from "../state/market";
-import { BAD, Btn, coins, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
+import { BAD, Btn, GOOD, GoodDot, SEA, Section, StepBar } from "./kit";
 import type { JSX } from "solid-js";
 import type { Building, CallLine, DepotLine, Good, MakerLine, Stock } from "../generated";
 
@@ -52,7 +50,6 @@ export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: 
 
 /** Where a material a site waits on is, and the fix where it is stuck. */
 function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: MakerLine[]; calls: CallLine[] }) {
-  const { send, growth } = useGame();
   const g = () => props.good;
   const label = () => GOODS[g()].label;
   const nearest = () => props.depots[0] ?? null;
@@ -68,16 +65,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
     return d ? { n: on.length, d } : null;
   };
   const coming = () => inbound().find((s) => s.leg !== "Quay") ?? null;
-  const n = () => Math.max(1, Math.ceil(props.short / GOODS[g()].per));
-  const quote = () => quoteOf(g());
-  const cost = () => (quote() ? total(quote()!, n(), false) : 0);
   const sailing = () => sea.sailings[0];
-  const [ordered, setOrdered] = createSignal(false);
-  const order = () => {
-    if (!quote() || !sailing()) return;
-    send({ type: "Trade", data: { good: g(), packages: n(), out: false } });
-    setOrdered(true);
-  };
   return (
     <Box pad={{ left: 36 }}>
       <>{() => {
@@ -96,18 +84,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
         }
         if (!nearest()) return <Line dot={BAD} text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
         const x = sailing();
-        return (
-          <Line
-            dot={BAD}
-            text={ordered() ? `Booked: lands ${x ? clockAt(x.lands) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
-            sub={x ? `${packages(g(), n())} on the next ferry, landing ${clockAt(x.lands)}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
-            act={
-              <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !quote() || growth().treasury < cost()}>
-                {ordered() ? "Booked ✓" : `Book ${label()}`}
-              </Btn>
-            }
-          />
-        );
+        return <Line dot={BAD} text={`No ${label()} in town, and none coming`} sub={x ? `the town buys it at the hour, for the ferry landing ${clockAt(x.lands)}` : "no harbour: nothing can come"} />;
       }}</>
     </Box>
   );

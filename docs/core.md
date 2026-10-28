@@ -2,9 +2,9 @@
 
 Status: agreed with Wytze 2026-10-26 (thread "Find the core game loop"),
 being built on `claude/project-thread-mv2dh8`, the core branch. Built
-2026-10-27: the cuts, the lab's ladder (`server/src/research.rs`), and the
-line kept by offices (`market.rs` `keep`); the line is a stepper beside
-the shelf, not yet a handle dragged on it. Where
+2026-10-27: the cuts, the lab's ladder (`server/src/research.rs`); and
+2026-10-28, trade by itself (`market.rs` `keep`), which took the lines,
+the offices and Buy and Sell away. Where
 this page and an older one disagree, this page wins; the older text
 moves to `shelved.md` as each piece is built.
 
@@ -59,7 +59,7 @@ twenty minutes; a lab's four put in some 36 researcher-hours a day):
 | Rung | Opens | Researcher-hours each | Real time |
 |---|---|---|---|
 | Start | harbour, road, house, depot, sawmill, lab | — | |
-| 1 | farm, bakery, shop, quarry, office | 8 | a few minutes each, the first some fifteen in |
+| 1 | farm, bakery, shop, quarry | 8 | a few minutes each, the first some fifteen in |
 | 2 | cement works, apartment, gas station, supermarket, ore mine, coal mine; two-lane roads and lights | 150 | an evening |
 | 3 | steelworks, machine works | 2000 | a day or two |
 | 4 | container port | 6000 | about a week in all |
@@ -75,25 +75,28 @@ The container port is the goal of the ladder: ships of its own, and the
 market three times as deep to the town, a big trade moving the price a
 third as far: the town becomes a hub.
 
-## Trade: one price, two buttons, one line
+## Trade: by itself
+
+Buying and selling a steady stream by hand is dumb work (Wytze,
+2026-10-28). Whatever the town lacks, the ship brings and the town
+pays; whatever is left over sails and the town is paid. The player's
+lever is what the town makes, not a Buy button.
 
 - **One price per good**, the market's (`market.rs`), moving with what
-  everyone buys and sells. No graph at first.
-- **Buy and Sell**, the mayor's own taps, never capped by anything but
-  the ferry's deck and the treasury.
-- **The line**: a handle on a good's stock bar in the market. Below it
-  the town buys up to it; above it, it sells what is over. "Keep 40
-  food" is the long-term contract, "sell timber over 200" the listing.
-  It replaces the "when" orders.
-- **Offices run the lines.** The handles are there from the start,
-  dimmed: "Build an office to keep this stocked". All the town's offices
-  together trade so many packages a day for the lines, and when the
-  lines want more there is one pin, "trade desks full"; the fix is
-  another office. Clerks commute, so a hub has a business district and
-  a morning rush.
-- **The partner is named on the map**: the ferry brings food from
-  Ostdorp. Who, and the order book behind the price, never show as a
-  panel.
+  everyone buys and sells.
+- **Freight both ways**: what the town buys costs a quarter over the
+  price, what it sells gets a quarter under (`economy::FREIGHT`), so
+  making a good at home always beats the sea.
+- **The town keeps each good by itself**, every hour: it buys up to
+  what it will use before the ferry after next can bring more (the last
+  day's use over what it made, and what its sites and bins still want),
+  and sells what is over twice that, or over that and a full depot,
+  whichever is more. Between the two it waits, so nothing bought is
+  sold again the next hour.
+- **Every deal has a partner**, one of the mayors beyond the edge
+  (`orders.rs` §WHO): one whose town makes the good sells it, one whose
+  town wants it buys. The Goods tab shows each good's day, made, used,
+  in and out, the town's balance, and the deals.
 
 ## Cut for now
 
@@ -106,5 +109,5 @@ asks for it.
 ## How it is built
 
 A step at a time, each pushed to the core branch's preview and played:
-the cuts, the unlocks, the line, the offices. One change an evening,
+the cuts, the unlocks, trade by itself. One change an evening,
 judged only by whether it is more fun than yesterday.

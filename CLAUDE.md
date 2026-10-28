@@ -105,11 +105,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   stops delivering shows here before it shows in play.
 - **The opening, end to end:** `cargo test the_opening` plays it: the
   starter pack lands, the lorry fetches, a house waits for its timber,
-  its settlers come on the next ferry, a box bought at the market, a
-  box sold is paid for.
+  its settlers come on the next ferry, and the cement a block of flats
+  wants and the town has none of is bought by itself and paid for.
   In a running game, `curl localhost:4801/sea` is the border and the
-  market as the server has it, and `bun run act buy|sell|line` work them
-  by hand; `bun run act research` says what is open and being learned,
+  market as the server has it, deals and all; the town trades by itself
+  (`market.rs`). `bun run act research` says what is open and being learned,
   `research Farm` sets the labs to it (`docs/core.md`).
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in

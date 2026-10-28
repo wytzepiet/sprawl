@@ -232,7 +232,6 @@ pub enum BuildingKind {
     House,
     Apartment,
     Shop,
-    Office,
     Factory,
     /// Pumps that never close, and a kiosk that does.
     GasStation,
@@ -284,11 +283,10 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 21] = [
+    pub const ALL: [BuildingKind; 20] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
-        BuildingKind::Office,
         BuildingKind::Factory,
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
@@ -1124,12 +1122,8 @@ pub enum ClientMessage {
     /// The player's last action taken back (`undo.rs`).
     Undo,
     DespawnAllCars,
-    /// Packages of a good bought from the market or sold to it (`market::trade`).
-    Trade { good: Good, packages: u32, out: bool },
     /// The kind the town's labs work at next (`research::choose`).
     Research { kind: BuildingKind },
-    /// A good's line set, so many units kept, or taken away (`market::line`).
-    Line { good: Good, keep: Option<f64> },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// The card of one thing on the map, asked for again while it is open.

@@ -26,7 +26,6 @@ interface Form {
 }
 const STREET: Form = { family: "street" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  Office: { family: "office" },
   Lab: { family: "office" },
   Factory: { family: "industry" },
   // A depot is an open yard, its goods on the ground in bays, no roof
@@ -94,10 +93,9 @@ export const sawtooth = (t: Tile) => SAWTOOTH.has(t.kind as BuildingKind);
 const SAWTOOTH = new Set<BuildingKind>(["Factory", "Steelworks"]);
 export const TOOTH = 0.14, SPAN = 0.55;
 
-/** An office tower's flat roof carries its plant, as a real one does: a
- *  lift room at one end, AC units at the other, vents along a side
- *  (`roof.ts`). */
-export const planted = (t: Tile) => t.kind === "Office";
+/** A lab's flat roof carries its plant, as a real one does: a lift room
+ *  at one end, AC units at the other, vents along a side (`roof.ts`). */
+export const planted = (t: Tile) => t.kind === "Lab";
 /** A flat roof's parapet: how thick its wall, and how high above the roof. */
 export const PARAPET_W = 0.045, PARAPET_H = 0.05;
 

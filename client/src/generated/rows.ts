@@ -7,7 +7,6 @@ export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number
   House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, day: 0, forklifts: 1 },
   Apartment: { materials: { Timber: 12, Stone: 8, Cement: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, day: 0, forklifts: 1 },
   Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 2, day: 0, forklifts: 1 },
-  Office: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 12, day: 0, forklifts: 1 },
   Factory: { materials: { Stone: 8, Cement: 16, Steel: 8 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Machinery", opens: { Steel: 2 }, jobs: 12, day: 5.4, forklifts: 1 },
   GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 1, day: 0, forklifts: 1 },
   Supermarket: { materials: { Timber: 16, Stone: 12, Cement: 8 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 1 },

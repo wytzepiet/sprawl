@@ -59,10 +59,11 @@ pub fn world_price(good: Good) -> f64 {
     }
 }
 
-/// The world sells at its price and this much over: the premium of
-/// trade.md, the low end of what trade costs between a region and its
-/// towns.
-pub const MARGIN: f64 = 0.1;
+/// What carrying a good over the sea costs, as a share of its price,
+/// either way: what the town buys costs this much more, what it sells
+/// gets this much less (`market.rs`). So what the town makes for itself
+/// is always worth making.
+pub const FREIGHT: f64 = 0.25;
 /// What a unit of a need is worth served over a counter in town, in
 /// coins: the crate or the fuel it draws, and the work of serving it. A
 /// meal at twice its crate, a tank at twice its fuel, the margins the
@@ -72,7 +73,7 @@ pub fn served_price(good: Good) -> f64 {
 }
 
 /// What an hour of work is worth where it makes no good to sell: an
-/// office, a factory until it has a product, the harbour's forklifts. Valued at
+/// lab, a factory until it has a product, the harbour's forklifts. Valued at
 /// cost, as GDP counts government work. A meal out's worth an hour, so a
 /// desk adds about what a farm hand's crates do in a fifth of the time;
 /// it sets how much of GDP desks are until they make something.
@@ -80,7 +81,7 @@ pub const WAGE: f64 = 0.2;
 
 /// What the town pays the world for `units` of a good.
 pub fn import(good: Good, units: f64) -> f64 {
-    units * world_price(good) * (1.0 + MARGIN)
+    units * world_price(good) * (1.0 + FREIGHT)
 }
 
 /// What the mayor founds the town with: enough for a few weeks of a
@@ -605,7 +606,7 @@ mod tests {
         world.treasury = 100.0;
         assert!(!depot(Farm) && makes(Farm, Good::Grain) && shelves(Farm) == [Good::Grain], "the farm is not a maker of grain");
         assert!(!makes(Depot, Good::Grain));
-        assert!(super::farm(Farm) && !super::farm(Office));
+        assert!(super::farm(Farm) && !super::farm(Lab));
         assert!((crop(Farm, 200) - 2600.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 2600.0 / map::fields::capacity(Farm)).abs() < 1e-9);
         assert_eq!(shelf(&world, farm, Good::Grain).level, 0.0, "the yard is founded with a harvest");
         assert!(hiring(&world, farm), "an empty yard offers no work");
@@ -659,7 +660,7 @@ mod tests {
         let mut world = town();
         let home = world.map.place_on_street(at(4), House).unwrap();
         let shop = world.map.place_on_street(at(8), Shop).unwrap();
-        let office = world.map.place_on_street(at(12), Office).unwrap();
+        let lab = world.map.place_on_street(at(12), Lab).unwrap();
         visited(&mut world, shop, Need::Eat, 3.0, 0);
         assert_eq!(shelf(&world, shop, Good::Bread).short(), 3.0);
         assert!((world.gdp - 3.0 * (served_price(Good::Bread) - world_price(Good::Bread))).abs() < 1e-9, "three meals added {}", world.gdp);
@@ -668,11 +669,11 @@ mod tests {
         visited(&mut world, shop, Need::Work, 9.0, 0);
         assert!(world.map.building(home).unwrap().stocks.is_empty(), "a home keeps a shelf");
         assert_eq!(world.gdp, gdp, "a meal at home or a shift at a counter added value of its own");
-        visited(&mut world, office, Need::Work, 9.0, 0);
+        visited(&mut world, lab, Need::Work, 9.0, 0);
         assert!((world.gdp - gdp - 9.0 * WAGE).abs() < 1e-9, "a shift at a desk is not worth its cost");
         assert_eq!(world.treasury, STAKE, "a visit moved money");
-        assert!((world.town.on(0).gdp[&Office] - 9.0 * WAGE).abs() < 1e-9, "the town's page");
-        assert!(matches!(world.lumps.last(), Some(Lump { building, gdp, coins, .. }) if *building == office && *gdp > 0.0 && *coins == 0.0), "no lump at the office");
+        assert!((world.town.on(0).gdp[&Lab] - 9.0 * WAGE).abs() < 1e-9, "the town's page");
+        assert!(matches!(world.lumps.last(), Some(Lump { building, gdp, coins, .. }) if *building == lab && *gdp > 0.0 && *coins == 0.0), "no lump at the lab");
     }
 
     /// A depot's van is filled in the yard off the depot's own fuel; with
