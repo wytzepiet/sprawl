@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry, P } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { OPENING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, formOf, planted, sawtooth, slope } from "./mass";
+import { OPENING, PARAPET_H, PARAPET_W, SPAN, TOOTH, eaves, formOf, planted, sawtooth, slope, WHOLE } from "./mass";
 import type { RGB } from "../rgb";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon } from "./footprint";
@@ -126,9 +126,8 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     return t.id === undefined ? undefined : doors.get(t.id);
   };
   for (const { mass, polygon, outline } of plans(known)) {
-    // A shop, a house, a sawmill, a quarry and a farm are models of their
-    // own, their chimneys' smoke and all (`objects/kit.ts`).
-    if (["Shop", "House", "Sawmill", "Quarry", "Farm"].includes(mass.tile.kind)) continue;
+    // Models of their own, their chimneys' smoke and all (`objects/kit.ts`).
+    if (WHOLE.has(mass.tile.kind)) continue;
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);

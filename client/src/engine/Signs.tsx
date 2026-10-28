@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { groundCover } from "./view";
 import { storeysOf } from "./town/grid";
-import { seat } from "./town/mass";
+import { seat, WHOLE } from "./town/mass";
 import { INSET } from "./town/footprint";
 import { WHITE } from "./rgb";
 import { slab, type P } from "./geometry";
@@ -203,7 +203,7 @@ export default function Signs() {
       // yard and no roof, nor a depot, a sawmill, a quarry, a farm or a
       // shop, each a model of its own that says what it is (`objects/`).
       const good = reached(e) && subject() !== e.id ? want(b) : null;
-      const look: Look | null = !reached(e) || subject() === e.id || good ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || ["Depot", "Sawmill", "Quarry", "Farm", "Shop"].includes(kind) ? null : where.painted ? "paint" : "plate";
+      const look: Look | null = !reached(e) || subject() === e.id || good ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || kind === "Depot" || WHOLE.has(kind) ? null : where.painted ? "paint" : "plate";
       if (!look) continue;
       keep.add(e.id);
       const bucket = good ? `want_${good}` : `${look}_${kind}`;

@@ -17,6 +17,7 @@ import { HOUSES } from "./house";
 import { FARM } from "./farm";
 import { QUARRY } from "./quarry";
 import { BARN_DOOR, SAWMILL } from "./sawmill";
+import { BAKERY, CEMENT, COLLIERY, MACHINE, MINE, REFINERY, STEELWORKS, WELL } from "./works";
 import { glow, glowing, placing } from "./finishes";
 import type { Built } from "./kit";
 import { clearProps, placeProps } from "../props";
@@ -49,7 +50,9 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
   if (kind === "Farm") return ["farm", FARM, odd];
   if (kind === "Sawmill") return ["sawmill", SAWMILL, gate];
   if (kind === "Quarry") return ["quarry", QUARRY, gate];
-  return null;
+  const works: Partial<Record<Building["kind"], [string, Built]>> = { Mine: ["mine", MINE], Colliery: ["colliery", COLLIERY], CementWorks: ["cement", CEMENT], Steelworks: ["steelworks", STEELWORKS], Factory: ["machine", MACHINE], OilWell: ["well", WELL], Refinery: ["refinery", REFINERY], Bakery: ["bakery", BAKERY] };
+  const w = works[kind];
+  return w ? [w[0], w[1], gate] : null;
 }
 /** Each model's finishes placed, made once. */
 const placings = new Map<string, ReturnType<typeof placing>>();

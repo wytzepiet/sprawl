@@ -57,6 +57,10 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   OilWell: { family: "industry", yard: { fill: "docks" } },
   Refinery: { family: "industry", yard: { fill: "docks" } },
 };
+/** Kinds drawn whole from the kit (`objects/BuildingObject.tsx`): the
+ *  town grid lays their ground and yard and raises no walls of its own,
+ *  and no sign lies on them, the model saying what it is. */
+export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Sawmill", "Quarry", "Farm", "Mine", "Colliery", "CementWorks", "Steelworks", "Factory", "OilWell", "Refinery", "Bakery"]);
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 /** What stands in a tile of yard, if it is one: where the server lays a
  *  building's lot (`Tile.yard`), docks unless its kind says; or anywhere
