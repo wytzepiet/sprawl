@@ -17,6 +17,8 @@ pub(crate) enum Do {
     Place(BuildingKind, GridCoord),
     /// The building on a tile taken down whole.
     Raze(GridCoord),
+    /// Another lorry for a depot.
+    Lorry(EntityId),
 }
 /// The hand's act done, as a player's command is; a building refused is
 /// a test gone wrong.
@@ -25,6 +27,7 @@ pub(crate) fn does(game: &mut Game, d: Do) {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
         Do::Raze(at) => ClientMessage::Raze { building: game.world.map.occupied[&(at.x, at.y)] },
+        Do::Lorry(depot) => ClientMessage::BuyLorry { depot },
     };
     game.command(PLAYER, message);
     if let Do::Place(kind, at) = d {
@@ -740,16 +743,22 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     build(&mut world, SAWMILL_X + 20, BuildingKind::Farm);
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
-    // street beside it.
-    let hand = |_: &World, day: u64| -> Steps {
+    // street beside it; and, as a player reads the pins of a depot whose
+    // vans are all out, a lorry more for the one with fewest, once a
+    // dozen calls stand unanswered.
+    let hand = |world: &World, day: u64| -> Steps {
         let x = 112 + 4 * (day as i32 - 1);
         let at = |x, y| GridCoord { x, y };
-        vec![
+        let mut steps = vec![
             Do::Place(BuildingKind::Apartment, at(x + 1, -1)),
             Do::Step(Tool::Street, at(x + 2, 0), at(x + 2, -1)),
             Do::Step(Tool::Street, at(x + 2, -1), at(x + 2, -2)),
             Do::Step(Tool::Street, at(x + 2, -2), at(x + 2, -3)),
-        ]
+        ];
+        if world.calls.iter().filter(|c| c.answered_by.is_none()).count() >= 12 {
+            steps.extend(world.map.depots().into_iter().min_by_key(|(_, b)| b.lorries).map(|(id, _)| Do::Lorry(id)));
+        }
+        steps
     };
     let mut empty_since: std::collections::BTreeMap<(EntityId, String), u64> = Default::default();
     let mut stood_empty = |what: (EntityId, String), empty: bool, day: u64| -> u64 {

@@ -319,8 +319,9 @@ fn position(world: &World, good: Good) -> f64 {
 /// What the town will want of a good before the ferry after next can
 /// bring more, `ahead` from now: what it uses over what it makes, at the
 /// last day's rate, and what its sites still wait for and its counters'
-/// and works' bins have room for. Not its pantries': a town's homes are
-/// never all full at once, and what they eat is the rate.
+/// and works' bins have room for; a pantry's only once it is bare: a
+/// town's homes are never all full at once, and what they eat is the
+/// rate.
 fn want(world: &World, good: Good, ahead: GameTime) -> f64 {
     let owed: f64 = world
         .map
@@ -329,7 +330,7 @@ fn want(world: &World, good: Good, ahead: GameTime) -> f64 {
         .filter_map(|e| match e.object {
             GameObject::Building(ref b) => match b.site {
                 Some(ref site) => site.get(&good).map(|s| s.short()),
-                None if !depot(b.kind) && model::blueprint::blueprint(b.kind).homes == 0 && crate::economy::buys(b.kind, good) => b.stocks.get(&good).map(|s| s.short()),
+                None if !depot(b.kind) && crate::economy::buys(b.kind, good) => b.stocks.get(&good).filter(|s| model::blueprint::blueprint(b.kind).homes == 0 || s.level <= 0.0).map(|s| s.short()),
                 None => None,
             },
             _ => None,
