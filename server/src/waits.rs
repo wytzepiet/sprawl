@@ -67,11 +67,13 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
         // The quay: packages landed for a depot's lorry, as many as the
         // lorries on their way here have room for, and late past that;
         // and slots booked out for one to fill.
-        let landed: Vec<Good> = b.pad.iter().filter(|p| !p.outbound).map(|p| p.good).collect();
+        let landed: Vec<(Good, Option<EntityId>)> = b.pad.iter().filter(|p| !p.outbound).map(|p| (p.good, p.to)).collect();
         if !landed.is_empty() {
-            let room = crate::haul::coming_for(world, id) as usize;
-            let why = if road { world.map.objects.get(id).and_then(|e| e.position).and_then(|here| world.map.nearest(here, world.map.depots().into_iter().map(|(d, _)| d)).first().map(|&(_, d)| Why::NoLorry(d))).unwrap_or(Why::Nobody) } else { Why::NoRoad };
-            waits.extend(landed.into_iter().enumerate().map(|(k, good)| (Wanted::Good(good), (k >= room).then_some(why))));
+            let room = crate::haul::fetching(world, id) as usize;
+            let nearest = world.map.objects.get(id).and_then(|e| e.position).and_then(|here| world.map.nearest(here, world.map.depots().into_iter().map(|(d, _)| d)).first().map(|&(_, d)| d));
+            // The depot it is bound for, or the nearest, its lorries all out.
+            let why = |to: Option<EntityId>| if road { to.or(nearest).map_or(Why::Nobody, Why::NoLorry) } else { Why::NoRoad };
+            waits.extend(landed.into_iter().enumerate().map(|(k, (good, to))| (Wanted::Good(good), (k >= room).then(|| why(to)))));
         }
         waits.extend(b.outgoing.iter().map(|p| (Wanted::Good(p.good), None)));
         if b.site.is_none() {

@@ -60,6 +60,17 @@ const MIGRATIONS: &[Migration] = &[
             }
         }
     }),
+    // The pumps and the park open from the start: a town saved before
+    // has them learned, or its ladder would stand on a rung it is past.
+    Some(|_, meta| {
+        if let Some(open) = meta["research"]["open"].as_array_mut() {
+            for kind in ["GasStation", "Park"] {
+                if !open.iter().any(|k| k == kind) {
+                    open.push(kind.into());
+                }
+            }
+        }
+    }),
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

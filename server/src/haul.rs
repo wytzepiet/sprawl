@@ -406,7 +406,7 @@ pub fn sea(world: &World) -> Sea {
 }
 
 /// Packages the lorries on their way to a harbour have room for.
-pub fn coming_for(world: &World, harbour: EntityId) -> u32 {
+fn coming_for(world: &World, harbour: EntityId) -> u32 {
     world.map
         .objects
         .iter()
@@ -415,6 +415,26 @@ pub fn coming_for(world: &World, harbour: EntityId) -> u32 {
             _ => None,
         })
         .sum()
+}
+
+/// Packages landed on a harbour's quay a lorry will take: as many as the
+/// lorries on their way there or loading at it have room for; all of
+/// them while a lorry stands free at home, about to come.
+pub fn fetching(world: &World, harbour: EntityId) -> u32 {
+    let mut room = 0;
+    for e in world.map.objects.iter() {
+        let GameObject::Car(ref c) = e.object else { continue };
+        if c.role != CarRole::Truck {
+            continue;
+        }
+        match &c.trip {
+            Some(t) if t.destination == harbour => room += room_aboard(c),
+            None if world.map.claims.get(&e.id) == Some(&harbour) => room += room_aboard(c),
+            None if c.cargo.is_empty() && world.map.claims.get(&e.id) == Some(&c.owner) => return u32::MAX,
+            _ => {}
+        }
+    }
+    room
 }
 
 /// Packages a lorry has room for, what it brings in.
