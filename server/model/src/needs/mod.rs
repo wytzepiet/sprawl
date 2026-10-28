@@ -24,7 +24,7 @@ pub enum Need {
     Work,
     Rest,
     /// Meals take as long as the hunger owed, up to a sitting: served at
-    /// home always, and wherever sells food while it is open.
+    /// home off the pantry, and wherever sells food while it is open.
     Eat,
     /// The tank. Used by the mile rather than the hour, and refilled at a pump.
     Fuel,

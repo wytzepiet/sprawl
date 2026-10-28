@@ -3,7 +3,7 @@ import { For, Show, createMemo } from "solid-js";
 import { getEntity, signed } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { select, subject } from "../state/selection";
-import { dayLengthMs } from "../network/clock";
+import { LATE_MS } from "../generated/rows";
 import { GOODS, middle } from "../blueprints";
 import { BAD, onMap, Press } from "./kit";
 import type { Building, Wait, Wanted, Why } from "../generated";
@@ -67,8 +67,6 @@ function Lead(props: { from: Building; to: number }) {
   );
 }
 
-/** How long a late trip's ring takes to fill: three hours of the day. */
-const RING = () => dayLengthMs() / 8;
 /** Someone, for a seat nobody holds. */
 const HANDS = { color: "#8E8E93", glyph: "M12 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM3 22c0-5 4-8.5 9-8.5s9 3.5 9 8.5z" };
 const look = (w: Wanted) => (w === "Hands" ? HANDS : GOODS[w.Good]);
@@ -119,10 +117,10 @@ function Over(props: { id: number; building: () => Building }) {
 }
 
 /** A late trip: its good's disc and glyph, ringed white, the ring
- *  filling red as it waits. */
+ *  filling red as it waits, full when the building gives up (`LATE_MS`). */
 function Pin(props: { wait: Wait; onTap: () => void }) {
   const { color, glyph } = look(props.wait.what);
-  const full = () => Math.min(1, Math.max(0, (now() - props.wait.late!) / RING()));
+  const full = () => Math.min(1, Math.max(0, (now() - props.wait.late!) / LATE_MS));
   const R = 12.5;
   const round = 2 * Math.PI * R;
   return (

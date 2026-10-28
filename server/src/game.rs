@@ -291,8 +291,12 @@ fn handle_wake(
         Some(GameObject::Car(c)) if c.trip.is_none() => crate::calls::car_idle(world, events, id, now),
         Some(GameObject::Car(_)) => world.drive(events, |t, e| traffic::car::simulation::handle_car_wake_up(t, e, id, now)),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
-        // A building's wake is its turn: a farm whose crop has ripened.
-        Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
+        // A building's wake is its turn: a farm whose crop has ripened,
+        // or a wait late long enough to give up on.
+        Some(GameObject::Building(_)) => {
+            world.give_up(id, now);
+            crate::calls::turn(world, events, id, now);
+        }
         // A junction's is its lights looking again.
         Some(GameObject::RoadNode(_)) => world.drive(events, |t, e| traffic::car::simulation::lights(t, e, id, now)),
         // Midnight: every building takes its turn, and every line reads
@@ -321,7 +325,7 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     }
     // The quays change with every ferry and lorry, and are few.
     world.waiting.extend(world.map.harbours.keys().copied());
-    crate::waits::look(world, events.now());
+    crate::waits::look(world, events, events.now());
     // A harbour reached, or cut off: the town's way out, and its ferry.
     world.map.mark_harbours();
     let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();

@@ -200,8 +200,12 @@ shop is can be seen from the lot. Arrivals come off the ferry and drive off
 the ramp. Nobody walks.
 
 **People stay in their own town.** Only goods cross its border. A
-resident with no shop in town goes without, and it shows; a job nobody in
-town takes stays empty. The ferry brings settlers when the town has both
+home cooks off a pantry of bread a depot's van fills like any shelf; a
+resident whose pantry is bare eats out where bread is sold, or goes
+without, and it shows: a home with its pantry empty and someone in it too
+hungry to work pins bread, late, and a quarter of a day on
+(`model::LATE_MS`) its household leaves, and nobody comes until it is
+filled. A job nobody in town takes stays empty. The ferry brings settlers when the town has both
 jobs and homes for them, so a town grows by giving people a reason to
 come, and stops when it does not.
 

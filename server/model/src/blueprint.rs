@@ -188,8 +188,11 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     };
     use Good::{Cement, Coal, Crude, Grain, Machinery, Ore, Steel, Stone, Timber};
     vec![
-        (House, row((1, 1), (0, 0), &[(Timber, 4)], household(2))),
-        (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8), (Cement, 8)], household(7))),
+        // A home's kitchen cooks off its pantry: two crates of bread for
+        // a house, some ten days of its two's meals; four for a block of
+        // seven, a week. A depot's van fills it as it would a shop's shelf.
+        (House, Blueprint { shelves: &[(Good::Bread, 50)], ..row((1, 1), (0, 0), &[(Timber, 4)], household(2)) }),
+        (Apartment, Blueprint { shelves: &[(Good::Bread, 100)], ..row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8), (Cement, 8)], household(7)) }),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
             shelves: &[(Good::Bread, 50)],
@@ -222,17 +225,19 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 12), (Cement, 8)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
         // Where the town's goods are kept, in the open, a little of every
-        // good, about ten packages of each: eight crates of bread and
-        // eight bags of grain, fifteen bundles of timber and fifteen
-        // pallets of stone. Its lorry hauls packages from the harbour and
-        // the makers' yards, and its vans deliver to shops, works and sites.
+        // good, about ten packages of each: twenty crates of bread, what
+        // its town's pantries and counters go through in a day or so, and
+        // twenty bags of grain for its bakers; fifteen bundles of timber
+        // and fifteen pallets of stone. Its lorry hauls packages from the
+        // harbour and the makers' yards, and its vans deliver to homes,
+        // shops, works and sites.
         (Depot, Blueprint {
             shelves: &[
-                (Good::Bread, 200),
+                (Good::Bread, 500),
                 (Good::Fuel, 100),
                 (Timber, 60),
                 (Stone, 60),
-                (Grain, 200),
+                (Grain, 500),
                 (Cement, 40),
                 (Ore, 40),
                 (Coal, 40),
@@ -304,13 +309,15 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Bakers start before the town wakes: four hands, five to two,
         // opening bags of grain and baking them into crates of bread, a
         // unit of grain a meal, as much a shift as a farm grows. It keeps
-        // ten bags in and ten crates out.
+        // a shift's grain in, twenty-six bags, filled overnight while the
+        // vans are free, and twenty crates out.
         (Bakery, Blueprint {
-            shelves: &[(Grain, 250), (Good::Bread, 250)],
+            shelves: &[(Grain, 650), (Good::Bread, 500)],
             makes: Some(Good::Bread),
             opens: &[(Grain, 1.0)],
             pace: 18.0,
-            docks: 1,
+            // A lorry for its bread and a van with its grain at once.
+            docks: 2,
             ..row((2, 1), (2, 2), &[(Timber, 8)], vec![shift(5, 14, 4)])
         }),
         // A kiln and a mill: six hands, seven to four, burning stone into

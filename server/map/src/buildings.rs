@@ -14,17 +14,18 @@ enum Behind {
 
 impl Map {
     /// A building saved before it had its shelves or its yard gets them the
-    /// way a standing one does; one whose row changed a shelf gets the new
-    /// one. A site has neither until it stands.
+    /// way a standing one does; one whose row resized a shelf keeps what
+    /// was on it, as far as it fits. A site has neither until it stands.
     pub fn open_shelves(&mut self, id: EntityId) {
         let Some(b) = self.building_mut(id) else { return };
         if b.site.is_some() {
             return;
         }
         let caps = model::blueprint::stocks(b.kind);
-        b.stocks.retain(|good, stock| caps.get(good) == Some(&stock.cap));
+        b.stocks.retain(|good, _| caps.contains_key(good));
         for (good, cap) in caps {
-            b.stocks.entry(good).or_insert(model::needs::Stock { level: 0.0, cap });
+            let s = b.stocks.entry(good).or_default();
+            *s = model::needs::Stock { level: s.level.min(cap), cap };
         }
     }
 

@@ -1,16 +1,21 @@
 //! What each building waits on, for the client's pins: every trip that
 //! should come to it, and which of them are late (`model::Wait`). Read
-//! off the calls, the shelves, the seats and the quay; decides nothing.
+//! off the calls, the shelves, the seats, the quay and who at home is
+//! hungry; decides nothing, but wakes the building when it would give
+//! up (`World::give_up`).
 
 use fixed::HashMap;
 use model::blueprint::blueprint;
-use model::{EntityId, GameTime, Good, Leg, Wait, Wanted, Why};
+use model::needs::Need;
+use model::{EntityId, GameTime, Good, Leg, Wait, Wanted, Why, LATE_MS};
+use traffic::event_queue::EventQueue;
 use crate::world::World;
 
 /// The waits of every building whose trips changed (`World::waiting`),
 /// written only where they changed. A wait late before keeps the moment
-/// it fell late, so its ring goes on filling.
-pub fn look(world: &mut World, now: GameTime) {
+/// it fell late, so its ring goes on filling, and the building is woken
+/// as it fills.
+pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
     if world.waiting.is_empty() {
         return;
     }
@@ -25,13 +30,20 @@ pub fn look(world: &mut World, now: GameTime) {
     for id in std::mem::take(&mut world.waiting) {
         let Some(b) = world.map.building(id) else { continue };
         let road = world.map.street_of(id).is_some();
+        let household = world.map.household(id);
+        let hungry = household.iter().any(|&r| world.map.resident(r).is_some_and(|r| r.buckets.iter().any(|b| b.need == Need::Eat && b.stock.level <= 0.0)));
         let mut waits = Vec::new();
         for &(good, van) in called.get(&id).into_iter().flatten() {
+            let was = b.waits.iter().any(|w| w.what == Wanted::Good(good) && w.late.is_some());
             // A site cannot go on without any of its materials; a shelf or
-            // a bin, once it is empty.
+            // a bin, once it is empty; a home's pantry, once it is empty
+            // and someone there is too hungry to work, and once they left
+            // for it, until it is filled.
+            let empty = b.stocks.get(&good).is_none_or(|s| s.level <= 0.0);
             let stuck = match &b.site {
                 Some(_) => van.is_none(),
-                None => b.stocks.get(&good).is_none_or(|s| s.level <= 0.0),
+                None if blueprint(b.kind).homes > 0 => empty && (hungry || (household.is_empty() && was)),
+                None => empty,
             };
             let why = stuck.then(|| match van {
                 _ if !road => Why::NoRoad,
@@ -68,6 +80,9 @@ pub fn look(world: &mut World, now: GameTime) {
                 why,
             })
             .collect();
+        for t in waits.iter().filter_map(|w| w.late).filter(|&t| t + LATE_MS > now) {
+            events.wake(t + LATE_MS - now, id);
+        }
         if waits != b.waits
             && let Some(b) = world.map.building_mut(id)
         {
@@ -92,15 +107,48 @@ mod tests {
             b.stocks.get_mut(&Good::Bread).unwrap().level = 0.0;
         }
         crate::calls::turn(&mut game.world, &mut game.events, shop, 0);
-        crate::waits::look(&mut game.world, 5);
+        crate::waits::look(&mut game.world, &mut game.events, 5);
         let waits = &game.world.map.building(shop).unwrap().waits;
         assert!(waits.iter().any(|w| w.what == Wanted::Good(Good::Bread) && w.late == Some(5) && w.why == Some(Why::Nobody)), "no depot, no ship: nobody has bread; {waits:?}");
         let seats = model::blueprint::blueprint(BuildingKind::Shop).jobs - game.world.map.building(shop).unwrap().hands;
         assert_eq!(waits.iter().filter(|w| w.what == Wanted::Hands).count() as u32, seats);
         // Looked at again later, the bread keeps the moment it fell late.
         game.world.waiting.insert(shop);
-        crate::waits::look(&mut game.world, 99);
+        crate::waits::look(&mut game.world, &mut game.events, 99);
         assert!(game.world.map.building(shop).unwrap().waits.iter().any(|w| w.what == Wanted::Good(Good::Bread) && w.late == Some(5)));
+    }
+
+    /// A house in a town with no bread anywhere: its pantry calls and
+    /// nothing answers. While its two are fed it is a dot; once they are
+    /// too hungry to work, a pin, late; a quarter of a day on, they have
+    /// moved out, and nobody moves in at midnight while it stays late.
+    #[test]
+    fn a_hungry_house_pins_bread_and_is_given_up() {
+        let mut world = street();
+        let house = build(&mut world, 20, BuildingKind::House);
+        let mut game = game(world);
+        let people = game.world.map.household(house);
+        assert_eq!(people.len(), 2, "nobody moved in");
+        game.world.map.building_mut(house).unwrap().stocks.get_mut(&Good::Bread).unwrap().level = 0.0;
+        crate::calls::turn(&mut game.world, &mut game.events, house, 0);
+        crate::waits::look(&mut game.world, &mut game.events, 0);
+        let bread = |game: &crate::game::Game| game.world.map.building(house).unwrap().waits.iter().find(|w| w.what == Wanted::Good(Good::Bread)).copied();
+        assert_eq!(bread(&game).map(|w| w.late), Some(None), "an empty pantry with its people fed is not a dot");
+        for &id in &people {
+            let r = game.world.map.resident_mut(id).unwrap();
+            r.buckets.iter_mut().find(|b| b.need == model::needs::Need::Eat).unwrap().stock.level = 0.0;
+        }
+        game.world.waiting.insert(house);
+        game.step();
+        let late = bread(&game).and_then(|w| w.late).expect("hungry, and the bread not late");
+        game.run_to(late + model::LATE_MS - 1000);
+        assert_eq!(game.world.map.household(house).len(), 2, "they left before the ring was full");
+        game.run_to(late + model::LATE_MS + 1000);
+        assert!(game.world.map.household(house).is_empty(), "they stayed hungry");
+        assert!(people.iter().all(|&id| game.world.map.resident(id).is_none()));
+        game.run_to(model::DAY_MS as u64 + 1000);
+        assert!(game.world.map.household(house).is_empty(), "settlers came to a house with nothing to eat");
+        assert!(bread(&game).is_some_and(|w| w.late == Some(late)), "the pin went out over an empty pantry");
     }
 }
 

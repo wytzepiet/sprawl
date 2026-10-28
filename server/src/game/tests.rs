@@ -683,6 +683,8 @@ fn every_build_leaves_the_town_settled() {
 /// plots, each with its ground behind it.
 pub(crate) const QUARRY_X: i32 = 150;
 pub(crate) const SAWMILL_X: i32 = 170;
+/// And its second depot and bakery, at the east end of the forty.
+pub(crate) const FED_X: i32 = 128;
 
 /// The season: a month of the same town as
 /// `a_town_thinks_within_budget`, `#[ignore]`d for the same reason:
@@ -728,6 +730,14 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill);
     // The flats stand on cement, burnt from the quarries' stone.
     build(&mut world, SAWMILL_X + 10, BuildingKind::CementWorks);
+    // Every meal is a crate's share, at home or out: some fifteen
+    // crates a day for a hundred and fifty people, and twenty-five by
+    // the month's end, more than a farm grows and a bakery gets its
+    // grain for; so a second depot, its vans to bring them to the
+    // pantries, a second bakery, and past the works a second farm.
+    build(&mut world, FED_X, BuildingKind::Depot);
+    build(&mut world, FED_X + 8, BuildingKind::Bakery);
+    build(&mut world, SAWMILL_X + 20, BuildingKind::Farm);
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
     // street beside it.
@@ -792,8 +802,11 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
         for e in world.map.objects.iter() {
             let GameObject::Building(ref b) = e.object else { continue };
             for (&good, stock) in &b.stocks {
-                // A farm's yard is meant to empty: a lorry takes it.
-                if model::blueprint::makes(b.kind, good) || !used.contains(&good) {
+                // A farm's yard is meant to empty: a lorry takes it. A
+                // depot's shelf is the town's store, not a want: with two
+                // depots, the one nearer the harbour may keep all the fuel,
+                // and what goes short shows on the pumps and pantries.
+                if model::blueprint::makes(b.kind, good) || !used.contains(&good) || model::blueprint::depot(b.kind) {
                     continue;
                 }
                 if stock.level <= 0.0 {
@@ -845,6 +858,8 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
                 let park: Vec<String> = h["park"].as_array().unwrap().iter().map(|t| if t.is_null() { "_".into() } else { format!("{}{}", t["good"].as_str().map_or("E", |g| &g[..1]), if t["outbound"].as_bool().unwrap() { "^" } else { "" }) }).collect();
                 println!("  park {} deck {} booked {}", park.join(""), h["ferry"]["deck"].as_array().unwrap().iter().filter(|t| !t.is_null()).count(), h["ferry"]["booked"].as_array().unwrap().len());
             }
+            let flows: Vec<String> = world.market.prices().flows.iter().filter(|f| matches!(f.good, Good::Bread | Good::Grain)).map(|f| format!("{:?} made {:.0} used {:.0}", f.good, f.made, f.used)).collect();
+            println!("  the last day: {}", flows.join(", "));
             for l in sea["lorries"].as_array().unwrap() {
                 println!("  lorry {} to {} hitched {}", l["id"], l["to"], l["hitched"]);
             }
@@ -852,7 +867,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
                 if let GameObject::Building(ref b) = e.object
                     && matches!(b.kind, BuildingKind::Depot | BuildingKind::Farm | BuildingKind::Bakery | BuildingKind::CementWorks)
                 {
-                    println!("  {:?} {} {:?}", b.kind, e.id, b.stocks.iter().map(|(g, s)| (*g, s.level as i32)).collect::<Vec<_>>());
+                    println!("  {:?} {}, {} hands, {:?}", b.kind, e.id, b.hands, b.stocks.iter().map(|(g, s)| (*g, s.level as i32)).collect::<Vec<_>>());
                 }
             }
         }
