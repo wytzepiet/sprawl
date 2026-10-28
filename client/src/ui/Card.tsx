@@ -1,6 +1,6 @@
 import { Box, Ink, Text, Icon, type BoxProps } from "~ui";
 import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
-import { BLUEPRINTS } from "../blueprints";
+import { BLUEPRINTS, chain, GOODS } from "../blueprints";
 import { select, setFollowing, setSubject } from "../state/selection";
 import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
@@ -224,6 +224,15 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
         <Section title="Stocks">
           <For each={c().stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full <= 0 ? BAD : GOOD} /></Row>}</For>
         </Section>
+      </Show>
+      <Show when={!site() && chain(kind())}>
+        {(ch) => (
+          <Section title="At its best">
+            <Row label={`${GOODS[ch().good].label} a day`}><Text size={13.5}>{Math.round(ch().day)}</Text></Row>
+            <For each={ch().takes}>{(t) => <Row label={`takes the ${GOODS[t.good].label} of`}><Text size={13.5}>{t.n.toFixed(1)} {BLUEPRINTS[t.kind].label.toLowerCase()}</Text></Row>}</For>
+            <For each={ch().feeds}>{(f) => <Row label="keeps going"><Text size={13.5}>{f.n.toFixed(1)} {BLUEPRINTS[f.kind].label.toLowerCase()}</Text></Row>}</For>
+          </Section>
+        )}
       </Show>
       <Show when={c().here.length > 0}>
         <Section title={`Here now · ${c().here.length}`}>

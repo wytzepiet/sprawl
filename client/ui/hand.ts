@@ -7,7 +7,7 @@ const SLOP = 6;
 const nodes = new WeakMap<Element, Common>();
 export const handle = (el: Element, props: Common) => void nodes.set(el, props);
 
-type Handler = "onTap" | "onScroll" | "onPress" | "onHover" | "onDrag" | "onDrop";
+type Handler = "onTap" | "onScroll" | "onPress" | "onHover" | "onDrag" | "onDrop" | "onSlide";
 /** The nearest element, from this one up, that takes it. */
 function up(el: Element | null, prop: Handler): Common | null {
   for (; el; el = el.parentElement) {
@@ -50,9 +50,21 @@ export function hand(root: HTMLElement) {
     el.setPointerCapture(e.pointerId);
     press = { id: e.pointerId, el, x: e.clientX, y: e.clientY, last: e.clientY, dragged: false };
     up(el, "onPress")?.onPress!(true);
+    slid(e, true);
+  };
+  /** A slide's place along what takes it. */
+  const slid = (e: PointerEvent, held: boolean) => {
+    const s = press && up(press.el, "onSlide");
+    if (!s || !press) return false;
+    let el: Element | null = press.el;
+    while (el && nodes.get(el) !== s) el = el.parentElement;
+    const r = el!.getBoundingClientRect();
+    s.onSlide!(Math.max(0, Math.min(1, (e.clientX - r.left) / Math.max(1, r.width))), held);
+    return true;
   };
   const move = (e: PointerEvent) => {
     if (press && e.pointerId === press.id) {
+      if (slid(e, true)) return void (press.dragged = true);
       if (!press.dragged && Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP) {
         press.dragged = true;
         const out = up(press.el, "onDrag");
@@ -75,6 +87,7 @@ export function hand(root: HTMLElement) {
   };
   const lift = (e: PointerEvent) => {
     if (press && e.pointerId === press.id) {
+      if (slid(e, false)) return void (up(press.el, "onPress")?.onPress!(false), (press = null));
       const p = press;
       press = null;
       up(p.el, "onPress")?.onPress!(false);

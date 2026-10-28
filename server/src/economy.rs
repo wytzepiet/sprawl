@@ -118,6 +118,7 @@ pub fn harvested(world: &mut World, farm: EntityId, load: f64, now: GameTime) {
     let Some(yard) = b.stocks.get_mut(&good) else { return };
     let grown = load.min(yard.short());
     yard.add(grown);
+    world.market.made(good, grown);
     added(world, farm, grown * world_price(good), now);
 }
 
@@ -199,6 +200,7 @@ pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: Gam
     let gdp = match need.good().and_then(|g| Some((g, b.stocks.get_mut(&g)?))) {
         Some((good, stock)) => {
             stock.take(units);
+            world.market.used(good, units);
             units * (served_price(good) - world_price(good))
         }
         None if need == Need::Work && blueprint(kind).shelves.is_empty() => units * WAGE,
@@ -219,6 +221,7 @@ pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: Gam
         let Some(yard) = b.stocks.get_mut(&good) else { return };
         let made = made.min(yard.short()).min(bins);
         yard.add(made);
+        world.market.made(good, made);
         for &(g, per) in bp.opens {
             drawn(world, at, g, made * per);
         }
@@ -249,6 +252,7 @@ fn drawn(world: &mut World, at: EntityId, good: Good, units: f64) -> f64 {
     let Some(stock) = b.stocks.get_mut(&good) else { return 0.0 };
     let units = units.min(stock.level);
     stock.take(units);
+    world.market.used(good, units);
     units
 }
 
@@ -280,6 +284,10 @@ pub fn delivered(world: &mut World, buyer: EntityId, good: Good, load: f64) -> f
     let Some(stock) = b.site.as_mut().unwrap_or(&mut b.stocks).get_mut(&good) else { return load };
     let units = load.min(whole(stock.short(), good) as f64 * good.per_package()).max(0.0);
     stock.add(units);
+    if b.site.is_some() {
+        world.market.used(good, units);
+    }
+    let Some(b) = world.map.building_mut(buyer) else { return load };
     if b.site.as_ref().is_some_and(|s| s.values().all(|s| s.short() <= 1e-9)) {
         world.map.stand(buyer);
     }

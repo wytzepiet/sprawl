@@ -15,6 +15,16 @@ pub struct Line {
     pub keep: f64,
 }
 
+/// What the town made of a good and used of it, the last day: made by its
+/// works and fields, used by its counters, pumps, sites and works.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Flow {
+    pub good: Good,
+    pub made: f64,
+    pub used: f64,
+}
+
 /// A good on the market as the clients are sent it: the price, the
 /// band, what the town pays and gets at its harbour, and the week.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -43,6 +53,8 @@ pub struct Prices {
     /// just gone than the desks had.
     pub desks: f64,
     pub full: bool,
+    /// Each good the town made or used the last day.
+    pub flows: Vec<Flow>,
     /// The hour the last price is for, from the world's start.
     #[ts(type = "number")]
     pub hour: u64,

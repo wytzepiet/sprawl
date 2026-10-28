@@ -10,8 +10,9 @@ import { WHITE } from "./rgb";
 import { slab, type P } from "./geometry";
 import { reached, signed } from "../state/gameObjects";
 import { subject } from "../state/selection";
-import { BLUEPRINTS, standing } from "../blueprints";
-import type { Building, BuildingKind } from "../generated";
+import { BLUEPRINTS, GOODS, standing } from "../blueprints";
+import { stocks } from "../state/market";
+import type { Building, BuildingKind, Good } from "../generated";
 
 /**
  * What a building says it is, made in the world, not on the page, lit by
@@ -24,7 +25,9 @@ import type { Building, BuildingKind } from "../generated";
  *
  * A building no road reaches asks for one, so it has a marker instead,
  * floating over the roof and the same size on the screen at every zoom,
- * ringed red. So does the one whose card is open.
+ * ringed red. So does the one whose card is open. And so does one held
+ * up for a good (`want`), its marker that good's: a shop out of bread, a
+ * steelworks out of coal, a site waiting on cement the town has none of.
  *
  * Both faces are SVG (the kind's colour, its glyph from the blueprints)
  * drawn into a texture, so the icons stay one source.
@@ -61,6 +64,22 @@ const PAINT_INK = "#F3EEE2";
 
 /** A building's mark: the marker, a plate, or a sign painted on its roof. */
 type Look = "marker" | "plate" | "paint";
+
+/** The good a building is held up for, if any: a site's material the
+ *  town's depots have too little of to finish it; a shop's, a pump's or
+ *  a works' shelf of what it serves or works, empty. A maker's own yard
+ *  and a depot's shelves are the market's to show. */
+export function want(b: Building): Good | null {
+  if (b.site) {
+    const town = stocks();
+    for (const [g, s] of Object.entries(b.site) as [Good, { level: number; cap: number }][]) if (s.cap - s.level > (town[g]?.level ?? 0) + 1e-9) return g;
+    return null;
+  }
+  const bp = BLUEPRINTS[b.kind];
+  if (b.kind === "Depot" || bp.quay) return null;
+  for (const [g, s] of Object.entries(b.stocks) as [Good, { level: number }][]) if (g !== bp.makes && s.level < 1e-9) return g;
+  return null;
+}
 
 /** The marker: the outline, tip at the origin and a unit tall, its head up
  *  the screen (+y), its face the SVG's box, its sides the white of its rim. */
@@ -116,6 +135,18 @@ const markerFace = (kind: BuildingKind) => {
 </svg>`, w, h);
 };
 
+/** A want's face: as a marker's, the good's disc and glyph. */
+const wantFace = (good: Good) => {
+  const { color, glyph } = GOODS[good];
+  const [w, h] = [22 * MARKER_TEXELS, 30 * MARKER_TEXELS];
+  return texels(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="-11 -11 22 30">
+<rect x="-11" y="-11" width="22" height="30" fill="#fff"/>
+<path d="${OUTLINE}" fill="none" stroke="${UNREACHED}" stroke-width="2.4"/>
+<circle r="7.8" fill="${color}"/>
+<svg x="-6.5" y="-6.5" width="13" height="13" viewBox="0 0 24 24"><path d="${glyph}" fill="#fff" fill-rule="evenodd"/></svg>
+</svg>`, w, h);
+};
+
 /** A sign's face: the kind's colour, its glyph in white. */
 const signFace = (kind: BuildingKind) => {
   const { color, glyph } = BLUEPRINTS[kind];
@@ -142,11 +173,11 @@ export default function Signs() {
   const pool = useInstancePool();
   const shapes = { marker: marker(), plate: sign(SLAB), paint: sign(PAINT) };
   const faces = new Map<string, Promise<Texture2D>>();
-  const faceOf = (look: Look, kind: BuildingKind) => {
-    const key = `${look}_${kind}`;
+  const faceOf = (look: Look, kind: BuildingKind, good: Good | null) => {
+    const key = good ? `want_${good}` : `${look}_${kind}`;
     if (!faces.has(key)) {
       const [w, h] = look === "marker" ? [22 * MARKER_TEXELS, 30 * MARKER_TEXELS] : [SIGN_TEXELS, SIGN_TEXELS];
-      const made = look === "marker" ? markerFace(kind) : look === "paint" ? paintFace(kind) : signFace(kind);
+      const made = good ? wantFace(good) : look === "marker" ? markerFace(kind) : look === "paint" ? paintFace(kind) : signFace(kind);
       faces.set(key, made.then((data) => createTexture2DFromPixels(engine, data, w, h, { format: "rgba8unorm", mipmaps: true, minFilter: "linear", magFilter: "linear" })));
     }
     return faces.get(key)!;
@@ -166,10 +197,11 @@ export default function Signs() {
       // Homes say nothing, nor a site, nor a harbour, whose ground is all
       // yard and no roof, nor a depot, a sawmill, a quarry, a farm or a
       // shop, each a model of its own that says what it is (`objects/`).
-      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || ["Depot", "Sawmill", "Quarry", "Farm", "Shop"].includes(kind) ? null : where.painted ? "paint" : "plate";
+      const good = reached(e) && subject() !== e.id ? want(b) : null;
+      const look: Look | null = !reached(e) || subject() === e.id || good ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || ["Depot", "Sawmill", "Quarry", "Farm", "Shop"].includes(kind) ? null : where.painted ? "paint" : "plate";
       if (!look) continue;
       keep.add(e.id);
-      const bucket = `${look}_${kind}`;
+      const bucket = good ? `want_${good}` : `${look}_${kind}`;
       const old = shown.get(e.id);
       if (old?.bucket === bucket) continue;
       if (old && old.id >= 0) pool.removeInstance(old.bucket, old.id);
@@ -184,7 +216,7 @@ export default function Signs() {
       // A bucket waits for its face; the building joins it once that is drawn.
       const entry = { bucket, id: -1, look };
       shown.set(e.id, entry);
-      void faceOf(look, kind).then((texture) => {
+      void faceOf(look, kind, good).then((texture) => {
         if (shown.get(e.id) !== entry) return;
         const made = pool.ensureBucket(bucket, shapes[look], WHITE, false, true, texture);
         // Paint is only where it is painted.

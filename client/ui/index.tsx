@@ -50,6 +50,10 @@ export interface Common {
   onPress?: (down: boolean) => void;
   /** Pressed and dragged off it: the town has the pointer from here. */
   onDrag?: () => void;
+  /** Pressed and slid along: where the pointer is across it, 0 at its
+   *  left and 1 at its right, from the press till let go, said once more
+   *  then, not held. A handle on a bar. */
+  onSlide?: (at: number, held: boolean) => void;
   /** A drag the town has let go over it. */
   onDrop?: () => void;
   /** Laid out at this size, and again whenever it changes. */
@@ -164,7 +168,7 @@ function common(p: Common, catches: boolean): JSX.CSSProperties {
     opacity: o === 1 ? undefined : String(o),
     // Faded all the way, it is gone: drawn nowhere, found by nothing.
     visibility: o < 0.002 ? "hidden" : undefined,
-    "pointer-events": catches || p.onTap || p.onScroll || p.onPress || p.onHover || p.onDrag || p.onDrop ? "auto" : undefined,
+    "pointer-events": catches || p.onTap || p.onScroll || p.onPress || p.onHover || p.onDrag || p.onDrop || p.onSlide ? "auto" : undefined,
     cursor: p.onTap ? "pointer" : undefined,
   };
 }

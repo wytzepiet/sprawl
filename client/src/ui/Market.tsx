@@ -2,7 +2,7 @@ import { Box, Text, Icon } from "~ui";
 import { createMemo, createRoot, createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { sea, until, voyage } from "../state/sea";
-import { change, dayAgo, market, quoteOf, stocks, total } from "../state/market";
+import { change, dayAgo, flowOf, market, quoteOf, stocks, total } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
 import { LOAD } from "../generated/rows";
@@ -156,7 +156,10 @@ export function MarketBody() {
             <Tile good={q.good} />
             <Box grow={1} gap={1}>
               <Text size={14.5} weight={600}>{named(q.good)}</Text>
-              <Text size={12} soft>{held().has(q.good) ? `${Math.floor(held().get(q.good)!.level)} held` : "none held"}</Text>
+              <Box dir="row" gap={6}>
+                <Text size={12} soft>{held().has(q.good) ? `${Math.floor(held().get(q.good)!.level)} held` : "none held"}</Text>
+                <Show when={net(q.good)}>{(n) => <Text size={12} weight={600} ink={n() > 0 ? GOOD : BAD}>{n() > 0 ? "+" : "−"}{Math.round(Math.abs(n()))} a day</Text>}</Show>
+              </Box>
             </Box>
             <Spark q={q} />
             <Box w={64} align="end">
@@ -169,6 +172,14 @@ export function MarketBody() {
     </Box>
   );
 }
+
+/** What the town made of a good less what it used, the last day; none
+ *  where it does neither, or they all but match. */
+const net = (g: Good) => {
+  const f = flowOf(g);
+  const n = f ? f.made - f.used : 0;
+  return Math.abs(n) >= 0.5 ? n : null;
+};
 
 /** A widget's ground on the black: the page is a stack of them. */
 const TILE = "#1C1C1E";
@@ -234,6 +245,16 @@ function Page(props: { good: Good }) {
   const per = () => GOODS[props.good].per * LOAD;
   const keep = (k: number | null) => send({ type: "Line", data: { good: props.good, keep: k === null ? null : Math.max(0, k) } });
   const start = () => Math.round((stock()?.level ?? 0) / per()) * per();
+  // The line's handle, slid along the shelf: where it is while held, set
+  // at a load's step when let go.
+  const [sliding, setSliding] = createSignal<number | null>(null);
+  const slide = (at: number, held: boolean) => {
+    const k = Math.round((at * (stock()?.cap ?? 0)) / per()) * per();
+    setSliding(held ? k : null);
+    if (!held) keep(k);
+  };
+  const line = () => sliding() ?? kept();
+  const flow = () => flowOf(props.good);
   return (
     <Box pad={{ x: 12, bottom: 14 }} gap={GAP}>
       <PageHead>
@@ -273,15 +294,15 @@ function Page(props: { good: Good }) {
           <Text size={13} weight={600} ink="ink/0.5">In your depots</Text>
           <Text serif size={34}>{Math.floor(stock()?.level ?? 0).toLocaleString()}</Text>
           <Box grow={1} />
-          <Box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)}>
+          <Box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)} onSlide={stock() && market.desks > 0 ? slide : undefined}>
             <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf((stock()?.level ?? 0) + (stock()?.incoming ?? 0))} h={14} round={7} fill={`${accent()}59`} />
             <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf(stock()?.level ?? 0)} h={14} round={7} fill={accent()} />
-            <Show when={kept() !== null}>
-              <Box at={{ left: Math.max(0, shelfW() * shelf(kept()!) - 1.5), top: -3 }} w={3} h={20} round={1.5} fill="white" />
+            <Show when={line() !== null}>
+              <Box at={{ left: Math.max(0, shelfW() * shelf(line()!) - 4), top: -4 }} w={8} h={22} round={4} fill="white" />
             </Show>
           </Box>
           <Box dir="row">
-            <Text size={12} weight={600} ink="ink/0.45" grow={1}>{stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</Text>
+            <Text size={12} weight={600} ink="ink/0.45" grow={1}>{sliding() !== null ? `keep ${sliding()}` : stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</Text>
             <Show when={(stock()?.incoming ?? 0) > 0}>
               <Text size={12} weight={600} ink={accent()}>+{Math.round(stock()!.incoming)} coming</Text>
             </Show>
@@ -306,6 +327,22 @@ function Page(props: { good: Good }) {
           </Box>
         </Box>
       </Box>
+
+      {/* What the town made of it and used, the last day. */}
+      <Show when={flow()}>
+        {(f) => (
+          <Box dir="row" gap={GAP}>
+            <For each={[["Made", f().made], ["Used", f().used]] as const}>
+              {([label, v]) => (
+                <Box grow={1} pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={2}>
+                  <Text size={12} weight={600} ink="ink/0.45">{label} the last day</Text>
+                  <Text serif size={26} ink={label === "Made" ? accent() : undefined}>{Math.round(v).toLocaleString()}</Text>
+                </Box>
+              )}
+            </For>
+          </Box>
+        )}
+      </Show>
 
       {/* When a box bought now lands: the ferry it rides. */}
       <Show when={ferry()}>

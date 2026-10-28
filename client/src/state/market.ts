@@ -9,7 +9,7 @@ import type { Good, Prices, Quote, Stock } from "../generated";
  * hours behind it; and the lines it keeps, and its offices' desks. Sent on joining and
  * whenever it changes, an hour of the town's day at most.
  */
-const [market, setMarket] = createStore<Prices>({ goods: [], lines: [], desks: 0, full: false, hour: 0 });
+const [market, setMarket] = createStore<Prices>({ goods: [], lines: [], desks: 0, full: false, hour: 0, flows: [] });
 
 /** Every standing depot's shelves added up, as the server counts them,
  *  wherever the camera is: none, no depot yet. */
@@ -17,6 +17,9 @@ export const [stocks, hearStocks] = createSignal<Partial<Record<Good, Stock>>>({
 export { market };
 
 export const hearMarket = (p: Prices) => setMarket(reconcile(p));
+
+/** What the town made and used of a good the last day. */
+export const flowOf = (good: Good) => market.flows.find((f) => f.good === good);
 
 export const quoteOf = (good: Good): Quote | undefined => market.goods.find((q) => q.good === good);
 

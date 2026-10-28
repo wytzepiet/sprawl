@@ -369,6 +369,22 @@ const LOOKS: Record<BuildingKind, Look> = {
 
 export const BLUEPRINTS = Object.fromEntries(Object.entries(LOOKS).map(([k, look]) => [k, { ...look, ...ROWS[k as BuildingKind] }])) as Record<BuildingKind, Blueprint>;
 
+/** What a maker comes to at its best, every hand at work: so much of its
+ *  good a day; for each good it works, how many of the kind that makes
+ *  that it takes the work of; and how many of each kind that works its
+ *  good it keeps going. One mine to a steelworks, near enough. */
+export function chain(kind: BuildingKind) {
+  const bp = BLUEPRINTS[kind];
+  if (!bp.makes || !bp.day) return null;
+  const maker = (g: Good) => KINDS.find((k) => BLUEPRINTS[k].makes === g && BLUEPRINTS[k].day > 0);
+  const takes = (Object.entries(bp.opens) as [Good, number][]).flatMap(([g, per]) => {
+    const k = maker(g);
+    return k ? [{ good: g, kind: k, n: (bp.day * per) / BLUEPRINTS[k].day }] : [];
+  });
+  const feeds = KINDS.filter((k) => BLUEPRINTS[k].opens[bp.makes!] && BLUEPRINTS[k].day > 0).map((k) => ({ kind: k, n: bp.day / (BLUEPRINTS[k].day * BLUEPRINTS[k].opens[bp.makes!]!) }));
+  return { good: bp.makes, day: bp.day, takes, feeds };
+}
+
 /** Every kind the mayor may put down. */
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
 

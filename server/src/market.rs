@@ -28,7 +28,7 @@
 //! trades `CLERK` packages. The mayor's own Buy and Sell never wait on a
 //! desk.
 
-use model::market::{Line, Quote, Prices};
+use model::market::{Flow, Line, Quote, Prices};
 use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
@@ -100,6 +100,10 @@ pub struct Market {
     desks: f64,
     #[serde(skip)]
     full: bool,
+    /// What the town made and used of each good, an hour a row, the last
+    /// day's; the last row the hour going.
+    #[serde(default)]
+    flows: VecDeque<BTreeMap<Good, [f64; 2]>>,
     /// Something a client would draw changed since it was last sent.
     #[serde(skip)]
     pub changed: bool,
@@ -125,6 +129,20 @@ impl Market {
     /// it moves to, never past the band.
     pub fn next(&self, good: Good, out: bool) -> f64 {
         (self.price(good) + if out { -1.0 } else { 1.0 } * Self::nudge(good)).clamp(Self::floor(good), Self::ceiling(good))
+    }
+
+    /// So many units of a good made in town, or used.
+    pub fn made(&mut self, good: Good, units: f64) {
+        self.flow(good, 0, units);
+    }
+    pub fn used(&mut self, good: Good, units: f64) {
+        self.flow(good, 1, units);
+    }
+    fn flow(&mut self, good: Good, k: usize, units: f64) {
+        if self.flows.is_empty() {
+            self.flows.push_back(BTreeMap::new());
+        }
+        self.flows.back_mut().unwrap().entry(good).or_default()[k] += units;
     }
 
     /// The town traded so many packages: the price moves its way.
@@ -158,6 +176,10 @@ impl Market {
                 h.pop_front();
             }
         }
+        self.flows.push_back(BTreeMap::new());
+        while self.flows.len() > 24 {
+            self.flows.pop_front();
+        }
         self.hour += 1;
         self.changed = true;
     }
@@ -175,7 +197,14 @@ impl Market {
             })
             .collect();
         let lines = self.lines.iter().map(|(&good, &keep)| Line { good, keep }).collect();
-        Prices { goods, lines, desks: self.desks, full: self.full, hour: self.hour }
+        let mut day = BTreeMap::<Good, [f64; 2]>::new();
+        for (&good, &[m, u]) in self.flows.iter().flatten() {
+            let d = day.entry(good).or_default();
+            d[0] += m;
+            d[1] += u;
+        }
+        let flows = day.into_iter().map(|(good, [made, used])| Flow { good, made, used }).collect();
+        Prices { goods, lines, desks: self.desks, full: self.full, hour: self.hour, flows }
     }
 }
 

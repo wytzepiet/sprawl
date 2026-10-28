@@ -9,7 +9,8 @@ mod tests {
     /// The game's half of each row, written where the client reads it,
     /// beside ts-rs's types (`.cargo/config.toml`): what a kind is built
     /// from, its footprint and yard, its quay; a good's package; what a
-    /// lorry and a van carry; a depot's lorries. `blueprints.ts` keeps
+    /// lorry and a van carry; a depot's lorries; what a maker makes a day
+    /// with every hand at work and its ground all round. `blueprints.ts` keeps
     /// only the look.
     #[test]
     fn the_client_reads_the_rows() {
@@ -20,7 +21,7 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; opens: Partial<Record<Good, number>>; jobs: number; forklifts: number }> = {\n",
+             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; opens: Partial<Record<Good, number>>; jobs: number; day: number; forklifts: number }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
@@ -29,7 +30,7 @@ mod tests {
             let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
             let opens: Vec<_> = b.opens.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let opens = if opens.is_empty() { "{}".into() } else { format!("{{ {} }}", opens.join(", ")) };
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, jobs: {}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.jobs, b.forklifts);
+            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, opens: {opens}, jobs: {}, day: {}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.jobs, (b.jobs as f64 * model::blueprint::shift_hours(kind) * b.pace * 100.0).round() / 100.0, b.forklifts);
         }
         let packages: Vec<_> = Good::ALL.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
