@@ -81,4 +81,5 @@ export type * from "./TripLine";
 export type * from "./Wait";
 export type * from "./WantView";
 export type * from "./Wanted";
+export type * from "./Why";
 export type * from "./rows";

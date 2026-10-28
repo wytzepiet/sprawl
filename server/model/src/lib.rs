@@ -388,6 +388,30 @@ pub struct Wait {
     pub what: Wanted,
     #[ts(type = "number | null")]
     pub late: Option<GameTime>,
+    /// Late, what holds it up: the first thing to fix.
+    pub why: Option<Why>,
+}
+
+/// What holds a late trip up, each a thing on the map to go and see.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Why {
+    /// No street reaches the building.
+    NoRoad,
+    /// A van has it aboard and is still on its way.
+    OnTheWay(#[ts(type = "number")] EntityId),
+    /// A depot has it and no van there is free.
+    NoVan(#[ts(type = "number")] EntityId),
+    /// None in town; some is coming, where the nearest is now: a ship,
+    /// the quay, a lorry.
+    Coming(#[ts(type = "number")] EntityId),
+    /// None in town and none coming: nobody makes it, nor can the town
+    /// buy it.
+    Nobody,
+    /// A seat: nobody in town is free to take it.
+    NoHands,
+    /// A seat: someone is free, but too far off to take it.
+    TooFar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

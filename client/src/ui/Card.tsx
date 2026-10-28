@@ -1,6 +1,7 @@
 import { Box, Ink, Text, Icon, type BoxProps } from "~ui";
 import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
-import { BLUEPRINTS } from "../blueprints";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { says, target } from "./Pins";
 import { select, setFollowing, setSubject } from "../state/selection";
 import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
@@ -216,11 +217,36 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
   /** Still going up: the client's own record of the site. */
   const site = createMemo(() => buildingOf(props.id)?.site ?? null);
   const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
+  /** Its late trips, alike ones together: what, how many, why, and where. */
+  const late = createMemo(() => {
+    const by = new Map<string, { what: string; n: number; says: string; to: number | null }>();
+    for (const w of buildingOf(props.id)?.waits ?? []) {
+      if (!w.why) continue;
+      const label = w.what === "Hands" ? "hands" : GOODS[w.what.Good].label;
+      const what = label[0].toUpperCase() + label.slice(1);
+      const k = `${what} ${JSON.stringify(w.why)}`;
+      by.set(k, { what, n: (by.get(k)?.n ?? 0) + 1, says: says(w.why), to: target(w.why) });
+    }
+    return [...by.values()];
+  });
   return (
     <>
       <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
       <Show when={!site() && kind() === "Depot"}>
         <DepotPanel id={props.id} lorries={lorries()} />
+      </Show>
+      <Show when={late().length > 0}>
+        <Section title="Waiting on">
+          <For each={late()}>
+            {(l) => (
+              <Row label={l.n > 1 ? `${l.what} ×${l.n}` : l.what}>
+                <Show when={l.to} fallback={<Text size={13.5} soft>{l.says}</Text>}>
+                  {(to) => <To link={{ id: to(), label: l.says, kind: "building" }} />}
+                </Show>
+              </Row>
+            )}
+          </For>
+        </Section>
       </Show>
       <Show when={kind() !== "Depot" && c().stocks.length > 0}>
         <Section title="Stocks">
