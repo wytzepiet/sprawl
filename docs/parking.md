@@ -154,3 +154,12 @@ car behind one that registered later, which the reservation turns into
 a new deadlock. So: queues ordered by position first, then the box rule.
 Of that, the give-way lines and joining a queue where a car stands are
 built (§7).
+
+**Found 2026-10-28:** two cars coming out of lots at one street node
+stand level in the street's queues, both at the node, and level measured
+along each one's own route came out whichever way the rounding fell, a
+different way on each edge. A van out of the depot's yard and a car
+pulling out at its gate each stood ahead of the other on the next two
+edges and waited for each other for good, and the season's street locked
+behind them on its twenty-sixth day. Level at one node, the nearer it
+stands ahead, and level there, the earlier id (`behind`).

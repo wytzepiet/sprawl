@@ -165,12 +165,11 @@ fn join_run(world: &mut Traffic, car_id: EntityId, trip: &Trip, from: usize, at:
             // one standing at the node, waiting for it. Others still on
             // their way out are measured so too, or two would stand in one
             // order on a stretch and the other on the next.
-            let mine = queued_at(trip, at) - trip.along[k - 1];
-            let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
+            let Some(mine) = place(trip, car_id, at, edge) else { continue };
             // Ahead of whoever is behind it: a car asleep on its way joins
             // the run late, and is not behind everyone on it.
             let lane = trip.lanes.get(k).copied().unwrap_or(0) as usize;
-            let behind: Vec<EntityId> = world.map.edges[&edge].all().filter(|&o| behind(o)).collect();
+            let behind: Vec<EntityId> = world.map.edges[&edge].all().filter(|&o| place_of(world, o, edge, now).is_some_and(|p| behind(p, mine))).collect();
             world.map.edges.get_mut(&edge).unwrap().insert_before(car_id, lane, |o| behind.contains(&o));
         }
         if world.map.network.ends_run(trip.route[k]) || world.map.is_intersection(trip.route[k]) {
@@ -206,6 +205,44 @@ fn from_another_arm(world: &Traffic, car_id: EntityId, junction: EntityId, mine:
     let Some(t) = c.trip.as_ref() else { return false };
     let Some(i) = t.route.iter().position(|&n| n == junction) else { return false };
     i > 0 && i >= t.route_index && t.route[i - 1] != mine
+}
+
+/// Where a car stands on an edge of its way, to queue it by (`behind`).
+#[derive(Clone, Copy)]
+struct Place {
+    car: EntityId,
+    /// How far past the edge's start it is; on its way out of a lot, the
+    /// street node is.
+    at: f64,
+    /// On its way out of a lot: the street node it comes out at, and how
+    /// far it still has to go to it.
+    out: Option<(EntityId, f64)>,
+}
+
+fn place(t: &Trip, car: EntityId, p: f64, edge: EdgeKey) -> Option<Place> {
+    let s = t.from_lot;
+    let out = (s > 0 && t.route_index <= s + 1 && p < t.along[s]).then(|| (t.route[s], t.along[s] - p));
+    Some(Place { car, at: queued_at(t, p) - t.start_of(edge)?, out })
+}
+
+fn place_of(world: &Traffic, car_id: EntityId, edge: EdgeKey, now: GameTime) -> Option<Place> {
+    let GameObject::Car(ref c) = world.map.objects.get(car_id)?.object else { return None };
+    let t = c.trip.as_ref()?;
+    place(t, car_id, t.at(now).0, edge)
+}
+
+/// Is `a` behind `b` on the edge: short of it; or, both coming out of
+/// lots at one street node, where both stand level, further from it,
+/// and the later, level. Level, measured along each one's own route,
+/// was whichever way the rounding fell, a different way on each edge:
+/// two coming out of a yard stood each ahead of the other on the next
+/// two, and each waited for the other for good (the season's
+/// twenty-sixth day, 2026-10-28).
+fn behind(a: Place, b: Place) -> bool {
+    match (a.out, b.out) {
+        (Some((s, x)), Some((t, y))) if s == t => (x, a.car) > (y, b.car),
+        _ => a.at < b.at,
+    }
 }
 
 /// Where a car is on its route, measured from the start of one of its
@@ -1008,8 +1045,8 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
             // Ahead of it on the road, not only in a queue that has them
             // the other way about on another stretch; each measured alike,
             // one still in its lot at the lot's mouth.
-            let mine = queued_at(trip, cur_progress) - trip.start_of(edge)?;
-            position_on(world, a, edge, now).is_some_and(|p| p > mine).then_some(a)
+            let mine = place(trip, car_id, cur_progress, edge)?;
+            place_of(world, a, edge, now).is_some_and(|p| behind(mine, p)).then_some(a)
         })
     };
     // Each junction it would claim, and how far on it is clear of it.
