@@ -77,10 +77,9 @@ export function want(b: Building): Good | "hands" | null {
     return null;
   }
   const bp = BLUEPRINTS[b.kind];
-  if (bp.jobs > 0 && b.hands === 0) return "hands";
-  if (b.kind === "Depot" || bp.quay) return null;
-  for (const [g, s] of Object.entries(b.stocks) as [Good, { level: number }][]) if (g !== bp.makes && s.level < 1e-9) return g;
-  return null;
+  // An empty bin first: nobody is hired to work a bin with nothing in it.
+  if (b.kind !== "Depot" && !bp.quay) for (const [g, s] of Object.entries(b.stocks) as [Good, { level: number }][]) if (g !== bp.makes && s.level < 1e-9) return g;
+  return bp.jobs > 0 && b.hands === 0 ? "hands" : null;
 }
 
 /** The marker: the outline, tip at the origin and a unit tall, its head up

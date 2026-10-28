@@ -302,7 +302,9 @@ fn cars_stop_for_fuel_now_and_then() {
 /// aside, which stands with its back to the sea, and the street has
 /// one.
 pub(crate) fn placeable() -> Vec<BuildingKind> {
-    BuildingKind::ALL.into_iter().filter(|&k| !model::blueprint::blueprint(k).quay).collect()
+    use model::blueprint::{blueprint, ground};
+    // A mine or a well stands only over what it digs, never on a street.
+    BuildingKind::ALL.into_iter().filter(|&k| !blueprint(k).quay && !blueprint(k).makes.and_then(ground).is_some_and(|(_, d)| d.is_some())).collect()
 }
 
 /// A town shaped like a town, for the seasons: mostly homes, offices

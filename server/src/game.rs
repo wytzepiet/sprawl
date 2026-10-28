@@ -322,9 +322,9 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     // A harbour reached, or cut off: the town's way out, and its ferry.
     world.map.mark_harbours();
     let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();
-    let ports = standing.iter().filter(|&&h| world.map.building(h).is_some_and(|b| b.kind == model::BuildingKind::Port)).count() as u32;
-    if ports != world.market.ports {
-        world.market.ports = ports;
+    let port = standing.iter().any(|&h| world.map.building(h).is_some_and(|b| b.kind == model::BuildingKind::Port));
+    if port != world.market.port {
+        world.market.port = port;
         world.market.changed = true;
     }
     for h in standing {

@@ -92,11 +92,11 @@ export function padOf(b: Building): Pad {
     return { bays, homes: forklifts(() => f.pose(f.at, 0, f.d / 2 + 0.05)), yard: false };
   }
   if (kind.quay) {
-    // Out from the ramp, a bay of each good the market trades, two
+    // Out from the ramp, a bay of each good that lands, two
     // across and five out, each four by two and four high; its forklifts
     // between them and the lane.
     const back = -f.d / 2;
-    const bays = HEAVY.filter((g) => g !== "Bread").map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.36 + Math.floor(k / 2) * 0.26, 4, 2), stack: 4 }));
+    const bays = HEAVY.map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.36 + Math.floor(k / 2) * 0.26, 4, 2), stack: 4 }));
     return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.4)), yard: true };
   }
   const goods = Object.keys(b.stocks) as Good[];

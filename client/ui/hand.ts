@@ -32,7 +32,7 @@ export function hand(root: HTMLElement) {
    *  is the canvas while the town holds the pointer and what lies under
    *  it once a drag out of the UI has let go of it. */
   const dropOn = (e: PointerEvent) => (mine(e.target) ? up(e.target, "onDrop") : null);
-  let press: { id: number; el: Element; x: number; y: number; last: number; dragged: boolean } | null = null;
+  let press: { id: number; el: Element; x: number; y: number; last: number; dragged: boolean; sliding: boolean } | null = null;
   /** The pointer the town has, if it has one. */
   let town: number | null = null;
   let over: Common | null = null;
@@ -48,9 +48,8 @@ export function hand(root: HTMLElement) {
     // Held by what it began on, as a finger is: what it does is the UI's
     // until it is let go, wherever it goes.
     el.setPointerCapture(e.pointerId);
-    press = { id: e.pointerId, el, x: e.clientX, y: e.clientY, last: e.clientY, dragged: false };
+    press = { id: e.pointerId, el, x: e.clientX, y: e.clientY, last: e.clientY, dragged: false, sliding: false };
     up(el, "onPress")?.onPress!(true);
-    slid(e, true);
   };
   /** A slide's place along what takes it. */
   const slid = (e: PointerEvent, held: boolean) => {
@@ -64,9 +63,11 @@ export function hand(root: HTMLElement) {
   };
   const move = (e: PointerEvent) => {
     if (press && e.pointerId === press.id) {
-      if (slid(e, true)) return void (press.dragged = true);
+      if (press.sliding) return void slid(e, true);
       if (!press.dragged && Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP) {
         press.dragged = true;
+        // Across, it slides; up or down, the sheet scrolls under it.
+        if (Math.abs(e.clientX - press.x) > Math.abs(e.clientY - press.y) && slid(e, true)) return void (press.sliding = true);
         const out = up(press.el, "onDrag");
         if (out) {
           up(press.el, "onPress")?.onPress!(false);
@@ -87,7 +88,7 @@ export function hand(root: HTMLElement) {
   };
   const lift = (e: PointerEvent) => {
     if (press && e.pointerId === press.id) {
-      if (slid(e, false)) return void (up(press.el, "onPress")?.onPress!(false), (press = null));
+      if (press.sliding && slid(e, false)) return void (up(press.el, "onPress")?.onPress!(false), (press = null));
       const p = press;
       press = null;
       up(p.el, "onPress")?.onPress!(false);
