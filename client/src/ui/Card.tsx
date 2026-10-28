@@ -235,7 +235,7 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
       <Show when={!site() && kind() === "Depot"}>
         <DepotPanel id={props.id} lorries={lorries()} />
       </Show>
-      <Show when={late().length > 0}>
+      <Show when={!site() && late().length > 0}>
         <Section title="Waiting on">
           <For each={late()}>
             {(l) => (

@@ -20,7 +20,6 @@ and how much (`Blueprint::materials`, which a draft's bill reads):
 | House | 4 | |
 | Apartment | 12 | 8 |
 | Shop | 4 | |
-| Office | 10 | 6 |
 | Factory | 14 | 8 |
 | Gas station | 6 | 4 |
 | Supermarket | 16 | 10 |
@@ -143,7 +142,8 @@ stops the line, in sight.
 
 ## Goes
 
-- **Office and factory**, once the chains supply the jobs.
+- **Factory**, once the chains supply the jobs. The office went when the
+  town began to trade by itself.
 - **The port** as built, the depot with a ship of the world's: replaced by
   the ferry harbour and the container port.
 - **The edge**, where a road leaves the map: the harbour is the only door.

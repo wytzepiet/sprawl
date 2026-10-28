@@ -36,14 +36,15 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
         for &(good, van) in called.get(&id).into_iter().flatten() {
             let was = b.waits.iter().any(|w| w.what == Wanted::Good(good) && w.late.is_some());
             // A site cannot go on without any of its materials; a shelf or
-            // a bin, once it is empty; a home's pantry, once it is empty
-            // and someone there is too hungry to work, and once they left
-            // for it, until it is filled.
-            let empty = b.stocks.get(&good).is_none_or(|s| s.level <= 0.0);
+            // a bin, once it is empty and no van was sent in time; a home's
+            // pantry, the same once someone there is too hungry to work,
+            // and once they left for it, until it is filled. A van sent
+            // after it fell late keeps it late, and is what holds it up.
+            let missed = b.stocks.get(&good).is_none_or(|s| s.level <= 0.0) && (van.is_none() || was);
             let stuck = match &b.site {
                 Some(_) => van.is_none(),
-                None if blueprint(b.kind).homes > 0 => empty && (hungry || (household.is_empty() && was)),
-                None => empty,
+                None if blueprint(b.kind).homes > 0 => missed && (hungry || (household.is_empty() && was)),
+                None => missed,
             };
             let why = stuck.then(|| match van {
                 _ if !road => Why::NoRoad,
@@ -80,7 +81,9 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
                 why,
             })
             .collect();
-        for t in waits.iter().filter_map(|w| w.late).filter(|&t| t + LATE_MS > now) {
+        // Only a home gives up (`World::give_up`): woken as its ring fills.
+        let homes = blueprint(b.kind).homes > 0;
+        for t in waits.iter().filter(|_| homes).filter_map(|w| w.late).filter(|&t| t + LATE_MS > now) {
             events.wake(t + LATE_MS - now, id);
         }
         if waits != b.waits
@@ -156,7 +159,7 @@ mod tests {
 /// out; else where the nearest of what is coming is; else nobody has it.
 fn held(world: &World, at: EntityId, good: Good, coming: &[(Good, EntityId)]) -> Why {
     let Some(here) = world.map.objects.get(at).and_then(|e| e.position) else { return Why::Nobody };
-    let with = world.map.depots().into_iter().filter(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)).map(|(id, _)| id);
+    let with = world.map.depots().into_iter().filter(|(_, b)| b.stocks.get(&good).is_some_and(|s| crate::economy::whole(s.level, good) > 0)).map(|(id, _)| id);
     if let Some(&(_, depot)) = world.map.nearest(here, with).first() {
         return Why::NoVan(depot);
     }

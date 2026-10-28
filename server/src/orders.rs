@@ -35,7 +35,7 @@ const WHO: [Who; 4] = [
         toward: Compass::West,
         colour: "#3f7fa8",
         goods: &[Good::Grain, Good::Fuel, Good::Steel],
-        sells: &[Good::Grain, Good::Coal],
+        sells: &[Good::Grain, Good::Bread, Good::Coal],
     },
     Who {
         mayor: Mayor::Mira,
@@ -43,7 +43,7 @@ const WHO: [Who; 4] = [
         town: "Northgate",
         toward: Compass::North,
         colour: "#6b5b7b",
-        goods: &[Good::Timber, Good::Coal, Good::Machinery],
+        goods: &[Good::Timber, Good::Bread, Good::Coal, Good::Machinery],
         sells: &[Good::Stone, Good::Ore, Good::Cement],
     },
     Who {

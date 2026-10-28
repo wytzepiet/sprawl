@@ -13,7 +13,7 @@ import type { Building, Wait, Wanted, Why } from "../generated";
  * Motorways shows a house wanting a car: an order on its way is a dot in
  * its good's colour; a trip late, the building unable to go on without
  * it, a pin, its ring filling red as it stays late. A seat nobody holds
- * is a pin of someone. A tap opens the building's card, which says what
+ * is a pin of someone, with no ring: nothing gives up for want of one. A tap opens the building's card, which says what
  * holds each up (`Why`), and from the building a line runs to each thing
  * holding one up: the van on its way, the depot with no van free, the
  * ship bringing it.
@@ -117,7 +117,7 @@ function Over(props: { id: number; building: () => Building }) {
 }
 
 /** A late trip: its good's disc and glyph, ringed white, the ring
- *  filling red as it waits, full when the building gives up (`LATE_MS`). */
+ *  filling red over `LATE_MS` as it waits: full, a home gives up. */
 function Pin(props: { wait: Wait; onTap: () => void }) {
   const { color, glyph } = look(props.wait.what);
   const full = () => Math.min(1, Math.max(0, (now() - props.wait.late!) / LATE_MS));
@@ -127,7 +127,9 @@ function Pin(props: { wait: Wait; onTap: () => void }) {
     <Press w={30} h={30} align="center" justify="center" onTap={props.onTap}>
       <svg width="30" height="30" viewBox="-15 -15 30 30" style={{ position: "absolute", left: "0", top: "0" }}>
         <circle r={R} fill="white" />
-        <circle r={R} fill="none" stroke={BAD} stroke-width="3" stroke-dasharray={`${full() * round} ${round}`} transform="rotate(-90)" />
+        <Show when={props.wait.what !== "Hands"}>
+          <circle r={R} fill="none" stroke={BAD} stroke-width="3" stroke-dasharray={`${full() * round} ${round}`} transform="rotate(-90)" />
+        </Show>
         <circle r="10" fill={color} />
       </svg>
       <Icon d={glyph} size={12} ink="white" />

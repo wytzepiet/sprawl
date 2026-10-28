@@ -48,9 +48,9 @@ use model::GameTime;
 use model::{EntityId, GameObject, Good, Package, DAY_MS};
 use crate::world::World;
 
-/// The goods on the market, in the order the list shows them. Bread is
-/// fresh and never on it: every town bakes its own.
-pub const GOODS: [Good; 10] = [Good::Timber, Good::Stone, Good::Grain, Good::Fuel, Good::Cement, Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude];
+/// The goods on the market, in the order the list shows them. Bread
+/// too: a town with no bakery yet eats bought bread, and pays for it.
+pub const GOODS: [Good; 11] = [Good::Bread, Good::Timber, Good::Stone, Good::Grain, Good::Fuel, Good::Cement, Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude];
 
 /// How far a good's price may stray from the world's, each way, as a
 /// share of it: the band.
@@ -319,7 +319,8 @@ fn position(world: &World, good: Good) -> f64 {
 /// What the town will want of a good before the ferry after next can
 /// bring more, `ahead` from now: what it uses over what it makes, at the
 /// last day's rate, and what its sites still wait for and its counters'
-/// and works' bins have room for.
+/// and works' bins have room for. Not its pantries': a town's homes are
+/// never all full at once, and what they eat is the rate.
 fn want(world: &World, good: Good, ahead: GameTime) -> f64 {
     let owed: f64 = world
         .map
@@ -328,7 +329,7 @@ fn want(world: &World, good: Good, ahead: GameTime) -> f64 {
         .filter_map(|e| match e.object {
             GameObject::Building(ref b) => match b.site {
                 Some(ref site) => site.get(&good).map(|s| s.short()),
-                None if !depot(b.kind) && crate::economy::buys(b.kind, good) => b.stocks.get(&good).map(|s| s.short()),
+                None if !depot(b.kind) && model::blueprint::blueprint(b.kind).homes == 0 && crate::economy::buys(b.kind, good) => b.stocks.get(&good).map(|s| s.short()),
                 None => None,
             },
             _ => None,

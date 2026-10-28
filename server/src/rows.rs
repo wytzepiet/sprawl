@@ -48,6 +48,7 @@ mod tests {
             crate::haul::MORE_LORRIES
         );
         ts += &format!("\n/** How long a building waits late before it gives up, its pin's ring full (`model::LATE_MS`). */\nexport const LATE_MS = {};\n", model::LATE_MS);
+        ts += &format!("\n/** A crossing's share of the price: paid on top buying, taken off selling (`economy::FREIGHT`). */\nexport const FREIGHT = {};\n", crate::economy::FREIGHT);
         std::fs::write(std::path::Path::new(&dir).join("rows.ts"), ts).unwrap();
     }
 }

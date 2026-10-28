@@ -43,3 +43,6 @@ export const MORE_LORRIES = 3;
 
 /** How long a building waits late before it gives up, its pin's ring full (`model::LATE_MS`). */
 export const LATE_MS = 300000;
+
+/** A crossing's share of the price: paid on top buying, taken off selling (`economy::FREIGHT`). */
+export const FREIGHT = 0.25;

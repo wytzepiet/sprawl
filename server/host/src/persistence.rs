@@ -49,7 +49,7 @@ const MIGRATIONS: &[Migration] = &[
     // A home's kitchen cooks off a pantry of bread: every home standing
     // is issued one full, as its household was eating before.
     Some(|objects, _| {
-        for o in objects.iter_mut() {
+        for o in objects.iter_mut().filter(|o| o["object"]["kind"] == "Building") {
             let b = &mut o["object"]["data"];
             let Ok(kind) = serde_json::from_value::<model::BuildingKind>(b["kind"].clone()) else { continue };
             if model::blueprint::blueprint(kind).homes == 0 || !b["site"].is_null() {
