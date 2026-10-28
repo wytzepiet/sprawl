@@ -19,7 +19,7 @@ import type { JSX } from "solid-js";
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A hammer. */
 const BUILD = "M13.8 1.7L22.3 10.2L18.4 14.1L9.9 5.6ZM13.2 9L15 10.8L6.2 19.6L4.4 17.8Z";
-/** A price's line, rising. */
+/** The goods: a line rising, the town's day across the border. */
 const MARKET = "M3 20.5h18v-2H3zM3 15.5l5-5 4 3.5 6.5-7.5L21 9V3.5h-5.5l2 2-5 5.8-4-3.5L3 13z";
 
 /** The dock's measure: a tab every 52px, the bar 60 tall. */
@@ -44,7 +44,7 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
  * rest under it as tall as it is up to its room, and taller scrolls;
  * dragged down from its top, it sinks again. The bare hand, whose
  * sheet is the card of what it tapped; the road tools and the
- * demolisher; the build menu; the market, the town's stock and its orders.
+ * demolisher; the build menu; the goods, what crossed the border and the deals.
  *
  * What is in hand, in its colour, rides under its tab as dyed glass.
  */

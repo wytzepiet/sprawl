@@ -9,7 +9,7 @@ import { clear } from "./pages";
  * each tab has a sheet, peeking over the bar as its head alone, drawn up
  * to show the rest. What a tab is for is what it holds: the bare hand
  * a card of what it tapped, the roads their tools, the build menu its buildings,
- * the market its goods, what the town holds and its orders.
+ * the goods: what crossed the border, every good's day, the deals.
  */
 export const TABS = ["select", "roads", "build", "market"] as const;
 export type Tab = (typeof TABS)[number];
