@@ -6,7 +6,7 @@ use fixed::HashSet;
 
 use land::{ChunkCoord, CHUNK_SIZE};
 use model::blueprint::blueprint;
-use model::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
+use model::{Building, Car, EntityId, GameObject, GameTime, GridCoord, Resident, Wanted, DAY_MS, LATE_MS};
 
 use crate::world::World;
 
@@ -98,8 +98,10 @@ impl World {
             // New residents are not here yet: `at: None` is off-map, and
             // their first wake drives them in from beyond the frontier.
             // Nobody materialises out of thin air — they arrive the way
-            // everyone arrives, by road.
-            for _ in self.map.household(b).len()..bp.homes as usize {
+            // everyone arrives, by road. Nor into a home late with its
+            // bread, which the last household left (`give_up`).
+            let rooms = if self.map.building(b).and_then(late).is_some() { 0 } else { bp.homes as usize };
+            for _ in self.map.household(b).len()..rooms {
                 touched.push(self.move_in(b));
             }
             if bp.jobs > 0 {
@@ -252,6 +254,22 @@ impl World {
         }
     }
 
+    /// A home late `LATE_MS` with its bread, its pin's ring full: its
+    /// household moves out, and their desks are free for whoever else
+    /// lives nearest. Settlers come again once it is filled (`settle`).
+    pub fn give_up(&mut self, home: EntityId, now: GameTime) {
+        if self.map.building(home).and_then(late).is_none_or(|t| now < t + LATE_MS) {
+            return;
+        }
+        for id in self.map.household(home) {
+            if let Some(w) = self.map.resident(id).and_then(|r| r.work) {
+                self.map.unsettled.insert(w);
+            }
+            self.move_out(id);
+        }
+        self.waiting.insert(home);
+    }
+
     /// Nobody commutes from a hole in the ground, and nothing else holds a
     /// reference to them. Their car goes with them: now if it is parked,
     /// when it does if it is out (`park_car`).
@@ -294,6 +312,12 @@ impl World {
             self.waiting.insert(w);
         }
     }
+}
+
+/// Since when a building has waited late on a shelf of its own: a
+/// home's pantry. Not a site's materials, which it stood without.
+fn late(b: &Building) -> Option<GameTime> {
+    b.waits.iter().filter(|w| matches!(w.what, Wanted::Good(g) if b.stocks.contains_key(&g))).filter_map(|w| w.late).min()
 }
 
 /// The drive between two buildings in hours, as the road roughly runs:

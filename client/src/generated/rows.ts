@@ -41,3 +41,6 @@ export const HANDLE_MS = 1500;
 /** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */
 export const LORRY_PRICE = 40;
 export const MORE_LORRIES = 3;
+
+/** How long a building waits late before it gives up, its pin's ring full (`model::LATE_MS`). */
+export const LATE_MS = 300000;

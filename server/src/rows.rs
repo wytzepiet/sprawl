@@ -47,6 +47,7 @@ mod tests {
             crate::haul::LORRY_PRICE,
             crate::haul::MORE_LORRIES
         );
+        ts += &format!("\n/** How long a building waits late before it gives up, its pin's ring full (`model::LATE_MS`). */\nexport const LATE_MS = {};\n", model::LATE_MS);
         std::fs::write(std::path::Path::new(&dir).join("rows.ts"), ts).unwrap();
     }
 }

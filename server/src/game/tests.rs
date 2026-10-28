@@ -17,8 +17,6 @@ pub(crate) enum Do {
     Place(BuildingKind, GridCoord),
     /// The building on a tile taken down whole.
     Raze(GridCoord),
-    /// A package of a good sold at the market.
-    Sell(Good),
 }
 /// The hand's act done, as a player's command is; a building refused is
 /// a test gone wrong.
@@ -27,7 +25,6 @@ pub(crate) fn does(game: &mut Game, d: Do) {
         Do::Step(tool, from, to) => ClientMessage::Build(Build { tool, from, to, up: None, sides: None, road: false }),
         Do::Place(kind, at) => ClientMessage::Place { kind, at, facing: None },
         Do::Raze(at) => ClientMessage::Raze { building: game.world.map.occupied[&(at.x, at.y)] },
-        Do::Sell(good) => ClientMessage::Trade { good, packages: 1, out: true },
     };
     game.command(PLAYER, message);
     if let Do::Place(kind, at) = d {
@@ -391,8 +388,9 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
     assert!(!game.world.map.harbours.is_empty(), "no harbour, or nobody can arrive at all");
     // The mayor at the market as each ferry casts off, looked for every
     // hour: a lorry's load of fuel bought, which nothing in town makes,
-    // once the last is off the border; and a load of the farm's crates
-    // sold, once the last is loaded.
+    // once the last is off the border, and of grain until the farm has
+    // grown some; and a load of the farm's grain sold, once the last is
+    // loaded.
     let mut berthed = false;
     let mut market = |game: &mut Game, exporting: bool| {
         let world = &mut game.world;
@@ -402,11 +400,19 @@ pub(crate) fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut
             return;
         }
         let packages = crate::haul::packages(world);
-        if !packages.iter().any(|(t, l, _)| !t.outbound && t.good == Good::Fuel && matches!(l, Leg::Booked | Leg::Aboard | Leg::Quay)) {
+        let coming = |good: Good| packages.iter().any(|(t, l, _)| !t.outbound && t.good == good && matches!(l, Leg::Booked | Leg::Aboard | Leg::Quay));
+        if !coming(Good::Fuel) {
             crate::market::trade(world, Good::Fuel, false, crate::haul::LOAD);
         }
+        // Grain for the bakers, until the farm's first harvest is in.
+        if !exporting && !coming(Good::Grain) {
+            crate::market::trade(world, Good::Grain, false, crate::haul::LOAD);
+        }
+        // Sold only out of a yard at least half full: the rest is the
+        // bakers'.
+        let plenty = world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Farm && b.stocks[&Good::Grain].weight() <= 0.5));
         let harbour = harbour_of(world);
-        if exporting && !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Grain) {
+        if exporting && plenty && !building_of(world, harbour).outgoing.iter().any(|t| t.good == Good::Grain) {
             crate::market::trade(world, Good::Grain, true, crate::haul::LOAD);
         }
         crate::haul::call_lorries(world, &mut game.events);
@@ -714,6 +720,8 @@ fn every_build_leaves_the_town_settled() {
 /// plots, each with its ground behind it.
 pub(crate) const QUARRY_X: i32 = 150;
 pub(crate) const SAWMILL_X: i32 = 170;
+/// And its second depot and bakery, at the east end of the forty.
+pub(crate) const FED_X: i32 = 128;
 
 /// The season: a month of the same town as
 /// `a_town_thinks_within_budget`, `#[ignore]`d for the same reason:
@@ -759,26 +767,26 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
     let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill);
     // The flats stand on cement, burnt from the quarries' stone.
     build(&mut world, SAWMILL_X + 10, BuildingKind::CementWorks);
+    // Every meal is a crate's share, at home or out: some fifteen
+    // crates a day for a hundred and fifty people, and twenty-five by
+    // the month's end, more than a farm grows and a bakery gets its
+    // grain for; so a second depot, its vans to bring them to the
+    // pantries, a second bakery, and past the works a second farm.
+    build(&mut world, FED_X, BuildingKind::Depot);
+    build(&mut world, FED_X + 8, BuildingKind::Bakery);
+    build(&mut world, SAWMILL_X + 20, BuildingKind::Farm);
     let mut stood = 0;
     // Each midnight, a block of flats across the street, and a side
-    // street beside it; and the depot's crates over a lorry's load sold
-    // at the market.
-    let hand = |world: &World, day: u64| -> Steps {
+    // street beside it. The depot's grain is the bakers'.
+    let hand = |_: &World, day: u64| -> Steps {
         let x = 112 + 4 * (day as i32 - 1);
         let at = |x, y| GridCoord { x, y };
-        let mut steps = vec![
+        vec![
             Do::Place(BuildingKind::Apartment, at(x + 1, -1)),
             Do::Step(Tool::Street, at(x + 2, 0), at(x + 2, -1)),
             Do::Step(Tool::Street, at(x + 2, -1), at(x + 2, -2)),
             Do::Step(Tool::Street, at(x + 2, -2), at(x + 2, -3)),
-        ];
-        let depot = world.map.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).unwrap();
-        let harbour = harbour_of(world);
-        // Waiting at the harbour already.
-        let queued = building_of(world, harbour).outgoing.iter().filter(|t| t.good == Good::Grain).count() as f64;
-        let spare = (building_of(world, depot).stocks[&Good::Grain].level / Good::Grain.per_package()).floor() - crate::haul::LOAD as f64 - queued;
-        steps.extend((0..spare.max(0.0) as usize).map(|_| Do::Sell(Good::Grain)));
-        steps
+        ]
     };
     let mut empty_since: std::collections::BTreeMap<(EntityId, String), u64> = Default::default();
     let mut stood_empty = |what: (EntityId, String), empty: bool, day: u64| -> u64 {
@@ -884,6 +892,8 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
                 let park: Vec<String> = h["park"].as_array().unwrap().iter().map(|t| if t.is_null() { "_".into() } else { format!("{}{}", t["good"].as_str().map_or("E", |g| &g[..1]), if t["outbound"].as_bool().unwrap() { "^" } else { "" }) }).collect();
                 println!("  park {} deck {} booked {}", park.join(""), h["ferry"]["deck"].as_array().unwrap().iter().filter(|t| !t.is_null()).count(), h["ferry"]["booked"].as_array().unwrap().len());
             }
+            let flows: Vec<String> = world.market.prices().flows.iter().filter(|f| matches!(f.good, Good::Bread | Good::Grain)).map(|f| format!("{:?} made {:.0} used {:.0}", f.good, f.made, f.used)).collect();
+            println!("  the last day: {}", flows.join(", "));
             for l in sea["lorries"].as_array().unwrap() {
                 println!("  lorry {} to {} hitched {}", l["id"], l["to"], l["hitched"]);
             }
@@ -891,7 +901,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
                 if let GameObject::Building(ref b) = e.object
                     && matches!(b.kind, BuildingKind::Depot | BuildingKind::Farm | BuildingKind::Bakery | BuildingKind::CementWorks)
                 {
-                    println!("  {:?} {} {:?}", b.kind, e.id, b.stocks.iter().map(|(g, s)| (*g, s.level as i32)).collect::<Vec<_>>());
+                    println!("  {:?} {}, {} hands, {:?}", b.kind, e.id, b.hands, b.stocks.iter().map(|(g, s)| (*g, s.level as i32)).collect::<Vec<_>>());
                 }
             }
         }
@@ -1172,13 +1182,16 @@ fn the_opening_from_the_harbour() {
     game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: false });
     assert!(game.world.market.price(Good::Timber) > price, "buying timber did not push its price");
 
-    // A pallet of stone sold: out on the ferry, paid as it casts off.
-    game.command(PLAYER, ClientMessage::Trade { good: Good::Stone, packages: 1, out: true });
+    // A bundle of timber sold: out on the ferry, paid as it casts off.
+    // The depot keeps a vanload of each good back for each of its vans
+    // (`economy::reorder`): the starter pack's five pallets of stone are
+    // all the town's.
+    game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: true });
     let until = game.now + 2 * turn;
-    while game.world.town.on(game.now).sold.get(&Good::Stone).is_none() && game.step_to(until) {}
-    let sold = game.world.town.on(game.now).sold.get(&Good::Stone).copied().unwrap_or(0.0);
+    while game.world.town.on(game.now).sold.get(&Good::Timber).is_none() && game.step_to(until) {}
+    let sold = game.world.town.on(game.now).sold.get(&Good::Timber).copied().unwrap_or(0.0);
     // What the depot spares over its own shelf, at the market's price less freight.
-    assert!(sold > 0.0 && sold <= Good::Stone.per_package() * crate::market::Market::ceiling(Good::Stone) + 1e-6, "the pallet went out for {sold}");
+    assert!(sold > 0.0 && sold <= Good::Timber.per_package() * crate::market::Market::ceiling(Good::Timber) + 1e-6, "the bundle went out for {sold}");
     assert!(game.world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
 }
 

@@ -83,6 +83,6 @@ ruts: Array<GridCoord>,
 door: Door | null, 
 /**
  * The trips it waits on (`sprawl::waits`): read by the client as
- * pins, never by the game.
+ * pins, and by the game for who gives up (`LATE_MS`).
  */
 waits: Array<Wait>, };

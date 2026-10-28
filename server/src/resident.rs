@@ -455,6 +455,8 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     }
     let Some(r) = world.map.resident(id).cloned() else { return };
     let mut buckets = buckets(world, &r);
+    let starving = |buckets: &[Bucket]| buckets.iter().any(|b| b.need == Need::Eat && b.stock.level <= 0.0);
+    let was = starving(&buckets);
     for b in &mut buckets {
         if b.need.constant() {
             continue;
@@ -466,6 +468,10 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         let idle = elapsed - served;
         b.stock.add(rate * served);
         b.stock.take(b.need.drain() * idle);
+    }
+    // Too hungry to work, or fed again: what the home waits on changed.
+    if starving(&buckets) != was {
+        world.waiting.insert(r.home);
     }
     store(world, id, r.car, &buckets);
     if let Some(r) = world.map.resident_mut(id) {

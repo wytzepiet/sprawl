@@ -27,7 +27,7 @@ use serde_json::{json, Value};
 use model::blueprint::{blueprint, crop, depot, farm, makes, rated, shelves};
 use model::GameTime;
 use model::needs::{Need, Stock};
-use model::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS};
+use model::{BuildingKind, CarRole, EntityId, GameObject, Good, Growth, Lump, DAY_MS};
 use crate::world::World;
 
 /// What the world beyond the border reckons a unit of a good is worth,
@@ -144,15 +144,20 @@ pub fn hiring(world: &World, building: EntityId) -> bool {
 /// textbook, with the stock's cap as `S`. Expected use over the lead
 /// time — what the taps could serve in the time the last delivery took —
 /// plus a margin, which is a full house: everyone the taps seat at once,
-/// so a rush during the lead does not empty the shelf. Until a building
-/// has had a delivery, one is assumed to take `LEAD_MS`. §6.2.
+/// so a rush during the lead does not empty the shelf; at a works, what
+/// its hands open in an hour; at a depot, a vanload on each of its vans,
+/// what its calls take at once. Until a building has had a delivery, one
+/// is assumed to take `LEAD_MS`. §6.2.
 pub fn reorder(world: &World, building: EntityId, good: Good) -> f64 {
     let Some(kind) = world.map.building(building).map(|b| b.kind) else { return 0.0 };
     let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(LEAD_MS);
     // A full house is everyone the taps seat at once: two bays with seven
     // cars at the door is a rush of seven.
     let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(|t| model::blueprint::seats(kind, t)).sum();
-    rated(kind, good) * lead as f64 / DAY_MS as f64 + seats as f64
+    let hour: f64 = blueprint(kind).opens.iter().filter(|&&(g, _)| g == good).map(|&(_, per)| per * lump(kind)).sum();
+    let vans = if depot(kind) { blueprint(kind).vehicles.iter().filter(|&&v| v == CarRole::Van).count() } else { 0 };
+    let vanloads = vans as f64 * VAN_LOAD as f64 * good.per_package();
+    rated(kind, good) * lead as f64 / DAY_MS as f64 + seats as f64 + hour + vanloads
 }
 
 /// Coins crossing the border at a building, for a good: in when the town
@@ -191,9 +196,9 @@ pub fn served(world: &mut World, at: EntityId, need: Need, hours: f64, now: Game
 /// A visit is over: `units` of `need` served at `at` come off the shelf
 /// they were served from, and the value it added is GDP. A meal or a
 /// tank off a counter's shelf adds the counter's work; a shift where the
-/// work makes no good to sell adds its cost. A home's kitchen keeps no
-/// shelf and adds nothing; a shift at a counter or a farm is already in
-/// what it serves or grows.
+/// work makes no good to sell adds its cost. A meal off a home's pantry
+/// adds nothing: cooking for yourself is nobody's paid work. A shift at a
+/// counter or a farm is already in what it serves or grows.
 pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: GameTime) {
     let Some(b) = world.map.building_mut(at) else { return };
     let kind = b.kind;
@@ -201,7 +206,7 @@ pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: Gam
         Some((good, stock)) => {
             stock.take(units);
             world.market.used(good, units);
-            units * (served_price(good) - world_price(good))
+            if blueprint(kind).homes > 0 { 0.0 } else { units * (served_price(good) - world_price(good)) }
         }
         None if need == Need::Work && blueprint(kind).shelves.is_empty() => units * WAGE,
         None => 0.0,
@@ -653,7 +658,8 @@ mod tests {
 /// A visit draws the shelf it was served from and moves no money. What
     /// it adds is GDP, landing on the building: a meal the counter's work
     /// over its crate, a shift at a desk that sells nothing its cost; a
-    /// meal at home or a shift at a counter, nothing of its own.
+    /// meal at home, off the pantry, or a shift at a counter, nothing of
+    /// its own.
     #[test]
     fn a_visit_draws_the_shelf_and_adds_its_value() {
         let mut world = town();
@@ -666,7 +672,7 @@ mod tests {
         let gdp = world.gdp;
         visited(&mut world, home, Need::Eat, 3.0, 0);
         visited(&mut world, shop, Need::Work, 9.0, 0);
-        assert!(world.map.building(home).unwrap().stocks.is_empty(), "a home keeps a shelf");
+        assert_eq!(shelf(&world, home, Good::Bread).short(), 3.0, "a meal at home is not off the pantry");
         assert_eq!(world.gdp, gdp, "a meal at home or a shift at a counter added value of its own");
         visited(&mut world, office, Need::Work, 9.0, 0);
         assert!((world.gdp - gdp - 9.0 * WAGE).abs() < 1e-9, "a shift at a desk is not worth its cost");

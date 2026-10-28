@@ -372,7 +372,7 @@ pub struct Building {
     #[serde(default)]
     pub door: Option<Door>,
     /// The trips it waits on (`sprawl::waits`): read by the client as
-    /// pins, never by the game.
+    /// pins, and by the game for who gives up (`LATE_MS`).
     #[serde(default)]
     pub waits: Vec<Wait>,
 }
@@ -1163,6 +1163,9 @@ pub enum Operation {
 pub const DAY_MS: u32 = 1_200_000;
 /// An hour of the clock.
 pub const HOUR: u32 = DAY_MS / 24;
+/// How long a building waits late before it gives up (`Wait::late`): a
+/// quarter of a day, its pin's ring full. A home's household leaves.
+pub const LATE_MS: GameTime = DAY_MS as GameTime / 4;
 
 /// The simulation's clock, as the client needs to see it.
 ///

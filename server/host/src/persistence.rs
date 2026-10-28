@@ -31,6 +31,20 @@ const MIGRATIONS: &[Migration] = &[
     // depot keeps eleven goods; the ladder's rungs moved under what was
     // built. It starts over.
     None,
+    // A home's kitchen cooks off a pantry of bread: every home standing
+    // is issued one full, as its household was eating before.
+    Some(|objects, _| {
+        for o in objects.iter_mut() {
+            let b = &mut o["object"]["data"];
+            let Ok(kind) = serde_json::from_value::<model::BuildingKind>(b["kind"].clone()) else { continue };
+            if model::blueprint::blueprint(kind).homes == 0 || !b["site"].is_null() {
+                continue;
+            }
+            for (good, cap) in model::blueprint::stocks(kind) {
+                b["stocks"][format!("{good:?}")] = serde_json::json!({ "level": cap, "cap": cap });
+            }
+        }
+    }),
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -175,6 +189,18 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(&self.0);
         }
+    }
+
+    /// A house saved before its kitchen kept a pantry comes back with
+    /// one, full.
+    #[test]
+    fn a_home_is_issued_its_pantry_full() {
+        let house: model::Building = serde_json::from_value(serde_json::json!({ "kind": "House", "facing": 0 })).unwrap();
+        let mut objects = vec![serde_json::to_value(GameObjectEntry { id: 1, object: GameObject::Building(house), position: None }).unwrap()];
+        MIGRATIONS[3].unwrap()(&mut objects, &mut Value::Null);
+        let e: GameObjectEntry = serde_json::from_value(objects.remove(0)).unwrap();
+        let GameObject::Building(b) = e.object else { panic!("not a building") };
+        assert_eq!(b.stocks[&model::Good::Bread].level, b.stocks[&model::Good::Bread].cap);
     }
 
     /// A ship saved mid-voyage comes back as it was last seen at the quay:
