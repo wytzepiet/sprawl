@@ -1320,3 +1320,104 @@ fn heavy_chains_make_steel_machines_and_fuel() {
         assert!(made.get(&good).copied().unwrap_or(0.0) > 0.0, "no {good:?} made in {days} days: {made:?}");
     }
 }
+
+/// The first half hour of play from an open start, in real minutes (a
+/// game day is twenty): a quick player, ten seconds' thought between
+/// moves, builds a depot by the harbour, two houses, a sawmill in the
+/// woods and a lab, sets the labs to the farm, sells timber over a lorry's
+/// load, and builds the farm once it is learned. Prints when each beat
+/// came; asserts only that the town got going: the houses stand, someone
+/// moved in, timber was made and the farm learned within the half hour.
+#[test]
+#[ignore]
+fn first_half_hour() {
+    let think = 10_000;
+    let mut world = street();
+    for x in SAWMILL_X - 5..SAWMILL_X + 7 {
+        for y in 5..14 {
+            world.map.terrain.insert((x, y), TerrainType::Forest);
+        }
+    }
+    let mut game = game(world);
+    game.world.research = crate::research::Research::default();
+    let mut beats: Vec<(GameTime, String)> = vec![];
+    let mut beat = |t: GameTime, what: &str| {
+        if !beats.iter().any(|(_, w)| w == what) {
+            beats.push((t, what.to_string()));
+        }
+    };
+    let plan = [(BuildingKind::Depot, HARBOUR_X - 12), (BuildingKind::House, SAWMILL_X - 8), (BuildingKind::House, SAWMILL_X - 11), (BuildingKind::Sawmill, SAWMILL_X), (BuildingKind::Lab, SAWMILL_X - 16), (BuildingKind::House, SAWMILL_X - 20), (BuildingKind::House, SAWMILL_X - 23)];
+    let mut next = 0;
+    let mut last = 0;
+    let half_hour = 30 * 60_000;
+    let of = |w: &World, k: BuildingKind| w.map.objects.iter().filter_map(|e| match e.object { GameObject::Building(ref b) if b.kind == k => Some((e.id, b.site.is_none())), _ => None }).collect::<Vec<_>>();
+    while game.now < half_hour {
+        game.step_to(game.now + 1_000);
+        let now = game.now;
+        let w = &game.world;
+        if now >= last + think {
+            last = now;
+            if next < plan.len() {
+                let (kind, x) = plan[next];
+                // Round the tile the plot's middle is on, as the hand drops it.
+                for y in 1..4 {
+                    if !game.world.map.occupied.contains_key(&(x, 1)) {
+                        game.command(PLAYER, ClientMessage::Place { kind, at: GridCoord { x, y }, facing: None });
+                    }
+                }
+                if game.world.map.occupied.contains_key(&(x, 1)) {
+                    beat(now, &format!("{kind:?} placed"));
+                    next += 1;
+                }
+            } else if of(w, BuildingKind::Lab).iter().any(|l| l.1) && w.research.at.is_none() && !w.research.open.contains(&BuildingKind::Farm) {
+                game.command(PLAYER, ClientMessage::Research { kind: BuildingKind::Farm });
+                beat(now, "the labs set to the farm");
+            } else if w.research.open.contains(&BuildingKind::Farm) && of(w, BuildingKind::Farm).is_empty() {
+                game.command(PLAYER, ClientMessage::Place { kind: BuildingKind::Farm, at: GridCoord { x: 100, y: 2 }, facing: None });
+                beat(now, "Farm placed");
+            } else if let Some((d, _)) = of(w, BuildingKind::Depot).first().copied()
+                && building_of(w, d).stocks.get(&Good::Timber).map_or(0.0, |t| t.level) > (crate::haul::LOAD as f64 + 2.0) * Good::Timber.per_package()
+            {
+                game.command(PLAYER, ClientMessage::Trade { good: Good::Timber, packages: 1, out: true });
+                beat(now, "a bundle of timber sold");
+            }
+        }
+        let w = &game.world;
+        if let Some((d, _)) = of(w, BuildingKind::Depot).first().copied() {
+            if building_of(w, d).stocks.values().any(|s| s.level > 0.0) {
+                beat(now, "the starter pack in the depot");
+            }
+        }
+        if of(w, BuildingKind::House).iter().any(|h| h.1) {
+            beat(now, "a house stands");
+        }
+        if !w.map.resident_ids().is_empty() {
+            beat(now, "the first settlers");
+        }
+        if of(w, BuildingKind::Sawmill).iter().any(|s| building_of(w, s.0).stocks.get(&Good::Timber).is_some_and(|t| t.level > 0.0)) {
+            beat(now, "the sawmill's first timber");
+        }
+        if of(w, BuildingKind::Lab).iter().any(|l| l.1) {
+            beat(now, "the lab stands");
+        }
+        if w.research.done > 0.0 {
+            beat(now, "the first researcher-hour");
+        }
+        if w.research.open.contains(&BuildingKind::Farm) {
+            beat(now, "the farm learned");
+        }
+        if of(w, BuildingKind::Farm).iter().any(|f| f.1) {
+            beat(now, "the farm stands");
+        }
+        if w.treasury > crate::economy::STAKE {
+            beat(now, "coins over the stake");
+        }
+    }
+    eprintln!("\nthe first half hour, in real minutes (a day is twenty), treasury {:.0}:\n", game.world.treasury);
+    for (t, what) in &beats {
+        eprintln!("  {:>2}:{:02}  {what}", t / 60_000, (t / 1_000) % 60);
+    }
+    for what in ["a house stands", "the first settlers", "the sawmill's first timber", "the farm learned"] {
+        assert!(beats.iter().any(|(_, w)| w == what), "no \"{what}\" in the first half hour");
+    }
+}

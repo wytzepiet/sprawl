@@ -59,7 +59,7 @@ twenty minutes; a lab's four put in some 36 researcher-hours a day):
 | Rung | Opens | Researcher-hours each | Real time |
 |---|---|---|---|
 | Start | harbour, road, house, depot, sawmill, lab | — | |
-| 1 | farm, bakery, shop, quarry, office | 24 | an hour |
+| 1 | farm, bakery, shop, quarry, office | 8 | a few minutes each, the first some fifteen in |
 | 2 | cement works, apartment, gas station, supermarket, ore mine, coal mine; two-lane roads and lights | 150 | an evening |
 | 3 | steelworks, machine works | 2000 | a day or two |
 | 4 | container port | 6000 | about a week in all |

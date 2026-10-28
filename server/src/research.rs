@@ -25,7 +25,7 @@ use BuildingKind::*;
 /// below it, so climbing grows the old chains too.
 const LADDER: [(&[BuildingKind], f64); 6] = [
     (&[Harbour, House, Depot, Sawmill, Lab], 0.0),
-    (&[Farm, Bakery, Shop, Quarry, Office], 24.0),
+    (&[Farm, Bakery, Shop, Quarry, Office], 8.0),
     (&[CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery], 150.0),
     (&[Steelworks, Factory], 2000.0),
     (&[Port], 6000.0),
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(world.research.at, Some(Farm));
         hour(&mut world);
         assert_eq!(world.research.done, 0.0, "learned with nobody at a lab");
-        world.research.done = 23.5;
+        world.research.done = 7.5;
         world.research.open.extend([Bakery, Shop, Quarry, Office]);
         world.research.done += 0.5;
         hour(&mut world);
