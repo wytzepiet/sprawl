@@ -75,7 +75,7 @@ export interface Town {
 }
 
 export const LETTERS: Record<string, BuildingKind> = {
-  H: "House", A: "Apartment", S: "Shop", O: "Office", F: "Factory",
+  H: "House", A: "Apartment", S: "Shop", F: "Factory",
   G: "GasStation", M: "Supermarket", D: "Depot", P: "Harbour", W: "Sawmill", Q: "Quarry", L: "Lab",
   K: "Bakery", C: "CementWorks", I: "Mine", J: "Colliery", X: "Steelworks", U: "OilWell", R: "Refinery", N: "Port",
 };
@@ -84,7 +84,7 @@ export const LETTERS: Record<string, BuildingKind> = {
  *  tile is a chequerboard of steps across every block. Heights that vary
  *  come with success. */
 const STOREYS: Partial<Record<BuildingKind, number>> = {
-  House: 2, Apartment: 5, Shop: 2, Office: 6, Factory: 1, Depot: 1, Supermarket: 1, GasStation: 1, Sawmill: 1, Quarry: 1, Lab: 2,
+  House: 2, Apartment: 5, Shop: 2, Factory: 1, Depot: 1, Supermarket: 1, GasStation: 1, Sawmill: 1, Quarry: 1, Lab: 2,
   Bakery: 1, CementWorks: 2, Mine: 1, Colliery: 1, Steelworks: 2, OilWell: 1, Refinery: 2,
 };
 

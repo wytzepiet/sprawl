@@ -356,12 +356,12 @@ mod tests {
         let mut world = town();
         build(&mut world, 0, BuildingKind::Apartment); // 7 residents
         let near = build(&mut world, 4, BuildingKind::Shop); // 2 jobs
-        let far = build(&mut world, 30, BuildingKind::Office); // 12 jobs
+        let far = build(&mut world, 30, BuildingKind::Lab); // 4 jobs
 
         world.settle();
         let jobs = residents(&world);
         assert_eq!(jobs.iter().filter(|r| r.work == Some(near)).count(), 2);
-        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 5);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 4);
     }
 
     #[test]
@@ -446,19 +446,19 @@ mod tests {
     }
 
     /// A desk nobody in town can take stays empty: nobody comes from
-    /// beyond the town for a job. Two people and twelve desks are two
-    /// at desks and ten free, whatever road leaves the map; and when
-    /// the office goes, its two are out of work at home, and take the
+    /// beyond the town for a job. Two people and four desks are two
+    /// at desks and two free, whatever road leaves the map; and when
+    /// the lab goes, its two are out of work at home, and take the
     /// next job that opens.
     #[test]
     fn a_desk_nobody_in_town_takes_stays_empty() {
         let mut world = town();
         build(&mut world, 0, BuildingKind::House); // two people
-        let office = build(&mut world, 20, BuildingKind::Office);
+        let lab = build(&mut world, 20, BuildingKind::Lab);
         world.settle();
         assert_eq!(residents(&world).len(), 2, "somebody moved in for the job");
-        assert!(residents(&world).iter().all(|r| r.work == Some(office)), "the town's two did not take it");
-        world.map.remove_building(office);
+        assert!(residents(&world).iter().all(|r| r.work == Some(lab)), "the town's two did not take it");
+        world.map.remove_building(lab);
         world.settle();
         assert_eq!(residents(&world).len(), 2, "losing a job is not leaving");
         assert!(residents(&world).iter().all(|r| r.work.is_none()));

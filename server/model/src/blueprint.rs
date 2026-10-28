@@ -195,9 +195,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             shelves: &[(Good::Bread, 50)],
             ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
-        // Rush hour is staggered by kind so it comes as a wave rather than a
-        // spike: industry starts before offices, offices before shops.
-        (Office, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], vec![shift(8, 17, 12)])),
         // The machine works: twelve hands, six to three, making machine
         // parts of steel, two units a part, a crate a hand a couple of
         // days. Light and dear: what the oil and the port are built with.

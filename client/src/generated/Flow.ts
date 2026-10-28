@@ -2,7 +2,9 @@
 import type { Good } from "./Good";
 
 /**
- * What the town made of a good and used of it, the last day: made by its
- * works and fields, used by its counters, pumps, sites and works.
+ * A good the last day: units the town made and used of it, made by its
+ * works and fields, used by its counters, pumps, sites and works; and
+ * packages that crossed its border, in and out, and the coins they
+ * cost and fetched.
  */
-export type Flow = { good: Good, made: number, used: number, };
+export type Flow = { good: Good, made: number, used: number, imported: number, exported: number, spent: number, earned: number, };

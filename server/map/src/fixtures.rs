@@ -14,7 +14,7 @@
 //! %  mountain with ore in it   &  mountain with coal   $  grass over oil
 //! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
-//! H house  A apartment  S shop  O office  F factory  G gas station
+//! H house  A apartment  S shop  F factory  G gas station
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm  L lab
 //! K bakery  C cement works  I mine  J colliery  X steelworks  U oil well
 //! R refinery  N port
@@ -61,7 +61,6 @@ fn building(c: char) -> Option<BuildingKind> {
         'H' => House,
         'A' => Apartment,
         'S' => Shop,
-        'O' => Office,
         'F' => Factory,
         'G' => GasStation,
         'M' => Supermarket,
@@ -84,7 +83,7 @@ fn building(c: char) -> Option<BuildingKind> {
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDPWQBLKCIJXURN".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASFGMDPWQBLKCIJXURN".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {

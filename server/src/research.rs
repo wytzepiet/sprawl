@@ -25,7 +25,7 @@ use BuildingKind::*;
 /// below it, so climbing grows the old chains too.
 const LADDER: [(&[BuildingKind], f64); 6] = [
     (&[Harbour, House, Depot, Sawmill, Lab], 0.0),
-    (&[Farm, Bakery, Shop, Quarry, Office], 8.0),
+    (&[Farm, Bakery, Shop, Quarry], 8.0),
     (&[CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery], 150.0),
     (&[Steelworks, Factory], 2000.0),
     (&[Port], 6000.0),
@@ -109,7 +109,7 @@ mod tests {
     fn the_ladder_opens_a_rung_at_a_time() {
         let mut world = World::new();
         assert!(world.research.open.contains(&House) && !world.research.open.contains(&Farm));
-        assert_eq!(world.research.shown().next, [Farm, Bakery, Shop, Quarry, Office]);
+        assert_eq!(world.research.shown().next, [Farm, Bakery, Shop, Quarry]);
         choose(&mut world, Apartment);
         assert_eq!(world.research.at, None, "a kind two rungs up was taken up");
         choose(&mut world, Farm);
@@ -117,7 +117,7 @@ mod tests {
         hour(&mut world);
         assert_eq!(world.research.done, 0.0, "learned with nobody at a lab");
         world.research.done = 7.5;
-        world.research.open.extend([Bakery, Shop, Quarry, Office]);
+        world.research.open.extend([Bakery, Shop, Quarry]);
         world.research.done += 0.5;
         hour(&mut world);
         assert!(world.research.open.contains(&Farm), "a full day's hours did not open the farm");

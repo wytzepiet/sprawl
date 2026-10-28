@@ -352,6 +352,7 @@ impl World {
         // Each package is paid for at its slot's price, by its partner.
         for t in sold {
             crate::economy::exported(self, harbour, t.good, t.value(), now);
+            self.market.crossed(&t, now);
         }
         self.set_out(events, ferry, way, true, now);
     }
@@ -397,6 +398,7 @@ impl World {
                 // it is the world's gift.
                 if t.order != model::GIFT {
                     crate::economy::landed(self, harbour, t.good, t.value(), now);
+                    self.market.crossed(&t, now);
                 }
             }
             landed = true;

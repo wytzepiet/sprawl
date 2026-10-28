@@ -3,7 +3,8 @@
 //!
 //! The mayors are the market until there are players: what their towns
 //! want pushes a price up, what they make pushes it down (`market.rs`),
-//! and a package bought or sold is named for one of them on the map.
+//! and every package bought or sold is one of theirs (`partner`), named
+//! on the map and in the deals.
 //!
 //! A slot coming in rides the next ferry and lands for the nearest depot
 //! with room; a slot going out waits at the harbour for a depot's lorry
@@ -77,10 +78,21 @@ pub fn trades() -> impl Iterator<Item = (&'static [Good], &'static [Good])> {
     WHO.iter().map(|w| (w.goods, w.sells))
 }
 
+/// Who a package of a good is bought from, or sold to: a mayor whose town
+/// makes it, or wants it, each in turn hour by hour; where none does,
+/// any of them in turn.
+pub fn partner(good: Good, out: bool, hour: u64) -> Mayor {
+    let mut by: Vec<Mayor> = WHO.iter().filter(|w| if out { w.goods } else { w.sells }.contains(&good)).map(|w| w.mayor).collect();
+    if by.is_empty() {
+        by = WHO.iter().map(|w| w.mayor).collect();
+    }
+    by[hour as usize % by.len()]
+}
+
 /// Book a place on a harbour's deck at a price a unit: a package of a
 /// good on the next ferry in, as far as the treasury goes once what is
-/// already coming is paid for; or one going out, for a partner or the
-/// market, to wait at the harbour for a lorry. Whether it was booked.
+/// already coming is paid for; or one going out, for its partner,
+/// to wait at the harbour for a lorry. Whether it was booked.
 pub fn book(world: &mut World, harbour: EntityId, good: Good, out: bool, partner: Option<Mayor>, price: f64) -> bool {
     let deck = map::sea::DECK;
     let id = world.map.objects.reserve_id();

@@ -31,6 +31,21 @@ const MIGRATIONS: &[Migration] = &[
     // depot keeps eleven goods; the ladder's rungs moved under what was
     // built. It starts over.
     None,
+    // The town trades by itself: the market's lines and their desks go,
+    // and every office becomes a lab, on the same plot; its hands over a
+    // lab's four are laid off as the town settles.
+    Some(|objects, meta| {
+        for o in objects {
+            if o["object"]["kind"] == "Building" && o["object"]["data"]["kind"] == "Office" {
+                o["object"]["data"]["kind"] = "Lab".into();
+            }
+        }
+        if let Some(market) = meta["market"].as_object_mut() {
+            for gone in ["lines", "desk", "flows", "orders"] {
+                market.remove(gone);
+            }
+        }
+    }),
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -248,5 +263,16 @@ mod tests {
         for v in [0, SAVE_VERSION, SAVE_VERSION + 1] {
             let _ = std::fs::remove_file(backup(v));
         }
+    }
+
+    /// A town from before it traded by itself keeps its offices as labs,
+    /// and its market without the lines.
+    #[test]
+    fn offices_become_labs_and_the_lines_go() {
+        let mut objects = vec![serde_json::json!({"id": 5, "object": {"kind": "Building", "data": {"kind": "Office"}}, "position": null})];
+        let mut meta = serde_json::json!({"market": {"hour": 3, "lines": {"Timber": 20.0}, "desk": 1.5}});
+        MIGRATIONS[SAVE_VERSION as usize - 1].unwrap()(&mut objects, &mut meta);
+        assert_eq!(objects[0]["object"]["data"]["kind"], "Lab");
+        assert_eq!(meta["market"], serde_json::json!({"hour": 3}));
     }
 }

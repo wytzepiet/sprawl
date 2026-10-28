@@ -1,12 +1,10 @@
 import { Box, Text, Icon } from "~ui";
 import { createMemo, createRoot, createSignal, For, Show } from "solid-js";
-import { useGame } from "../state/gameObjects";
 import { sea, until, voyage } from "../state/sea";
-import { change, dayAgo, flowOf, market, quoteOf, stocks, total } from "../state/market";
+import { change, dayAgo, flowOf, market, quoteOf, stocks } from "../state/market";
 import { home } from "../state/deals";
 import { GOODS } from "../blueprints";
-import { LOAD } from "../generated/rows";
-import { BAD, GOOD, Line, Press, SEA } from "./kit";
+import { BAD, GOOD, Press, SEA } from "./kit";
 import { show } from "./sheet";
 import { PageHead, push } from "./pages";
 import type { Good, Quote } from "../generated";
@@ -15,13 +13,10 @@ import type { Good, Quote } from "../generated";
  * The market tab (docs/plan-market.md §The first version): what the town
  * holds is worth, then every good, what the town holds of it, its day
  * and its price; a tap opens a good's page: its week on a line, the
- * world's band, its depots' room, and Buy and Sell so many packages.
+ * world's band, and its depots' room. The town trades by itself.
  *
  * Prices are a package's, the unit a deck trades in.
  */
-
-/** The most packages a ferry's deck takes: the most bought or sold at once. */
-const DECK = 60;
 
 const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1));
 const each = (g: Good, unit: number) => unit * GOODS[g].per;
@@ -189,22 +184,6 @@ const CORNER = 26;
 /** The two squares' height: the page whole above the dock on a laptop. */
 const BOX = 132;
 
-/** A number to set with a tap either side. */
-function Stepper(props: { value: string; less: () => void; more: () => void }) {
-  const Side = (p: { d: string; onTap: () => void }) => (
-    <Press w={42} h={42} round={21} align="center" justify="center" onTap={p.onTap}>
-      <Line d={p.d} size={14} width={2.8} />
-    </Press>
-  );
-  return (
-    <Box dir="row" align="center" h={54} pad={6} round={27} fill={TILE}>
-      <Side d="M5 12h14" onTap={props.less} />
-      <Box minW={28} align="center"><Text serif size={19}>{props.value}</Text></Box>
-      <Side d="M5 12h14M12 5v14" onTap={props.more} />
-    </Box>
-  );
-}
-
 /** A ring, `share` of it drawn round from the top, the rest faint: a
  *  countdown's face. */
 function Ring(props: { share: number; size: number; color: string }) {
@@ -221,18 +200,13 @@ function Ring(props: { share: number; size: number; color: string }) {
 /**
  * A good's page, as a stack of widgets, each one thing: its price and its
  * line; what the depots hold of it; where the price stands in the world's
- * band; when a box bought now lands; and Buy and Sell so many packages,
- * the buttons their prices.
+ * band; and when the next ferry lands.
  */
 function Page(props: { good: Good }) {
-  const { send, growth } = useGame();
   const q = () => quoteOf(props.good)!;
   const [w, setW] = createSignal(0);
   const [week, setWeek] = createSignal(true);
-  const [n, setN] = createSignal(1);
   const shown = () => (week() ? q().history : q().history.slice(-25));
-  const trade = (out: boolean) => send({ type: "Trade", data: { good: props.good, packages: n(), out } });
-  const cost = () => total(q(), n(), false);
   const ferry = () => sea.sailings.find((s) => s.harbour === home());
   const accent = () => glow(props.good);
   const stock = () => held().get(props.good);
@@ -240,20 +214,6 @@ function Page(props: { good: Good }) {
   const share = () => Math.max(0, Math.min(1, (q().price - q().floor) / Math.max(1e-9, q().ceiling - q().floor)));
   const shelf = (v: number) => Math.max(0, Math.min(1, v / Math.max(1, stock()?.cap ?? 1)));
   const [shelfW, setShelfW] = createSignal(0);
-  // The line, stepped a lorry's load at a time; set first at what is held.
-  const kept = () => market.lines.find((l) => l.good === props.good)?.keep ?? null;
-  const per = () => GOODS[props.good].per * LOAD;
-  const keep = (k: number | null) => send({ type: "Line", data: { good: props.good, keep: k === null ? null : Math.max(0, k) } });
-  const start = () => Math.round((stock()?.level ?? 0) / per()) * per();
-  // The line's handle, slid along the shelf: where it is while held, set
-  // at a load's step when let go.
-  const [sliding, setSliding] = createSignal<number | null>(null);
-  const slide = (at: number, held: boolean) => {
-    const k = Math.round((at * (stock()?.cap ?? 0)) / per()) * per();
-    setSliding(held ? k : null);
-    if (!held) keep(k);
-  };
-  const line = () => sliding() ?? kept();
   const flow = () => flowOf(props.good);
   return (
     <Box pad={{ x: 12, bottom: 14 }} gap={GAP}>
@@ -294,15 +254,12 @@ function Page(props: { good: Good }) {
           <Text size={13} weight={600} ink="ink/0.5">In your depots</Text>
           <Text serif size={34}>{Math.floor(stock()?.level ?? 0).toLocaleString()}</Text>
           <Box grow={1} />
-          <Box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)} onSlide={stock() && market.desks > 0 ? slide : undefined}>
+          <Box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)}>
             <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf((stock()?.level ?? 0) + (stock()?.incoming ?? 0))} h={14} round={7} fill={`${accent()}59`} />
             <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf(stock()?.level ?? 0)} h={14} round={7} fill={accent()} />
-            <Show when={line() !== null}>
-              <Box at={{ left: Math.max(0, shelfW() * shelf(line()!) - 4), top: -4 }} w={8} h={22} round={4} fill="white" />
-            </Show>
           </Box>
           <Box dir="row">
-            <Text size={12} weight={600} ink="ink/0.45" grow={1}>{sliding() !== null ? `keep ${sliding()}` : stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</Text>
+            <Text size={12} weight={600} ink="ink/0.45" grow={1}>{stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</Text>
             <Show when={(stock()?.incoming ?? 0) > 0}>
               <Text size={12} weight={600} ink={accent()}>+{Math.round(stock()!.incoming)} coming</Text>
             </Show>
@@ -344,52 +301,19 @@ function Page(props: { good: Good }) {
         )}
       </Show>
 
-      {/* When a box bought now lands: the ferry it rides. */}
+      {/* When the next ferry lands. */}
       <Show when={ferry()}>
         {(f) => (
           <Box dir="row" align="center" gap={12} h={64} pad={{ left: 12, right: 22 }} round={32} fill={TILE}>
             <Ring share={voyage(f())} size={42} color={SEA} />
             <Box grow={1}>
-              <Text size={14} weight={700} ink={SEA}>{f().berthed ? "Ferry at the ramp" : "Bought now, lands in"}</Text>
+              <Text size={14} weight={700} ink={SEA}>{f().berthed ? "Ferry at the ramp" : "Next ferry in"}</Text>
               <Text size={12} ink="ink/0.5">{f().packages} of {f().deck} on its deck</Text>
             </Box>
             <Text serif size={32} ink={SEA}>{until(f().berthed ? f().departs : f().lands)}</Text>
           </Box>
         )}
       </Show>
-
-      {/* The trade: how many, and what it comes to either way. */}
-      <Box dir="row" align="center" gap={8} pad={{ top: 4 }}>
-        <Stepper value={`${n()}`} less={() => setN(n() > LOAD ? n() - LOAD : Math.max(1, n() - 1))} more={() => setN(Math.min(DECK, n() < LOAD ? n() + 1 : n() + LOAD))} />
-        <Press grow={1} h={54} round={27} align="center" justify="center" fill={accent()} opacity={home() !== null && growth().treasury >= cost() ? 1 : 0.4} onTap={() => home() !== null && growth().treasury >= cost() && trade(false)}>
-          <Text size={12} weight={700} ink="#000000b0">Buy</Text>
-          <Text serif size={19} ink="#000">{money(cost())}</Text>
-        </Press>
-        <Press grow={1} h={54} round={27} align="center" justify="center" fill={TILE} opacity={home() !== null ? 1 : 0.4} onTap={() => home() !== null && trade(true)}>
-          <Text size={12} weight={700} ink="ink/0.6">Sell</Text>
-          <Text serif size={19}>{money(total(q(), n(), true))}</Text>
-        </Press>
-      </Box>
-
-      {/* The line: kept by the offices (docs/core.md §Trade), there from the start, dimmed till one is staffed. */}
-      <Box pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={6} opacity={market.desks > 0 ? 1 : 0.5}>
-        <Box dir="row" align="center" gap={8}>
-          <Show when={kept() !== null} fallback={<Text size={14} weight={600} grow={1}>No line</Text>}>
-            <Text size={14} weight={600} grow={1}>Keep</Text>
-            <Stepper value={`${Math.round(kept()!)}`} less={() => keep(kept()! - per())} more={() => keep(kept()! + per())} />
-          </Show>
-          <Press h={30} pad={{ x: 12 }} round={15} justify="center" fill="ink/0.12" onTap={() => keep(kept() === null ? start() : null)}>
-            <Text size={13} weight={600}>{kept() === null ? "Set a line" : "Off"}</Text>
-          </Press>
-        </Box>
-        <Text size={12} ink="ink/0.5">
-          {market.desks <= 0
-            ? "An office keeps this stocked: it buys up to the line and sells what is over it."
-            : market.full
-              ? `Desks full: your offices trade ${Math.round(market.desks)} packages a day; another trades more.`
-              : `Your offices buy up to the line and sell over it, ${Math.round(market.desks)} packages a day.`}
-        </Text>
-      </Box>
     </Box>
   );
 }

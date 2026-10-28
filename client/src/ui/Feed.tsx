@@ -1,15 +1,13 @@
 import { Box, Ink, Text, Icon } from "~ui";
 import { createEffect, createSignal, For, Show } from "solid-js";
-import { useGame } from "../state/gameObjects";
 import { neighbours } from "../state/neighbours";
 import { news, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { deals, setSpread, spread, stepsOf, type Deal, type Piece } from "../state/deals";
-import { quoteOf, total } from "../state/market";
 import { boardOpen } from "./Board";
 import { GOODS } from "../blueprints";
 import { track } from "./Shipments";
-import { Appear, bezel, COIN, coins, Crest, CORNER, EYE, FERRY, GOOD, GoodDot, Line, Pop, Press, SEA, StepBar, view, wide, ROUND } from "./kit";
+import { Appear, bezel, COIN, coins, Crest, CORNER, EYE, FERRY, GOOD, GoodDot, Line, Pop, SEA, StepBar, view, wide, ROUND } from "./kit";
 import { Stack } from "./stack";
 import type { Mayor } from "../generated";
 import type { JSX } from "solid-js";
@@ -109,7 +107,6 @@ export function Who(props: { partner: Mayor | null; size: number; ink?: string }
 export const nameOf = (partner: Mayor | null) => (partner && neighbours().find((n) => n.mayor === partner)?.name) ?? "the world";
 
 function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
-  const { send } = useGame();
   const d = () => props.deal;
   const color = () => (d().done ? GOOD : GOODS[d().good].color);
   const lead = () => d().pieces[0];
@@ -123,11 +120,6 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
       else l.push({ ...p, n: 1 });
     }
     return l;
-  };
-  /** A package more, from the market or for it, at what it pays or costs one now. */
-  const more = () => {
-    const q = d().partner === null && d().key !== "gift" ? quoteOf(d().good) : undefined;
-    return q && total(q, 1, d().out);
   };
   const title = () => (d().key === "gift" ? "The starter pack" : `${GOODS[d().good].label[0].toUpperCase()}${GOODS[d().good].label.slice(1)} ${d().out ? "for" : "from"} ${nameOf(d().partner)}`);
   /** Where it is, in words: its furthest package, or what it waits for. */
@@ -177,15 +169,6 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
           <Box dir="row" align="center" gap={6}>
             <Show when={d().pieces.length}>
               <Text serif size={17} ink={money()}>{coins(d().coins)}</Text>
-            </Show>
-            <Box grow={1} />
-            <Show when={more()}>
-              {(c) => (
-                <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => send({ type: "Trade", data: { good: d().good, packages: 1, out: d().out } })}>
-                  <Text size={14} weight={600} soft>+ 1</Text>
-                  <Text serif size={14} soft>{coins((d().out ? 1 : -1) * c())}</Text>
-                </Press>
-              )}
             </Show>
           </Box>
         </Appear>
