@@ -161,5 +161,8 @@ along each one's own route came out whichever way the rounding fell, a
 different way on each edge. A van out of the depot's yard and a car
 pulling out at its gate each stood ahead of the other on the next two
 edges and waited for each other for good, and the season's street locked
-behind them on its twenty-sixth day. Level at one node, the nearer it
-stands ahead, and level there, the earlier id (`behind`).
+behind them on its twenty-sixth day. Level at one node, the one with fewer
+of its lot's nodes still to pass stands ahead, then the nearer the next,
+then the earlier id (`behind`): not the distance to the street, which
+each route measures its own way, so a lorry a node back in the yard
+came out nearer than a car at its gate (day thirteen, the same day).

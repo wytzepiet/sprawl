@@ -214,14 +214,18 @@ struct Place {
     /// How far past the edge's start it is; on its way out of a lot, the
     /// street node is.
     at: f64,
-    /// On its way out of a lot: the street node it comes out at, and how
-    /// far it still has to go to it.
-    out: Option<(EntityId, f64)>,
+    /// On its way out of a lot: the street node it comes out at, how many
+    /// nodes it has still to reach on the way, the street node too, and
+    /// how far it is short of the next.
+    out: Option<(EntityId, usize, f64)>,
 }
 
 fn place(t: &Trip, car: EntityId, p: f64, edge: EdgeKey) -> Option<Place> {
     let s = t.from_lot;
-    let out = (s > 0 && t.route_index <= s + 1 && p < t.along[s]).then(|| (t.route[s], t.along[s] - p));
+    let out = (s > 0 && t.route_index <= s + 1 && p < t.along[s]).then(|| {
+        let left = (1..=s).filter(|&j| t.along[j] > p).count();
+        (t.route[s], left, t.along[s + 1 - left] - p)
+    });
     Some(Place { car, at: queued_at(t, p) - t.start_of(edge)?, out })
 }
 
@@ -232,15 +236,18 @@ fn place_of(world: &Traffic, car_id: EntityId, edge: EdgeKey, now: GameTime) -> 
 }
 
 /// Is `a` behind `b` on the edge: short of it; or, both coming out of
-/// lots at one street node, where both stand level, further from it,
-/// and the later, level. Level, measured along each one's own route,
-/// was whichever way the rounding fell, a different way on each edge:
-/// two coming out of a yard stood each ahead of the other on the next
-/// two, and each waited for the other for good (the season's
-/// twenty-sixth day, 2026-10-28).
+/// lots at one street node, where both stand level, more nodes from it,
+/// or as many and further from the next, and the later, level. Level,
+/// measured along each one's own route, was whichever way the rounding
+/// fell, a different way on each edge: two coming out of a yard stood
+/// each ahead of the other on the next two, and each waited for the
+/// other for good (the season's twenty-sixth day, 2026-10-28). Nor is
+/// how far to the street said alike: a lorry a node back in the yard
+/// measured its way to the street shorter than a car at the gate did
+/// (its thirteenth).
 fn behind(a: Place, b: Place) -> bool {
     match (a.out, b.out) {
-        (Some((s, x)), Some((t, y))) if s == t => (x, a.car) > (y, b.car),
+        (Some((s, n, x)), Some((t, m, y))) if s == t => (n, x, a.car) > (m, y, b.car),
         _ => a.at < b.at,
     }
 }
