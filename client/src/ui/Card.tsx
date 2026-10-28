@@ -240,7 +240,7 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
           <For each={c().staff}>{(s) => <Box minH={22} justify="center" opacity={s.present ? 1 : 0.5}><To link={s.who} /></Box>}</For>
         </Section>
       </Show>
-      <Show when={c().fleet.length > 0 && kind() !== "Harbour"}>
+      <Show when={c().fleet.length > 0 && !BLUEPRINTS[kind()].quay}>
         <Section title="Fleet">
           <Links each={c().fleet} />
         </Section>

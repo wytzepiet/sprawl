@@ -8,6 +8,8 @@ import { pavement } from "./surface";
 import { facts } from "./facts";
 import { area, type Polygon } from "./footprint";
 import type { Town } from "./grid";
+import { BLUEPRINTS } from "../../blueprints";
+import type { BuildingKind } from "../../generated";
 import { townMesh, type Paint, type Prop } from "./roof";
 
 /** A piece of the town to draw: one mesh, one material. */
@@ -124,6 +126,7 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
   const wall: MeshGeometry = { positions: [], normals: [], indices: [] };
   const cap: MeshGeometry = { positions: [], normals: [], indices: [] };
   const kind = ([x, y]: number[]) => town.tile(Math.floor(x), Math.floor(y)).kind;
+  const quayed = (k: string) => !!BLUEPRINTS[k as BuildingKind]?.quay;
   for (const ring of paved.flat()) {
     ring.forEach((a, i) => {
       const b = ring[(i + 1) % ring.length];
@@ -132,8 +135,8 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
       const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       let n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
       const at = (s: number) => [m[0] + n[0] * s, m[1] + n[1] * s];
-      if (kind(at(-0.08)) === "water" && kind(at(0.08)) === "Harbour") n = [-n[0], -n[1]];
-      else if (kind(at(0.08)) !== "water" || kind(at(-0.08)) !== "Harbour") return;
+      if (kind(at(-0.08)) === "water" && quayed(kind(at(0.08)))) n = [-n[0], -n[1]];
+      else if (kind(at(0.08)) !== "water" || !quayed(kind(at(-0.08)))) return;
       // The map's frame is the plan's turned half round.
       const p = (q: number[], o: number, z: number): number[] => [-(q[0] - n[0] * o), -(q[1] - n[1] * o), z];
       face(wall, [p(a, 0, KERB_Z), p(b, 0, KERB_Z), p(b, 0, QUAY_FOOT), p(a, 0, QUAY_FOOT)], [-n[0], -n[1], 0]);

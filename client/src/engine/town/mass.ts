@@ -46,6 +46,16 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   // ramp, the docks one side of it and the quay's pad the other. Its
   // terminal stands on the quay (`BuildingObject.tsx`).
   Harbour: { family: "port", yard: { fill: "park" }, open: "park" },
+  Port: { family: "port", yard: { fill: "park" }, open: "park" },
+  // The works: sheds, each its yard of docks where its lorry backs to
+  // what it made.
+  Bakery: { family: "street", yard: { fill: "docks" } },
+  CementWorks: { family: "industry", yard: { fill: "docks" } },
+  Mine: { family: "industry", yard: { fill: "docks" } },
+  Colliery: { family: "industry", yard: { fill: "docks" } },
+  Steelworks: { family: "industry", yard: { fill: "docks" } },
+  OilWell: { family: "industry", yard: { fill: "docks" } },
+  Refinery: { family: "industry", yard: { fill: "docks" } },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 /** What stands in a tile of yard, if it is one: where the server lays a
@@ -77,7 +87,7 @@ export const OPENING = { wide: 0.06, high: 0.065, pitch: 0.15, end: 0.06, frame:
  *  ridges across it, each a slope up from the back to a glazed face
  *  toward its door, TOOTH high and about SPAN deep (`roof.ts`). */
 export const sawtooth = (t: Tile) => SAWTOOTH.has(t.kind as BuildingKind);
-const SAWTOOTH = new Set<BuildingKind>(["Factory"]);
+const SAWTOOTH = new Set<BuildingKind>(["Factory", "Steelworks"]);
 export const TOOTH = 0.14, SPAN = 0.55;
 
 /** An office tower's flat roof carries its plant, as a real one does: a
@@ -104,5 +114,5 @@ export const kin = (a: Tile, b: Tile) =>
 /** A kind placed whole, one building: it joins only itself, and never on
  *  the diagonal. */
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
-const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm"]);
+const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm", "Bakery", "CementWorks", "Mine", "Colliery", "Steelworks", "OilWell", "Refinery", "Port"]);
 

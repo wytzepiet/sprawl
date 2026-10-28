@@ -16,6 +16,7 @@ export type * from "./ChunkCoord";
 export type * from "./ClientMessage";
 export type * from "./Clock";
 export type * from "./Compass";
+export type * from "./Deposit";
 export type * from "./DepotLine";
 export type * from "./Door";
 export type * from "./GameObject";

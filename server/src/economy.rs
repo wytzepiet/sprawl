@@ -28,9 +28,7 @@ use model::blueprint::{blueprint, crop, depot, farm, makes, rated, shelves};
 use model::GameTime;
 use model::needs::{Need, Stock};
 use model::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS};
-use land::{Deposit, TerrainType};
 use crate::world::World;
-use map::Map;
 
 /// What the world beyond the border reckons a unit of a good is worth,
 /// in coins. Tuned so that one farm's crates, sold abroad, keep a small
@@ -107,37 +105,9 @@ pub fn lump(kind: BuildingKind) -> f64 {
     }
 }
 
-/// The ground a maker's hands work for a good: the forest for timber, the
-/// mountain for stone, and what lies under it for ore, coal and crude.
-/// None for what is not got off the land round it.
-pub fn ground(good: Good) -> Option<(TerrainType, Option<Deposit>)> {
-    match good {
-        Good::Timber => Some((TerrainType::Forest, None)),
-        Good::Stone => Some((TerrainType::Mountain, None)),
-        Good::Ore => Some((TerrainType::Mountain, Some(Deposit::Ore))),
-        Good::Coal => Some((TerrainType::Mountain, Some(Deposit::Coal))),
-        Good::Crude => Some((TerrainType::Grass, Some(Deposit::Oil))),
-        _ => None,
-    }
-}
-
-/// How much of its ground is within reach of a maker: the tiles of it
-/// within five nothing stands on, against thirty, at most one. A sawmill
-/// in the open makes nothing; at the forest's edge, half; in the woods,
-/// all it can. A quarry likewise at the mountain's foot.
+/// How much of its ground is within reach of a maker (`Map::in_reach`).
 pub fn reach(world: &World, building: EntityId) -> f64 {
-    let Some(b) = world.map.building(building) else { return 0.0 };
-    let Some((ground, under)) = blueprint(b.kind).makes.and_then(self::ground) else { return 0.0 };
-    let (o, (w, h)) = Map::bounds(&b.tiles);
-    let mut n = 0;
-    for y in o.y - 5..o.y + h as i32 + 5 {
-        for x in o.x - 5..o.x + w as i32 + 5 {
-            if world.map.terrain.get(&(x, y)) == Some(&ground) && under.is_none_or(|d| world.map.deposits.get(&(x, y)) == Some(&d)) && !world.map.occupied.contains_key(&(x, y)) && world.map.road_node_at(model::GridCoord { x, y }).is_none() {
-                n += 1;
-            }
-        }
-    }
-    (n as f64 / 30.0).min(1.0)
+    world.map.building(building).map_or(0.0, |b| world.map.in_reach(b.kind, &b.tiles))
 }
 
 /// The tractor cut a tile: its crop lands in the yard, and is GDP at the
@@ -804,7 +774,7 @@ mod tests {
     /// makes nothing, and a full yard stops the line.
     #[test]
     fn a_maker_works_the_ground_round_it() {
-        for (kind, good, ground) in [(Sawmill, Good::Timber, TerrainType::Forest), (Quarry, Good::Stone, TerrainType::Mountain)] {
+        for (kind, good, ground) in [(Sawmill, Good::Timber, land::TerrainType::Forest), (Quarry, Good::Stone, land::TerrainType::Mountain)] {
             let mut world = town();
             for y in -6..6 {
                 for x in 40..60 {
@@ -817,7 +787,7 @@ mod tests {
             // round it: the mountain's foot is grass.
             for x in 46..52 {
                 for y in 1..5 {
-                    world.map.terrain.insert((x, y), TerrainType::Grass);
+                    world.map.terrain.insert((x, y), land::TerrainType::Grass);
                 }
             }
             let near = world.map.place_on_street(at(48), kind).unwrap();

@@ -77,6 +77,7 @@ export interface Town {
 export const LETTERS: Record<string, BuildingKind> = {
   H: "House", A: "Apartment", S: "Shop", O: "Office", F: "Factory",
   G: "GasStation", M: "Supermarket", D: "Depot", P: "Harbour", W: "Sawmill", Q: "Quarry", L: "Lab",
+  K: "Bakery", C: "CementWorks", I: "Mine", J: "Colliery", X: "Steelworks", U: "OilWell", R: "Refinery", N: "Port",
 };
 
 /** How tall each kind is built. One height for a kind: a height picked per
@@ -84,6 +85,7 @@ export const LETTERS: Record<string, BuildingKind> = {
  *  come with success. */
 const STOREYS: Partial<Record<BuildingKind, number>> = {
   House: 2, Apartment: 5, Shop: 2, Office: 6, Factory: 1, Depot: 1, Supermarket: 1, GasStation: 1, Sawmill: 1, Quarry: 1, Lab: 2,
+  Bakery: 1, CementWorks: 2, Mine: 1, Colliery: 1, Steelworks: 2, OilWell: 1, Refinery: 2,
 };
 
 const GROUND = new Set(["open", "paved", "road", "water", "wood"]);

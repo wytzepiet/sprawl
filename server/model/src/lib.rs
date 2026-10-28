@@ -156,6 +156,9 @@ pub struct Placing {
     /// The tile its drive runs onto, and the street it runs from.
     pub door: Option<Door>,
     pub why: Option<String>,
+    /// For a maker of what the land gives, how much of it is in reach,
+    /// up to one (`Map::in_reach`): what it will make against its best.
+    pub ground: Option<f64>,
 }
 
 /// What the mayor's hand holds.

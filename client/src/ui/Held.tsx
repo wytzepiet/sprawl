@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { stocks } from "../state/market";
 import { aim } from "./buildMode";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { BAD, GOOD, onMap, ROUND } from "./kit";
+import { Bar, BAD, GOOD, onMap, ROUND } from "./kit";
 import type { Good } from "../generated";
 
 /** What the town has of a good on its standing depots' shelves; or,
@@ -46,6 +46,12 @@ export default function Held() {
             <Text serif size={13} soft>stands at once</Text>
           </Show>
         </Box>
+        <Show when={!aim()!.why && aim()!.ground != null}>
+          <Box dir="row" align="center" gap={6}>
+            <Bar value={aim()!.ground!} color={GOODS[BLUEPRINTS[aim()!.kind].makes!].color} w={60} h={5} />
+            <Text size={12} soft>{Math.round(aim()!.ground! * 100)}% of its best here</Text>
+          </Box>
+        </Show>
         <Text size={12} ink={aim()!.why ? BAD : GOOD}>{aim()!.why ?? (aim()!.kind === "Harbour" && !aim()!.door ? "The ferry berths here; a street comes with it" : "Let go to build")}</Text>
       </Ink>
     </Show>

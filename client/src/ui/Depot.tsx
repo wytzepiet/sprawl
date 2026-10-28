@@ -1,5 +1,6 @@
 import { Box, Text } from "~ui";
 import { createMemo, createSignal, Index, Show } from "solid-js";
+import { BLUEPRINTS } from "../blueprints";
 import { buildingAt, getEntity, useGame } from "../state/gameObjects";
 import { load, now, until } from "../state/sea";
 import { Btn, coins, Follow, Section } from "./kit";
@@ -18,7 +19,7 @@ const building = (id: number) =>
 const atHarbour = (car: { x: number; y: number } | null) => {
   if (!car) return false;
   const b = buildingAt(car.x, car.y);
-  return b?.object.kind === "Building" && (b.object.data as Building).kind === "Harbour";
+  return b?.object.kind === "Building" && BLUEPRINTS[(b.object.data as Building).kind].quay;
 };
 
 /**

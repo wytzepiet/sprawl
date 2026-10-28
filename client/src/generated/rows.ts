@@ -3,27 +3,35 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Good } from "./Good";
 
 /** The game's half of each kind's row (`blueprint.rs`). */
-export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {
-  House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Apartment: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Office: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Factory: { materials: { Timber: 16, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Supermarket: { materials: { Timber: 16, Stone: 12 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, forklifts: 1 },
-  Farm: { materials: { Timber: 8 }, size: [3, 1], lot: [2, 2], quay: false, makes: "Crates", forklifts: 1 },
-  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, forklifts: 3 },
-  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", forklifts: 1 },
-  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", forklifts: 1 },
-  Lab: { materials: { Timber: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
+export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; opens: Partial<Record<Good, number>>; jobs: number; forklifts: number }> = {
+  House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, forklifts: 1 },
+  Apartment: { materials: { Timber: 12, Stone: 8, Cement: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, forklifts: 1 },
+  Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 2, forklifts: 1 },
+  Office: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 12, forklifts: 1 },
+  Factory: { materials: { Stone: 8, Cement: 16, Steel: 8 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Machinery", opens: { Steel: 2 }, jobs: 12, forklifts: 1 },
+  GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 1, forklifts: 1 },
+  Supermarket: { materials: { Timber: 16, Stone: 12, Cement: 8 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 6, forklifts: 1 },
+  Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, opens: {}, jobs: 6, forklifts: 1 },
+  Farm: { materials: { Timber: 8 }, size: [3, 1], lot: [2, 2], quay: false, makes: "Grain", opens: {}, jobs: 4, forklifts: 1 },
+  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 2, forklifts: 3 },
+  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", opens: {}, jobs: 4, forklifts: 1 },
+  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", opens: {}, jobs: 4, forklifts: 1 },
+  Lab: { materials: { Timber: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 4, forklifts: 1 },
+  Bakery: { materials: { Timber: 8 }, size: [2, 1], lot: [2, 2], quay: false, makes: "Bread", opens: { Grain: 1 }, jobs: 4, forklifts: 1 },
+  CementWorks: { materials: { Timber: 12, Stone: 12 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Cement", opens: { Stone: 1 }, jobs: 6, forklifts: 1 },
+  Mine: { materials: { Timber: 8, Stone: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Ore", opens: {}, jobs: 6, forklifts: 1 },
+  Colliery: { materials: { Timber: 8, Stone: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Coal", opens: {}, jobs: 6, forklifts: 1 },
+  Steelworks: { materials: { Timber: 12, Stone: 16, Cement: 24 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Steel", opens: { Ore: 1, Coal: 1 }, jobs: 16, forklifts: 1 },
+  OilWell: { materials: { Cement: 8, Steel: 8, Machinery: 2 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Crude", opens: {}, jobs: 2, forklifts: 1 },
+  Refinery: { materials: { Cement: 24, Steel: 16, Machinery: 4 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Fuel", opens: { Crude: 1 }, jobs: 8, forklifts: 1 },
+  Port: { materials: { Cement: 40, Steel: 20, Machinery: 6 }, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 6, forklifts: 4 },
 };
 
 /** Units a package of each good holds (`Good::per_package`). */
-export const PER_PACKAGE: Record<Good, number> = { Timber: 4, Stone: 4, Crates: 25, Fuel: 10 };
+export const PER_PACKAGE: Record<Good, number> = { Bread: 25, Fuel: 10, Timber: 4, Stone: 4, Grain: 25, Cement: 4, Ore: 4, Coal: 4, Steel: 2, Machinery: 1, Crude: 10 };
 
 /** What a package of each good is called, one and several (`Good::package`). */
-export const PACKAGE: Record<Good, [string, string]> = { Timber: ["bundle of timber", "bundles of timber"], Stone: ["pallet of stone", "pallets of stone"], Crates: ["crate of food", "crates of food"], Fuel: ["pallet of fuel drums", "pallets of fuel drums"] };
+export const PACKAGE: Record<Good, [string, string]> = { Bread: ["crate of bread", "crates of bread"], Fuel: ["pallet of fuel drums", "pallets of fuel drums"], Timber: ["bundle of timber", "bundles of timber"], Stone: ["pallet of stone", "pallets of stone"], Grain: ["bag of grain", "bags of grain"], Cement: ["pallet of cement", "pallets of cement"], Ore: ["skip of ore", "skips of ore"], Coal: ["skip of coal", "skips of coal"], Steel: ["bundle of steel beams", "bundles of steel beams"], Machinery: ["crate of machine parts", "crates of machine parts"], Crude: ["pallet of crude drums", "pallets of crude drums"] };
 
 /** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */
 export const LOAD = 5;

@@ -28,6 +28,9 @@ export interface Bay {
   stack: number;
 }
 
+/** The goods, the heaviest first: what stands at the back of a yard. */
+const HEAVY: Good[] = ["Steel", "Ore", "Coal", "Stone", "Cement", "Timber", "Machinery", "Crude", "Fuel", "Grain", "Bread"];
+
 /** How far apart packages stand on a pad. */
 const PITCH = ITEM + 0.02;
 
@@ -89,19 +92,22 @@ export function padOf(b: Building): Pad {
     return { bays, homes: forklifts(() => f.pose(f.at, 0, f.d / 2 + 0.05)), yard: false };
   }
   if (kind.quay) {
-    // Out from the ramp, a bay of each good two by two, as many high as
-    // the quay takes; its forklifts between them and the lane.
-    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
+    // Out from the ramp, a bay of each good the market trades, two
+    // across and five out, each four by two and four high; its forklifts
+    // between them and the lane.
     const back = -f.d / 2;
-    const bays = order.map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.55 + (k < 2 ? 0 : 0.66), 4, 6), stack: 2 }));
+    const bays = HEAVY.filter((g) => g !== "Bread").map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.36 + Math.floor(k / 2) * 0.26, 4, 2), stack: 4 }));
     return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.4)), yard: true };
   }
   const goods = Object.keys(b.stocks) as Good[];
   if (b.kind === "Depot") {
-    // Four bays on the open ground, the heavy goods at the back.
-    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
-    const bays = order.filter((g) => goods.includes(g)).map((good, k) => ({ good, slots: grid(f, (k % 2 ? 1 : -1) * 0.46, (k < 2 ? -1 : 1) * 0.42, 4, 4), stack: 1 }));
-    return { bays, homes: forklifts((k) => f.pose(f.at, (k - (kind.forklifts - 1) / 2) * 0.12, 0)), yard: true };
+    // A bay of each good on the open ground, three by three, four
+    // across and three deep, the heavy goods at the back.
+    const bays = HEAVY.filter((g) => goods.includes(g)).map((good, k) => {
+      const slots = grid(f, ((k % 4) - 1.5) * 0.36, (Math.floor(k / 4) - 1) * 0.36, 3, 3);
+      return { good, slots, stack: Math.ceil(most(b, good) / slots.length) };
+    });
+    return { bays, homes: forklifts((k) => f.pose(f.at, (k - (kind.forklifts - 1) / 2) * 0.12, 0.7)), yard: true };
   }
   if (kind.makes && b.door) {
     // Down the lane's free side, from the yard's back to its gate.

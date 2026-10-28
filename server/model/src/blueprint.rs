@@ -15,6 +15,21 @@ use std::sync::LazyLock;
 use crate::needs::curve::Curve;
 use crate::needs::{Need, Tap};
 use crate::{BuildingKind, CarRole, Good, DAY_MS, HOUR as H};
+use land::{Deposit, TerrainType};
+
+/// The ground a maker's hands work for a good: the forest for timber, the
+/// mountain for stone, and what lies under it for ore, coal and crude.
+/// None for what is not got off the land round it.
+pub fn ground(good: Good) -> Option<(TerrainType, Option<Deposit>)> {
+    match good {
+        Good::Timber => Some((TerrainType::Forest, None)),
+        Good::Stone => Some((TerrainType::Mountain, None)),
+        Good::Ore => Some((TerrainType::Mountain, Some(Deposit::Ore))),
+        Good::Coal => Some((TerrainType::Mountain, Some(Deposit::Coal))),
+        Good::Crude => Some((TerrainType::Grass, Some(Deposit::Oil))),
+        _ => None,
+    }
+}
 
 pub struct Blueprint {
     /// How many the settlement moves in of its own accord: whom it gives a

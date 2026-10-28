@@ -22,8 +22,8 @@
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act buy Timber 2            two bundles of timber from the market, on
- *       sell Crates                     the next ferry; or a crate of food sold
- *   bun run act line Crates 100         a hundred units of crates kept by the
+ *       sell Bread                     the next ferry; or a crate of food sold
+ *   bun run act line Bread 100         a hundred units of crates kept by the
  *                                       offices; with no number, the line gone
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
