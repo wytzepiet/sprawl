@@ -20,6 +20,8 @@ up)
   fi
   port=$(cat $dir/port)
   systemctl stop sprawl-preview@$slug 2>/dev/null || true
+  # Whatever else still holds the port would keep serving the old build.
+  fuser -k $port/tcp 2>/dev/null || true
   rm -rf $dir/app
   mkdir $dir/app
   tar -xz -C $dir/app
