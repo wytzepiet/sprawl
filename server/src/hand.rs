@@ -17,8 +17,9 @@ pub(crate) fn handle_player_action(
     now: GameTime,
 ) -> Option<News> {
     match message {
-        ClientMessage::Build(step) => return build(world, events, owner, step, now),
-        ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, owner, stroke, now),
+        ClientMessage::Build(step) if world.research.may(step.tool) => return build(world, events, owner, step, now),
+        ClientMessage::Draw(stroke) if world.research.may(stroke.tool) => return crate::draw::draw(world, events, owner, stroke, now),
+        ClientMessage::Build(_) | ClientMessage::Draw(_) => return None,
         ClientMessage::Place { kind, at, facing } => return place(world, events, kind, at, facing, now),
         ClientMessage::Raze { building } => return crate::undo::raze(world, events, building, now),
         ClientMessage::Undo => return Some(crate::undo::undo(world, events, owner, now)),

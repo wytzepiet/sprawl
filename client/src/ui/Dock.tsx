@@ -8,7 +8,7 @@ import { BLUEPRINTS } from "../blueprints";
 import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
 import { setBoardOpen } from "./Board";
-import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsHead, take } from "./Roads";
+import { inHand as roadInHand, lastRoad, mayUse, road, ROAD_KINDS, RoadsHead, take } from "./Roads";
 import { BuildBody, BuildHead, info } from "./Build";
 import { MarketBody, MarketHead } from "./Market";
 import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
@@ -71,7 +71,7 @@ export default function Dock() {
     if (key === "M") return press("market");
     if (key !== "R") return;
     // Again: the next road.
-    const roads = ROAD_KINDS.filter((r) => r.id !== "Demolish");
+    const roads = ROAD_KINDS.filter((r) => r.id !== "Demolish" && mayUse(r.id));
     const i = roads.findIndex((r) => r.id === roadInHand());
     take(i < 0 ? (lastRoad() === "Demolish" ? "Street" : lastRoad()) : roads[(i + 1) % roads.length].id);
   };

@@ -9,7 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use model::{BuildingKind, GameObject};
+use model::{BuildingKind, GameObject, Tool};
 use serde::{Deserialize, Serialize};
 
 use crate::world::World;
@@ -58,10 +58,18 @@ impl Research {
         LADDER.into_iter().find(|(kinds, _)| kinds.iter().any(|k| !self.open.contains(k)))
     }
 
+    /// Whether the town may use a road tool: the street, the one-way and
+    /// demolition from the start; two lanes and traffic lights once a
+    /// kind of the third rung is open, when the town's traffic first
+    /// outgrows its streets.
+    pub fn may(&self, tool: Tool) -> bool {
+        !matches!(tool, Tool::Wide | Tool::Light) || LADDER[2].0.iter().any(|k| self.open.contains(k))
+    }
+
     /// What the clients are sent.
     pub fn shown(&self) -> model::Research {
         let (next, cost) = self.rung().map_or((Vec::new(), 0.0), |(kinds, cost)| (kinds.iter().copied().filter(|k| !self.open.contains(k)).collect(), cost));
-        model::Research { open: self.open.iter().copied().collect(), next, at: self.at, done: self.done, of: cost, cost }
+        model::Research { open: self.open.iter().copied().collect(), next, at: self.at, done: self.done, of: cost, cost, roads: self.may(Tool::Wide) }
     }
 }
 
@@ -115,6 +123,9 @@ mod tests {
         assert!(world.research.open.contains(&Farm), "a full day's hours did not open the farm");
         assert_eq!(world.research.shown().next, [CementWorks, Apartment, GasStation, Supermarket, Mine, Colliery]);
         assert_eq!(world.research.shown().cost, 150.0);
+        assert!(!world.research.may(Tool::Wide) && world.research.may(Tool::Street), "two lanes open before the third rung");
+        world.research.open.insert(CementWorks);
+        assert!(world.research.may(Tool::Wide) && world.research.may(Tool::Light));
     }
 
     /// A lab staffed from the flats beside it learns the farm, the hands

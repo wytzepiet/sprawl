@@ -77,7 +77,7 @@ const PLAYER = process.env.PLAYER ?? "4242";
 /** News heard since the last command said what it saw. */
 const told: string[] = [];
 /** What the town may build and is learning, as the last update had it. */
-let learned: Research = { open: [], next: [], at: null, done: 0, of: 0, cost: 0 };
+let learned: Research = { open: [], next: [], at: null, done: 0, of: 0, cost: 0, roads: false };
 // The chunks every tile named lies in, a chunk round, so the server tells
 // us of what is built there.
 const named = lines.flat().filter((a) => /^-?\d+,-?\d+$/.test(a)).map(tile);

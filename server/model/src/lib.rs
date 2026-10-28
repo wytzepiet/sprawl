@@ -1211,6 +1211,8 @@ pub struct Research {
     pub of: f64,
     /// Researcher-hours each of `next` takes.
     pub cost: f64,
+    /// Whether two lanes and traffic lights are open (`Research::may`).
+    pub roads: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

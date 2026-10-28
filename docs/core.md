@@ -51,16 +51,29 @@ researcher-hours, faster with more labs and more hands in them. A
 research is never paid in the good it unlocks, and is never traded
 (Wytze, 2026-10-25). Materials still gate every building, locked or not.
 
-The first ladder, a rung at a time:
+The ladder, a rung at a time (`research.rs`). Every rung is built of a
+lot of the goods below it, so climbing grows the old chains too, and
+each takes about as long in real time as the column says (a game day is
+twenty minutes; a lab's four put in some 36 researcher-hours a day):
 
-| Rung | Opens | Researcher-hours each |
-|---|---|---|
-| Start | harbour, road, house, depot, sawmill, lab | — |
-| 1 | farm, shop, quarry, office | 24 |
-| 2 | apartment, gas station, supermarket, factory | 96 |
+| Rung | Opens | Researcher-hours each | Real time |
+|---|---|---|---|
+| Start | harbour, road, house, depot, sawmill, lab | — | |
+| 1 | farm, bakery, shop, quarry, office | 24 | an hour |
+| 2 | cement works, apartment, gas station, supermarket, ore mine, coal mine; two-lane roads and lights | 150 | an evening |
+| 3 | steelworks, machine works | 2000 | a day or two |
+| 4 | container port | 6000 | about a week in all |
+| 5 | oil well, refinery | 3000 | a few days after |
 
-A rung's kinds can be researched once the rung before it is. The
-next rungs (a university, oil) are content, not new systems.
+The chains: grain → bread; stone → cement; ore + coal → steel; steel →
+machines; crude → fuel. Ore and coal lie in some mountains, oil under
+some grass (`land::terrain::deposits`); a mine, a coal mine or a well
+stands only with some within five tiles, and its card says what it
+comes to at its best and how many of the makers below it it takes.
+
+The container port is the goal of the ladder: ships of its own, and the
+market three times as deep to the town, a big trade moving the price a
+third as far: the town becomes a hub.
 
 ## Trade: one price, two buttons, one line
 

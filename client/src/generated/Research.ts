@@ -25,4 +25,8 @@ done: number, of: number,
 /**
  * Researcher-hours each of `next` takes.
  */
-cost: number, };
+cost: number, 
+/**
+ * Whether two lanes and traffic lights are open (`Research::may`).
+ */
+roads: boolean, };

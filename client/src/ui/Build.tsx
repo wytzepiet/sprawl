@@ -1,13 +1,13 @@
 import { Box, Text, Icon } from "~ui";
 import { createSignal, For, Show } from "solid-js";
-import { BLUEPRINTS, GOODS, KINDS, TABS, type Tab } from "../blueprints";
+import { BLUEPRINTS, chain, GOODS, KINDS, TABS, type Tab } from "../blueprints";
 import { held, hold } from "./buildMode";
 import { BAD, Fade, GDP, Info, Press, Tabs } from "./kit";
 import { lockOf, research } from "../state/research";
 import { home } from "../state/deals";
 import { useGame } from "../state/gameObjects";
 import { PageHead, push } from "./pages";
-import { road, take as takeRoad, type RoadKind } from "./Roads";
+import { mayUse, road, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
 import { photo as photoOf } from "../engine/studio";
@@ -160,7 +160,14 @@ function Page(p: About) {
           {"kind" in p && <Materials kind={p.kind} />}
         </Box>
       </Box>
-      <Show when={!("kind" in p) || lockOf(p.kind) === "open"} fallback={<Box pad={{ x: 12 }}><Text size={13} soft>{"kind" in p && lockOf(p.kind) === "next" ? `A lab learns it in ${research().cost} researcher-hours: tap it in the menu.` : "A lab learns it once the kinds before it are learned."}</Text></Box>}>
+      <Show when={"kind" in p && chain(p.kind)}>
+        {(ch) => (
+          <Box pad={{ x: 12 }} gap={2}>
+            <Text size={13} soft>At its best, {Math.round(ch().day)} {GOODS[ch().good].label} a day{ch().takes.map((t) => `, the ${GOODS[t.good].label} of ${t.n.toFixed(1)} ${BLUEPRINTS[t.kind].label.toLowerCase()}`).join("")}{ch().feeds.length ? `: enough for ${ch().feeds.map((f) => `${f.n.toFixed(1)} ${BLUEPRINTS[f.kind].label.toLowerCase()}`).join(" or ")}` : ""}.</Text>
+          </Box>
+        )}
+      </Show>
+      <Show when={"kind" in p ? lockOf(p.kind) === "open" : mayUse(p.road)} fallback={<Box pad={{ x: 12 }}><Text size={13} soft>{"kind" in p && lockOf(p.kind) === "next" ? `A lab learns it in ${research().cost} researcher-hours: tap it in the menu.` : "kind" in p ? "A lab learns it once the kinds before it are learned." : "Opens once the labs learn a kind of the cement works' rung."}</Text></Box>}>
         <Box pad={{ x: 12 }}>
           <Press h={44} round={16} align="center" justify="center" fill="ink/0.85" onTap={take}>
             <Text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</Text>
