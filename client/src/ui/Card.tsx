@@ -60,10 +60,12 @@ export function InspectHead() {
             }
             case "building": {
               const bp = BLUEPRINTS[k.building_kind];
-              const site = buildingOf(k.id)?.site;
+              const b = buildingOf(k.id);
+              const site = b?.site;
+              const idle = !site && b && bp.jobs > 0 && b.hands === 0;
               return {
                 title: site ? `${bp.label} · a site` : bp.label,
-                sub: k.reached ? (site ? "going up as its materials land" : undefined) : "no road reaches it",
+                sub: !k.reached ? "no road reaches it" : site ? "going up as its materials land" : idle ? "nobody works here: everyone has work nearer, build homes close by" : undefined,
                 icon: (
                   <Box w={36} h={36} round={18} fill={bp.color} opacity={site ? 0.65 : 1} align="center" justify="center">
                     <Icon d={bp.glyph} size={19} ink="white" />

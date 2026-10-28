@@ -49,6 +49,7 @@ impl World {
         }
         let buildings: Vec<EntityId> = self.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
         for id in buildings {
+            self.map.staffed(id);
             self.map.open_shelves(id);
             self.map.unsettled.insert(id);
         }
@@ -262,6 +263,9 @@ impl World {
             self.vacancies.insert(w);
         }
         self.map.objects.remove(id);
+        if let Some(w) = work {
+            self.map.staffed(w);
+        }
         if matches!(self.map.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none()) {
             self.map.despawn_car(car);
         }
@@ -278,10 +282,12 @@ impl World {
         let was = std::mem::replace(&mut r.work, work);
         if let Some(w) = was {
             self.map.untie(id, w);
+            self.map.staffed(w);
             self.vacancies.insert(w);
         }
         if let Some(w) = work {
             self.map.tie(id, w);
+            self.map.staffed(w);
         }
     }
 }

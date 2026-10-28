@@ -1274,3 +1274,49 @@ fn a_port_has_its_own_ships_and_deepens_the_market() {
     assert!(!game.world.ferries_of(port).is_empty(), "the port has no ship");
     assert!((step(&game.world) - before / 3.0).abs() < 1e-12, "the market is no deeper: {} against {before}", step(&game.world));
 }
+
+/// The heavy chains, end to end, in a town of the usual mix: a mine and
+/// a coal mine in a mountain with ore at one end and coal at the other,
+/// a steelworks smelting them, a machine works making machines of its
+/// steel, and an oil well on oily grass beside a refinery. The depot's
+/// lorry fetches each maker's yard and its vans take the inputs to the
+/// works: by the end, each has made something.
+#[test]
+#[ignore]
+fn heavy_chains_make_steel_machines_and_fuel() {
+    use land::Deposit;
+    let mut world = street();
+    for x in 196..232 {
+        for y in 5..14 {
+            world.map.terrain.insert((x, y), TerrainType::Mountain);
+            world.map.deposits.insert((x, y), if x < 214 { Deposit::Ore } else { Deposit::Coal });
+        }
+    }
+    for x in 240..252 {
+        for y in 4..12 {
+            world.map.deposits.insert((x, y), Deposit::Oil);
+        }
+    }
+    build(&mut world, 244, BuildingKind::OilWell);
+    build(&mut world, 234, BuildingKind::Refinery);
+    // Homes beside the oil: the town's own are all at work nearer.
+    for x in [239, 248, 251] {
+        build(&mut world, x, BuildingKind::Apartment);
+    }
+    build(&mut world, 200, BuildingKind::Mine);
+    build(&mut world, 218, BuildingKind::Colliery);
+    build(&mut world, 160, BuildingKind::Steelworks);
+    build(&mut world, 168, BuildingKind::Factory);
+    let days = std::env::var("DAYS").ok().and_then(|d| d.parse().ok()).unwrap_or(6);
+    let mut made: std::collections::BTreeMap<Good, f64> = Default::default();
+    season_with(world, &town_mix(), days, |_, _| Vec::new(), |world, day, _| {
+        let flows = world.market.prices().flows;
+        println!("day {day}: {}", flows.iter().map(|f| format!("{:?} +{:.0} -{:.0}", f.good, f.made, f.used)).collect::<Vec<_>>().join(", "));
+        for f in flows {
+            *made.entry(f.good).or_default() += f.made;
+        }
+    });
+    for good in [Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude, Good::Fuel] {
+        assert!(made.get(&good).copied().unwrap_or(0.0) > 0.0, "no {good:?} made in {days} days: {made:?}");
+    }
+}

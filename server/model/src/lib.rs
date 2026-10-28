@@ -351,6 +351,10 @@ pub struct Building {
     /// Lorries bought for it beyond the one its row comes with.
     #[serde(default)]
     pub lorries: u8,
+    /// How many of its jobs are held (`Map::staffed`): a works far from
+    /// the town's homes may stand with none.
+    #[serde(default)]
+    pub hands: u32,
     /// A farm's land: the grass it claimed when a street reached it, each
     /// tile at a stage of the cycle the tractor drives it through
     /// (`map/fields.rs`). A tile built over is dropped.
@@ -460,6 +464,7 @@ impl Building {
             outgoing: Vec::new(),
             lifts: Vec::new(),
             lorries: 0,
+            hands: 0,
             land: Vec::new(),
             ruts: Vec::new(),
             door: None,

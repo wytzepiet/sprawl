@@ -142,7 +142,7 @@ export function createStudio(main: Engine) {
     const tiles = Array.from({ length: w * h }, (_, k) => ({ x: x0 + (k % w), y: 1 + Math.floor(k / w) }));
     const front = { x: 0, y: 1 };
     const building: Building = {
-      kind, tiles, facing: 0, stocks: {}, site: null, pad: [], outgoing: [], lifts: [], lorries: 0, land: [], ruts: [],
+      kind, tiles, facing: 0, stocks: {}, site: null, pad: [], outgoing: [], lifts: [], lorries: 0, hands: 0, land: [], ruts: [],
       door: { tile: front, street: { x: 0, y: 0 } },
     };
     entries = [{ id: 1, position: tiles[0], object: { kind: "Building", data: building } }, ...road];

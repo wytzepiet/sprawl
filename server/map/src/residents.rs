@@ -30,6 +30,15 @@ impl Map {
             .collect()
     }
 
+    /// A building's held jobs counted again, after someone took one or
+    /// left one.
+    pub fn staffed(&mut self, building: EntityId) {
+        let n = self.staff(building).len() as u32;
+        if let Some(b) = self.building_mut(building).filter(|b| b.hands != n) {
+            b.hands = n;
+        }
+    }
+
     /// Who lives at a building, by id.
     pub fn household(&self, building: EntityId) -> Vec<EntityId> {
         self.people.get(&building).into_iter().flatten().copied().filter(|&id| self.home_of(id) == Some(building)).collect()

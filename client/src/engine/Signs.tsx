@@ -65,17 +65,19 @@ const PAINT_INK = "#F3EEE2";
 /** A building's mark: the marker, a plate, or a sign painted on its roof. */
 type Look = "marker" | "plate" | "paint";
 
-/** The good a building is held up for, if any: a site's material the
- *  town's depots have too little of to finish it; a shop's, a pump's or
- *  a works' shelf of what it serves or works, empty. A maker's own yard
- *  and a depot's shelves are the market's to show. */
-export function want(b: Building): Good | null {
+/** What a building is held up for, if any: a site's material the
+ *  town's depots have too little of to finish it; hands, a place of work
+ *  nobody works at, the town's people all at work nearer; a shop's, a
+ *  pump's or a works' shelf of what it serves or works, empty. A maker's
+ *  own yard and a depot's shelves are the market's to show. */
+export function want(b: Building): Good | "hands" | null {
   if (b.site) {
     const town = stocks();
     for (const [g, s] of Object.entries(b.site) as [Good, { level: number; cap: number }][]) if (s.cap - s.level > (town[g]?.level ?? 0) + 1e-9) return g;
     return null;
   }
   const bp = BLUEPRINTS[b.kind];
+  if (bp.jobs > 0 && b.hands === 0) return "hands";
   if (b.kind === "Depot" || bp.quay) return null;
   for (const [g, s] of Object.entries(b.stocks) as [Good, { level: number }][]) if (g !== bp.makes && s.level < 1e-9) return g;
   return null;
@@ -135,9 +137,12 @@ const markerFace = (kind: BuildingKind) => {
 </svg>`, w, h);
 };
 
+/** Someone, for a place of work with nobody at it. */
+const HANDS = { color: "#8E8E93", glyph: "M12 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM3 22c0-5 4-8.5 9-8.5s9 3.5 9 8.5z" };
+
 /** A want's face: as a marker's, the good's disc and glyph. */
-const wantFace = (good: Good) => {
-  const { color, glyph } = GOODS[good];
+const wantFace = (good: Good | "hands") => {
+  const { color, glyph } = good === "hands" ? HANDS : GOODS[good];
   const [w, h] = [22 * MARKER_TEXELS, 30 * MARKER_TEXELS];
   return texels(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="-11 -11 22 30">
 <rect x="-11" y="-11" width="22" height="30" fill="#fff"/>
@@ -173,7 +178,7 @@ export default function Signs() {
   const pool = useInstancePool();
   const shapes = { marker: marker(), plate: sign(SLAB), paint: sign(PAINT) };
   const faces = new Map<string, Promise<Texture2D>>();
-  const faceOf = (look: Look, kind: BuildingKind, good: Good | null) => {
+  const faceOf = (look: Look, kind: BuildingKind, good: Good | "hands" | null) => {
     const key = good ? `want_${good}` : `${look}_${kind}`;
     if (!faces.has(key)) {
       const [w, h] = look === "marker" ? [22 * MARKER_TEXELS, 30 * MARKER_TEXELS] : [SIGN_TEXELS, SIGN_TEXELS];

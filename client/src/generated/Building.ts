@@ -57,6 +57,11 @@ lifts: Array<Lift>,
  */
 lorries: number, 
 /**
+ * How many of its jobs are held (`Map::staffed`): a works far from
+ * the town's homes may stand with none.
+ */
+hands: number, 
+/**
  * A farm's land: the grass it claimed when a street reached it, each
  * tile at a stage of the cycle the tractor drives it through
  * (`map/fields.rs`). A tile built over is dropped.
