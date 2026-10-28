@@ -3,8 +3,8 @@
 Status: draft, 2026-10-10, for the player to correct. Built so far:
 house, apartment, shop, office, factory, gas station, supermarket, the
 general depot (`Depot`: crates 200, fuel 100, timber 60, stone 60, a
-lorry and two vans, and up to three more lorries bought from the world at
-40 coins each), the farm, the sawmill and the quarry (each four hands
+lorry and two vans, and up to five more lorries or vans bought from the
+world at 40 coins each), the farm, the sawmill and the quarry (each four hands
 working the ground within five tiles, the forest for timber, the
 mountain for stone: half a unit an hour each with thirty tiles of it in
 reach, nothing in the open; a yard of six boxes) and the ferry harbour.

@@ -293,8 +293,8 @@ parted from the direction above.
   there and is gone, and the lorry drives off bobtail. For an export it
   backs in bobtail and pulls out with a full box. A lorry fetches only a
   box its depot has room for whole.
-- **Lorries are bought.** A depot comes with one and can import three
-  more, forty coins each (`BuyLorry`): throughput at the border is a
+- **Lorries are bought.** A depot comes with one and can import up
+  to five more lorries or vans, forty coins each (`Buy`): throughput at the border is a
   thing the mayor buys and can see, and four lorries through one
   junction is a jam they made.
 - **A maker's load.** A bobtail lorry, from a depot short of a good or

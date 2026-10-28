@@ -193,11 +193,14 @@ what it takes against what the depots hold. The level is GDP to date
 ## People
 
 A resident has a home, a job, a car and an appetite. Their needs are home,
-work and eat, and the car has the one need a machine has, fuel, which its
+work, eat and an outing (an hour a day at a park, the one need that never
+keeps them from a shift), and the car has the one need a machine has, fuel, which its
 driver weighs alongside their own. Every trip is a car; everyone owns one;
 parked cars sit in the building's spots, so who is home and how busy a
 shop is can be seen from the lot. Arrivals come off the ferry and drive off
-the ramp. Nobody walks.
+the ramp. Nobody walks. A works runs two shifts, six to two and two to ten, and
+each hand keeps the one they were hired to, so the roads are busy from
+breakfast to bedtime.
 
 **People stay in their own town.** Only goods cross its border. A
 home cooks off a pantry of bread a depot's van fills like any shelf; a
