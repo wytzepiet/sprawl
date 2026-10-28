@@ -7,6 +7,7 @@ import type { Lift } from "./Lift";
 import type { Package } from "./Package";
 import type { Stock } from "./Stock";
 import type { Tile } from "./Tile";
+import type { Wait } from "./Wait";
 
 export type Building = { kind: BuildingKind, 
 /**
@@ -79,4 +80,9 @@ ruts: Array<GridCoord>,
  * road: drawn as one, driven by the cars of its lot, and gone with it.
  * Kept when the street goes, and good again if it comes back.
  */
-door: Door | null, };
+door: Door | null, 
+/**
+ * The trips it waits on (`sprawl::waits`): read by the client as
+ * pins, never by the game.
+ */
+waits: Array<Wait>, };

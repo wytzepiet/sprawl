@@ -58,6 +58,10 @@ pub struct World {
     /// Every building settled as a site, standing or not since: those
     /// still waiting call for their timber (`game::settle_and_wake`).
     pub sites: std::collections::BTreeSet<EntityId>,
+    /// Buildings whose trips changed since the last settle, to look at
+    /// again for what they wait on (`waits::look`). Not saved: every
+    /// building is looked at on load.
+    pub waiting: std::collections::BTreeSet<EntityId>,
     /// The market's prices and the orders waiting on them (`market.rs`). Saved.
     pub market: crate::market::Market,
     /// What the town may build, and what its labs are learning (`research.rs`). Saved.
@@ -92,6 +96,7 @@ impl World {
             streets: traffic::intersection::IntersectionRegistry::new(),
             vacancies: Default::default(),
             sites: Default::default(),
+            waiting: Default::default(),
             market: Default::default(),
             research: Default::default(),
         }

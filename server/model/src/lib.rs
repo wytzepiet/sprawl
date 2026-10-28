@@ -371,6 +371,30 @@ pub struct Building {
     /// Kept when the street goes, and good again if it comes back.
     #[serde(default)]
     pub door: Option<Door>,
+    /// The trips it waits on (`sprawl::waits`): read by the client as
+    /// pins, never by the game.
+    #[serde(default)]
+    pub waits: Vec<Wait>,
+}
+
+/// A trip a building waits on: a package of a good it called for, or a
+/// hand for a seat nobody holds. Late once the building cannot go on
+/// without it — its shelf or bin empty, a site's material no van could
+/// be loaded with, a seat empty — and since when: a pin, its ring
+/// filling. Not late, an order on its way: a dot.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Wait {
+    pub what: Wanted,
+    #[ts(type = "number | null")]
+    pub late: Option<GameTime>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Wanted {
+    Good(Good),
+    Hands,
 }
 
 /// A building's door: its tile a drive runs onto, and the street tile the
@@ -465,6 +489,7 @@ impl Building {
             lifts: Vec::new(),
             lorries: 0,
             hands: 0,
+            waits: Vec::new(),
             land: Vec::new(),
             ruts: Vec::new(),
             door: None,

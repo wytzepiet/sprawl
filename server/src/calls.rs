@@ -66,6 +66,7 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
 /// field sends the tractor.
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
     let Some(b) = world.map.building(building) else { return };
+    world.waiting.insert(building);
     let kind = b.kind;
     if b.site.is_none() && model::blueprint::farm(kind) {
         world.farm_run(events, building, now);
@@ -114,6 +115,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
     for c in &mut world.calls {
         if c.answered_by.is_some_and(|car| world.map.objects.get(car).is_none()) {
             c.answered_by = None;
+            world.waiting.insert(c.at);
         }
     }
     for i in 0..world.calls.len() {
@@ -134,6 +136,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             van
         });
         world.calls[i].answered_by = answered;
+        world.waiting.insert(at);
     }
     if world.calls.iter().any(|c| c.answered_by.is_none()) {
         events.wake(RETRY_MS, crate::game::CALLS_AGAIN);

@@ -16,4 +16,5 @@ pub mod ferry;
 pub mod tractor;
 pub mod undo;
 pub mod view;
+pub mod waits;
 pub mod world;

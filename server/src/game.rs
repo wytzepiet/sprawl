@@ -319,6 +319,9 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for id in world.settle() {
         wake_resident(world, events, id);
     }
+    // The quays change with every ferry and lorry, and are few.
+    world.waiting.extend(world.map.harbours.keys().copied());
+    crate::waits::look(world, events.now());
     // A harbour reached, or cut off: the town's way out, and its ferry.
     world.map.mark_harbours();
     let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();

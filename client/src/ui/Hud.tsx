@@ -2,6 +2,7 @@ import { Box, Ink, Melt } from "~ui";
 import Feed from "./Feed";
 import Cargo from "./Cargo";
 import Lumps from "./Lumps";
+import Pins from "./Pins";
 import Held from "./Held";
 import Clock from "./Clock";
 import Meter from "./Meter";
@@ -20,6 +21,7 @@ export default function Hud() {
   return (
     <>
       <Cargo />
+      <Pins />
       <Lumps />
       <Held />
       <Melt layer="bezel" at={{ left: 0, top: 0, right: 0, bottom: 0 }}>
