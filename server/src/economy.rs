@@ -321,7 +321,7 @@ pub fn paved(world: &mut World, at: model::GridCoord, tiles: u32, now: GameTime)
             return;
         }
     }
-    let harbours = world.map.of_kinds(|k| k == BuildingKind::Harbour).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id);
+    let harbours = world.map.of_kinds(|k| blueprint(k).quay).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id);
     if let Some(&(_, harbour)) = world.map.nearest(at, harbours).first() {
         door(world, harbour, Good::Stone, -EXPRESS * import(Good::Stone, owed), now);
     }

@@ -65,6 +65,9 @@ const KEPT: usize = 7 * 24;
 /// a whole deck of sixty bought at once moves it most of a third of its
 /// band.
 const DEPTH: f64 = 200.0;
+/// How much deeper the market is to a town for each container port it
+/// has standing: bulk, its trades moving the price a third as far.
+const PORT_DEPTH: f64 = 2.0;
 /// How much of an hour's push from the mayors lasts into the next: a
 /// glut or a shortage lasts most of a day.
 const LASTS: f64 = 0.85;
@@ -104,6 +107,10 @@ pub struct Market {
     /// day's; the last row the hour going.
     #[serde(default)]
     flows: VecDeque<BTreeMap<Good, [f64; 2]>>,
+    /// Container ports standing, as last settled: each makes the market
+    /// deeper to the town (`PORT_DEPTH`). Derived.
+    #[serde(skip)]
+    pub ports: u32,
     /// Something a client would draw changed since it was last sent.
     #[serde(skip)]
     pub changed: bool,
@@ -122,13 +129,17 @@ impl Market {
         world_price(good) * (1.0 - band(good))
     }
     /// How far a package moves a good's price, a unit's.
-    pub fn nudge(good: Good) -> f64 {
-        world_price(good) * band(good) / DEPTH
+    pub fn nudge(&self, good: Good) -> f64 {
+        world_price(good) * band(good) / self.depth()
+    }
+    /// Packages that move a price from the world's to its band's edge.
+    fn depth(&self) -> f64 {
+        DEPTH * (1.0 + PORT_DEPTH * self.ports as f64)
     }
     /// What a unit of the next package costs bought, or gets sold: the price
     /// it moves to, never past the band.
     pub fn next(&self, good: Good, out: bool) -> f64 {
-        (self.price(good) + if out { -1.0 } else { 1.0 } * Self::nudge(good)).clamp(Self::floor(good), Self::ceiling(good))
+        (self.price(good) + if out { -1.0 } else { 1.0 } * self.nudge(good)).clamp(Self::floor(good), Self::ceiling(good))
     }
 
     /// So many units of a good made in town, or used.
@@ -147,8 +158,9 @@ impl Market {
 
     /// The town traded so many packages: the price moves its way.
     fn traded(&mut self, good: Good, packages: f64, out: bool) {
+        let depth = self.depth();
         let at = self.at.entry(good).or_default();
-        *at = (*at + if out { -1.0 } else { 1.0 } * packages / DEPTH).clamp(-1.0, 1.0);
+        *at = (*at + if out { -1.0 } else { 1.0 } * packages / depth).clamp(-1.0, 1.0);
         self.changed = true;
     }
 
@@ -192,7 +204,7 @@ impl Market {
                 price: self.price(good),
                 floor: Self::floor(good),
                 ceiling: Self::ceiling(good),
-                step: Self::nudge(good),
+                step: self.nudge(good),
                 history: self.history.get(&good).map_or(Vec::new(), |h| h.iter().copied().collect()),
             })
             .collect();

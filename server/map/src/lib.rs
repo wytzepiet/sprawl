@@ -353,7 +353,7 @@ impl Map {
     /// Derived from the buildings rather than remembered: running this
     /// twice changes nothing.
     pub fn mark_harbours(&mut self) {
-        let standing: Vec<EntityId> = self.of_kinds(|k| k == BuildingKind::Harbour).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id).collect();
+        let standing: Vec<EntityId> = self.of_kinds(|k| model::blueprint::blueprint(k).quay).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id).collect();
         let was = std::mem::take(&mut self.harbours);
         for (h, node) in &was {
             if let Some(node) = node

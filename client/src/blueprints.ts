@@ -356,7 +356,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Port: {
     label: "Container port",
-    about: "The harbour grown: a crane on a deep quay, where the container ship berths. Built of cement, steel and machines.",
+    about: "The harbour grown: ships of its own, and the market deeper to the town, a big trade moving the price a third as far. The town becomes a hub. Built of cement, steel and machines.",
     color: "#1F4E79",
     material: "#41566B",
     // A gantry crane over a stack of boxes.

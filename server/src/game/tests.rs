@@ -1259,3 +1259,18 @@ fn a_run_to_an_hour_stops_there_at_speed_one() {
     game.tick();
     assert_eq!(game.speed, 1);
 }
+
+/// A container port on the coast beside the harbour has ships of its own
+/// on its own line, and the market is deeper to a town with one: a
+/// package moves the price a third as far.
+#[test]
+fn a_port_has_its_own_ships_and_deepens_the_market() {
+    let step = |w: &World| w.market.prices().goods.iter().find(|q| q.good == Good::Steel).unwrap().step;
+    let mut game = game(street());
+    game.step_to(1000);
+    let before = step(&game.world);
+    let port = game.world.map.place_on_street(GridCoord { x: HARBOUR_X + 4, y: 1 }, BuildingKind::Port).expect("the coast takes a port beside the harbour");
+    game.step_to(2000);
+    assert!(!game.world.ferries_of(port).is_empty(), "the port has no ship");
+    assert!((step(&game.world) - before / 3.0).abs() < 1e-12, "the market is no deeper: {} against {before}", step(&game.world));
+}
