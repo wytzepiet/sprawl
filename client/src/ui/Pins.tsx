@@ -45,11 +45,12 @@ export function says(what: Wanted, why: Why): string {
   if (why === "TooFar") return "the town's free hands live too far off";
   if ("OnTheWay" in why) return "on its way, held up";
   if ("NoVan" in why) return "a depot has it, its vans all out";
+  if ("NoLorry" in why) return "no lorry coming for it: the depot's are all out";
   return "none in town, some coming";
 }
 export function target(why: Why): number | null {
   if (typeof why === "string") return null;
-  return "OnTheWay" in why ? why.OnTheWay : "NoVan" in why ? why.NoVan : why.Coming;
+  return "OnTheWay" in why ? why.OnTheWay : "NoVan" in why ? why.NoVan : "NoLorry" in why ? why.NoLorry : why.Coming;
 }
 
 /** A line over the town from a building to what holds it up. */
