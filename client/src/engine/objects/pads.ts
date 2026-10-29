@@ -140,7 +140,7 @@ export function padOf(b: Building): Pad {
 
 /** Where the `i`th package of a bay stands: its slot, and how many it
  *  stands on. */
-export const placeIn = (bay: Bay, i: number): [Pose, number] => [bay.slots[Math.min(bay.slots.length - 1, Math.floor(i / bay.stack))], i % bay.stack];
+export const placeIn = (bay: Bay, i: number): [Pose, number] => [bay.slots[Math.max(0, Math.min(bay.slots.length - 1, Math.floor(i / bay.stack)))], Math.max(0, i) % bay.stack];
 
 /** How far a forklift's run is at `now`: how many packages have left
  *  where they stood (`off`), how many have been set down where they go
