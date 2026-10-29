@@ -177,7 +177,7 @@ pub fn drive(rig: &Rig, from: Pose, moves: &[Move]) -> Vec<(f64, Pose)> {
 }
 
 /// The rectangles a vehicle stands in.
-fn bodies(rig: &Rig, p: Pose) -> impl Iterator<Item = Rect> {
+pub fn bodies(rig: &Rig, p: Pose) -> impl Iterator<Item = Rect> {
     let rect = |x: f64, y: f64, h: f64, b: &Body| {
         let mid = (b.ahead - b.behind) / 2.0;
         Rect { x: x + h.cos() * mid, y: y + h.sin() * mid, half_l: (b.ahead + b.behind) / 2.0, half_w: b.half, heading: h }
@@ -384,9 +384,10 @@ impl<'a> Tree<'a> {
     }
 }
 
-/// The cheapest way from `from` to `goal` across the lot, as moves; or
-/// none, if there is no way within the search's patience.
-pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal) -> Option<Vec<Move>> {
+/// The cheapest way from `from` to `goal` across the lot in the gears
+/// given (backwards or not), as moves; or none, if there is no way within
+/// the search's patience.
+pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal, gears: &[bool]) -> Option<Vec<Move>> {
     let far = field.distances((goal.pose.x, goal.pose.y));
     let (c, sn) = (goal.pose.heading.cos(), goal.pose.heading.sin());
     let arrived = |p: &Pose| {
@@ -403,7 +404,7 @@ pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal) -> Option<Vec<Mov
         let turn = |a: f64| (wrap(a - goal.pose.heading).abs() - goal.turn).max(0.0) / rig.lock;
         (field.at(&far, (p.x, p.y)).min(1e3) - goal.reach.max(goal.along)).max(0.0).max(turn(p.heading)).max(turn(p.trailer))
     };
-    let mut tree = Tree::new(rig, field, from, &[false, true]);
+    let mut tree = Tree::new(rig, field, from, gears);
     while tree.nodes.len() <= LIMIT {
         let (i, _) = tree.grow(&h)?;
         if arrived(&tree.nodes[i].pose) {
@@ -411,6 +412,35 @@ pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal) -> Option<Vec<Mov
         }
     }
     None
+}
+
+/// A plan as `plan` finds it, found once: many lots are the same lot, a
+/// depot's yard as any other depot's, so each is searched for the first
+/// time it is asked for and kept.
+pub fn planned(rig: &Rig, lot: &Lot, from: Pose, goal: &Goal, gears: &[bool]) -> Option<Vec<Move>> {
+    use std::sync::{Mutex, OnceLock};
+    static PLANS: OnceLock<Mutex<BTreeMap<Vec<u64>, Option<Vec<Move>>>>> = OnceLock::new();
+    let rect = |r: &Rect| [r.x, r.y, r.half_l, r.half_w, r.heading];
+    let body = |b: &Body| [b.ahead, b.behind, b.half];
+    let mut key: Vec<f64> = vec![rig.lock];
+    key.extend(body(&rig.cab));
+    if let Some(t) = rig.trailer {
+        key.extend([t.length, t.fold]);
+        key.extend(body(&t.body));
+    }
+    for r in lot.ground.iter().chain(&lot.walls) {
+        key.extend(rect(r));
+    }
+    key.extend([lot.ground.len() as f64, from.x, from.y, from.heading, from.trailer, goal.pose.x, goal.pose.y, goal.pose.heading, goal.pose.trailer, goal.reach, goal.along, goal.turn]);
+    key.extend(gears.iter().map(|&g| g as u8 as f64));
+    let key: Vec<u64> = key.iter().map(|x| x.to_bits()).collect();
+    let plans = PLANS.get_or_init(Default::default);
+    if let Some(p) = plans.lock().unwrap().get(&key) {
+        return p.clone();
+    }
+    let p = plan(rig, &Field::new(lot), from, goal, gears);
+    plans.lock().unwrap().insert(key, p.clone());
+    p
 }
 
 /// The steps back from the last node to the first, as moves: steps alike

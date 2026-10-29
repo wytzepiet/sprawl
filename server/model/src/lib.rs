@@ -625,6 +625,32 @@ pub struct Pose {
     pub heading: f64,
 }
 
+/// One gear's drive of a parking plan: backwards or not, the wheel
+/// turning evenly from one curvature to another (positive to the left),
+/// so far (`park::Move`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Move {
+    pub back: bool,
+    pub from: f64,
+    pub to: f64,
+    pub length: f64,
+}
+
+/// An edge of a trip driven by a parking plan, the edge from `route[edge]`
+/// on: the moves driven from `from`, the cab's rear axle, its trailer in
+/// line behind it; or, `reversed`, the same played backwards, so it ends
+/// at `from`. A lorry backing into its dock drives its way out backwards:
+/// a trailer is only ever drawn after its cab, never pushed by the numbers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Manoeuvre {
+    pub edge: usize,
+    pub from: Pose,
+    pub moves: Vec<Move>,
+    pub reversed: bool,
+}
+
 /// A good: what a shelf, a yard or a package holds, and what the world
 /// prices. A resident's need draws one off a counter's shelf (`Need::good`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
@@ -916,6 +942,9 @@ pub struct Trip {
     /// client drives each stretch between them to fit exactly.
     #[serde(default)]
     pub cusps: Vec<f64>,
+    /// The edges driven by a parking plan, laid out across a lot.
+    #[serde(default)]
+    pub manoeuvres: Vec<Manoeuvre>,
     /// Where it stood when it set out, and where it will stand at the end:
     /// a spot's own pose, which a route's first and last edges need not
     /// point along. The client's drive starts from the one and ends on the

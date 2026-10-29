@@ -968,7 +968,8 @@ fn stops_at(world: &Traffic, trip: &Trip, k: usize) -> bool {
 /// there; but where it backs out, where it stands, for it is in the road
 /// from its first move.
 fn give_way_line(trip: &Trip) -> usize {
-    if trip.backing.iter().any(|&[a, _]| a < trip.from_lot) { 0 } else { trip.from_lot.saturating_sub(1) }
+    let planned = trip.manoeuvres.iter().any(|m| m.edge < trip.from_lot);
+    if planned || trip.backing.iter().any(|&[a, _]| a < trip.from_lot) { 0 } else { trip.from_lot.saturating_sub(1) }
 }
 
 /// How far past the node where it leaves the street a car's tail must be

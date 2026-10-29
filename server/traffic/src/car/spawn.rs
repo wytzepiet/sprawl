@@ -60,6 +60,7 @@ pub fn depart(
     };
     let backs_out = world.map.backs_out(car_id);
     let leaving = world.map.stretch(car_id);
+    let planned_out = world.map.manoeuvre_out(car_id).filter(|_| out.len() > 1);
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.map.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
@@ -83,7 +84,8 @@ pub fn depart(
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.map.stretch(car_id)];
-    let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, stretches, leaves, now);
+    let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvre_in(car_id, route.len())).collect();
+    let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, manoeuvres, stretches, leaves, now);
     set_off(world, events, car_id, trip);
     true
 }
@@ -102,11 +104,12 @@ pub(crate) fn trip(
     from_lot: usize,
     to_lot: usize,
     backing: Vec<[usize; 2]>,
+    manoeuvres: Vec<model::Manoeuvre>,
     stretches: [Vec<EntityId>; 2],
     leaves: Option<model::Pose>,
     now: GameTime,
 ) -> Trip {
-    let segment_lengths = world.map.compute_segment_lengths(&route, from_lot, to_lot, &backing);
+    let segment_lengths = world.map.compute_segment_lengths(&route, from_lot, to_lot, &backing, &manoeuvres);
     let along = along(&segment_lengths);
     let total_len: f64 = segment_lengths.iter().sum();
     // The lot's edges are the ones into and out of it: as many at each end
@@ -124,6 +127,7 @@ pub(crate) fn trip(
         from_lot,
         to_lot,
         cusps: cusps(&backing, &along),
+        manoeuvres,
         leaves,
         stands: world.map.pose_held(car_id),
         backing,
@@ -220,7 +224,7 @@ pub fn drive_through(world: &mut Traffic, events: &mut EventQueue, car_id: Entit
         })
         .map_or(CRUISE_SPEED, |v| v.min(CRUISE_SPEED));
     let end = route[route.len() - 1];
-    let trip = Trip { speed, ..trip(world, car_id, end, route, 0, 0, Vec::new(), [Vec::new(), Vec::new()], None, now) };
+    let trip = Trip { speed, ..trip(world, car_id, end, route, 0, 0, Vec::new(), Vec::new(), [Vec::new(), Vec::new()], None, now) };
     set_off(world, events, car_id, trip);
     true
 }
@@ -237,19 +241,6 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
         v.push([len - 1 - into, len - 1]);
     }
     v
-}
-
-/// A manoeuvre within a lot, by a way given, all of it lot nodes, its last
-/// `backs` edges backed: a lorry from one dock of a yard to another.
-pub fn manoeuvre(world: &mut Traffic, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<model::Pose>, now: GameTime) -> bool {
-    let n = route.len();
-    if !matches!(world.map.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n) {
-        return false;
-    }
-    // Lot nodes all: the first two its way out, the rest its way in.
-    let trip = trip(world, car_id, building, route, 2, n - 2, vec![[n - 1 - backs, n - 1]], [Vec::new(), Vec::new()], leaves, now);
-    set_off(world, events, car_id, trip);
-    true
 }
 
 /// How far along the route each change of gear is, as its physics measures

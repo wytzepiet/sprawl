@@ -1,6 +1,8 @@
 use super::*;
 use std::f64::consts::FRAC_PI_2;
 
+const BOTH: &[bool] = &[false, true];
+
 /// The plan driven, every pose on the lot; and drawn, with `DRAW=1`, in
 /// `.dev/park/<name>.svg`.
 fn check(name: &str, rig: &Rig, lot: &Lot, from: Pose, moves: &[Move]) -> Vec<(f64, Pose)> {
@@ -70,7 +72,7 @@ fn a_car_parks_in_a_bay_between_two_cars() {
     };
     let bay = in_bay(1.25, 1.5);
     let lane = Goal { pose: Pose::new(0.4, 0.5, 0.0), reach: 0.15, along: 0.15, turn: 0.2 };
-    let out = plan(&CAR, &Field::new(&lot), bay, &lane).expect("a way out");
+    let out = plan(&CAR, &Field::new(&lot), bay, &lane, BOTH).expect("a way out");
     let path = check("car-out-of-bay", &CAR, &lot, bay, &out);
     assert!(out[0].back, "backed out: {out:?}");
     // Coming in is the way out driven backwards: in nose first.
@@ -89,7 +91,7 @@ fn a_car_parks_at_the_kerb_between_two_cars() {
     // A gap half as long again as the car: its middle at 0.76.
     let gap = Pose::new(0.757 - 0.29 / 3.0, 0.6, 0.0);
     let lane = Goal { pose: Pose::new(1.6, 0.36, 0.0), reach: 0.25, along: 0.25, turn: 0.15 };
-    let out = plan(&CAR, &Field::new(&lot), gap, &lane).expect("a way out");
+    let out = plan(&CAR, &Field::new(&lot), gap, &lane, BOTH).expect("a way out");
     check("kerb-out", &CAR, &lot, gap, &out);
     assert!(out.iter().any(|m| m.back), "the gap is too short to drive out of nose first: {out:?}");
 }
@@ -104,7 +106,7 @@ fn a_lorry_backs_square_to_a_dock() {
     for x in [0.3, 0.8, 1.5, 2.2, 2.7] {
         let dock = Pose::new(x, 0.02 + t.body.behind + t.length, FRAC_PI_2);
         let street = Goal { pose: Pose::new(2.5, 2.6, 0.0), reach: 0.3, along: 0.3, turn: 0.25 };
-        let out = plan(&LORRY, &Field::new(&lot), dock, &street).unwrap_or_else(|| panic!("no way out of the dock at {x}"));
+        let out = plan(&LORRY, &Field::new(&lot), dock, &street, BOTH).unwrap_or_else(|| panic!("no way out of the dock at {x}"));
         // Backing in is the way out played backwards: a trailer backed by
         // the numbers would wander off, as a real one does.
         let path = check(&format!("dock-{x}"), &LORRY, &lot, dock, &out);
@@ -120,7 +122,7 @@ fn a_car_turns_round_in_a_dead_end() {
     let lot = Lot { ground: vec![Rect::span(0.0, 0.0, 3.0, 0.45)], walls: vec![] };
     let from = Pose::new(2.3, 0.225, 0.0);
     let goal = Goal { pose: Pose::new(1.0, 0.225, PI), reach: 0.2, along: 0.2, turn: 0.15 };
-    let moves = plan(&CAR, &Field::new(&lot), from, &goal).expect("turned round");
+    let moves = plan(&CAR, &Field::new(&lot), from, &goal, BOTH).expect("turned round");
     check("dead-end", &CAR, &lot, from, &moves);
     assert!(moves.windows(2).filter(|w| w[0].back != w[1].back).count() >= 2, "three goes at least: {moves:?}");
 }
@@ -130,7 +132,7 @@ fn a_car_turns_round_in_a_dead_end() {
 fn the_same_lot_plans_the_same() {
     let lot = Lot { ground: vec![Rect::span(0.0, 0.0, 3.0, 1.0), Rect::span(0.0, 1.0, 3.0, 1.5)], walls: vec![] };
     let (from, goal) = (in_bay(1.25, 1.5), Goal { pose: Pose::new(0.4, 0.5, 0.0), reach: 0.15, along: 0.15, turn: 0.2 });
-    assert_eq!(plan(&CAR, &Field::new(&lot), from, &goal), plan(&CAR, &Field::new(&lot), from, &goal));
+    assert_eq!(plan(&CAR, &Field::new(&lot), from, &goal, BOTH), plan(&CAR, &Field::new(&lot), from, &goal, BOTH));
 }
 
 /// The wheel eased at a hand's pace: the path barely moves, and stays on
@@ -139,7 +141,7 @@ fn the_same_lot_plans_the_same() {
 fn a_smoothed_plan_still_fits() {
     let lot = Lot { ground: vec![Rect::span(0.0, 0.0, 3.0, 1.0), Rect::span(0.0, 1.0, 3.0, 1.5)], walls: vec![] };
     let bay = in_bay(1.25, 1.5);
-    let out = plan(&CAR, &Field::new(&lot), bay, &Goal { pose: Pose::new(0.4, 0.5, 0.0), reach: 0.15, along: 0.15, turn: 0.2 }).unwrap();
+    let out = plan(&CAR, &Field::new(&lot), bay, &Goal { pose: Pose::new(0.4, 0.5, 0.0), reach: 0.15, along: 0.15, turn: 0.2 }, BOTH).unwrap();
     let eased = smooth(&CAR, &Field::new(&lot), bay, &out);
     check("smoothed", &CAR, &lot, bay, &eased);
     for w in eased.windows(2).filter(|w| w[0].back == w[1].back) {
@@ -165,7 +167,7 @@ fn a_lorry_drives_out_of_each_dock_onto_the_street() {
         for (d, lane) in [(1.0, -0.6), (-1.0, -0.4)] {
             let goal = Goal { pose: Pose::new(1.5 + d * 1.1, lane, if d > 0.0 { 0.0 } else { PI }), reach: 0.04, along: 0.4, turn: 0.06 };
             let t0 = std::time::Instant::now();
-            let out = plan(&LORRY, &field, *dock, &goal);
+            let out = plan(&LORRY, &field, *dock, &goal, &[false]);
             let out = out.unwrap_or_else(|| panic!("no way out of dock {i} going {d}"));
             eprintln!("dock {i} going {d}: {:?}", t0.elapsed());
             check(&format!("street-{i}-{d}"), &LORRY, &lot, *dock, &out);
