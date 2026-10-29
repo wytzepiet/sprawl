@@ -296,7 +296,7 @@ const BENT: f64 = 1.5;
 /// Holding the wheel over, for each tile of it at full lock: a driver
 /// turns no tighter than the room asks, so a wide arc is cheaper than a
 /// sharp one as long as it fits.
-const SHARP: f64 = 3.0;
+const SHARP: f64 = 6.0;
 /// How much more the search trusts its guess of the way left than what it
 /// has driven: a little more finds a good way many times sooner than the
 /// very best.
@@ -355,7 +355,7 @@ impl<'a> Tree<'a> {
         let (was_back, was_k) = (here.back, here.k);
         let rig = self.rig;
         for &back in self.gears {
-            for k in [-1.0, -0.5, 0.0, 0.5, 1.0].map(|f| f * rig.lock) {
+            for k in [-1.0, -0.6, -0.3, 0.0, 0.3, 0.6, 1.0].map(|f| f * rig.lock) {
                 // The step, checked as it goes, and cut short where it
                 // would touch: in a tight spot a driver creeps.
                 let mut p = pose;
