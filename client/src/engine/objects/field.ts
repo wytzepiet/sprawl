@@ -123,6 +123,11 @@ class Strips {
   readonly pieces: { lo: number; hi: number; rows: { l: P; r: P; d: number }[] }[] = [];
   private positions: Float32Array;
   private raised: Float32Array[];
+  /** The looks with a crop standing over the earth: a sown field's. A
+   *  cut field's stubble is drawn by the earth (`fieldStage == 3u`), and
+   *  ploughed earth has none: a crop mesh over either would shade the
+   *  whole field again only to throw most of it away. */
+  private grows: number[];
   /** Each vertex out past its piece's tile, a little lower, so that where a
    *  piece's spill lies over a tile another piece works, that piece shows. */
   private sunk: Float32Array;
@@ -244,9 +249,11 @@ class Strips {
         v += 2;
       });
     }
-    this.raised = looks.map(() => this.positions.slice());
+    this.grows = looks.flatMap((l, c) => (l.stage === "Sown" ? [c] : []));
+    this.raised = this.grows.map(() => this.positions.slice());
     const normals = Array.from({ length: count * 2 }, () => [0, 0, 1]).flat();
-    [this.mesh, ...this.crops] = [this.positions, ...this.raised].map((positions, which) => {
+    [this.mesh, ...this.crops] = [this.positions, ...this.raised].map((positions, i) => {
+      const which = i && this.grows[i - 1] + 1;
       const mesh = meshOf(ctx.engine, `${name}${which ? `_crop${which}` : ""}`, { positions, normals, indices });
       mesh.material = material(this.paint, which);
       mesh.receiveShadows = true;
@@ -265,7 +272,7 @@ class Strips {
     [this.z, this.hs] = [z, hs];
     for (let i = 0; i < this.sunk.length; i++) {
       this.positions[i * 3 + 2] = z - this.sunk[i];
-      this.raised.forEach((raised, c) => (raised[i * 3 + 2] = z - this.sunk[i] + 0.001 + hs[c]));
+      this.raised.forEach((raised, c) => (raised[i * 3 + 2] = z - this.sunk[i] + 0.001 + hs[this.grows[c]]));
     }
     updateMeshPositions(this.ctx.engine, this.mesh, this.positions);
     this.crops.forEach((crop, c) => updateMeshPositions(this.ctx.engine, crop, this.raised[c]));
@@ -597,11 +604,17 @@ let fieldLook = material.fieldLook;
 // Broad, soft patches: wetter earth, a crop a little ahead or behind.
 let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
 let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoise(fieldW * 6. + vec2f(3., 201.));
+// Crumbs of earth past a strip's edge, and the ragged front of a harvest.
+let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
 // Behind the tractor the look it leaves, ahead the look before, on a
 // ragged line across where it is: when the tractor first reaches the
 // pixel (\`Field.cuts\`), read between the four texels round it where they
 // are of one pass; across from one pass to another, the nearest; and past
 // the strips' edge, the ones in them.
+// With no run out (\`reach\` far behind) nowhere is behind it, and none
+// of this is read.
+var fieldLater = false;
+if (fieldLook.z > -1e8) {
 // Read a little off where the pixel is, by a wobble of its own, so every
 // edge of the standing crop is ragged, along the passes as across them.
 let fieldWobble = vec2f(fieldNoise(fieldW * 45. + vec2f(211., 17.)), fieldNoise(fieldW * 45. + vec2f(59., 233.))) - 0.5;
@@ -622,15 +635,14 @@ let fieldReached = select(fieldCutNear, mix(mix(fieldCutS.x, fieldCutS.y, fieldC
 // The harvest's front ragged: the cut line wanders a tenth of a tile
 // either way, and stalks stand a little behind it, clumps go a little
 // ahead.
-let fieldFront = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
-let fieldLater = fieldReached < 65535. && fieldReached - fieldLook.z < 0.1 * (fieldEdge - 0.5) + 0.14 * (fieldFront - 0.5);
+fieldLater = fieldReached < 65535. && fieldReached - fieldLook.z < 0.1 * (fieldEdge - 0.5) + 0.14 * (fieldCrumb - 0.5);
+}
 let fieldNow = select(fieldLook.xy, material.fieldAfter.xy, fieldLater);
 let fieldStage = u32(fieldNow.x + 0.5);
 // How far past its own tile the pixel is, across or past either end: out
 // to here the earth reaches, raggedly, and past that only crumbs of it,
 // fewer further out, over what lies beside.
 let fieldOut = max(max(select(-1., -fieldU, input.vStripB.z > 0.5), select(-1., fieldU - 1., input.vStripB.w > 0.5)), max(input.vStripB.x - fieldV, fieldV - input.vStripB.y));
-let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
 let fieldRag = 0.09 + 0.06 * fieldEdge;
 if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldOut - fieldRag))) { discard; }
 let fieldDirt = material.fieldEarth.rgb;
@@ -657,10 +669,14 @@ let fieldAhead = smoothstep(fieldPatch - 0.2, fieldPatch + 0.2, fieldAt - fieldF
 // tiles the crop goes on, so no seam of earth shows between passes.
 let fieldOff = max(select(-1., -fieldU, input.vStripB.z > 1.5), select(-1., fieldU - 1., input.vStripB.w > 1.5));
 let fieldBare = fieldOff > 0.04 + 0.06 * (fieldEdge - 0.5) + 0.04 * (fieldCrumb - 0.5) || input.vStripB.z > 2.5;
-var fieldColour = vec3f(0.);
+var fieldSoilC = vec3f(0.);
+var fieldCropC = vec3f(0.);
 var fieldFacing = vec3f(0.);
 var fieldCover = 0.;
-for (var i = 0; i < 2; i++) {
+// The next stage read too only where it is coming through: most of a
+// field is wholly at one.
+let fieldTwo = fieldTo != fieldFrom && !fieldBare;
+for (var i = 0; i < select(1, 2, fieldTwo); i++) {
   let st = select(select(fieldFrom, fieldTo, i == 1), 0., fieldBare);
   let t = mix(fieldWheatAt(st, fieldU, fieldTexVs[1], fieldDu, fieldDv), fieldWheatAt(st, fieldU, fieldTexVs[0], fieldDu, fieldDv), fieldTexW);
   let soil = fieldSoil * select(select(1., 0.8, st > 5.5), 0.9, st < 0.5);
@@ -668,20 +684,24 @@ for (var i = 0; i < 2; i++) {
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
   if (st > 4.5) { crop = fieldGold * mix(vec3f(1.07, 1.05, 0.96), vec3f(0.91, 0.9, 0.88), fieldKernel); }
   if (st > 5.5) { crop = fieldStraw; }
-  let c = select(soil, crop, fieldLook.w > 0.5) * t.b * 1.25;
-  let w = select(1. - fieldAhead, fieldAhead, i == 1);
-  fieldColour += c * w;
+  let w = select(1., select(1. - fieldAhead, fieldAhead, i == 1), fieldTwo);
+  fieldSoilC += soil * t.b * 1.25 * w;
+  fieldCropC += crop * t.b * 1.25 * w;
   fieldFacing += vec3f(t.rg * 2. - 1., 0.) * w;
   fieldCover += t.a * w;
 }
 // The crop stands over the earth: on its own mesh, raised, only where a
 // plant is, as many as the texel holds, and cast just so; until the
-// tractor, cutting, comes. The earth under it is all earth.
+// tractor, cutting, comes. The earth under it is all earth, but for
+// stubble, which stands no higher than it: drawn by the earth itself,
+// where a stalk is, with no mesh of its own to shade the field again.
 let fieldCrop = fieldLook.w > 0.5;
+let fieldPlant = !fieldBare && fieldCover >= 0.3 + 0.4 * fieldCrumb;
+let fieldColour = select(fieldSoilC, fieldCropC, fieldCrop || (fieldStage == 3u && fieldPlant));
 // Each look's crop on a mesh of its own, at its own height: the first
 // ahead of the tractor, the second behind.
 let fieldMine = select(!fieldLater, fieldLater, fieldLook.w > 1.5);
-if (fieldCrop && (fieldBare || !fieldMine || fieldCover < 0.3 + 0.4 * fieldCrumb)) { discard; }`;
+if (fieldCrop && (!fieldPlant || !fieldMine)) { discard; }`;
 
 /**
  * The paint: the stage of the wheat the field is at (ploughed; sown, by
