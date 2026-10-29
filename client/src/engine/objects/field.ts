@@ -572,8 +572,11 @@ fn fieldWheatAt(stage: f32, u: f32, v: f32, du: vec2f, dv: vec2f) -> vec4f {
 /**
  * Where on its strip a pixel is: `fieldU` across the pass, 0 to 1, and
  * the way that runs (`fieldAcross`); `fieldV` along it, and how fast both
- * change across the screen. Every texture read and every rate of change
- * here, before anything branches, as WGSL wants. Then not drawn: grass,
+ * change across the screen. Every implicit-derivative read (`textureSample`,
+ * `dpdx`) and every rate of change here, before anything branches on the
+ * pixel, as WGSL wants: a branch on the material's own values (whether a
+ * run is out) may hold them, one on the pixel only `textureSampleGrad` and
+ * `textureLoad`. Then not drawn: grass,
  * and past the piece's tile, all but a ragged edge and crumbs.
  */
 const BEGIN = `let fieldU = input.vStripA.x + 0.5;
