@@ -1,0 +1,8 @@
+# How a vehicle finds its way across a lot: open ground, walls, and where
+# it must end up. Knows nothing of the game.
+[package]
+name = "park"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
