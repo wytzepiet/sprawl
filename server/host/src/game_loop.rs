@@ -12,7 +12,7 @@ use sprawl::world::World;
 use crate::network::{ClientId, Command, Debug};
 use crate::persistence;
 
-fn db_path() -> PathBuf {
+pub fn db_path() -> PathBuf {
     std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
 }
 

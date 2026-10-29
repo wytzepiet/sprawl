@@ -74,3 +74,20 @@ async fn ask(state: &AppState, query: Debug) -> String {
     }
     answer.await.unwrap_or_else(|_| "{\"error\":\"game loop gone\"}\n".into())
 }
+
+/// The world as saved, a copy of the file to download: open it with
+/// `SPRAWL_DB=<file> cargo run` to play the same town anywhere.
+pub async fn save() -> Result<([(axum::http::header::HeaderName, &'static str); 2], Vec<u8>), String> {
+    tokio::task::spawn_blocking(|| {
+        let copy = std::env::temp_dir().join(format!("sprawl-save-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&copy);
+        let db = rusqlite::Connection::open_with_flags(crate::game_loop::db_path(), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?;
+        db.execute("VACUUM INTO ?1", [copy.to_string_lossy()]).map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(&copy).map_err(|e| e.to_string());
+        let _ = std::fs::remove_file(&copy);
+        bytes
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|bytes| ([(axum::http::header::CONTENT_TYPE, "application/vnd.sqlite3"), (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"sprawl.db\"")], bytes))
+}

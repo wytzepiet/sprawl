@@ -29,6 +29,7 @@ async fn main() {
         .route("/town", axum::routing::get(health::town))
         .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
+        .route("/save", axum::routing::get(health::save))
         .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
