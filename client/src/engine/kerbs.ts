@@ -90,6 +90,10 @@ let kerbD = kerbAt.r;
 let kerbEdge = min(select(9., kerbD, kerbD >= 0.), ${n(CUT)} - kerbAt.a);
 let kerbBand = 1. - step(${n(BAND)}, kerbEdge);
 baseColor *= mix(1., ${n(BAND_LIGHT)}, kerbBand);
+// Within reach of an edge (its chamfer, the kerb's rim, the joint behind
+// the stones) the surface turns; further in, nothing here moves it, and
+// none of it is read.
+if (kerbEdge < ${n(BAND + JOINT)}) {
 // The texels either side, across and up: how both distances run.
 let kerbE = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.);
 let kerbW = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.);
@@ -110,6 +114,7 @@ let kerbIn = select(vec2f(kerbDx, kerbDy), -kerbToRoad, ${n(CUT)} - kerbAt.a < s
 let kerbJoint = kerbEdge - ${n(BAND)};
 if (abs(kerbJoint) < ${n(JOINT)} && dot(kerbIn, kerbIn) > 0.) {
   N = normalize(N - vec3f(normalize(kerbIn) * sign(kerbJoint) * (1. - abs(kerbJoint) / ${n(JOINT)}) * ${n(JOINT_DEPTH)}, 0.));
+}
 }`,
           },
   };
