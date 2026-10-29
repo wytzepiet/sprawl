@@ -385,21 +385,22 @@ export function hedge(m: Model, path: P[], { h = 0.1, t = 0.08, rgb = HEDGE }: {
   }
 }
 
-/** A shrub at (x, y), `r` round: a few leafy lumps. */
+/** A shrub at (x, y), `r` round: a few leafy lumps, each a few pixels in
+ *  play, so of few faces; the leaves' finish rounds and leafs them. */
 export const shrub = (m: Model, x: number, y: number, r: number, rgb: RGB = HEDGE, seed = 1) =>
   put(m, "leaves", Solid.union([0, 1, 2].map((k) => {
     const t = seed * 2.1 + k * 2.09, d = k ? r * 0.45 : 0;
-    return Solid.sphere(r * (k ? 0.75 : 1), 12).scale([1, 1, 0.85]).translate([x + Math.cos(t) * d, y + Math.sin(t) * d, r * 0.8]);
+    return Solid.sphere(r * (k ? 0.75 : 1), 6).scale([1, 1, 0.85]).translate([x + Math.cos(t) * d, y + Math.sin(t) * d, r * 0.8]);
   })), rgb);
 /** A tree in a tub at (x, y): a terracotta pot, its stem, a clipped ball
  *  of leaves `r` round. */
 export function topiary(m: Model, x: number, y: number, r: number, pot: RGB = [0.66, 0.4, 0.28]) {
-  put(m, "matte", Solid.cylinder(r * 0.8, r * 0.5, r * 0.68, 14).translate([x, y, 0]).add(post(x, y, r * 0.72, r * 0.12, r * 0.72, 14)), pot);
+  put(m, "matte", Solid.cylinder(r * 0.8, r * 0.5, r * 0.68, 8).translate([x, y, 0]).add(post(x, y, r * 0.72, r * 0.12, r * 0.72, 8)), pot);
   put(m, "matte", post(x, y, r * 0.8, r * 0.7, r * 0.08, 6), [0.4, 0.3, 0.22]);
-  put(m, "leaves", Solid.sphere(r, 16).translate([x, y, r * 1.35 + r]), HEDGE);
+  put(m, "leaves", Solid.sphere(r, 8).translate([x, y, r * 1.35 + r]), HEDGE);
 }
 /** A little conifer at (x, y), `r` round at its foot and `h` high. */
-export const cone = (m: Model, x: number, y: number, r: number, h: number, rgb: RGB = [0.22, 0.38, 0.27]) => put(m, "leaves", Solid.cylinder(h, r, 0.004, 12).translate([x, y, 0]), rgb);
+export const cone = (m: Model, x: number, y: number, r: number, h: number, rgb: RGB = [0.22, 0.38, 0.27]) => put(m, "leaves", Solid.cylinder(h, r, 0.004, 6).translate([x, y, 0]), rgb);
 
 /** Flowers: a few soft colours, never loud. */
 export const BLOOMS: RGB[] = [[0.9, 0.5, 0.52], [0.95, 0.85, 0.5], [0.92, 0.9, 0.88], [0.7, 0.55, 0.8]];
@@ -407,12 +408,13 @@ export const BLOOMS: RGB[] = [[0.9, 0.5, 0.52], [0.95, 0.85, 0.5], [0.92, 0.9, 0
 export function blooms(m: Model, at: V[], r = 0.012) {
   for (const [k, rgb] of BLOOMS.entries()) {
     const mine = at.filter((_, j) => (j * 7 + 3) % BLOOMS.length === k);
-    if (mine.length) put(m, "matte", Solid.union(mine.map((p) => Solid.sphere(r, 6).translate(p))), rgb);
+    // Each head a speck of a pixel or two in play: eight faces will do.
+    if (mine.length) put(m, "matte", Solid.union(mine.map(([x, y, z]) => hull([[x - r, y, z], [x + r, y, z], [x, y - r, z], [x, y + r, z], [x, y, z - r], [x, y, z + r]]))), rgb);
   }
 }
 /** A bed of flowers round (x, y), `spread` out: leaves under small heads. */
 export function flowers(m: Model, x: number, y: number, n: number, spread: number) {
-  put(m, "leaves", Solid.sphere(spread, 12).scale([1, 0.8, 0.25]).translate([x, y, 0.004]), [0.36, 0.52, 0.3]);
+  put(m, "leaves", Solid.sphere(spread, 8).scale([1, 0.8, 0.25]).translate([x, y, 0.004]), [0.36, 0.52, 0.3]);
   blooms(m, Array.from({ length: n * 4 }, (_, j): V => {
     const t = j * 2.39996, d = spread * 0.9 * Math.sqrt((j + 0.5) / (n * 4));
     return [x + Math.cos(t) * d, y + Math.sin(t) * d * 0.8, 0.022 + 0.008 * ((j * 5) % 3)];
