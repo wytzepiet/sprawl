@@ -559,8 +559,8 @@ impl Map {
             park::Rect::span(u_gate - 2.5, -0.95, u_gate + 2.5, -0.05),
         ];
         let Some(s_at) = self.node_pos(street) else { return Vec::new() };
-        // Along the street each way it runs on from the gate, on its lane,
-        // a little over a tile past; where it runs on along the frontage
+        // Along the street each way it runs on from the gate, near its
+        // lane, a tile and a half past; where it runs on along the frontage
         // neither way, to the gate, facing out, and backed in from the
         // street there.
         let mut ends: Vec<(EntityId, park::Goal, usize)> = self
@@ -573,9 +573,9 @@ impl Map {
                 let dn = [dn[0] / l, dn[1] / l];
                 // Only along the frontage.
                 ((dn[0] * eu[0] + dn[1] * eu[1]).abs() > 0.99).then_some(())?;
-                let at = local([s_at[0] + dn[0] * 1.1 - dn[1] * LANE_OFFSET, s_at[1] + dn[1] * 1.1 + dn[0] * LANE_OFFSET]);
+                let at = local([s_at[0] + dn[0] * 1.6 - dn[1] * LANE_OFFSET, s_at[1] + dn[1] * 1.6 + dn[0] * LANE_OFFSET]);
                 let h = to_local(dn[1].atan2(dn[0]));
-                Some((n, park::Goal { pose: park::Pose::new(at[0], at[1], h), reach: 0.04, along: 0.4, turn: 0.06 }, 1))
+                Some((n, park::Goal { pose: park::Pose::new(at[0], at[1], h), reach: 0.2, along: 0.5, turn: 0.25 }, 1))
             })
             .collect();
         if ends.is_empty() {
@@ -1422,7 +1422,7 @@ mod tests {
         let (past, dock) = (world.node_pos(way[n - 2]).unwrap(), world.node_pos(way[n - 1]).unwrap());
         let came = world.node_pos(way[n - 4]).unwrap()[0] - gate.0.x as f64;
         assert!((past[0] - gate.0.x as f64 - 0.5) * came < -0.6, "pulled past the gate, on the way it was going: {past:?}");
-        assert!((past[1] - 0.5).abs() < 0.15, "on the street: {past:?}");
+        assert!((past[1] - 0.5).abs() < 0.3, "on the street: {past:?}");
         let into = world.manoeuvre_in(lorry, n).expect("backed in by a plan");
         assert!(into.reversed && into.edge == n - 2 && into.moves.iter().all(|m| !m.back), "the way out, forward, played backwards: {into:?}");
         let pose = world.pose_held(lorry).unwrap();

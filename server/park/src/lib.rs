@@ -292,7 +292,11 @@ const LIMIT: usize = 200_000;
 const BACKING: f64 = 1.0;
 const GEAR: f64 = 0.6;
 const WHEEL: f64 = 0.5;
-const BENT: f64 = 0.3;
+const BENT: f64 = 1.5;
+/// Holding the wheel over, for each tile of it at full lock: a driver
+/// turns no tighter than the room asks, so a wide arc is cheaper than a
+/// sharp one as long as it fits.
+const SHARP: f64 = 3.0;
 /// How much more the search trusts its guess of the way left than what it
 /// has driven: a little more finds a good way many times sooner than the
 /// very best.
@@ -368,7 +372,7 @@ impl<'a> Tree<'a> {
                 }
                 let bent = rig.trailer.map_or(0.0, |_| wrap(p.heading - p.trailer).abs());
                 let g = g
-                    + length * (1.0 + if back { BACKING } else { 0.0 } + BENT * bent)
+                    + length * (1.0 + if back { BACKING } else { 0.0 } + BENT * bent + SHARP * (k / rig.lock).powi(2))
                     + if !first && back != was_back { GEAR } else { 0.0 }
                     + WHEEL * (k - was_k).abs() / rig.lock;
                 let cell = key(rig, &p);
@@ -438,7 +442,8 @@ pub fn planned(rig: &Rig, lot: &Lot, from: Pose, goal: &Goal, gears: &[bool]) ->
     if let Some(p) = plans.lock().unwrap().get(&key) {
         return p.clone();
     }
-    let p = plan(rig, &Field::new(lot), from, goal, gears);
+    let field = Field::new(lot);
+    let p = plan(rig, &field, from, goal, gears).map(|m| smooth(rig, &field, from, &m));
     plans.lock().unwrap().insert(key, p.clone());
     p
 }

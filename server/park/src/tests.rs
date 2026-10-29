@@ -165,9 +165,9 @@ fn a_lorry_drives_out_of_each_dock_onto_the_street() {
         };
         let field = Field::new(&lot);
         for (d, lane) in [(1.0, -0.6), (-1.0, -0.4)] {
-            let goal = Goal { pose: Pose::new(1.5 + d * 1.1, lane, if d > 0.0 { 0.0 } else { PI }), reach: 0.04, along: 0.4, turn: 0.06 };
+            let goal = Goal { pose: Pose::new(1.5 + d * 1.6, lane, if d > 0.0 { 0.0 } else { PI }), reach: 0.2, along: 0.5, turn: 0.25 };
             let t0 = std::time::Instant::now();
-            let out = plan(&LORRY, &field, *dock, &goal, &[false]);
+            let out = planned(&LORRY, &lot, *dock, &goal, &[false]);
             let out = out.unwrap_or_else(|| panic!("no way out of dock {i} going {d}"));
             eprintln!("dock {i} going {d}: {:?}", t0.elapsed());
             check(&format!("street-{i}-{d}"), &LORRY, &lot, *dock, &out);
