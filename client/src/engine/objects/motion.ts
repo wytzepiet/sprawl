@@ -1,6 +1,6 @@
 import { drawnPath } from "./drawnPath";
 import { ahead, CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Rig } from "./driver";
-import { BED_TOP, CAB_BLOCK, DECK_Z, deckPose, sailing } from "./sea";
+import { BED_TOP, CAB_BLOCK, DECK_Z, deckPose, FERRY, sailing } from "./sea";
 import { ITEM } from "./goods";
 import { liftsOf, progress } from "./pads";
 import { rgb } from "../rgb";
@@ -246,4 +246,21 @@ export function slotOn(id: number, car: Car, now: number, i: number): { at: Pose
   if (m?.bed) return { at: onBed(m.bed, car.role === "Van" ? VAN_BED : TRAILER.l, i), z: ROAD_Z + BED_TOP };
   if (m && car.role === "Ferry") return { at: deckPlace(m.body, i), z: DECK_Z };
   return null;
+}
+
+/** Where a forklift run's `j`th package stands on its vehicle as the
+ *  package is lifted, and how a forklift comes to it: to a flatbed from
+ *  either side, stopped by its edge; to a ferry's deck place down its lane
+ *  from the bow, by the lane's end (`deckSeen` fills from the stern and
+ *  empties from the bow, so nothing stands between). */
+export function liftSlot(l: Lift, car: Car, j: number): { at: Pose; z: number; edge: number; face?: number; via?: [number, number] } | null {
+  const aboard = carried(car).length;
+  const i = car.role === "Ferry" ? deckSeen(l.car, car, l.start + (j + 0.5) * l.every).at.get(l) : l.onto ? aboard - l.n + j : aboard + l.n - 1 - j;
+  const when = l.start + j * l.every;
+  const slot = i === undefined ? null : slotOn(l.car, car, when, i);
+  if (!slot || car.role !== "Ferry") return slot && { ...slot, edge: TRAILER.w / 2 };
+  const ship = moment(l.car, car, when)!.body;
+  const [dx, dy] = [Math.cos(ship.heading), Math.sin(ship.heading)];
+  const to = FERRY.l / 2 + 0.1 - ((slot.at.at[0] - ship.at[0]) * dx + (slot.at.at[1] - ship.at[1]) * dy);
+  return { ...slot, edge: 0, face: ship.heading, via: [slot.at.at[0] + dx * to, slot.at.at[1] + dy * to] };
 }

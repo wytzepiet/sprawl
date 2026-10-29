@@ -180,9 +180,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
   vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
   first after a change to what moves; `look` is for light and material.
-  `bun run jolt 6,80,12 20` samples every vehicle round a tile as the
-  client places it, fifty times a second for twenty, and counts each
-  jump, snap, flip and lurch, with the clock and the place.
+  `bun run jolt 6,80,12 20` samples every vehicle and forklift round a
+  tile as the client places it, fifty times a second for twenty, and
+  counts each jump, snap, flip and lurch, with the clock and the place.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.

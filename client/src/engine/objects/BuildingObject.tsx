@@ -10,7 +10,7 @@ import { storeysOf } from "../town/grid";
 import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
-import { FORKLIFT, FORKS, itemOf, ITEMS } from "./goods";
+import { FORKLIFT, itemOf, ITEMS } from "./goods";
 import { DEPOT } from "./depot";
 import { SHOP } from "./shop";
 import { HOUSES } from "./house";
@@ -25,14 +25,15 @@ import { clearProps, placeProps } from "../props";
 import { PROP_FLOATS } from "../town/layer";
 import { PROP_KINDS } from "../town/roof";
 import { stand } from "../trees";
-import { atPad, DROP, ends, packagesOf, padOf, PICK, placeIn, progress, setLifts, type Bay } from "./pads";
-import { carried, deckSeen, slotOn } from "./motion";
-import { getEntity } from "../../state/gameObjects";
+import { atPad, ends, packagesOf, padOf, placeIn, setLifts } from "./pads";
+import { forkliftAt, REST_MS, yardsOf } from "./forklift";
+import { liftSlot } from "./motion";
 import { simNow } from "../../network/clock";
+import { getEntity } from "../../state/gameObjects";
 import { HANDLE_MS } from "../../generated/rows";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
-import type { Building, Car, GameObjectEntry, Lift, Pose } from "../../generated";
+import type { Building, GameObjectEntry, Lift, Pose } from "../../generated";
 
 /** A building drawn whole from the kit (`kit.ts`), by its kind: its
  *  buckets' name, its model and which way round. A house is one of a few
@@ -90,6 +91,11 @@ const PARASOL = hex("#F1EADB");
 const WHITE_RGB = hex("#FFFFFF");
 /** How many packages of what it makes each building had when last
  *  mounted: one more is one just made. */
+/** Where a forklift run's package stands on its vehicle, if that is here. */
+const slotOf = (l: Lift, j: number) => {
+  const e = getEntity(l.car);
+  return e?.object.kind === "Car" ? liftSlot(l, e.object.data, j) : null;
+};
 const seen = new Map<number, number>();
 /** Heights in steps of a hundredth, so a site's buckets are few. */
 const round = (h: number) => Math.max(0.01, Math.round(h * 100) / 100);
@@ -253,20 +259,17 @@ export function mountBuilding(
   setLifts(entry.id, data.lifts);
   const pad = padOf(data);
   // A bundle the mill has made since it was last seen: carried out of the
-  // barn door to its place on the pad, a lift's while, its forklift's.
+  // barn door to its place on the pad, a run of its forklift's.
   const made = BLUEPRINTS[data.kind].makes;
   const count = made ? packagesOf(data, made) : 0;
   const fresh = mill && made && count > (seen.get(entry.id) ?? count) && !data.lifts.some((l) => !l.onto && l.good === made && ends(l) > simNow());
   if (made) seen.set(entry.id, count);
-  const arrival = fresh ? { start: simNow(), good: made! } : null;
-  /** How far the arrival is, 0 to 1, or null when it is over. */
-  const arriving = (now: number) => (arrival && now < arrival.start + HANDLE_MS ? (now - arrival.start) / HANDLE_MS : null);
+  const runs: Lift[] = fresh ? [...data.lifts, { car: -1, good: made!, n: 1, onto: false, start: simNow(), every: HANDLE_MS, k: 0 }] : data.lifts;
   const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
   const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
   const lay = (now: number) =>
     pad?.bays.forEach((bay, b) => {
-      const a = arriving(now);
-      const want = packagesOf(data, bay.good) + data.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, now), 0) - (a !== null && a < DROP && arrival!.good === bay.good ? 1 : 0);
+      const want = packagesOf(data, bay.good) + runs.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, now), 0);
       const have = stood[b];
       while (have.length > Math.max(0, want)) have.pop()!.remove();
       while (have.length < want) {
@@ -275,57 +278,23 @@ export function mountBuilding(
       }
     });
   lay(simNow());
-  const working = pad && (arrival || data.lifts.some((l) => ends(l) > simNow()));
+  const working = pad && runs.some((l) => ends(l) + REST_MS > simNow());
   // A yard's forklifts stand in it; a shop's or a site's come out to a lift.
-  const forks = (pad && (pad.yard || working) ? pad.homes : []).map((home) => ({ home, truck: placeShape(pool, FORKLIFT, home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
+  const forks = (pad && (pad.yard || working) ? yardsOf(entry.id, data, pad, base, runs, slotOf, mill?.door) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
   const stop = working
     ? ctx.beforeRender(() => {
         const now = simNow();
         lay(now);
-        forks.forEach((f, k) => {
-          const l = data.lifts.find((l) => l.k === k && l.start <= now && ends(l) > now);
-          const bay = pad && pad.bays.find((b) => b.good === (l?.good ?? arrival?.good));
-          const a = arriving(now);
-          const at = l && bay ? lifting(l, bay, now) : k === 0 && a !== null && bay && mill ? carry(mill.door, placeIn(bay, count - 1)[0], a, bay) : null;
-          f.truck.move(at ? at.truck : f.home);
-          if (at?.load && !f.load) f.load = placeShape(pool, itemOf(l?.good ?? arrival!.good, true), at.load, base);
-          if (!at?.load && f.load) (f.load.remove(), (f.load = null));
-          if (at?.load) f.load!.move(at.load, 0.02);
-        });
+        for (const f of forks) {
+          const at = forkliftAt(f.yard, f.mine, now);
+          f.truck.move(at.truck);
+          const good = at.load && f.mine.find((l) => l.start <= now && ends(l) > now)?.good;
+          if (good && !f.load) f.load = placeShape(pool, itemOf(good, true), at.load!.at, base);
+          if (!at.load && f.load) (f.load.remove(), (f.load = null));
+          if (at.load) f.load!.move(at.load.at, at.load.z - base);
+        }
       })
     : () => {};
-  /** Where a forklift is in a lift, and the package in its forks if one
-   *  is: in to it, across, set down, and back, between its place on the
-   *  pad and its place on the vehicle. */
-  const lifting = (l: Lift, bay: Bay | undefined, now: number): { truck: Pose; load: Pose | null } | null => {
-    const e = getEntity(l.car);
-    if (!bay || e?.object.kind !== "Car") return null;
-    const car = e.object.data as Car;
-    const p = progress(l, now);
-    // The package's place at either end: the next free, or the last
-    // taken, of what is seen there now.
-    const onPad = placeIn(bay, packagesOf(data, l.good) + atPad(l, now))[0];
-    const aboard = carried(car).length;
-    const i = car.role === "Ferry" ? deckSeen(l.car, car, now).at.get(l) : l.onto ? aboard - l.n + p.on : aboard + l.n - p.off;
-    const onCar = i === undefined ? undefined : slotOn(l.car, car, now, i)?.at;
-    if (!onCar) return null;
-    const [from, to] = l.onto ? [onPad, onCar] : [onCar, onPad];
-    return carry(from, to, (now - l.start) / l.every % 1, bay);
-  };
-  /** A forklift `t` of the way through one lift from one place to another:
-   *  in to the package, across with it, set down, and back. */
-  const carry = ({ at: from }: Pose, { at: to }: Pose, t: number, bay: Bay): { truck: Pose; load: Pose | null } => {
-    const heading = Math.atan2(to[1] - from[1], to[0] - from[0]);
-    const back = (q: [number, number]): Pose => ({ at: [q[0] - Math.cos(heading) * FORKS, q[1] - Math.sin(heading) * FORKS], heading });
-    const mix = (k: number): [number, number] => [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
-    if (t < PICK) return { truck: back(from), load: null };
-    if (t < DROP) {
-      const k = (t - PICK) / (DROP - PICK);
-      return { truck: back(mix(k)), load: { at: mix(k), heading: bay.slots[0].heading } };
-    }
-    return { truck: back(mix(1 - (t - DROP) / (1 - DROP))), load: null };
-  };
-
   // A farm's field: its land, worked as its tractor last left it, or as
   // it is working it now.
   const field = data.land.length ? keepField(ctx, pool.casters, entry.id, data.land, data.ruts, theme) : null;

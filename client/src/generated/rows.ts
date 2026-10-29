@@ -7,23 +7,23 @@ export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number
   House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, day: -0, forklifts: 1 },
   Apartment: { materials: { Timber: 12, Stone: 8, Cement: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, day: -0, forklifts: 1 },
   Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 2, day: 0, forklifts: 1 },
-  Factory: { materials: { Stone: 8, Cement: 16, Steel: 8 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Machinery", opens: { Steel: 2 }, jobs: 24, day: 9.6, forklifts: 1 },
+  Factory: { materials: { Stone: 8, Cement: 16, Steel: 8 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Machinery", opens: { Steel: 2 }, jobs: 12, day: 4.8, forklifts: 1 },
   GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 2, day: 0, forklifts: 1 },
   Supermarket: { materials: { Timber: 16, Stone: 12, Cement: 8 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 1 },
   Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 1 },
   Farm: { materials: { Timber: 8 }, size: [3, 1], lot: [2, 2], quay: false, makes: "Grain", opens: {}, jobs: 4, day: 0, forklifts: 1 },
-  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 4, day: 0, forklifts: 3 },
-  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", opens: {}, jobs: 8, day: 32, forklifts: 1 },
-  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", opens: {}, jobs: 8, day: 32, forklifts: 1 },
+  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 2, day: 0, forklifts: 3 },
+  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", opens: {}, jobs: 4, day: 16, forklifts: 1 },
+  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", opens: {}, jobs: 4, day: 16, forklifts: 1 },
   Lab: { materials: { Timber: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 4, day: 0, forklifts: 1 },
   Bakery: { materials: { Timber: 8 }, size: [2, 1], lot: [2, 2], quay: false, makes: "Bread", opens: { Grain: 1 }, jobs: 4, day: 648, forklifts: 1 },
-  CementWorks: { materials: { Timber: 12, Stone: 12 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Cement", opens: { Stone: 1 }, jobs: 12, day: 48, forklifts: 1 },
-  Mine: { materials: { Timber: 8, Stone: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Ore", opens: {}, jobs: 12, day: 48, forklifts: 1 },
-  Colliery: { materials: { Timber: 8, Stone: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Coal", opens: {}, jobs: 12, day: 48, forklifts: 1 },
-  Steelworks: { materials: { Timber: 12, Stone: 16, Cement: 24 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Steel", opens: { Ore: 1, Coal: 1 }, jobs: 32, day: 51.2, forklifts: 1 },
-  OilWell: { materials: { Cement: 8, Steel: 8, Machinery: 2 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Crude", opens: {}, jobs: 4, day: 32, forklifts: 1 },
-  Refinery: { materials: { Cement: 24, Steel: 16, Machinery: 4 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Fuel", opens: { Crude: 1 }, jobs: 16, day: 256, forklifts: 1 },
-  Port: { materials: { Cement: 40, Steel: 20, Machinery: 6 }, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 12, day: 0, forklifts: 4 },
+  CementWorks: { materials: { Timber: 12, Stone: 12 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Cement", opens: { Stone: 1 }, jobs: 6, day: 24, forklifts: 1 },
+  Mine: { materials: { Timber: 8, Stone: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Ore", opens: {}, jobs: 6, day: 24, forklifts: 1 },
+  Colliery: { materials: { Timber: 8, Stone: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Coal", opens: {}, jobs: 6, day: 24, forklifts: 1 },
+  Steelworks: { materials: { Timber: 12, Stone: 16, Cement: 24 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Steel", opens: { Ore: 1, Coal: 1 }, jobs: 16, day: 25.6, forklifts: 1 },
+  OilWell: { materials: { Cement: 8, Steel: 8, Machinery: 2 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Crude", opens: {}, jobs: 2, day: 16, forklifts: 1 },
+  Refinery: { materials: { Cement: 24, Steel: 16, Machinery: 4 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Fuel", opens: { Crude: 1 }, jobs: 8, day: 128, forklifts: 1 },
+  Port: { materials: { Cement: 40, Steel: 20, Machinery: 6 }, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 4 },
   Park: { materials: { Timber: 4 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, day: -0, forklifts: 1 },
 };
 
@@ -36,7 +36,7 @@ export const PACKAGE: Record<Good, [string, string]> = { Bread: ["crate of bread
 /** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */
 export const LOAD = 5;
 export const VAN_LOAD = 3;
-export const HANDLE_MS = 1500;
+export const HANDLE_MS = 4000;
 
 /** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */
 export const LORRY_PRICE = 40;

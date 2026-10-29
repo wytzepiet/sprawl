@@ -1226,13 +1226,14 @@ fn the_opening_from_the_harbour() {
 /// One lorry, its depot a short street from the harbour, fetches the
 /// starter pack: each load is lifted off in the yard and the lorry is
 /// off again once the forklift is done, and the whole pack is home
-/// within fourteen hours of the first ferry sailing: ten loads, more
+/// within twenty hours of the first ferry sailing: ten loads, more
 /// than one lorry keeps up with, so a second is the opening's first
 /// want. A round trip is two drives, each ending in a backing into a
-/// dock; it once also stood ten minutes at the depot, a van's
+/// dock, and two loads lifted by a forklift driving each package across
+/// its yard; it once also stood ten minutes at the depot, a van's
 /// unloading, and every load took longer.
 #[test]
-fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
+fn one_lorry_fetches_the_starter_pack_in_twenty_hours() {
     let mut world = street();
     let harbour = harbour_of(&world);
     let x = HARBOUR_X - 12;
@@ -1248,7 +1249,7 @@ fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
     let (sailed, hour) = (game.now, day / 24);
     let left = |w: &World| crate::haul::packages(w).iter().filter(|(t, ..)| !t.outbound).count();
     let mut parked_home = None;
-    while left(&game.world) > 0 && game.step_to(sailed + 14 * hour) {
+    while left(&game.world) > 0 && game.step_to(sailed + 20 * hour) {
         let (c, now) = (car_of(&game.world, lorry), game.now);
         match (c.trip.is_none() && game.world.map.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
@@ -1259,7 +1260,7 @@ fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
             _ => {}
         }
     }
-    assert_eq!(left(&game.world), 0, "{} packages still out after fourteen hours", left(&game.world));
+    assert_eq!(left(&game.world), 0, "{} packages still out after twenty hours", left(&game.world));
     eprintln!("the starter pack home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }
 

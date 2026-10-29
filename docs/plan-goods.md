@@ -103,7 +103,12 @@ producer's output, a depot's yard, a shop's back yard, a gas station.
 **Every move between a pad and a vehicle takes time per package.** That
 handling time is the one new thing the server simulates; the forklifts
 and cranes doing it are the client's animation of it, never vehicles
-the sim routes.
+the sim routes. The time is a forklift's honest drive (`forklift.ts`):
+up square to the package, lift, back out, turn on the spot, across,
+square to the flatbed's side or a bay's open face, set down. A bay
+fills from its back, so what is taken or set is always in front; a
+depot's bays face an aisle out to its yard, a quay's far row an aisle
+of its own, and a ferry is worked down its deck lanes from the bow.
 
 - A full pad is seen: a sawmill buried in bundles is a chain nobody
   collects from.
