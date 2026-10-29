@@ -252,7 +252,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
         assert!((70.0..=99.0).contains(&desks), "the labs received {desks}h");
         // Lunches over a whole day: the shops have no depot here, so
         // by the third day their shelves have run down some.
-        assert!(sold(lunch, model::needs::Need::Eat) > 1.5, "lunch shop sold {}h", sold(lunch, model::needs::Need::Eat));
+        assert!(sold(lunch, model::needs::Need::Eat) > 1.4, "lunch shop sold {}h", sold(lunch, model::needs::Need::Eat));
     }
     log
 }

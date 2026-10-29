@@ -166,16 +166,29 @@ fn spare(world: &World, depot: EntityId, good: Good) -> u32 {
     world.map.building(depot).and_then(|b| b.stocks.get(&good)).map_or(0, |s| whole(s.level - crate::economy::reorder(world, depot, good), good))
 }
 
-/// The nearest maker in town with a load in its yard of a good the depot
-/// is short of, as much as it has room for up to a lorry's, or else of
-/// one a slot going out wants, by the tiles between them: the town's own
-/// shelf before the world's. A lorry is free to go to a maker whenever it
-/// is empty, so a farm's endless crates for the world would otherwise keep
-/// it from the sawmill's timber the town is out of.
-fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
-    let at = world.map.objects.get(depot)?.position?;
+/// The makers in town with a load in their yards of a good the depot is
+/// short of, as much as it has room for up to a lorry's, or else of one a
+/// slot going out wants, and whether the depot is short of it: the town's
+/// own shelf before the world's, then the nearest by the tiles between
+/// them. A load spoken for by an empty lorry on its way there is not the
+/// yard's to offer again, so a dozen lorries do not all make for the
+/// nearest farm while the others fill. A lorry is free to go to a maker
+/// whenever it is empty, so a farm's endless crates for the world would
+/// otherwise keep it from the sawmill's timber the town is out of.
+fn makers_with_surplus(world: &World, depot: EntityId) -> Vec<(bool, EntityId)> {
+    let Some(at) = world.map.objects.get(depot).and_then(|e| e.position) else { return Vec::new() };
     let out = wanted_out(world, depot);
-    world.map
+    let mut coming: BTreeMap<EntityId, u32> = BTreeMap::new();
+    for e in world.map.objects.iter() {
+        if let GameObject::Car(ref c) = e.object
+            && c.role == CarRole::Truck
+            && c.cargo.is_empty()
+            && let Some(t) = &c.trip
+        {
+            *coming.entry(t.destination).or_default() += LOAD;
+        }
+    }
+    let mut makers: Vec<_> = world.map
         .objects
         .iter()
         .filter_map(|e| match e.object {
@@ -183,12 +196,22 @@ fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
                 let good = blueprint(b.kind).makes?;
                 let short = short_of(world, depot, good);
                 let load = if short { room(world, depot, good, &[]).min(LOAD) } else { (out.iter().filter(|&&g| g == good).count() as u32).min(out_room(world, depot)) }.min(LOAD);
-                (load > 0 && whole(b.stocks.get(&good)?.level, good) >= load && world.map.street_of(e.id).is_some()).then_some((!short, e.id, e.position?))
+                let spare = whole(b.stocks.get(&good)?.level, good).saturating_sub(coming.get(&e.id).copied().unwrap_or(0));
+                let p = e.position?;
+                (load > 0 && spare >= load && world.map.street_of(e.id).is_some()).then_some((!short, (p.x - at.x).abs() + (p.y - at.y).abs(), e.id))
             }
             _ => None,
         })
-        .min_by_key(|&(sold, id, p)| (sold, (p.x - at.x).abs() + (p.y - at.y).abs(), id))
-        .map(|(_, id, _)| id)
+        .collect();
+    makers.sort_unstable();
+    makers.into_iter().map(|(sold, _, id)| (!sold, id)).collect()
+}
+
+/// Set out for the first of these that a trip can be started to, from
+/// the depot's door: one refused, its yard full, is no reason not to go
+/// to the next. Whether it went.
+fn set_out(world: &mut World, events: &mut EventQueue, lorry: EntityId, door: EntityId, to: impl IntoIterator<Item = EntityId>, now: GameTime) -> bool {
+    to.into_iter().any(|to| world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, door, to, now, GameTime::MAX)))
 }
 
 /// The lorry woke, parked, the forklift done with it: at the end of its
@@ -237,13 +260,16 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         return wait(world, events, lorry, now);
     }
     let empty = world.map.car(lorry).is_none_or(|c| c.cargo.is_empty());
-    // Empty, and a maker in town has a load of what the depot is short of
-    // or a slot going out wants: the lorry fetches it from the maker's
-    // yard.
-    if empty && let Some(maker) = maker_with_surplus(world, depot) {
-        if !world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, home, maker, now, GameTime::MAX)) {
-            events.wake(crate::calls::RETRY_MS, lorry);
-        }
+    // Empty: to a maker's yard for what the depot is short of; else to a
+    // harbour where packages wait for it, what the town bought; else to a
+    // maker's yard for what a slot going out wants. The first that lets
+    // it in: one refused, its yard full, is no reason not to go to the
+    // next.
+    let makers = if empty { makers_with_surplus(world, depot) } else { Vec::new() };
+    let short = makers.iter().filter(|m| m.0).map(|m| m.1);
+    let sold = makers.iter().filter(|m| !m.0).map(|m| m.1);
+    let to: Vec<EntityId> = short.chain(waiting_for(world, depot, lorry)).chain(sold).collect();
+    if set_out(world, events, lorry, home, to.iter().copied(), now) {
         return;
     }
     // Still empty, and slots going out want goods the depot has whole
@@ -268,12 +294,11 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
             return wait(world, events, lorry, now);
         }
     }
-    // With exports aboard, or packages on a quay for the depot: to the
-    // harbour.
+    // With exports aboard: to the harbour. Refused anywhere, it tries
+    // again in a while.
     let laden = world.map.car(lorry).is_some_and(|c| !c.cargo.is_empty());
-    let harbour = waiting_for(world, depot, lorry).or_else(|| laden.then(|| harbour_for(world, depot)).flatten());
-    let Some(harbour) = harbour else { return };
-    if !world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, lorry, home, harbour, now, GameTime::MAX)) {
+    let harbour = laden.then(|| harbour_for(world, depot)).flatten();
+    if (!to.is_empty() || harbour.is_some()) && !set_out(world, events, lorry, home, harbour, now) {
         events.wake(crate::calls::RETRY_MS, lorry);
     }
 }
