@@ -96,7 +96,7 @@ export function padOf(b: Building): Pad {
   const front = { face: f.heading, inside: false };
   if (b.site) {
     // Along the front of the slab, each material after the last.
-    const goods = Object.keys(b.site) as Good[];
+    const goods = (Object.keys(b.site) as Good[]).filter((good) => most(b, good) > 0);
     let a = -f.w / 2 + 0.15;
     const bays = goods.map((good) => {
       const n = most(b, good);
@@ -161,9 +161,9 @@ export function padOf(b: Building): Pad {
     const bay = { good, slots, stack: Math.max(1, Math.ceil(most(b, good) / slots.length)), face: Math.atan2(-py * side, -px * side), inside: false };
     return { bays: [bay], homes: forklifts(home), homeInside: false, exits: [], aisle: null, yard: true };
   }
-  // Along the front wall, on the pavement.
+  // Along the front wall, on the pavement: a bay of each good it keeps.
   let a = -f.w / 2 + 0.12;
-  const bays = goods.map((good) => {
+  const bays = goods.filter((good) => most(b, good) > 0).map((good) => {
     const n = most(b, good);
     const fit = Math.max(1, Math.floor((f.w - 0.2) / PITCH / goods.length));
     const slots = Array.from({ length: Math.min(n, fit) }, (_, k) => f.pose(f.at, a + k * PITCH, f.d / 2 - INSET / 2));
