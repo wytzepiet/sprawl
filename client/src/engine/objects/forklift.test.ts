@@ -5,10 +5,11 @@ import type { Lift } from "../../generated";
 import { HANDLE_MS } from "../../generated/rows";
 
 // A depot's aisle along y = 0, its bay on the aisle's side at y = 0.4
-// facing it, and the aisle's end at x = 1.4; a lorry beyond, its flatbed
-// along y at x = 2.5, its packages one behind the other.
+// facing it, and the aisle's mouth at x = 1.4; a lorry beyond and off to
+// the side, its flatbed along y at x = 2.5, its packages one behind the
+// other.
 const bay = (i: number): End => ({ at: [0.4 + 0.1 * (i % 3), 0.4], face: -Math.PI / 2, z: 0.05, inside: true, reach: 0.1 });
-const bed = (i: number): End => ({ at: [2.5, -0.2 + 0.09 * i], face: Math.PI, z: 0.09, inside: false, reach: 0.135 });
+const bed = (i: number): End => ({ at: [2.5, 0.5 + 0.09 * i], face: Math.PI, z: 0.09, inside: false, reach: 0.135 });
 const yard: Yard = {
   id: 1,
   home: { at: [1.2, 0], heading: Math.PI },
@@ -18,11 +19,13 @@ const yard: Yard = {
   ends: (l, j) => (l.onto ? { from: bay(j), to: bed(j) } : { from: bed(l.n - 1 - j), to: bay(j) }),
 };
 const every = HANDLE_MS;
-// Three on, two off straight after, and one more on as it heads home.
+// Three on, two off straight after, one more on, and one more as it
+// leaves the lorry for home.
 const lifts: Lift[] = [
   { car: 2, good: "Timber", n: 3, onto: true, start: 0, every, k: 0 },
   { car: 2, good: "Timber", n: 2, onto: false, start: 3 * every, every, k: 0 },
   { car: 2, good: "Timber", n: 1, onto: true, start: 5 * every + 1500, every, k: 0 },
+  { car: 2, good: "Timber", n: 1, onto: true, start: 6 * every + 1800, every, k: 0 },
 ];
 
 test("a forklift drives its runs: never a jump, a snap, or faster than anything drives", () => {
@@ -30,7 +33,7 @@ test("a forklift drives its runs: never a jump, a snap, or faster than anything 
   let last = forkliftAt(yard, lifts, -10);
   expect(last.truck).toEqual(yard.home);
   let fastest = 0;
-  for (let t = 0; t < ends(lifts[2]) + REST_MS; t += 10) {
+  for (let t = 0; t < ends(lifts[3]) + REST_MS; t += 10) {
     const now = forkliftAt(yard, lifts, t);
     const step = Math.hypot(now.truck.at[0] - last.truck.at[0], now.truck.at[1] - last.truck.at[1]);
     fastest = Math.max(fastest, step / 0.01);
@@ -55,10 +58,12 @@ test("the package is in its forks from where it stood to where it goes, and only
 });
 
 test("it comes to a flatbed from its side and to a bay from its face, never through them", () => {
-  for (let t = 0; t < ends(lifts[2]); t += 10) {
+  for (let t = 0; t < ends(lifts[3]) + REST_MS; t += 10) {
     const [x, y] = forkliftAt(yard, lifts, t).truck.at;
-    // Its nose never over the flatbed, nor in the bay's row behind its face.
+    // Its nose never over the flatbed; in the aisle, never in the bays'
+    // row behind their face: in and out by the mouth.
     expect(x + 0.045).toBeLessThan(2.5 - 0.085);
-    expect(y).toBeLessThan(0.4 - 0.05);
+    if (x < 1.39) expect(y).toBeLessThan(0.4 - 0.05);
+    if (x < 1.39 && (x < 0.3 || x > 0.7)) expect(Math.abs(y)).toBeLessThan(0.01);
   }
 });

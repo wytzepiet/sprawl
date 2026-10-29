@@ -117,7 +117,7 @@ export function padOf(b: Building): Pad {
     const bays = HEAVY.map((good, k) => bay(good, f.pose(f.at, k % 2 ? far : near, out(k)).at, f.heading + Math.PI / 2, 2, 4, f.heading, k % 2 === 1, 4));
     const aisle = (near + far) / 2;
     const exits = [out(0) - 0.3, out(HEAVY.length - 1) + 0.3].map((o) => f.pose(f.at, aisle, o).at);
-    return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.4)), homeInside: false, exits, aisle: [exits[0], exits[1]], yard: true };
+    return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.3)), homeInside: false, exits, aisle: [exits[0], exits[1]], yard: true };
   }
   const goods = Object.keys(b.stocks) as Good[];
   if (b.kind === "Depot" && b.door) {

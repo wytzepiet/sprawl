@@ -12,7 +12,7 @@ export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number
   Supermarket: { materials: { Timber: 16, Stone: 12, Cement: 8 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 1 },
   Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 1 },
   Farm: { materials: { Timber: 8 }, size: [3, 1], lot: [2, 2], quay: false, makes: "Grain", opens: {}, jobs: 4, day: 0, forklifts: 1 },
-  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 2, day: 0, forklifts: 3 },
+  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 2, day: 0, forklifts: 5 },
   Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", opens: {}, jobs: 4, day: 16, forklifts: 1 },
   Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", opens: {}, jobs: 4, day: 16, forklifts: 1 },
   Lab: { materials: { Timber: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 4, day: 0, forklifts: 1 },
@@ -23,7 +23,7 @@ export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number
   Steelworks: { materials: { Timber: 12, Stone: 16, Cement: 24 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Steel", opens: { Ore: 1, Coal: 1 }, jobs: 16, day: 25.6, forklifts: 1 },
   OilWell: { materials: { Cement: 8, Steel: 8, Machinery: 2 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Crude", opens: {}, jobs: 2, day: 16, forklifts: 1 },
   Refinery: { materials: { Cement: 24, Steel: 16, Machinery: 4 }, size: [3, 2], lot: [3, 2], quay: false, makes: "Fuel", opens: { Crude: 1 }, jobs: 8, day: 128, forklifts: 1 },
-  Port: { materials: { Cement: 40, Steel: 20, Machinery: 6 }, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 4 },
+  Port: { materials: { Cement: 40, Steel: 20, Machinery: 6 }, size: [3, 0], lot: [3, 2], quay: true, makes: null, opens: {}, jobs: 6, day: 0, forklifts: 6 },
   Park: { materials: { Timber: 4 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, opens: {}, jobs: 0, day: -0, forklifts: 1 },
 };
 

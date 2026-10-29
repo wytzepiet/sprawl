@@ -84,9 +84,14 @@ function drive(from: Pose, through: P[], back = false): { steps: Step[]; end: Po
     const [dx, dy] = [to[0] - at[0], to[1] - at[1]];
     if (Math.hypot(dx, dy) < 1e-4) continue;
     const want = Math.atan2(dy, dx) + (back ? Math.PI : 0);
-    if (Math.abs(wrap(want - heading)) > 1e-3) steps.push({ turn: [heading, heading + wrap(want - heading)], at });
+    const last = steps[steps.length - 1];
+    // Straight on through a point: one run, not a stop at it.
+    if (last && "run" in last && Math.abs(wrap(want - heading)) < 1e-3) last.run[1] = to;
+    else {
+      if (Math.abs(wrap(want - heading)) > 1e-3) steps.push({ turn: [heading, heading + wrap(want - heading)], at });
+      steps.push({ run: [at, to], heading: want });
+    }
     heading = want;
-    steps.push({ run: [at, to], heading });
     at = to;
   }
   return { steps, end: { at, heading } };
@@ -102,12 +107,13 @@ function eased(u: number): number {
   return top * (u - RAMP / 2);
 }
 
-/** Where `t` of the way through its steps puts it, each step its share of
- *  the time as it would take; and which step it is on, how far through. */
-function along(steps: Step[], t: number): { pose: Pose; step: number; u: number } | null {
+/** Where `t` of the way through `window` seconds its steps put it: at
+ *  its own pace, and then standing, or hurried where they take longer;
+ *  and which step it is on, how far through. */
+function along(steps: Step[], t: number, window: number): { pose: Pose; step: number; u: number } | null {
   const total = steps.reduce((s, x) => s + cost(x), 0);
   if (!steps.length || total <= 0) return null;
-  let left = Math.min(1, Math.max(0, t)) * total;
+  let left = Math.min(1, Math.max(0, t) * Math.max(1, window / total)) * total;
   for (const [i, s] of steps.entries()) {
     const c = cost(s);
     if (left > c && i < steps.length - 1) {
@@ -150,16 +156,23 @@ function trip(yard: Yard, l: Lift, j: number, from: Pose, inside: boolean, left?
 }
 
 /** Where a forklift is after its last run, `t` ms after it ended: on its
- *  way home at its own pace, then there. */
-function resting(yard: Yard, lifts: Lift[], t: number): Pose {
+ *  way home at its own pace, then there; and, for a run starting from
+ *  there, whether it is in the aisle yet and what it must still leave by. */
+type Rest = { pose: Pose; inside: boolean; via?: P };
+function resting(yard: Yard, lifts: Lift[], t: number): Rest {
+  const home: Rest = { pose: yard.home, inside: yard.homeInside };
   const last = lifts.filter((l) => ends(l) <= t).sort((p, q) => ends(q) - ends(p))[0];
-  if (!last) return yard.home;
-  const done = chain(yard, lifts, last, last.n - 1);
-  if (!done) return yard.home;
-  const home = drive(done.end, [...(done.via ? [done.via] : []), ...between(yard, { at: done.end.at, inside: done.inside }, { at: yard.home.at, inside: yard.homeInside }), yard.home.at]);
-  const steps = [...home.steps, { turn: [home.end.heading, home.end.heading + wrap(yard.home.heading - home.end.heading)] as [number, number], at: yard.home.at }];
-  const total = steps.reduce((s, x) => s + cost(x), 0) * 1000;
-  return total > 0 && t - ends(last) < total ? along(steps, (t - ends(last)) / total)!.pose : yard.home;
+  const done = last && chain(yard, lifts, last, last.n - 1);
+  if (!done) return home;
+  // Out of where it was, by the aisle's mouth; then home, and round.
+  const leave = drive(done.end, [...(done.via ? [done.via] : []), ...between(yard, { at: done.end.at, inside: done.inside }, { at: yard.home.at, inside: yard.homeInside })]);
+  const back = drive(leave.end, [yard.home.at]);
+  const turn: Step = { turn: [back.end.heading, back.end.heading + wrap(yard.home.heading - back.end.heading)], at: yard.home.at };
+  const [a, b] = [leave.steps, [...back.steps, turn]].map((steps) => steps.reduce((s, x) => s + cost(x), 0) * 1000);
+  const since = t - ends(last);
+  if (since < a) return { pose: along(leave.steps, since / a, a / 1000)!.pose, inside: done.inside, via: since > 0 ? undefined : done.via };
+  if (since < a + b) return { pose: along([...back.steps, turn], (since - a) / b, b / 1000)!.pose, inside: yard.homeInside };
+  return home;
 }
 
 /** Each trip as it was first worked out, by building, forklift, run and
@@ -175,7 +188,8 @@ function chain(yard: Yard, lifts: Lift[], l: Lift, j: number): ReturnType<typeof
   if (kept) return kept.trip;
   const before = j > 0 ? chain(yard, lifts, l, j - 1) : null;
   if (j > 0 && !before) return null;
-  const made = trip(yard, l, j, before ? before.end : resting(yard, lifts, l.start), before ? before.inside : yard.homeInside, before?.via);
+  const rest = before ? null : resting(yard, lifts, l.start);
+  const made = before ? trip(yard, l, j, before.end, before.inside, before.via) : trip(yard, l, j, rest!.pose, rest!.inside, rest!.via);
   if (!made) return null;
   if (trips.size > 2000) for (const [k, v] of trips) if (v.until < l.start - 60_000) trips.delete(k);
   trips.set(key, { trip: made, until: ends(l) });
@@ -186,15 +200,16 @@ function chain(yard: Yard, lifts: Lift[], l: Lift, j: number): ReturnType<typeof
  *  in its forks if it has one, with how high it is held. */
 export function forkliftAt(yard: Yard, lifts: Lift[], now: number): { truck: Pose; load: { at: Pose; z: number } | null } {
   const l = lifts.find((l) => l.start <= now && ends(l) > now);
-  if (!l) return { truck: resting(yard, lifts, now), load: null };
+  if (!l) return { truck: resting(yard, lifts, now).pose, load: null };
   const e = (now - l.start) / l.every;
   const j = Math.floor(e), t = e - j;
   const made = chain(yard, lifts, l, j);
-  if (!made) return { truck: yard.home, load: null };
-  if (t < PICK) return { truck: along(made.fetch, t / PICK)?.pose ?? made.end, load: null };
-  if (t >= DROP) return { truck: along(made.back, (t - DROP) / (1 - DROP))?.pose ?? made.end, load: null };
+  if (!made) return { truck: resting(yard, lifts, l.start).pose, load: null };
+  const s = l.every / 1000;
+  if (t < PICK) return { truck: along(made.fetch, t / PICK, PICK * s)?.pose ?? made.end, load: null };
+  if (t >= DROP) return { truck: along(made.back, (t - DROP) / (1 - DROP), (1 - DROP) * s)?.pose ?? made.end, load: null };
   const k = (t - PICK) / (DROP - PICK);
-  const { pose: truck, step, u } = along(made.carry, k)!;
+  const { pose: truck, step, u } = along(made.carry, k, (DROP - PICK) * s)!;
   // On the forks; slid on at the start from where it stood, and off at the
   // end to where it goes, where the forklift stops short of it.
   const forks: P = [truck.at[0] + Math.cos(truck.heading) * FORKS, truck.at[1] + Math.sin(truck.heading) * FORKS];

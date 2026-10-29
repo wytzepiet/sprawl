@@ -89,13 +89,13 @@ const CRANE = hex("#E9B530");
 /** A shop's lunch table and its parasol. */
 const PARASOL = hex("#F1EADB");
 const WHITE_RGB = hex("#FFFFFF");
-/** How many packages of what it makes each building had when last
- *  mounted: one more is one just made. */
 /** Where a forklift run's package stands on its vehicle, if that is here. */
 const slotOf = (l: Lift, j: number) => {
   const e = getEntity(l.car);
   return e?.object.kind === "Car" ? liftSlot(l, e.object.data, j) : null;
 };
+/** How many packages of what it makes each building had when last
+ *  mounted: one more is one just made. */
 const seen = new Map<number, number>();
 /** Heights in steps of a hundredth, so a site's buckets are few. */
 const round = (h: number) => Math.max(0.01, Math.round(h * 100) / 100);
