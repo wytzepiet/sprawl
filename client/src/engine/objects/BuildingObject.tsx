@@ -88,6 +88,32 @@ const CRANE = hex("#E9B530");
 /** A shop's lunch table and its parasol. */
 const PARASOL = hex("#F1EADB");
 const WHITE_RGB = hex("#FFFFFF");
+/**
+ * Each building's model, lamps and trees, kept while they would be drawn
+ * the same: its record comes again with every crate and every worker, and
+ * drawn again each time, its lamps and trees were new meshes and new
+ * shadow casters, a stall a few times a minute. Let go, they are dropped
+ * once the batch that let them go has passed without taking them up again.
+ */
+const WHOLES = new Map<number, { was: string; theme: Theme; drop: () => void; held: boolean }>();
+function keepWhole(id: number, was: string, theme: Theme, draw: () => () => void): () => void {
+  let kept = WHOLES.get(id);
+  if (!kept || kept.was !== was || kept.theme !== theme) {
+    kept?.drop();
+    kept = { was, theme, drop: draw(), held: true };
+    WHOLES.set(id, kept);
+  }
+  const mine = kept;
+  mine.held = true;
+  return () => {
+    mine.held = false;
+    queueMicrotask(() => {
+      if (mine.held || WHOLES.get(id) !== mine) return;
+      mine.drop();
+      WHOLES.delete(id);
+    });
+  };
+}
 /** How many packages of what it makes each building had when last
  *  mounted: one more is one just made. */
 const seen = new Map<number, number>();
@@ -162,7 +188,7 @@ export function mountBuilding(
 
   // Its model, whole, on its plot (`kit.ts`); the town grid leaves it.
   const whole = data.site ? null : wholeOf(data.kind, entry.id, gate);
-  const built = whole && (() => {
+  const built = whole && keepWhole(entry.id, JSON.stringify([whole[0], whole[2], middle, dx, dy]), theme, () => {
     const [key, it, side] = whole;
     const finishes = placed_(key, it)(ctx.engine, side).map((finish) => {
       const one = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
@@ -183,7 +209,7 @@ export function mountBuilding(
       clearProps(ctx, meshes, pool.casters);
       trees();
     };
-  })();
+  });
   // A sawmill's barn door, its forklift's way out toward the street.
   const mill = data.kind === "Sawmill" && !data.site
     ? { door: { at: [middle[0] + dx * BARN_DOOR[1] + dy * BARN_DOOR[0] * gate, middle[1] + dy * BARN_DOOR[1] - dx * BARN_DOOR[0] * gate], heading: Math.atan2(dy, dx) } as Pose }
