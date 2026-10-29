@@ -12,6 +12,13 @@ pub const REVERSE_SPEED: f64 = 0.2;
 /// it pulls the other way, as a driver does.
 pub const CUSP_MS: u64 = 500;
 pub const MIN_GAP: f64 = 0.5;
+/// The last resort: a vehicle standing still on its way this long, half
+/// an hour of the clock (25 s), the one of a loop of others waiting on
+/// each other to give way (`simulation::deadlocked`), or ten times as
+/// long whatever it waits for, goes through whatever is in its way, cars
+/// and junctions, as if alone, over the node ahead and the next, and
+/// queues again as any car.
+pub const GHOST_MS: model::GameTime = model::DAY_MS as model::GameTime / 48;
 /// Pulling up at a door with nothing to lift: ten minutes.
 pub const SERVICE_MS: model::GameTime = model::DAY_MS as model::GameTime / 144;
 /// How far behind the car ahead a driver likes to keep, in time, besides

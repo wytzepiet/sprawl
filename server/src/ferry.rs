@@ -18,6 +18,9 @@ use crate::world::World;
 pub const FIRST_CALL: GameTime = DAY_MS as GameTime / 48;
 /// A settler's car rolls off every few seconds.
 pub const ROLL_MS: GameTime = 4_000;
+/// What a settler's car takes to drive off the deck: none sets out later
+/// than this before the ferry sails, and it rides back for the next.
+const DRIVE_OFF_MS: GameTime = 5 * ROLL_MS;
 /// The starter pack, the first harbour's first sailing: timber for the
 /// first houses, stone for the first streets, crates for the first shop,
 /// fuel; so many packages of each.
@@ -156,13 +159,19 @@ impl World {
             if let Some(g) = self.berth_gate(harbour).filter(|g| !self.junctions.has_passage(g.id, ferry)) {
                 self.junctions.get_or_create_with(g.id, g.kind.rule()).register(ferry, g.from, g.to, now);
             }
-            if now >= due {
+            // It sails on time, but not from under a car still driving
+            // off its deck, held at the gate by the street.
+            if now >= due && !self.driving_off(harbour) {
                 self.cast_off(events, ferry, now);
             } else {
                 self.roll_off(events, ferry, harbour, now);
                 self.work_deck(events, ferry, harbour, now);
-                let next = if self.passengers(ferry) > 0 { ROLL_MS } else { due - now };
-                events.wake(next.min(due - now).max(1), ferry);
+                let next = match due.checked_sub(now).filter(|&left| left > 0) {
+                    Some(left) if self.passengers(ferry) > 0 => ROLL_MS.min(left),
+                    Some(left) => left,
+                    None => ROLL_MS,
+                };
+                events.wake(next, ferry);
             }
         } else {
             // It leaves the world a leg before it is due at the ramp, and
@@ -240,6 +249,13 @@ impl World {
         cars
     }
 
+    /// Is a car still on the deck of the ferry at this harbour's ramp, on
+    /// its way off: from its seat to the ramp.
+    fn driving_off(&self, harbour: EntityId) -> bool {
+        let seats: Vec<EntityId> = self.map.seats(harbour).iter().map(|s| s[0]).collect();
+        self.map.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| t.route_index <= 1 && seats.contains(&t.route[0]))))
+    }
+
     fn passengers(&self, ferry: EntityId) -> usize {
         match self.map.objects.get(ferry).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.passengers.len(),
@@ -254,7 +270,7 @@ impl World {
     fn roll_off(&mut self, events: &mut EventQueue, ferry: EntityId, harbour: EntityId, now: GameTime) {
         let Some(street) = self.map.street_of(harbour) else { return };
         let Some(berth) = self.map.berth(harbour) else { return };
-        let Some(c) = self.map.car(ferry) else { return };
+        let Some(c) = self.map.car(ferry).filter(|c| now + DRIVE_OFF_MS <= c.due) else { return };
         let Some(&car) = c.passengers.first() else { return };
         let j = c.passengers.len() - 1;
         let free = empty_bays(&c.deck);

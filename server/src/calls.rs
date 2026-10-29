@@ -317,6 +317,34 @@ mod tests {
         assert!(crate::economy::reorder(world, shop, Good::Bread) < before, "the shop did not learn the lead time");
     }
 
+    /// A shop whose door opens onto the same street node as the depot's,
+    /// across the street:
+    /// the van goes out of the one lot and into the other, and lands its
+    /// load, rather than stand loaded in its yard for good.
+    #[test]
+    fn a_depot_delivers_next_door() {
+        let mut world = street();
+        let depot = build(&mut world, 60, BuildingKind::Depot);
+        let door = world.map.street_of(depot);
+        let shop = (55..70)
+            .flat_map(|x| [(x, 1), (x, -1)])
+            .find_map(|(x, y)| {
+                let shop = world.map.place_on_street(model::GridCoord { x, y }, BuildingKind::Shop)?;
+                if world.map.street_of(shop) == door {
+                    return Some(shop);
+                }
+                world.map.remove_building(shop);
+                None
+            })
+            .expect("a shop on the depot's door");
+        let mut game = game(world);
+        sell(&mut game.world, &mut game.events, shop, 50.0, 0);
+        assert!(game.world.calls[0].answered_by.is_some(), "the depot answers");
+        game.run_to(3 * DAY_MS as u64 / 24);
+        assert!(game.world.calls.is_empty(), "the van never delivered next door");
+        assert!(stock(&game.world, shop) > 0.5, "nothing landed on the shelf");
+    }
+
     /// The building's turn: a buyer takes the nearest seller with stock,
     /// by road. Of two depots the nearer answers; one with an empty shelf
     /// is no seller, and the farther answers; with nothing in town on a

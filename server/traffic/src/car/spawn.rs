@@ -57,6 +57,7 @@ pub fn depart(
 
     // Don't pull out under a car blocking the start of the road.
     let first_edge = match out.len() {
+        0 | 1 if ways.street.len() < 2 => return false,
         0 | 1 => (ways.street[0], ways.street[1]),
         _ => (out[0], out[1]),
     };
@@ -134,6 +135,8 @@ pub(crate) fn trip(
         stretches,
         shift: None,
         signal: None,
+        stood: None,
+        ghost: None,
     }
 }
 

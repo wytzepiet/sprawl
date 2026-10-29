@@ -970,6 +970,15 @@ pub struct Trip {
     /// for the client to slide it across while it lasts.
     #[serde(default)]
     pub shift: Option<Shift>,
+    /// Standing still on its way since when, and, stood past
+    /// `car::GHOST_MS`, the route index it goes through everything to
+    /// (`car::simulation`). Never saved.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub stood: Option<u64>,
+    #[serde(skip)]
+    #[ts(skip)]
+    pub ghost: Option<usize>,
     /// The lane it waits to get into, with no room there yet: whoever
     /// comes along behind in it may drop back and let it in.
     #[serde(default)]

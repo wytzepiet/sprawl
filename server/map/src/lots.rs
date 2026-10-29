@@ -895,6 +895,15 @@ impl Map {
         })
     }
 
+    /// Every seat on a harbour's moored ferry's deck: where a settler's car
+    /// stands, and where its deck lane ends at the ramp.
+    pub fn seats(&self, harbour: EntityId) -> Vec<[EntityId; 2]> {
+        match self.lots.get(&harbour).map(|l| &l.way) {
+            Some(Way::Yard { seats, .. }) => seats.clone(),
+            _ => Vec::new(),
+        }
+    }
+
     /// The way off a harbour's moored ferry from a seat on its deck: along
     /// its deck lane, over the ramp, up the lane to the gate, and the
     /// street node last.
@@ -914,7 +923,9 @@ impl Map {
             _ => Vec::new(),
         };
         let mut routes = crate::pathfinding::Routes::from(self, from);
-        let street = routes.route_to(to).filter(|r| r.len() >= 2)?;
+        // From its own door, a neighbour's lot on the same node is reached
+        // with no street between: out of one lot and into the other.
+        let street = if to == from && self.lots.contains_key(&building) { vec![from] } else { routes.route_to(to).filter(|r| r.len() >= 2)? };
         let bays = entries.into_iter().filter_map(|e| Some((e, routes.route_to(e).filter(|r| r.len() >= 2)?))).collect();
         Some(Ways { street, bays })
     }

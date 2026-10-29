@@ -152,7 +152,7 @@ fn reroute(
     let backing = crate::car::spawn::backing(0, world.map.reverse_tail(car_id), new_route.len());
     let stretches = [old.stretches[0].clone(), world.map.stretch(car_id)];
     let fresh = crate::car::spawn::trip(world, car_id, dest, new_route, 0, to_lot, backing, stretches, None, now);
-    let trip = Trip { eta: old.eta, joined: old.joined, standing: old.standing, why: old.why, shift: old.shift, signal: old.signal, ..fresh };
+    let trip = Trip { eta: old.eta, joined: old.joined, standing: old.standing, why: old.why, shift: old.shift, signal: old.signal, stood: old.stood, ..fresh };
     crate::car::spawn::set_off(world, events, car_id, trip);
     true
 }
