@@ -172,10 +172,10 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     let always = Curve::always;
     // A shift: work on offer between these hours, with a place for each of the staff.
     let shift = |open: u32, close: u32, jobs: u32| tap(Work, hours(open * H, close * H), jobs);
-    // A works that runs from six till ten at night: a day shift and an
-    // evening one, each its own crew, as works keep their machines
-    // busy. Twice the hands a row of one shift has, and twice the make.
-    let two = |jobs: u32| vec![shift(6, 14, jobs), shift(14, 22, jobs)];
+    // A works that runs from six till ten at night: its crew split
+    // between a day shift and an evening one, so its hands come and go
+    // all day, and as many work there as would on one.
+    let two = |jobs: u32| vec![shift(6, 14, jobs - jobs / 2), shift(14, 22, (jobs / 2).max(1))];
     // A household: sleep on offer through the night; being home and the
     // kitchen on offer always, to everyone who lives there.
     let household = |homes: u32| {

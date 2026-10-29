@@ -110,6 +110,29 @@ fn waiting_for(world: &World, depot: EntityId, lorry: EntityId) -> Option<Entity
         .map(|(_, h)| h)
 }
 
+/// Places on a harbour's quay neither filled nor held. A package going
+/// out holds its place from when a lorry is loaded with it, so what the
+/// ferry lands never fills the quay under lorries of exports, each
+/// waiting there for room the packages it waits to take would free.
+pub fn quay_room(world: &World, harbour: EntityId) -> usize {
+    let held: usize = world.map
+        .objects
+        .iter()
+        .filter_map(|e| match e.object {
+            GameObject::Car(ref c) if c.role == CarRole::Truck && harbour_for(world, c.owner) == Some(harbour) => Some(c.cargo.iter().filter(|t| t.outbound).count()),
+            _ => None,
+        })
+        .sum();
+    let pad = world.map.building(harbour).map_or(0, |b| b.pad.len());
+    map::sea::QUAY.saturating_sub(pad + held)
+}
+
+/// Packages going out a depot's lorry may be loaded with: a load, as far
+/// as its harbour's quay has room for them.
+fn out_room(world: &World, depot: EntityId) -> u32 {
+    harbour_for(world, depot).map_or(0, |h| quay_room(world, h) as u32).min(LOAD)
+}
+
 /// The goods slots going out at the depot's harbour want.
 fn wanted_out(world: &World, depot: EntityId) -> Vec<Good> {
     harbour_for(world, depot).and_then(|h| world.map.building(h)).map_or(Vec::new(), |b| b.outgoing.iter().map(|t| t.good).collect())
@@ -159,7 +182,7 @@ fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
             GameObject::Building(ref b) => {
                 let good = blueprint(b.kind).makes?;
                 let short = short_of(world, depot, good);
-                let load = if short { room(world, depot, good, &[]).min(LOAD) } else { out.iter().filter(|&&g| g == good).count() as u32 }.min(LOAD);
+                let load = if short { room(world, depot, good, &[]).min(LOAD) } else { (out.iter().filter(|&&g| g == good).count() as u32).min(out_room(world, depot)) }.min(LOAD);
                 (load > 0 && whole(b.stocks.get(&good)?.level, good) >= load && world.map.street_of(e.id).is_some()).then_some((!short, e.id, e.position?))
             }
             _ => None,
@@ -227,9 +250,9 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
     // packages of over its reorder point: they are lifted on, a load at
     // most. The town's own shelf comes before the world's.
     if empty {
-        let mut loaded = 0;
+        let (mut loaded, most) = (0, out_room(world, depot));
         for good in wanted_out(world, depot) {
-            if loaded == LOAD || spare(world, depot, good) == 0 {
+            if loaded == most || spare(world, depot, good) == 0 {
                 continue;
             }
             let Some(t) = fill_out(world, depot, good) else { continue };
@@ -277,7 +300,7 @@ fn at_maker(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot: 
     }
     let Some(good) = world.map.building(maker).and_then(|b| blueprint(b.kind).makes) else { return go_home(world, events, lorry, maker, now) };
     let home = short_of(world, depot, good);
-    let want = if home { room(world, depot, good, &[]).min(LOAD) } else { wanted_out(world, depot).iter().filter(|&&g| g == good).count() as u32 }.min(LOAD);
+    let want = if home { room(world, depot, good, &[]).min(LOAD) } else { (wanted_out(world, depot).iter().filter(|&&g| g == good).count() as u32).min(out_room(world, depot)) }.min(LOAD);
     let n = crate::economy::loaded(world, maker, good, want);
     if n == 0 {
         return go_home(world, events, lorry, maker, now);

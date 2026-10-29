@@ -349,7 +349,17 @@ fn room(world: &World, good: Good) -> f64 {
     world.map.depots().into_iter().filter_map(|(_, b)| b.stocks.get(&good)).map(|s| s.cap).sum()
 }
 
-/// An hour's trade: each good bought up to what the town will want, and
+/// Packages of a good the depots have room for beyond what is on its way
+/// to them: as much as the town can take off the quay. Bought past that,
+/// it stands on the quay, and the ferry has nowhere to land the rest.
+fn intake(world: &World, good: Good) -> u32 {
+    let free: u32 = world.map.depots().into_iter().filter_map(|(_, b)| b.stocks.get(&good)).map(|s| crate::economy::whole(s.short(), good)).sum();
+    let coming = crate::haul::packages(world).iter().filter(|(t, ..)| t.good == good && !t.outbound).count() as u32;
+    free.saturating_sub(coming)
+}
+
+/// An hour's trade: each good bought up to what the town will want, as
+/// far as its depots have room, and
 /// sold over twice that or over that and a full depot's, whichever is
 /// more. Whether anything was booked.
 fn keep(world: &mut World, now: GameTime) -> bool {
@@ -362,7 +372,7 @@ fn keep(world: &mut World, now: GameTime) -> bool {
         let (have, want, per) = (position(world, good), want(world, good, ahead), good.per_package());
         let sell = (2.0 * want).max(want + room(world, good));
         if have < want {
-            buys.push((good, ((want - have) / per).ceil() as u32));
+            buys.push((good, (((want - have) / per).ceil() as u32).min(intake(world, good))));
         } else {
             traded |= trade(world, harbour, good, true, ((have - sell) / per).floor().max(0.0) as u32) > 0;
         }

@@ -781,6 +781,14 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             Do::Step(Tool::Street, at(x + 2, -1), at(x + 2, -2)),
             Do::Step(Tool::Street, at(x + 2, -2), at(x + 2, -3)),
         ];
+        // A home pinning an outing, and no park going up: a park on the
+        // first plot that takes one behind the flats.
+        let pinned = world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.waits.iter().any(|w| w.what == model::Wanted::Outing)));
+        let going_up = world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Park && b.site.is_some()));
+        if pinned && !going_up {
+            let plot = (-8..-1).rev().flat_map(|y| (x - 10..x - 3).rev().map(move |x| at(x, y))).find(|&p| (0..4).any(|f| world.map.fit(BuildingKind::Park, p, f).is_ok()));
+            steps.extend(plot.map(|p| Do::Place(BuildingKind::Park, p)));
+        }
         if world.calls.iter().filter(|c| c.answered_by.is_none()).count() >= 12 {
             steps.extend(world.map.depots().into_iter().min_by_key(|(_, b)| b.lorries + b.vans).map(|(id, _)| Do::Van(id)));
         }
@@ -788,7 +796,11 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             Some(model::Why::NoLorry(d)) => Some(d),
             _ => None,
         })).collect();
-        if quay.len() >= map::sea::DECK / 2 {
+        // And one for the depot nearest a works whose yard is full.
+        let full = world.map.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_none() && model::blueprint::blueprint(b.kind).makes.is_some() && !crate::economy::hiring(world, e.id) && b.stocks.get(&model::blueprint::blueprint(b.kind).makes.unwrap()).is_some_and(|s| s.short() < crate::economy::lump(b.kind))));
+        let near = full.and_then(|e| world.map.nearest(e.position?, world.map.depots().into_iter().map(|(d, _)| d)).first().map(|&(_, d)| d));
+        steps.extend(near.map(Do::Lorry));
+        if quay.len() >= 2 * crate::haul::LOAD as usize {
             steps.push(Do::Lorry(quay[0]));
         }
         steps
@@ -880,10 +892,11 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             }
         }
         println!(
-            "day {day}: ate {eaten:.0}h of {asked:.0}h; {:.0}h work, {:.1}h eating out, {:.1}h filling up; GDP {:.1} {:.1?}, in {:.1} out {:.1}, treasury {:.1}; {} empty {:?}",
+            "day {day}: ate {eaten:.0}h of {asked:.0}h; {:.0}h work, {:.1}h eating out, {:.1}h filling up, {:.1}h out; GDP {:.1} {:.1?}, in {:.1} out {:.1}, treasury {:.1}; {} empty {:?}",
             out.get(&Need::Work).copied().unwrap_or(0.0),
             out.get(&Need::Eat).copied().unwrap_or(0.0),
             out.get(&Need::Fuel).copied().unwrap_or(0.0),
+            out.get(&Need::Outing).copied().unwrap_or(0.0),
             page.gdp.values().sum::<f64>(),
             page.gdp,
             page.revenue(),
@@ -1447,3 +1460,4 @@ fn first_half_hour() {
         assert!(beats.iter().any(|(_, w)| w == what), "no \"{what}\" in the first half hour");
     }
 }
+

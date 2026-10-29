@@ -11,7 +11,7 @@ use traffic::sea::lines::Line;
 use traffic::sea::DWELL;
 use traffic::sea::voyage::Voyage;
 use traffic::sea::water::{End, Water};
-use map::sea::{seats, BAYS, DECK, PER_BAY, QUAY};
+use map::sea::{seats, BAYS, DECK, PER_BAY};
 use crate::world::World;
 
 /// The first call at a new harbour: half an hour after it is built.
@@ -259,13 +259,8 @@ impl World {
         let j = c.passengers.len() - 1;
         let free = empty_bays(&c.deck);
         let seat = free.get(j >> 1).map(|&k| (k, seats(berth.moored(), k)[j & 1]));
-        let home = match self.map.objects.get(car).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => self.map.objects.get(c.owner).and_then(|e| match e.object {
-                GameObject::Resident(ref r) => Some(r.home),
-                _ => None,
-            }),
-            _ => None,
-        };
+        let owner = self.map.car(car).map_or(car, |c| c.owner);
+        let home = self.map.resident(owner).map(|r| r.home);
         // Off the deck once it is away, or at once if home is gone; one the
         // street does not let out yet tries again with the next. Whoever is
         // still aboard when the ferry sails waits for the next sailing.
@@ -277,6 +272,11 @@ impl World {
             }
             None => self.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, street, home, now, GameTime::MAX)),
         });
+        // Their needs start as they land, full: the days they waited
+        // beyond the sea are not owed.
+        if drove && let Some(r) = self.map.resident_mut(owner) {
+            r.last_update = now;
+        }
         if drove || home.is_none() {
             if let Some(c) = self.map.car_mut(ferry) {
                 c.passengers.remove(0);
@@ -372,17 +372,17 @@ impl World {
 
     /// The harbour's forklifts work the deck of the ferry at its ramp:
     /// what came for the town is lifted off onto the quay, the land end
-    /// first, as far as the quay has room, each paid for as it lands; then
+    /// first, as far as the quay has room
+    /// that no lorry of exports holds, each paid for as it lands; then
     /// what waits on the quay to go out is lifted onto the deck's empty
     /// places from the sea end, each only if it is aboard before the ferry
     /// sails. A run is a lorry's worth of one good, so the forklifts share
     /// the work, and the lorries wait their turn among it.
     fn work_deck(&mut self, events: &mut EventQueue, ferry: EntityId, harbour: EntityId, now: GameTime) {
         let Some(due) = self.map.car(ferry).map(|c| c.due) else { return };
-        let quay = self.map.building(harbour).map_or(0, |b| b.pad.len());
         let deck = self.map.car(ferry).map_or(Vec::new(), |c| c.deck.clone());
         let mut off: Vec<(usize, Package)> = deck.iter().enumerate().filter_map(|(k, t)| t.filter(|t| !t.outbound).map(|t| (k, t))).collect();
-        off.truncate(QUAY.saturating_sub(quay));
+        off.truncate(crate::haul::quay_room(self, harbour));
         let mut landed = false;
         for run in runs(&off) {
             let good = run[0].1.good;

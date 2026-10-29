@@ -818,7 +818,8 @@ mod tests {
             assert!((made - 9.0 * blueprint(kind).pace * reach(&world, near)).abs() < 1e-9, "a shift made {made}");
             assert!((world.gdp - made * world_price(good)).abs() < 1e-9);
             if let Some(b) = world.map.building_mut(near) {
-                b.stocks.get_mut(&good).unwrap().level = 119.0;
+                let s = b.stocks.get_mut(&good).unwrap();
+                s.level = s.cap;
             }
             assert!(!hiring(&world, near), "a full yard hires");
         }

@@ -165,6 +165,8 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
                 .filter(|&w| economy::hiring(world, w))
                 .map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, tap_for(world, r, w, Need::Work).map_or(&[], std::slice::from_ref), now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, taps_of(world, r.home), now, crowd, routes, true),
+            // Nobody leaves a shift for the park.
+            Need::Outing if r.work.and_then(|w| tap_for(world, r, w, Need::Work)).is_some_and(|t| t.curve.next_zero(now) > now) => Verdict::Nothing,
             Need::Eat | Need::Fuel | Need::Outing => search(world, r, at, b, now, crowd, routes),
         })
         .collect()
