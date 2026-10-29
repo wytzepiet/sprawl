@@ -27,6 +27,15 @@ pub fn start_trip(
         Some(GameObject::Car(c)) => c.spot,
         _ => None,
     };
+    // Out of a square bay, backed out the way it is going: a way that
+    // passes the other side's exit leaves by it instead, not away from it
+    // to turn back.
+    if let Some((side, exit)) = world.map.other_exit(car_id)
+        && let Some(here) = world.map.way_out(car_id).and_then(|o| o.last().copied())
+        && world.map.ways_to(dest_building, here).is_some_and(|w| w.street.contains(&exit))
+    {
+        world.map.leave_by(car_id, side);
+    }
     let out = world.map.way_out(car_id).unwrap_or_default();
     depart(world, events, car_id, out, leaves, from_node, dest_building, now, until)
 }

@@ -990,6 +990,26 @@ impl Map {
         }
     }
 
+    /// The exit of the other side of a square kerb bay, which a car in it
+    /// may back out by as well, nose in either way, whichever way along the
+    /// street it is going (`leave_by`).
+    pub fn other_exit(&self, car: EntityId) -> Option<(usize, EntityId)> {
+        let &building = self.claims.get(&car)?;
+        let lot = self.lots.get(&building)?;
+        let (Way::Kerb { bays, .. }, Some(Claim::Spot(i))) = (&lot.way, self.claim_of(building, car)) else { return None };
+        let here = lot.side(i, car);
+        (0..bays[i].sides.len()).find(|&k| k != here && bays[i].sides[k].out_backs > 0).map(|k| (k, bays[i].sides[k].exit))
+    }
+
+    /// Leave its kerb bay by this side (`other_exit`).
+    pub fn leave_by(&mut self, car: EntityId, side: usize) {
+        let Some(&building) = self.claims.get(&car) else { return };
+        let Some(Claim::Spot(i)) = self.claim_of(building, car) else { return };
+        if let Some(w) = self.lots.get_mut(&building).and_then(|l| l.spots[i].windows.iter_mut().find(|w| w.car == car)) {
+            w.side = side;
+        }
+    }
+
     /// How many edges at the start of the car's way out are driven
     /// backwards: one off a drive, onto the street; a square kerb bay's
     /// way back round into the lane; none anywhere else.
@@ -1239,6 +1259,12 @@ mod tests {
             assert_eq!(world.backs_out(a), out.len() - 2, "backed out round into the lane");
             let (lane, exit) = (world.node_pos(out[out.len() - 2]).unwrap(), world.node_pos(out[out.len() - 1]).unwrap());
             assert!((lane[1] - (0.5 + LANE_OFFSET)).abs() < 1e-9 && sign * (exit[0] - lane[0]) > 0.0, "in the lane, and on: {lane:?} to {exit:?}");
+            // Or backed out the other way, nose in either way.
+            let (side, _) = world.other_exit(a).expect("either way out");
+            world.leave_by(a, side);
+            let out = world.way_out(a).unwrap();
+            let (lane, exit) = (world.node_pos(out[out.len() - 2]).unwrap(), world.node_pos(out[out.len() - 1]).unwrap());
+            assert!(sign * (exit[0] - lane[0]) < 0.0, "the other way on: {lane:?} to {exit:?}");
         }
     }
 

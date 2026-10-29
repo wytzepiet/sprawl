@@ -165,3 +165,40 @@ test("a car changing lanes steers across, round no corner, and no jump", () => {
   // And smoothly: never more than a step's worth sideways between steps.
   for (let s = 2; s < 6; s += 0.02) expect(Math.abs(y(s + 0.02) - y(s))).toBeLessThan(0.02);
 });
+
+/** The most a vehicle's rear axle moves sideways, of how far it moves,
+ *  over any hundredth of a tile: wheels roll, they do not slide. */
+function slide(d: Drive, axle: number) {
+  const at = (s: number) => {
+    const b = d.at(s).body;
+    return { x: b.at[0] - Math.cos(b.heading) * axle, y: b.at[1] - Math.sin(b.heading) * axle, h: b.heading };
+  };
+  let [worst, prev] = [0, at(0)];
+  for (let s = 0.01; s <= d.length; s += 0.01) {
+    const p = at(s);
+    const [dx, dy, h] = [p.x - prev.x, p.y - prev.y, (p.h + prev.h) / 2];
+    const [side, on] = [Math.abs(-Math.sin(h) * dx + Math.cos(h) * dy), Math.abs(Math.cos(h) * dx + Math.sin(h) * dy)];
+    if (side + on > 0.003) worst = Math.max(worst, side / (side + on));
+    prev = p;
+  }
+  return worst;
+}
+
+test("into a drive, a kerb bay, and out of one, the wheels roll and never slide", () => {
+  // Off the street into a house's drive, nose first; round into a square
+  // bay at the kerb; and backed out of one, round into the lane the way it
+  // is going: as the server lays them (`kerb_bays`).
+  const drive = { route_positions: [[4.5, 0.5], [3.5, 0.5], [2.5, 0.5], [1.5, 0.5], [0.5, 0.5], [0.61, 1.03]] as P[], from_lot: 0, to_lot: 1, backing: [] as [number, number][], stands: { at: [0.61, 1.03] as P, heading: Math.PI / 2 } };
+  const bay = { route_positions: [[61.5, 0.5], [62.5, 0.5], [63.5, 0.5], [63.3, 0.4], [63.775, 0.46], [63.94, 0.625], [64, 0.85], [64, 0.87]] as P[], from_lot: 0, to_lot: 5, backing: [] as [number, number][], stands: { at: [64, 0.87] as P, heading: Math.PI / 2 } };
+  const out = { route_positions: [[11.635, 0.87], [11.575, 0.825], [11.41, 0.66], [11.185, 0.6], [12.5, 0.5], [13.5, 0.5], [14.5, 0.5], [15.5, 0.5]] as P[], from_lot: 4, to_lot: 0, backing: [[0, 3]] as [number, number][], leaves: { at: [11.635, 0.87] as P, heading: Math.PI / 2 } };
+  for (const t of [drive, bay, out]) {
+    const d = driveTrip(t, CAR_RIG)!;
+    expect(slide(d, CAR_RIG.axle)).toBeLessThan(0.1);
+    expect(jolts(d).move).toBeLessThan(2.5);
+    const stands = "stands" in t && t.stands;
+    if (stands) {
+      const at = d.at(d.length).body;
+      expect(Math.hypot(at.at[0] - stands.at[0], at.at[1] - stands.at[1])).toBeLessThan(1e-6);
+    }
+  }
+});
