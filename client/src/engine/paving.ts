@@ -1,5 +1,5 @@
 import type { EngineContext, MaterialPlugin } from "@babylonjs/lite";
-import { grain } from "./ground";
+import { grain, grainSlope } from "./ground";
 
 /**
  * Paving laid, as the light finds it: slabs in courses, each course half a
@@ -41,7 +41,7 @@ export function pavingPlugin(engine: EngineContext, kerbed: boolean): MaterialPl
       stage === "fragment"
         ? {
             CUSTOM_FRAGMENT_MAIN_BEGIN: `let pavingGrainUv = input.worldPos.xy / ${n(GRAIN_SPAN)};
-let pavingBump = vec2f(textureSample(pavingGrain, pavingGrainSampler, pavingGrainUv + vec2f(${n(1 / 256)}, 0.)).r - textureSample(pavingGrain, pavingGrainSampler, pavingGrainUv - vec2f(${n(1 / 256)}, 0.)).r, textureSample(pavingGrain, pavingGrainSampler, pavingGrainUv + vec2f(0., ${n(1 / 256)})).r - textureSample(pavingGrain, pavingGrainSampler, pavingGrainUv - vec2f(0., ${n(1 / 256)})).r);
+let pavingBump = ${grainSlope("textureSample(pavingGrain, pavingGrainSampler, pavingGrainUv)")};
 var pavingAt = input.worldPos.xy / ${n(SLAB)};
 pavingAt.x += 0.5 * (floor(pavingAt.y) - 2. * floor(floor(pavingAt.y) / 2.));
 let pavingSlab = floor(pavingAt);

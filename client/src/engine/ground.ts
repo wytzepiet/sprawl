@@ -119,11 +119,24 @@ const ORIGIN = -2 / DENSITY;
  *  it rounds over straight across the seam, as the next tile's does. */
 const RUN_ON = 0.25;
 
-/** A random byte a texel. */
+/** A random byte a texel, in red; and its slope across and up, from the
+ *  texels either side, in green and blue (0.5 level, a byte's whole rise
+ *  either way at 0 and 1): a bump read once, where four reads found it. */
 function grainData(): Uint8Array {
   let seed = 11;
-  return Uint8Array.from({ length: SIDE * SIDE }, () => (seed = (seed * 16807) % 2147483647) % 256);
+  const r = Uint8Array.from({ length: SIDE * SIDE }, () => (seed = (seed * 16807) % 2147483647) % 256);
+  const at = (x: number, y: number) => r[((y + SIDE) % SIDE) * SIDE + ((x + SIDE) % SIDE)];
+  const out = new Uint8Array(SIDE * SIDE * 4);
+  for (let y = 0; y < SIDE; y++)
+    for (let x = 0; x < SIDE; x++) {
+      const k = y * SIDE + x;
+      out.set([r[k], Math.round((at(x + 1, y) - at(x - 1, y) + 255) / 2), Math.round((at(x, y + 1) - at(x, y - 1) + 255) / 2), 255], k * 4);
+    }
+  return out;
 }
+/** The grain's bump at a point: its slope across and up, as the texels
+ *  either side of it differ, from green and blue. */
+export const grainSlope = (texel: string) => `((${texel}).gb * 2. - 1.)`;
 
 /** The land's grain, a texture an engine: random bytes, tiling. Roads read
  *  it too (`roads.ts`). */
@@ -132,7 +145,7 @@ export function grain(engine: EngineContext): Texture2D {
   let texture = GRAINS.get(engine);
   if (!texture) {
     texture = createTexture2DFromPixels(engine, grainData(), SIDE, SIDE, {
-      format: "r8unorm",
+      format: "rgba8unorm",
       mipmaps: true,
       minFilter: "linear",
       magFilter: "linear",

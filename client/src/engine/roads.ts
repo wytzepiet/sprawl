@@ -3,7 +3,7 @@ import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
 import { theme } from "./theme";
 import { Atlas } from "./atlas";
-import { grain } from "./ground";
+import { grain, grainSlope } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, LAYER_ORDER, PAVED_Z, RIM } from "./town/draw";
@@ -141,8 +141,9 @@ out.vRoadTilt = roadClimb.xy * (roadLift.y + roadU * (2. * roadLift.z + 3. * roa
           }
         : {
             CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = input.worldPos.xy / ${n(GRAIN_SPAN)};
-let roadGrainAt = textureSample(roadGrain, roadGrainSampler, roadGrainUv).r;
-let roadBump = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${n(1 / 256)}, 0.)).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(${n(1 / 256)}, 0.)).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(0., ${n(1 / 256)})).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(0., ${n(1 / 256)})).r);
+let roadGrainTexel = textureSample(roadGrain, roadGrainSampler, roadGrainUv);
+let roadGrainAt = roadGrainTexel.r;
+let roadBump = ${grainSlope("roadGrainTexel")};
 let roadGlintWay = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other1})).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other2})).r);
 let roadGlinting = step(${n(1 - GLINTS)}, roadGrainAt);
 let roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * textureSample(roadGrain, roadGrainSampler, roadGrainUv / ${n(CHIPS)}).r;
