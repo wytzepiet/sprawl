@@ -58,6 +58,9 @@ pub struct Map {
     /// leaving the street there until it is parked. The street waits for it
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
     pub manoeuvres: HashMap<EntityId, (EntityId, model::GameTime)>,
+    /// Lorries refused a dock whose yard has since had one let go of: the
+    /// game wakes them to try again now, not an hour on (`World::drive`).
+    pub docks_freed: Vec<EntityId>,
     pub terrain_seed: u32,
     /// Tiles of road the mayor has laid, which `hand::lay` counts to price.
     /// Derived at startup from the nodes' own flag, like every other index.
@@ -198,6 +201,7 @@ impl Map {
             network: RoadNetwork::default(),
             node_cars: HashMap::default(),
             manoeuvres: HashMap::default(),
+            docks_freed: Vec::new(),
             terrain_seed: 0,
             laid: 0,
             frame: None,

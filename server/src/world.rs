@@ -115,6 +115,9 @@ impl World {
         for (who, at) in t.arrived {
             crate::resident::set_at(self, events, who, at, events.now());
         }
+        for lorry in std::mem::take(&mut self.map.docks_freed) {
+            events.wake(0, lorry);
+        }
         r
     }
 }

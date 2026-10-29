@@ -255,6 +255,8 @@ pub struct Lot {
     edges: Vec<(EntityId, EntityId)>,
     /// The cars at the door.
     doorway: Vec<EntityId>,
+    /// The lorries refused a dock here, to be woken when one is let go of.
+    refused: Vec<EntityId>,
     pub stats: Stats,
 }
 
@@ -347,7 +349,7 @@ impl Map {
                 spots.push(Spot { node: id, pose: Pose { at: bay.at, heading: bay.sides[0].heading }, windows: Vec::new() });
                 bays.push(KerbWay { sides: bay.sides });
             }
-            return Some(Lot { gate, shape: Default::default(), spots, way: Way::Kerb { door, street, bays }, nodes, edges, doorway: Vec::new(), stats: Stats::default() });
+            return Some(Lot { gate, shape: Default::default(), spots, way: Way::Kerb { door, street, bays }, nodes, edges, doorway: Vec::new(), refused: Vec::new(), stats: Stats::default() });
         }
         // A driveway pair, driven into nose first and backed out of.
         // Spot 0 is on the lane a car leaves by.
@@ -363,7 +365,7 @@ impl Map {
             edge(self, id, street);
             spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
         }
-        Some(Lot { gate, shape: Default::default(), spots, way: Way::Driveway { door, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gate, shape: Default::default(), spots, way: Way::Driveway { door, street }, nodes, edges, doorway: Vec::new(), refused: Vec::new(), stats: Stats::default() })
     }
 
     /// The bays at the kerb before a building, as many as it needs: as many
@@ -594,7 +596,7 @@ impl Map {
             spots.push(Spot { node: id, pose, windows: Vec::new() });
             bays.push((mouth, stop));
         }
-        Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street, seats }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street, seats }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), refused: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world; whoever was parked in it is
@@ -760,7 +762,11 @@ impl Map {
             })
             .or_else(|| (!yard).then_some(Claim::Door));
         let Some(claim) = claim else {
-            self.lots.get_mut(&building).unwrap().stats.refused += 1;
+            let lot = self.lots.get_mut(&building).unwrap();
+            lot.stats.refused += 1;
+            if !lot.refused.contains(&car) {
+                lot.refused.push(car);
+            }
             return None;
         };
         // Only now, with the new place found, is the old one let go of.
@@ -781,10 +787,14 @@ impl Map {
         if let Some(building) = self.claims.remove(&car)
             && let Some(lot) = self.lots.get_mut(&building)
         {
+            let docked = matches!(lot.way, Way::Yard { .. }) && lot.spots.iter().any(|s| s.holder(car).is_some());
             for s in &mut lot.spots {
                 s.windows.retain(|w| w.car != car);
             }
             lot.doorway.retain(|&c| c != car);
+            if docked {
+                self.docks_freed.append(&mut lot.refused);
+            }
         }
         self.set_spot(car, None);
     }
