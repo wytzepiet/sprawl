@@ -81,14 +81,15 @@ fn main() {
                 line += &format!(" {:?}{}:{}", b.kind, id, s.join(","));
             }
             println!("{line}");
-            let open: Vec<String> = w.calls.iter().map(|c| format!("{:?}@{}{}", c.good, c.at, if c.answered_by.is_some() { "*" } else { "" })).collect();
+            let under = sprawl::logistics::UnderWay::read(w);
+            let open: Vec<String> = w.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).flat_map(|e| sprawl::logistics::asked(w, &under, e.id).into_iter().map(move |(g, by)| format!("{g:?}@{}{}", e.id, if by.is_some() { "*" } else { "" }))).collect();
             println!("   calls {}", open.join(" "));
             let mut fleet = Vec::new();
             for e in w.map.objects.iter() {
                 let GameObject::Car(ref c) = e.object else { continue };
                 if matches!(c.role, CarRole::Van | CarRole::Truck) {
                     let state = match &c.trip { Some(tr) => format!("->{}", tr.destination), None => format!("@{}", w.map.claims.get(&e.id).copied().unwrap_or(0)) };
-                    let load = c.load.map(|(g, u)| format!("{g:?}{u:.0}")).unwrap_or_default();
+                    let load = c.errand.map(|e| format!("({:?}{} {}>{})", e.good, e.n, e.from, e.to)).unwrap_or_default();
                     let cargo = if c.cargo.is_empty() { String::new() } else { format!("[{}{:?}]", c.cargo.len(), c.cargo[0].good) };
                     fleet.push(format!("{}{}:{}{}{}", if c.role == CarRole::Van { "v" } else { "L" }, e.id, state, load, cargo));
                 }
@@ -101,12 +102,12 @@ fn main() {
                 let mut pad = std::collections::BTreeMap::new();
                 for t in &b.pad { *pad.entry(format!("{:?}{}", t.good, if t.outbound { "^" } else { "v" })).or_insert(0) += 1; }
                 let f = w.ferry_of(h).and_then(|f| w.map.car(f));
-                println!("   harbour {h} outgoing {:?} pad {:?} quay_room {} ferry moored {:?} deck {} booked {} sold {:.0} bought {:.0}", out, pad, sprawl::haul::quay_room(w, h), f.map(|c| c.spot.is_some()), f.map_or(0, |c| c.deck.iter().flatten().count()), f.map_or(0, |c| c.booked.len()), w.treasury, 0.0);
+                println!("   harbour {h} outgoing {:?} pad {:?} quay_room {} ferry moored {:?} deck {} booked {} sold {:.0} bought {:.0}", out, pad, sprawl::logistics::quay_room(w, &under, h), f.map(|c| c.spot.is_some()), f.map_or(0, |c| c.deck.iter().flatten().count()), f.map_or(0, |c| c.booked.len()), w.treasury, 0.0);
             }
-            for c in w.calls.iter().filter(|c| c.answered_by.is_some_and(|v| w.map.car(v).is_some_and(|car| car.trip.is_none() && w.map.claims.get(&v) == Some(&car.owner)))) {
-                let v = c.answered_by.unwrap();
-                let car = w.map.car(v).unwrap();
-                println!("   loaded-at-home {v} for {:?}@{} raised {:.1}h ago; caller street {:?} kind {:?} site {}; depot street {:?}; wake {:?}", c.good, c.at, (now - c.raised) as f64 / hour as f64, w.map.street_of(c.at), w.map.building(c.at).map(|b| b.kind), w.map.building(c.at).is_some_and(|b| b.site.is_some()), w.map.street_of(car.owner), game.events.pending(v).map(|t| t as i64 - now as i64));
+            for e in w.map.objects.iter() {
+                let GameObject::Car(ref car) = e.object else { continue };
+                let Some(er) = car.errand.filter(|er| car.trip.is_none() && !car.cargo.is_empty() && now - er.since > hour * 6) else { continue };
+                println!("   laden-standing {} at {:?} for {:?}@{} since {:.1}h; wake {:?}", e.id, w.map.claims.get(&e.id), er.good, er.to, (now - er.since) as f64 / hour as f64, game.events.pending(e.id).map(|t| t as i64 - now as i64));
             }
         }
     }

@@ -167,7 +167,12 @@ fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
 /// and clock are worth keeping too.
 fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
     let (changed, removed) = world.map.objects.drain_persist_dirty();
-    let changed: Vec<_> = changed.iter().filter_map(|&id| world.map.objects.get(id)).filter(|e| persistence::kept(e)).collect();
+    let home = |e: &model::GameObjectEntry| match e.object {
+        model::GameObject::Car(ref c) => world.map.objects.get(c.owner).and_then(|o| o.position),
+        _ => None,
+    };
+    let changed: Vec<_> = changed.iter().filter_map(|&id| world.map.objects.get(id)).filter_map(|e| persistence::kept(e, home(e))).collect();
+    let changed: Vec<_> = changed.iter().collect();
     let meta = persistence::Meta {
         next_id: world.map.objects.next_id(),
         terrain_seed: world.map.terrain_seed,

@@ -8,10 +8,9 @@ use model::card::{Card, Link, LinkKind, Gauge, ResidentCard, CarCard, TripLine, 
 
 
 use model::blueprint::blueprint;
-use crate::calls::Call;
 use model::GameTime;
 use model::needs::Need;
-use model::{Building, BuildingKind, Car, CarRole, EntityId, GameObject, Resident, DAY_MS};
+use model::{Building, BuildingKind, Car, CarRole, EntityId, GameObject, Good, Resident, DAY_MS};
 use crate::world::World;
 
 const FIRST: [&str; 32] = [
@@ -76,13 +75,15 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Residen
     }
 }
 
-fn call_line(world: &World, call: &Call) -> CallLine {
+/// A want, and the vehicle bringing it if one is.
+fn call_line(world: &World, at: EntityId, good: Good, by: Option<EntityId>) -> CallLine {
+    let since = world.wanted.get(&(at, good)).copied().or_else(|| by.and_then(|c| world.map.car(c)?.errand).map(|e| e.since));
     CallLine {
-        what: format!("{:?}", call.good),
-        good: call.good,
-        at: link(world, call.at),
-        since: hhmm(call.raised),
-        answered_by: call.answered_by.map(|c| link(world, c)),
+        what: format!("{good:?}"),
+        good,
+        at: link(world, at),
+        since: since.map_or_else(String::new, hhmm),
+        answered_by: by.map(|c| link(world, c)),
     }
 }
 
@@ -106,7 +107,7 @@ fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> CarCard {
         stocks: c.stocks.iter().map(|(need, s)| Gauge { what: format!("{need:?}"), full: s.level / s.cap }).collect(),
         trip: c.trip.as_ref().map(|t| TripLine { to: link(world, t.destination), due: hhmm(t.eta), late_s: now.saturating_sub(t.eta) / 1000 }),
         parked_at,
-        answering: world.calls.iter().filter(|call| call.answered_by == Some(id)).map(|call| call_line(world, call)).collect(),
+        answering: c.errand.iter().map(|e| call_line(world, e.to, e.good, Some(id))).collect(),
     }
 }
 
@@ -159,7 +160,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Buildin
         household,
         staff,
         fleet: world.map.objects.fleet(id).filter(|&c| world.map.car(c).is_some_and(|c| c.role != CarRole::Private)).map(|c| link(world, c)).collect(),
-        calls: world.calls.iter().filter(|call| call.at == id).map(|call| call_line(world, call)).collect(),
+        calls: crate::logistics::asked(world, &crate::logistics::UnderWay::read(world), id).into_iter().map(|(good, by)| call_line(world, id, good, by)).collect(),
         served: world.books.get(&id).map_or(vec![], |k| k.on(now).served.iter().map(|(&need, &hours_today)| Served { need, hours_today }).collect()),
     }
 }

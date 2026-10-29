@@ -165,7 +165,7 @@ impl World {
                 self.cast_off(events, ferry, now);
             } else {
                 self.roll_off(events, ferry, harbour, now);
-                self.work_deck(events, ferry, harbour, now);
+                self.work_deck(ferry, harbour, now);
                 let next = match due.checked_sub(now).filter(|&left| left > 0) {
                     Some(left) if self.passengers(ferry) > 0 => ROLL_MS.min(left),
                     Some(left) => left,
@@ -394,11 +394,11 @@ impl World {
     /// places from the sea end, each only if it is aboard before the ferry
     /// sails. A run is a lorry's worth of one good, so the forklifts share
     /// the work, and the lorries wait their turn among it.
-    fn work_deck(&mut self, events: &mut EventQueue, ferry: EntityId, harbour: EntityId, now: GameTime) {
+    fn work_deck(&mut self, ferry: EntityId, harbour: EntityId, now: GameTime) {
         let Some(due) = self.map.car(ferry).map(|c| c.due) else { return };
         let deck = self.map.car(ferry).map_or(Vec::new(), |c| c.deck.clone());
         let mut off: Vec<(usize, Package)> = deck.iter().enumerate().filter_map(|(k, t)| t.filter(|t| !t.outbound).map(|t| (k, t))).collect();
-        off.truncate(crate::haul::quay_room(self, harbour));
+        off.truncate(crate::logistics::quay_room(self, &crate::logistics::UnderWay::read(self), harbour));
         let mut landed = false;
         for run in runs(&off) {
             let good = run[0].1.good;
@@ -419,9 +419,7 @@ impl World {
             }
             landed = true;
         }
-        if landed {
-            crate::haul::call_lorries(self, events);
-        }
+        self.plan_due |= landed;
         let deck = self.map.car(ferry).map_or(Vec::new(), |c| c.deck.clone());
         let mut room: Vec<usize> = (0..DECK).rev().filter(|&k| deck.get(k).is_none_or(|s| s.is_none())).collect();
         let pad = self.map.building(harbour).map_or(Vec::new(), |b| b.pad.clone());

@@ -789,7 +789,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             let plot = (-8..-1).rev().flat_map(|y| (x - 10..x - 3).rev().map(move |x| at(x, y))).find(|&p| (0..4).any(|f| world.map.fit(BuildingKind::Park, p, f).is_ok()));
             steps.extend(plot.map(|p| Do::Place(BuildingKind::Park, p)));
         }
-        if world.calls.iter().filter(|c| c.answered_by.is_none()).count() >= 12 {
+        if unanswered(world).len() >= 12 {
             steps.extend(world.map.depots().into_iter().min_by_key(|(_, b)| b.lorries + b.vans).map(|(id, _)| Do::Van(id)));
         }
         let quay: Vec<EntityId> = world.map.harbours.keys().filter_map(|&h| world.map.building(h)).flat_map(|b| b.waits.iter().filter_map(|w| match w.why {
@@ -823,7 +823,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
         // Every block of flats put down at a midnight stands by the next.
         let flats = |site: bool| world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Apartment && b.tiles[0].y < 0 && b.site.is_some() == site)).count();
         stood = flats(false);
-        let waiting: Vec<_> = world.calls.iter().filter(|c| matches!(world.map.objects.get(c.at).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some())).collect();
+        let waiting: Vec<_> = unanswered(world).into_iter().filter(|&(at, _)| world.map.building(at).is_some_and(|b| b.site.is_some())).collect();
         assert_eq!(stood as u64, day - 1, "day {day}: {} sites still waiting; calls {waiting:?}", flats(true));
         let level = |id: EntityId, good: Good| match world.map.objects.get(id).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.stocks.get(&good).map_or(0.0, |s| s.level),
@@ -867,7 +867,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
                     empty.push(format!("{:?} {} {good:?}", b.kind, e.id));
                 }
                 let days = stood_empty((e.id, format!("{good:?}")), stock.level <= 0.0, day);
-                assert!(days < 1, "day {day}: {:?} {}'s {good:?} has stood empty two midnights running; calls {:?}", b.kind, e.id, world.calls);
+                assert!(days < 1, "day {day}: {:?} {}'s {good:?} has stood empty two midnights running; unanswered {:?}", b.kind, e.id, unanswered(world));
             }
         }
         for e in world.map.objects.iter() {
@@ -1040,7 +1040,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     let bought = |world: &World| world.town.on(now).bought.get(&Good::Grain).copied().unwrap_or(0.0);
     let bought_before = bought(&game.world);
     game.world.map.building_mut(depot).unwrap().stocks.get_mut(&Good::Grain).unwrap().level = 0.0;
-    crate::haul::call_lorries(&mut game.world, &mut game.events);
+    crate::logistics::turn(&mut game.world, &mut game.events, depot, now);
     // Half a day: the lorry may be on its way to the quay with the
     // world's grain, the length of the street off and back.
     game.run_to(now + day / 2);
@@ -1049,6 +1049,15 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     let fetched = before - yard(world);
     assert!(fetched > 0.0, "the lorry took nothing from the yard");
     assert_eq!(bought(world), bought_before, "crates fetched in town were paid for");
+}
+
+/// What the town's shelves, bins and sites want that no van is bringing.
+fn unanswered(world: &World) -> Vec<(EntityId, Good)> {
+    let under = crate::logistics::UnderWay::read(world);
+    world.map.objects.iter()
+        .filter(|e| matches!(e.object, GameObject::Building(ref b) if !world.map.harbours.contains_key(&e.id) && (b.site.is_some() || !model::blueprint::depot(b.kind))))
+        .flat_map(|e| crate::logistics::asked(world, &under, e.id).into_iter().filter(|w| w.1.is_none()).map(move |(g, _)| (e.id, g)))
+        .collect()
 }
 
 /// A depot's lorries, by id.

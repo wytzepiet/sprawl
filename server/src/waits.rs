@@ -1,6 +1,6 @@
 //! What each building waits on, for the client's pins: every trip that
 //! should come to it, and which of them are late (`model::Wait`). Read
-//! off the calls, the shelves, the seats, the quay and who at home is
+//! off its wants and the errands under way, the shelves, the seats, the quay and who at home is
 //! hungry; decides nothing, but wakes the building when it would give
 //! up (`World::give_up`).
 
@@ -19,10 +19,7 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
     if world.waiting.is_empty() {
         return;
     }
-    let mut called: HashMap<EntityId, Vec<(Good, Option<EntityId>)>> = HashMap::default();
-    for c in &world.calls {
-        called.entry(c.at).or_default().push((c.good, c.answered_by));
-    }
+    let under = crate::logistics::UnderWay::read(world);
     // What is coming by sea, and who is free to work: asked once a look,
     // and only if a late trip needs it.
     let mut coming: Option<Vec<(Good, EntityId)>> = None;
@@ -34,7 +31,9 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
         let household = world.map.household(id);
         let hungry = household.iter().any(|&r| world.map.resident(r).is_some_and(|r| r.buckets.iter().any(|b| b.need == Need::Eat && b.stock.level <= 0.0)));
         let mut waits = Vec::new();
-        for &(good, van) in called.get(&id).into_iter().flatten() {
+        // The quay's are its landed packages and slots, below.
+        let asked = if world.map.harbours.contains_key(&id) { Vec::new() } else { crate::logistics::asked(world, &under, id) };
+        for (good, van) in asked {
             let was = b.waits.iter().any(|w| w.what == Wanted::Good(good) && w.late.is_some());
             // A site cannot go on without any of its materials; a shelf or
             // a bin, once it is empty and no van was sent in time; a home's
@@ -64,16 +63,24 @@ pub fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
                 waits.push((Wanted::Outing, Some(if !road { Why::NoRoad } else if !park { Why::Nobody } else { Why::TooFar })));
             }
         }
-        // The quay: packages landed for a depot's lorry, as many as the
-        // lorries on their way here have room for, and late past that;
-        // and slots booked out for one to fill.
+        // The quay: packages landed for a depot's lorry, as many as
+        // lorries are on their way to fetch, and late past that; and slots
+        // booked out for one to fill.
         let landed: Vec<(Good, Option<EntityId>)> = b.pad.iter().filter(|p| !p.outbound).map(|p| (p.good, p.to)).collect();
         if !landed.is_empty() {
-            let room = crate::haul::fetching(world, id) as usize;
+            let mut fetching: fixed::HashMap<Good, u32> = HashMap::default();
+            for &(good, _) in &landed {
+                fetching.entry(good).or_insert_with(|| under.taking(id, good));
+            }
             let nearest = world.map.objects.get(id).and_then(|e| e.position).and_then(|here| world.map.nearest(here, world.map.depots().into_iter().map(|(d, _)| d)).first().map(|&(_, d)| d));
             // The depot it is bound for, or the nearest, its lorries all out.
             let why = |to: Option<EntityId>| if road { to.or(nearest).map_or(Why::Nobody, Why::NoLorry) } else { Why::NoRoad };
-            waits.extend(landed.into_iter().enumerate().map(|(k, (good, to))| (Wanted::Good(good), (k >= room).then(|| why(to)))));
+            waits.extend(landed.into_iter().map(|(good, to)| {
+                let n = fetching.get_mut(&good).expect("counted above");
+                let late = *n == 0;
+                *n = n.saturating_sub(1);
+                (Wanted::Good(good), late.then(|| why(to)))
+            }));
         }
         waits.extend(b.outgoing.iter().map(|p| (Wanted::Good(p.good), None)));
         if b.site.is_none() {
@@ -129,7 +136,7 @@ mod tests {
         if let Some(b) = game.world.map.building_mut(shop) {
             b.stocks.get_mut(&Good::Bread).unwrap().level = 0.0;
         }
-        crate::calls::turn(&mut game.world, &mut game.events, shop, 0);
+        crate::logistics::turn(&mut game.world, &mut game.events, shop, 0);
         crate::waits::look(&mut game.world, &mut game.events, 5);
         let waits = &game.world.map.building(shop).unwrap().waits;
         assert!(waits.iter().any(|w| w.what == Wanted::Good(Good::Bread) && w.late == Some(5) && w.why == Some(Why::Nobody)), "no depot, no ship: nobody has bread; {waits:?}");
@@ -153,7 +160,7 @@ mod tests {
         let people = game.world.map.household(house);
         assert_eq!(people.len(), 2, "nobody moved in");
         game.world.map.building_mut(house).unwrap().stocks.get_mut(&Good::Bread).unwrap().level = 0.0;
-        crate::calls::turn(&mut game.world, &mut game.events, house, 0);
+        crate::logistics::turn(&mut game.world, &mut game.events, house, 0);
         crate::waits::look(&mut game.world, &mut game.events, 0);
         let bread = |game: &crate::game::Game| game.world.map.building(house).unwrap().waits.iter().find(|w| w.what == Wanted::Good(Good::Bread)).copied();
         assert_eq!(bread(&game).map(|w| w.late), Some(None), "an empty pantry with its people fed is not a dot");

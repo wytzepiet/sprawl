@@ -583,14 +583,15 @@ pub struct Car {
     /// A ship's leg, while it sails one.
     #[serde(default)]
     pub sail: Option<Sail>,
-    /// The packages on a lorry's flatbed, a few (`haul::LOAD`).
+    /// The packages on a lorry's flatbed, a few (`haul::LOAD`), or in a
+    /// van (`economy::VAN_LOAD`).
     #[serde(default)]
     pub cargo: Vec<Package>,
-    /// What a van carries on a call, and how much, whole packages of it:
-    /// from its depot to the caller's door. Loaded before it sets out,
-    /// landed at the end; on the vehicle, so it is seen.
+    /// A depot's van's or lorry's errand, while it runs one
+    /// (`logistics.rs`): on the vehicle, so it is saved with it and goes
+    /// with it.
     #[serde(default)]
-    pub load: Option<(Good, f64)>,
+    pub errand: Option<Errand>,
     /// A ferry's deck, by place (`map/sea.rs` DECK): a pallet each.
     /// Settlers' cars ride in the bays with none.
     #[serde(default)]
@@ -613,8 +614,23 @@ pub struct Car {
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, stocks: crate::needs::Bucket::driven(), run: None, sail: None, cargo: Vec::new(), load: None, deck: Vec::new(), passengers: Vec::new(), booked: Vec::new(), due: 0 }
+        Car { owner, trip: None, role, spot: None, stocks: crate::needs::Bucket::driven(), run: None, sail: None, cargo: Vec::new(), errand: None, deck: Vec::new(), passengers: Vec::new(), booked: Vec::new(), due: 0 }
     }
+}
+
+/// An errand: so many packages of a good, from where they are to where
+/// they are wanted, and since when they have been (`logistics.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Errand {
+    pub good: Good,
+    pub n: u32,
+    #[ts(type = "number")]
+    pub from: EntityId,
+    #[ts(type = "number")]
+    pub to: EntityId,
+    #[ts(type = "number")]
+    pub since: GameTime,
 }
 
 /// A place to stand, and which way.

@@ -1,5 +1,5 @@
 //! The town: its map (`map::Map`), and the life on it, which the sim
-//! runs over the map: its books and calls, its market, its
+//! runs over the map: its books and errands, its market, its
 //! ferries' lines and voyages, the mayor's undo.
 
 use fixed::HashMap;
@@ -7,7 +7,7 @@ use map::tracked::Tracked;
 use map::Map;
 use model::EntityId;
 
-/// The town: its map, and the life on it, its books and calls, its
+/// The town: its map, and the life on it, its books and errands, its
 /// market, its ferries' lines.
 pub struct World {
     pub map: Map,
@@ -39,9 +39,15 @@ pub struct World {
     /// a ship saved at sea comes back moored.
     pub lanes: Option<traffic::sea::lanes::Lanes>,
     pub voyages: HashMap<EntityId, traffic::sea::voyage::Voyage>,
-    /// Calls raised and not yet resolved. Not saved: a shop still low when
-    /// the world comes back calls again at its next visit.
-    pub calls: Vec<crate::calls::Call>,
+    /// Something a vehicle might be sent for changed: the planner looks
+    /// at the end of the step (`logistics::plan`).
+    pub plan_due: bool,
+    /// When each place first wanted each good it wants (`logistics`).
+    /// Not saved: a want after a load is new.
+    pub wanted: std::collections::BTreeMap<(EntityId, model::Good), model::GameTime>,
+    /// Places a depot's vehicles could not drive to, left to others until
+    /// then. Not saved.
+    pub barred: std::collections::BTreeMap<(EntityId, EntityId), model::GameTime>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<model::OwnerId, Vec<crate::undo::Done>>,
     /// The buildings placed lately, for razing to give back (`undo::raze`).
@@ -55,9 +61,6 @@ pub struct World {
     /// Every line that may have a desk free: each one settled, and each
     /// that lost a worker. Some are full; `settle` sees which, by id.
     pub vacancies: std::collections::BTreeSet<EntityId>,
-    /// Every building settled as a site, standing or not since: those
-    /// still waiting call for their timber (`game::settle_and_wake`).
-    pub sites: std::collections::BTreeSet<EntityId>,
     /// Buildings whose trips changed since the last settle, to look at
     /// again for what they wait on (`waits::look`). Not saved: every
     /// building is looked at on load.
@@ -89,13 +92,14 @@ impl World {
             lines: Default::default(),
             lanes: None,
             voyages: HashMap::default(),
-            calls: Vec::new(),
+            plan_due: false,
+            wanted: Default::default(),
+            barred: Default::default(),
             undo: HashMap::default(),
             placed: Vec::new(),
             junctions: traffic::intersection::IntersectionRegistry::new(),
             streets: traffic::intersection::IntersectionRegistry::new(),
             vacancies: Default::default(),
-            sites: Default::default(),
             waiting: Default::default(),
             market: Default::default(),
             research: Default::default(),

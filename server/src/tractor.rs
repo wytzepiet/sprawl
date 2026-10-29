@@ -35,7 +35,7 @@ impl World {
         // morning.
         let half = now + batch.len() as GameTime * PACE / 2;
         let on_shift = model::blueprint::blueprint(kind).taps.iter().any(|t| t.need == model::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0 && t.curve.integral(half, half + 1_000) > 0.0);
-        if !on_shift || !crate::calls::staffed(self, farm) {
+        if !on_shift || !crate::logistics::staffed(self, farm) {
             return;
         }
         let Some(tractor) = self.map
@@ -120,7 +120,7 @@ impl World {
         }
         self.map.park_in_lot(farm, tractor, now);
         economy::refilled(self, tractor, now);
-        crate::calls::turn(self, events, farm, now);
+        crate::logistics::turn(self, events, farm, now);
     }
 }
 

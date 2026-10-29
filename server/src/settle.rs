@@ -71,13 +71,10 @@ impl World {
         let mut touched = Vec::new();
         let mut lines = BTreeSet::new();
         for b in self.map.changed() {
-            let (kind, site) = match self.map.objects.get(b).map(|e| &e.object) {
-                Some(GameObject::Building(b)) => (Some(b.kind), b.site.is_some()),
-                _ => (None, false),
+            let kind = match self.map.objects.get(b).map(|e| &e.object) {
+                Some(GameObject::Building(b)) => Some(b.kind),
+                _ => None,
             };
-            if site {
-                self.sites.insert(b);
-            }
             // Built but not reached, still a site, or not built at all:
             // nobody lives or works where no road goes, or in scaffolding. Losing your job is not losing your
             // home; losing your home is leaving, and the desk you held is
