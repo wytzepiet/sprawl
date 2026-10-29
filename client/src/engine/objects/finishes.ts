@@ -18,6 +18,8 @@ import type { Shape } from "./sea";
  *
  * - matte: timber, brick and paint.
  * - zinc: golfplaat, its waves in the light alone, shading their troughs.
+ * - ribs: boards, a batten every so far across them, standing up from
+ *   the boards a shade darker, its sides in the light and in shade.
  * - tiles: courses up a roof, each lapped over the one below.
  * - glass: dark and glossy by day, lit warm from inside at night.
  * - bark, baked (`bark.ts`).
@@ -72,6 +74,18 @@ N = normalize(N + zincT * zincInv * sin(zincWave) * ${f(ZINC_TILT)} * zincFine);
 baseColor = baseColor * (1. - ${f(ZINC_TROUGH)} * (0.5 - 0.5 * cos(zincWave)) * zincFine);
 metallic = 1.;
 roughness = ${f(ZINC_ROUGH)};`);
+/** A batten: how much of the way between two it covers, how much darker
+ *  than the boards, and how far its sides turn the light. */
+const [RIB_WIDE, RIB_DARK, RIB_TILT] = [0.36, 0.15, 0.7];
+const RIBS = coat("ModelRibs", `${frame("rib")}
+let ribAt = abs(fract(input.uv.x) - 0.5) * 2.;
+let ribFine = 1. - smoothstep(0.25, 0.5, fwidth(input.uv.x));
+let ribEdge = fwidth(input.uv.x) * 2. + 0.02;
+let ribOn = 1. - smoothstep(${f(RIB_WIDE)} - ribEdge, ${f(RIB_WIDE)} + ribEdge, ribAt);
+let ribSide = sign(fract(input.uv.x) - 0.5) * (smoothstep(${f(RIB_WIDE)} - 0.12, ${f(RIB_WIDE)}, ribAt) - smoothstep(${f(RIB_WIDE)}, ${f(RIB_WIDE)} + 0.12, ribAt));
+N = normalize(N + ribT * ribInv * ribSide * ${f(RIB_TILT)} * ribFine);
+baseColor = baseColor * (1. - ${f(RIB_DARK)} * mix(${f(RIB_WIDE)}, ribOn, ribFine));
+roughness = 0.8;`);
 const BARK = coat("ModelBark", `${frame("bark")}
 let barkMap = textureSample(modelBark, modelBarkSampler, input.uv);
 let barkTilt = barkMap.rg * 2. - 1.;
@@ -256,7 +270,7 @@ const bark = (engine: EngineContext) =>
   });
 
 /** Each finish's coat. */
-export const COATS: Record<Finish, Coat> = { matte: MATTE, zinc: ZINC, tiles: TILES, glass: GLASS, bark: BARK, leaves: LEAVES, rock: ROCK, gravel: GRAVEL, chips: CHIPS, lawn: LAWN, paving: PAVING, earth: EARTH, dust: EARTH };
+export const COATS: Record<Finish, Coat> = { matte: MATTE, zinc: ZINC, ribs: RIBS, tiles: TILES, glass: GLASS, bark: BARK, leaves: LEAVES, rock: ROCK, gravel: GRAVEL, chips: CHIPS, lawn: LAWN, paving: PAVING, earth: EARTH, dust: EARTH };
 
 /** A shape seen in a mirror across x = 0, wound round again. */
 export function mirror(s: Shape): Shape {

@@ -37,7 +37,7 @@ export const scale = (a: V, s: number): V => [a[0] * s, a[1] * s, a[2] * s];
 /** What a model's parts are made in; each finish a bucket of its own,
  *  drawn in its own coat (`finishes.ts`). Ground finishes lie flat, mapped
  *  by how far inside their outline (`ground`). */
-export const FINISHES = ["matte", "zinc", "tiles", "glass", "bark", "leaves", "rock", "gravel", "chips", "lawn", "paving", "earth", "dust"] as const;
+export const FINISHES = ["matte", "zinc", "ribs", "tiles", "glass", "bark", "leaves", "rock", "gravel", "chips", "lawn", "paving", "earth", "dust"] as const;
 export type Finish = (typeof FINISHES)[number];
 export const FLAT: ReadonlySet<Finish> = new Set(["lawn", "paving", "earth", "dust"]);
 
@@ -124,18 +124,17 @@ export const COURSE = 0.022;
 export const PITCH = 0.05;
 
 /** How a roof is covered: tiles; zinc golfplaat; or boards, a sheet with
- *  ribs down it in a second colour, `ribs` to a unit across. */
-export type Cover = { finish: "tiles"; rgb: RGB } | { finish: "zinc"; rgb: RGB } | { finish: "matte"; rgb: RGB; ribs: number; rib: RGB };
+ *  battens down it, `ribs` to a unit across, drawn on it (`finishes.ts`). */
+export type Cover = { finish: "tiles"; rgb: RGB } | { finish: "zinc"; rgb: RGB } | { finish: "ribs"; rgb: RGB; ribs: number };
 
 /** A sheet of roof from `o` along `u` (across the slope) and `v` (down
  *  it), covered as `cover` says. */
 export function slope(m: Model, o: V, u: V, v: V, cover: Cover, t = 0.016) {
   if (cover.finish === "tiles") return put(m, "tiles", mesh(sheet(o, u, v, t), (p) => [p[2] / COURSE, (p[0] + p[1]) / (COURSE * 1.4)]), cover.rgb);
   if (cover.finish === "zinc") return put(m, "zinc", golf(o, u, v, t), cover.rgb);
-  put(m, "matte", sheet(o, u, v, t), cover.rgb);
+  // The battens a whole number across, as they were laid.
   const across = Math.hypot(...u), n = Math.max(1, Math.round(across * cover.ribs));
-  const half = scale(u, 0.006 / across);
-  put(m, "matte", Solid.union(Array.from({ length: n }, (_, k) => sheet(add(add(o, scale(u, (k + 0.5) / n)), add(scale(half, -1), [0, 0, t])), scale(half, 2), v, 0.008))), cover.rib);
+  put(m, "ribs", mesh(sheet(o, u, v, t), (p) => [(((p[0] - o[0]) * u[0] + (p[1] - o[1]) * u[1] + (p[2] - o[2]) * u[2]) / (across * across)) * n, 0]), cover.rgb);
 }
 
 /** A pitched roof over a barn's walls (`barn`), its two slopes `over`

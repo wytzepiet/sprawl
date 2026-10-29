@@ -148,6 +148,7 @@ function look(finish: Tri["finish"], base: V, uv: [number, number], p: V, n: V, 
   const noise = (x: number, y: number) => Math.sin(x * 127.1 + y * 311.7) * 43758.5453 % 1;
   switch (finish) {
     case "zinc": return k(1 - 0.18 * (0.5 - 0.5 * Math.cos(2 * Math.PI * uv[0])));
+    case "ribs": return k(Math.abs((((uv[0] % 1) + 1) % 1) - 0.5) * 2 < 0.36 ? 0.85 : 1);
     case "tiles": {
       const up = uv[0] - Math.floor(uv[0]);
       return k((1 - 0.2 * (1 - Math.min(1, up / 0.3))) * (((uv[1] + 0.5 * Math.floor(uv[0])) % 1 + 1) % 1 > 0.92 ? 0.9 : 1));
