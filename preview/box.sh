@@ -15,18 +15,37 @@ up)
   mkdir -p $dir
   if [ ! -f $dir/port ]; then
     port=4900
-    while cat $root/*/port 2>/dev/null | grep -qx $port; do port=$((port + 1)); done
+    # Not `cat | grep -q`: grep leaving early kills cat, and pipefail made
+    # that a free port, so every new world was handed 4900.
+    while grep -qx $port $root/*/port 2>/dev/null; do port=$((port + 1)); done
     echo $port > $dir/port
   fi
   port=$(cat $dir/port)
   systemctl stop sprawl-preview@$slug 2>/dev/null || true
+  # Whatever else still holds the port, or still runs this world's binary,
+  # would keep serving the old build.
+  fuser -k $port/tcp 2>/dev/null || true
+  pkill -KILL -f "^$dir/app/sprawl-server" || true
   rm -rf $dir/app
   mkdir $dir/app
   tar -xz -C $dir/app
   printf 'SPRAWL_PORT=%s\nCLIENT_DIR=%s\nSPRAWL_DB=%s\nSPRAWL_SEED=7\n' $port $dir/app/dist $dir/sprawl.db > $dir/env
   printf '%s {\n\treverse_proxy localhost:%s\n}\n' $slug.$domain $port > /etc/caddy/previews/$slug.caddy
   systemctl reload caddy
+  systemctl reset-failed sprawl-preview@$slug 2>/dev/null || true
   systemctl enable --now sprawl-preview@$slug
+  # Up is the unit running and its own process answering on its port.
+  answers() {
+    systemctl is-active -q sprawl-preview@$slug &&
+      [ "$(fuser $port/tcp 2>/dev/null | tr -d ' ')" = "$(systemctl show -P MainPID sprawl-preview@$slug)" ] &&
+      curl -sf localhost:$port/health >/dev/null
+  }
+  for _ in $(seq 30); do answers && break; sleep 1; done
+  answers || {
+    echo "did not come up on :$port" >&2
+    journalctl -u sprawl-preview@$slug -n 20 --no-pager >&2
+    exit 1
+  }
   echo "https://$slug.$domain"
   ;;
 down)

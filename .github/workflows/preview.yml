@@ -150,8 +150,22 @@ jobs:
       - name: Up
         if: github.event_name == 'push'
         run: |
+          set -o pipefail
           tar -cz -C sprawl/server/target/release sprawl-server -C "$GITHUB_WORKSPACE/sprawl/client" dist |
             ssh root@${{ vars.PREVIEW_HOST }} up $SLUG | tee -a $GITHUB_STEP_SUMMARY
+      # Up is not enough: an older server on the port answers just as well.
+      # The world is this push's when /health was built when its binary was.
+      - name: Running this build?
+        if: github.event_name == 'push'
+        run: |
+          built=$(stat -c %Y sprawl/server/target/release/sprawl-server)
+          url=https://$SLUG.preview.sprawl.nl/health
+          for _ in $(seq 30); do
+            curl -sf $url | grep -q "\"built\":$built," && exit 0
+            sleep 2
+          done
+          echo "$url is not built $built: $(curl -s $url)"
+          exit 1
       - name: Down
         if: github.event_name == 'delete'
         run: ssh root@${{ vars.PREVIEW_HOST }} down $SLUG
