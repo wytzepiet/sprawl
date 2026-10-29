@@ -164,13 +164,16 @@ townShine = max(roadGlinting * (1. - roadWorn), ${n(POLISH)} * roadWorn);
 baseColor = baseColor * (1. - ${n(WEAR)} * roadWorn);
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
 N = normalize(N - vec3f(roadBump * ${n(BUMP)} * (1. - ${n(SMOOTHED)} * roadWorn) + input.vRoadTilt, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting * (1. - roadWorn), 0.));
-let roadTx = vec2f(roadTexel.x, 0.);
-let roadTy = vec2f(0., roadTexel.y);
-let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
-let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
-if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 0.) {
-  let roadOut = normalize(vec3f(-roadDx, -roadDy, 0.));
-  N = normalize(mix(N, normalize(N + roadOut), 1. - roadD.g / ${n(RIM)}));
+// Which way the rim runs, read only on the rim: most of a road is not.
+if (roadD.g >= 0. && roadD.g < ${n(RIM)}) {
+  let roadTx = vec2f(roadTexel.x, 0.);
+  let roadTy = vec2f(0., roadTexel.y);
+  let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
+  let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
+  if (roadDx * roadDx + roadDy * roadDy > 0.) {
+    let roadOut = normalize(vec3f(-roadDx, -roadDy, 0.));
+    N = normalize(mix(N, normalize(N + roadOut), 1. - roadD.g / ${n(RIM)}));
+  }
 }`,
           },
   };
