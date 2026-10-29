@@ -26,7 +26,7 @@
 import { drawnPath, measure } from "./drawnPath";
 import { CAB, CAR, LANE_OFFSET, TRAILER } from "./roadGeometry";
 import type { P } from "../geometry";
-import type { Pose } from "../../generated";
+import type { Manoeuvre, Pose } from "../../generated";
 
 
 /** A body as the drive works it out, flat, for the steps are many: where
@@ -53,12 +53,53 @@ export interface Drive {
 }
 
 /** A stretch of a drive in one gear: the route its lead follows, and the
- *  distances along the whole, by the server's measure, it runs between. */
+ *  distances along the whole, by the server's measure, it runs between;
+ *  or a parking plan's poses, driven exactly (`planned`). */
 export interface Part {
   points: P[];
   backing: boolean;
   from: number;
   to: number;
+  plan?: Planned;
+}
+
+/** A parking plan driven: the cab's rear axle and the trailer's heading,
+ *  every couple of hundredths of a tile, with how far along it each is. */
+type Planned = { u: number; cab: Body; trailer: number }[];
+
+/** How far into a plan where the vehicle came to is eased onto it. */
+const SETTLE_PLAN = 0.3;
+/** How far a plan's step is: the server's own (`park::SUB`). */
+const SUB = 0.02;
+
+/**
+ * A manoeuvre's plan driven as the server drives it (`park::drive`): the
+ * cab's rear axle on an arc at each step, the wheel turning evenly
+ * through each move, its trailer drawn after the hitch on the axle. A
+ * plan played backwards is driven forwards from where it ends and read
+ * back, so a trailer is never pushed by the numbers.
+ */
+export function planned(m: Manoeuvre, rig: Rig): Planned {
+  let p: Body = { x: m.from.at[0], y: m.from.at[1], heading: m.from.heading };
+  let trailer = m.from.heading;
+  let s = 0;
+  const out: Planned = [{ u: 0, cab: p, trailer }];
+  for (const mv of m.moves) {
+    const n = Math.max(1, Math.ceil(mv.length / SUB - 1e-6));
+    const ds = (mv.back ? -1 : 1) * (mv.length / n);
+    for (let i = 0; i < n; i++) {
+      const k = mv.from + ((mv.to - mv.from) * (i + 0.5)) / n;
+      const h = p.heading + k * ds;
+      const [x, y] = Math.abs(k) < 1e-9
+        ? [p.x + Math.cos(p.heading) * ds, p.y + Math.sin(p.heading) * ds]
+        : [p.x + (Math.sin(h) - Math.sin(p.heading)) / k, p.y - (Math.cos(h) - Math.cos(p.heading)) / k];
+      if (rig.trailer) trailer += (ds / rig.trailer.axle) * Math.sin(wrap((p.heading + h) / 2 - trailer));
+      p = { x, y, heading: h };
+      s += Math.abs(ds);
+      out.push({ u: s, cab: p, trailer: rig.trailer ? trailer : h });
+    }
+  }
+  return m.reversed ? out.reverse().map((e) => ({ ...e, u: s - e.u })) : out;
 }
 
 /** How far ahead along the route the driver looks. */
@@ -310,12 +351,14 @@ export function drive(parts: Part[], rig: Rig, leaves?: Pose | null, stands?: Po
     return pick;
   };
 
-  for (const [k, { points, backing, from, to }] of parts.entries()) {
+  for (const [k, { points, backing, from, to, plan }] of parts.entries()) {
     let driven;
     const sign = backing ? -1 : 1;
     const next = parts[k + 1];
-    // Where it will stand, its lead axle moving into it.
-    const goal: Body | undefined = !next && end ? { ...along(end, -rig.axle), heading: end.heading + (backing ? Math.PI : 0) } : undefined;
+    // Where it will stand, or where a plan takes over, its lead axle
+    // moving into it.
+    const into = next?.plan?.[0].cab ?? (!next && end ? along(end, -rig.axle) : undefined);
+    const goal: Body | undefined = into && { ...into, heading: into.heading + (backing ? Math.PI : 0) };
     /** Backing a car: from pose to pose, to where it will stand or,
      *  backed to a change of gear, pointing the way the next part goes or
      *  as near it as the room allows, toward the way the route backs. */
@@ -331,14 +374,30 @@ export function drive(parts: Part[], rig: Rig, leaves?: Pose | null, stands?: Po
       return ways.find((w) => w.sharpest <= EASY * LOCK) ?? ways[ways.length - 1];
     };
     let back;
-    if (backing && trailer && rig.trailer) {
+    if (plan) {
+      // A parking plan: every pose of it as the server has it, but for
+      // what is left between where the vehicle came to and where the plan
+      // starts, taken out over its first stretch.
+      const [c0, t0] = [plan[0].cab, plan[0].trailer];
+      const off = { x: cab.x - c0.x, y: cab.y - c0.y, heading: wrap(cab.heading - c0.heading), trailer: trailer ? wrap(trailer.heading - t0) : 0 };
+      driven = plan.map(({ u, cab: c, trailer: t }) => {
+        const x = Math.min(1, u / SETTLE_PLAN), w = 1 - x * x * (3 - 2 * x);
+        cab = { x: c.x + off.x * w, y: c.y + off.y * w, heading: c.heading + off.heading * w };
+        t += off.trailer * w;
+        if (trailer && rig.trailer) trailer = { x: cab.x - Math.cos(t) * rig.trailer.axle, y: cab.y - Math.sin(t) * rig.trailer.axle, heading: t };
+        return { u, ...pose() };
+      });
+    } else if (backing && trailer && rig.trailer) {
       // Backing a lorry: the trailer's axle leads, on a way planned from
       // where it stands to where it must end (`reverse`). The hitch rides
       // the trailer's nose; the cab points the way its rear axle, on the
       // hitch, is moving: backwards.
       const tr = rig.trailer;
       const route = measure(points);
-      const aim = !next && end
+      const lands = next?.plan?.[0];
+      const aim = lands
+        ? { x: lands.cab.x - Math.cos(lands.trailer) * tr.axle, y: lands.cab.y - Math.sin(lands.trailer) * tr.axle, heading: lands.trailer + Math.PI }
+        : !next && end
         ? { ...along(end, -(rig.axle + tr.axle)), heading: end.heading + Math.PI }
         : { ...along({ x: points[points.length - 1][0], y: points[points.length - 1][1], heading: route.heading(route.length) }, tr.axle + rig.axle) };
       let hitch: P = [cab.x, cab.y];
@@ -480,6 +539,7 @@ export interface Driven {
   total_route_length?: number;
   leaves?: Pose | null;
   stands?: Pose | null;
+  manoeuvres?: Manoeuvre[];
 }
 
 /** The tightest a drivable way turns: a little wider than full lock, so
@@ -559,11 +619,18 @@ export interface Swerve {
 export function driveTrip(t: Driven, rig: Rig, lanes?: number[], was?: Swerve): Drive | null {
   const { route_positions: route, from_lot: fromLot, to_lot: toLot, backing } = t;
   const n = route.length;
-  const cuts = [...new Set([0, ...backing.flat(), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
-  const drawn: { points: P[]; backing: boolean }[] = [];
+  const manoeuvres = t.manoeuvres ?? [];
+  const cuts = [...new Set([0, ...backing.flat(), ...manoeuvres.flatMap((m) => [m.edge, m.edge + 1]), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
+  const drawn: { points: P[]; backing: boolean; plan?: Planned }[] = [];
   for (let c = 1; c < cuts.length; c++) {
     const [i, j] = [cuts[c - 1], cuts[c]];
     const nodes = route.slice(i, j + 1);
+    const m = manoeuvres.find((m) => m.edge === i);
+    if (m && j === i + 1) {
+      const plan = planned(m, rig);
+      drawn.push({ points: plan.map((e) => [e.cab.x, e.cab.y] as P), backing: backing.some(([a, b]) => a <= i && i < b), plan });
+      continue;
+    }
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
     const path = (offsets?: number[]) => drawnPath(nodes, offsets ? offsets.slice(i, j + 1) : LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
     const d = path(lanes);
@@ -588,7 +655,7 @@ export function driveTrip(t: Driven, rig: Rig, lanes?: number[], was?: Swerve): 
   if (!drawn.length) return null;
   // Where each part starts and ends, by the server's distance; or by its
   // own length, where the server's are not to be had.
-  const own = drawn.map((p) => measure(p.points).length);
+  const own = drawn.map((p) => p.plan ? p.plan[p.plan.length - 1].u : measure(p.points).length);
   const server = t.cusps && t.total_route_length !== undefined && t.cusps.length === drawn.length - 1 ? [0, ...t.cusps, t.total_route_length] : null;
   const bounds = server ?? own.reduce((b, l) => [...b, b[b.length - 1] + l], [0]);
   return drive(drawn.map((p, k) => ({ ...p, from: bounds[k], to: bounds[k + 1] })), rig, t.leaves, t.stands);

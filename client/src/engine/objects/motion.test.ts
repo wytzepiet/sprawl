@@ -30,7 +30,7 @@ test("a vehicle is where the server's state has it, and what it carries with it"
   // street, so x is the distance driven, on its lane.
   const trip: Trip = { destination: 0, eta: 0, route_heights: [],
         lanes: [], shift: null,
-        route_positions: [[0, 0.5], [10, 0.5]], from_lot: 0, to_lot: 0, backing: [], cusps: [], leaves: null, stands: null, progress: 2, speed: 1, acceleration: 0, total_route_length: 10, updated_at: 1000 };
+        route_positions: [[0, 0.5], [10, 0.5]], from_lot: 0, to_lot: 0, backing: [], cusps: [], manoeuvres: [], leaves: null, stands: null, progress: 2, speed: 1, acceleration: 0, total_route_length: 10, updated_at: 1000 };
   const driving = moment(3, car({ trip }), 4000)!;
   expect(driving.body.at[0]).toBeCloseTo(5, 1);
   expect(driving.body.at[1]).toBeCloseTo(0.5 + LANE_OFFSET);

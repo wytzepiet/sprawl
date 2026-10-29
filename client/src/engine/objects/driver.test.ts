@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { CAR_RIG, driveTrip, LORRY_RIG, type Drive } from "./driver";
+import { CAR_RIG, driveTrip, LORRY_RIG, planned, type Drive } from "./driver";
+import type { Manoeuvre } from "../../generated";
 import type { P } from "../geometry";
 import { drawnPath } from "./drawnPath";
 import { LANE_OFFSET } from "./roadGeometry";
@@ -201,4 +202,31 @@ test("into a drive, a kerb bay, and out of one, the wheels roll and never slide"
       expect(Math.hypot(at.at[0] - stands.at[0], at.at[1] - stands.at[1])).toBeLessThan(1e-6);
     }
   }
+});
+
+test("a lorry backing into its dock by a parking plan drives the plan exactly, and its wheels roll", () => {
+  // As the server lays it (`yard_bays`): along the street past the gate,
+  // pulled up on the lane, and backed in by the way out played backwards.
+  const manoeuvre: Manoeuvre = { edge: 2, from: { at: [4.543333333333333, 1.85], heading: 0 }, reversed: true, moves: [
+    { back: false, from: 0, to: 0, length: 0.3 }, { back: false, from: -5 / 3, to: -5 / 3, length: 1.5 }, { back: false, from: 0, to: 0, length: 0.5 },
+    { back: false, from: -5 / 3, to: -5 / 3, length: 0.5 }, { back: false, from: 0, to: 0, length: 0.2 }, { back: false, from: 5 / 3, to: 5 / 3, length: 0.1 },
+  ] };
+  const stands = { at: [4.6, 1.85] as P, heading: 0 };
+  const t = { route_positions: [[6.5, 0.5], [5.5, 0.5], [4.032788000644162, 0.4106801129118676], [4.6, 1.85]] as P[], from_lot: 0, to_lot: 2, backing: [[2, 3]] as [number, number][], stands, manoeuvres: [manoeuvre] };
+  const d = driveTrip(t, LORRY_RIG)!;
+  const plan = planned(manoeuvre, LORRY_RIG);
+  const length = plan[plan.length - 1].u;
+  expect(length).toBeCloseTo(3.1, 6);
+  // Each pose of the plan where the drive has it, once eased onto it: the
+  // cab's middle ahead of its rear axle, the trailer's behind its hitch.
+  const start = d.length - length;
+  for (const e of plan.filter((e) => e.u >= 0.3)) {
+    const at = d.at(start + e.u);
+    expect(Math.hypot(at.body.at[0] - (e.cab.x + Math.cos(e.cab.heading) * LORRY_RIG.axle), at.body.at[1] - (e.cab.y + Math.sin(e.cab.heading) * LORRY_RIG.axle))).toBeLessThan(1e-4);
+    expect(Math.abs(Math.sin(at.trailer!.heading - e.trailer))).toBeLessThan(1e-4);
+  }
+  const end = d.at(d.length).body;
+  expect(Math.hypot(end.at[0] - stands.at[0], end.at[1] - stands.at[1])).toBeLessThan(1e-6);
+  expect(slide(d, LORRY_RIG.axle)).toBeLessThan(0.1);
+  expect(jolts(d).move).toBeLessThan(2.5);
 });
