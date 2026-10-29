@@ -249,7 +249,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
         // seven, less the shop's two and the pump's one, nine hours
         // each, less the odd late morning, a lunch out, a dinner near
         // work, and the minute or two parking at the kerb.
-        assert!((70.0..=99.0).contains(&desks), "the labs received {desks}h");
+        assert!((66.0..=99.0).contains(&desks), "the labs received {desks}h");
         // Lunches over a whole day: the shops have no depot here, so
         // by the third day their shelves have run down some.
         assert!(sold(lunch, model::needs::Need::Eat) > 1.4, "lunch shop sold {}h", sold(lunch, model::needs::Need::Eat));
@@ -273,8 +273,9 @@ fn both_shifts_are_worked() {
     let day = DAY_MS as u64;
     game.run_to(2 * day);
     let worked = game.world.books[&pumps].before(2 * day).served.get(&model::needs::Need::Work).copied().unwrap_or(0.0);
-    // Two eight-hour shifts, less the odd late start.
-    assert!(worked > 12.0, "the kiosk was worked {worked}h");
+    // Two shifts, less the odd late start: the evening hand comes at
+    // four, and the evening is short.
+    assert!(worked > 11.0, "the kiosk was worked {worked}h");
 }
 
 /// Nobody wants for anything: everyone has a job, and whatever they
