@@ -205,7 +205,11 @@ class Strips {
     this.sunk = new Float32Array(count * 2);
     const data = new Float32Array(count * 16);
     const tex = new Float32Array(count * 2);
-    const indices: number[] = [];
+    // The bare quarters drawn after the strips, though they lie under them:
+    // lower, they fail the depth test where a strip already stands, before
+    // their shading runs, where drawn first they were all shaded and then
+    // drawn over.
+    const indices: number[] = [], bare: number[] = [];
     let v = 0;
     for (const q of quarters) {
       [q.y, q.y + 0.5].forEach((y, i) => {
@@ -216,7 +220,7 @@ class Strips {
           data.set([out, y, -1, 0, -1e9, 1e9, BARE, BARE], (v + s) * 8);
           tex[v + s] = 1;
         });
-        if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
+        if (i > 0) bare.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
       });
     }
@@ -249,6 +253,7 @@ class Strips {
         v += 2;
       });
     }
+    indices.push(...bare);
     this.grows = looks.flatMap((l, c) => (l.stage === "Sown" ? [c] : []));
     this.raised = this.grows.map(() => this.positions.slice());
     const normals = Array.from({ length: count * 2 }, () => [0, 0, 1]).flat();
