@@ -122,12 +122,14 @@ pub struct Move {
     pub length: f64,
 }
 
-/// Where the search may stop: within `reach` of the pose and `turn` of its
-/// heading, and its trailer as nearly in line.
+/// Where the search may stop: within `reach` of the pose across its
+/// heading and `along` it, `turn` of its heading, and its trailer as
+/// nearly in line.
 #[derive(Clone, Copy, Debug)]
 pub struct Goal {
     pub pose: Pose,
     pub reach: f64,
+    pub along: f64,
     pub turn: f64,
 }
 
@@ -294,7 +296,7 @@ const BENT: f64 = 0.3;
 /// How much more the search trusts its guess of the way left than what it
 /// has driven: a little more finds a good way many times sooner than the
 /// very best.
-const GREED: f64 = 2.0;
+const GREED: f64 = 5.0;
 
 struct Node {
     pose: Pose,
@@ -305,51 +307,58 @@ struct Node {
     length: f64,
 }
 
-/// The cheapest way from `from` to `goal` across the lot, as moves; or
-/// none, if there is no way within the search's patience.
-pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal) -> Option<Vec<Move>> {
-    if !field.fits(rig, from) {
-        return None;
+type Key = (i32, i32, i32, i32);
+
+/// The cell a pose is in: where, which way, how folded.
+fn key(rig: &Rig, p: &Pose) -> Key {
+    let fold = if rig.trailer.is_some() { (wrap(p.heading - p.trailer) / FOLD).round() as i32 } else { 0 };
+    ((p.x / CELL).round() as i32, (p.y / CELL).round() as i32, (p.heading.rem_euclid(2.0 * PI) / HEADING).round() as i32 % 72, fold)
+}
+
+/// A search's tree: every pose reached, the cheapest way to each cell, and
+/// the poses still to go on from, cheapest guess first.
+struct Tree<'a> {
+    rig: &'a Rig,
+    field: &'a Field,
+    gears: &'a [bool],
+    nodes: Vec<Node>,
+    best: BTreeMap<Key, (f64, usize)>,
+    open: BinaryHeap<Reverse<(i64, usize)>>,
+}
+
+fn cost(x: f64) -> i64 {
+    (x * 1e6) as i64
+}
+
+impl<'a> Tree<'a> {
+    fn new(rig: &'a Rig, field: &'a Field, from: Pose, gears: &'a [bool]) -> Tree<'a> {
+        let mut open = BinaryHeap::new();
+        if field.fits(rig, from) {
+            open.push(Reverse((0, 0)));
+        }
+        let nodes = vec![Node { pose: from, g: 0.0, parent: usize::MAX, back: false, k: 0.0, length: 0.0 }];
+        Tree { rig, field, gears, nodes, best: BTreeMap::from([(key(rig, &from), (0.0, 0))]), open }
     }
-    let far = field.distances((goal.pose.x, goal.pose.y));
-    let turns = [-1.0, -0.5, 0.0, 0.5, 1.0].map(|f| f * rig.lock);
-    let key = |p: &Pose| {
-        let fold = if rig.trailer.is_some() { (wrap(p.heading - p.trailer) / FOLD).round() as i32 } else { 0 };
-        ((p.x / CELL).round() as i32, (p.y / CELL).round() as i32, (p.heading.rem_euclid(2.0 * PI) / HEADING).round() as i32 % 72, fold)
-    };
-    let arrived = |p: &Pose| {
-        (p.x - goal.pose.x).hypot(p.y - goal.pose.y) <= goal.reach
-            && wrap(p.heading - goal.pose.heading).abs() <= goal.turn
-            && wrap(p.trailer - goal.pose.trailer).abs() <= goal.turn
-    };
-    // The way left: at least as far as the ground's shortest way round the
-    // walls, and as far as it takes to turn to the goal's heading at full
-    // lock.
-    let h = |p: &Pose| (field.at(&far, (p.x, p.y)).min(1e3) - goal.reach).max(0.0).max((wrap(p.heading - goal.pose.heading).abs() - goal.turn).max(0.0) / rig.lock);
-    let mut nodes = vec![Node { pose: from, g: 0.0, parent: usize::MAX, back: false, k: 0.0, length: 0.0 }];
-    let mut best: BTreeMap<(i32, i32, i32, i32), f64> = BTreeMap::new();
-    let mut open = BinaryHeap::new();
-    let cost = |x: f64| (x * 1e6) as i64;
-    open.push(Reverse((cost(GREED * h(&from)), 0usize)));
-    while let Some(Reverse((_, i))) = open.pop() {
-        if arrived(&nodes[i].pose) {
-            return Some(moves(&nodes, i));
-        }
-        if nodes.len() > LIMIT {
-            return None;
-        }
-        let here = &nodes[i];
+
+    /// The cheapest pose yet to go on from, and the poses a step on from it
+    /// that are the cheapest way to their cells yet: `h` guesses the way
+    /// left from each.
+    fn grow(&mut self, h: impl Fn(&Pose) -> f64) -> Option<(usize, std::ops::Range<usize>)> {
+        let Reverse((_, i)) = self.open.pop()?;
+        let start = self.nodes.len();
+        let here = &self.nodes[i];
         let (pose, g, first) = (here.pose, here.g, here.parent == usize::MAX);
         let (was_back, was_k) = (here.back, here.k);
-        for back in [false, true] {
-            for &k in &turns {
+        let rig = self.rig;
+        for &back in self.gears {
+            for k in [-1.0, -0.5, 0.0, 0.5, 1.0].map(|f| f * rig.lock) {
                 // The step, checked as it goes, and cut short where it
                 // would touch: in a tight spot a driver creeps.
                 let mut p = pose;
                 let mut length = 0.0;
                 for _ in 0..(STEP / SUB).round() as usize {
                     let q = step(rig, p, k, if back { -SUB } else { SUB });
-                    if !field.fits(rig, q) {
+                    if !self.field.fits(rig, q) {
                         break;
                     }
                     (p, length) = (q, length + SUB);
@@ -362,14 +371,43 @@ pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal) -> Option<Vec<Mov
                     + length * (1.0 + if back { BACKING } else { 0.0 } + BENT * bent)
                     + if !first && back != was_back { GEAR } else { 0.0 }
                     + WHEEL * (k - was_k).abs() / rig.lock;
-                let cell = key(&p);
-                if best.get(&cell).is_some_and(|&b| b <= g) {
+                let cell = key(rig, &p);
+                if self.best.get(&cell).is_some_and(|&(b, _)| b <= g) {
                     continue;
                 }
-                best.insert(cell, g);
-                nodes.push(Node { pose: p, g, parent: i, back, k, length });
-                open.push(Reverse((cost(g + GREED * h(&p)), nodes.len() - 1)));
+                self.best.insert(cell, (g, self.nodes.len()));
+                self.nodes.push(Node { pose: p, g, parent: i, back, k, length });
+                self.open.push(Reverse((cost(g + GREED * h(&p)), self.nodes.len() - 1)));
             }
+        }
+        Some((i, start..self.nodes.len()))
+    }
+}
+
+/// The cheapest way from `from` to `goal` across the lot, as moves; or
+/// none, if there is no way within the search's patience.
+pub fn plan(rig: &Rig, field: &Field, from: Pose, goal: &Goal) -> Option<Vec<Move>> {
+    let far = field.distances((goal.pose.x, goal.pose.y));
+    let (c, sn) = (goal.pose.heading.cos(), goal.pose.heading.sin());
+    let arrived = |p: &Pose| {
+        let (dx, dy) = (p.x - goal.pose.x, p.y - goal.pose.y);
+        (dx * c + dy * sn).abs() <= goal.along
+            && (dy * c - dx * sn).abs() <= goal.reach
+            && wrap(p.heading - goal.pose.heading).abs() <= goal.turn
+            && wrap(p.trailer - goal.pose.trailer).abs() <= goal.turn
+    };
+    // The way left: at least as far as the ground's shortest way round the
+    // walls, and as far as it takes to turn to the goal's heading at full
+    // lock.
+    let h = |p: &Pose| {
+        let turn = |a: f64| (wrap(a - goal.pose.heading).abs() - goal.turn).max(0.0) / rig.lock;
+        (field.at(&far, (p.x, p.y)).min(1e3) - goal.reach.max(goal.along)).max(0.0).max(turn(p.heading)).max(turn(p.trailer))
+    };
+    let mut tree = Tree::new(rig, field, from, &[false, true]);
+    while tree.nodes.len() <= LIMIT {
+        let (i, _) = tree.grow(&h)?;
+        if arrived(&tree.nodes[i].pose) {
+            return Some(moves(&tree.nodes, i));
         }
     }
     None
