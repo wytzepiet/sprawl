@@ -29,10 +29,12 @@ canvas { position: absolute; inset: 0; display: block; }
 .bar { height: 6px; border-radius: 3px; background: var(--line); margin-top: 8px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 3px; transition: width .4s cubic-bezier(.2, .8, .2, 1); }
 #spacer { flex: 1; }
-#coins { padding: 0 14px; height: 42px; display: flex; align-items: center; gap: 7px; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; transition: transform .15s; }
-#coins.flash { animation: flash .5s; }
+#roads { padding: 0 14px 0 10px; height: 42px; display: flex; align-items: center; gap: 7px; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; transition: transform .15s; }
+#roads.flash { animation: flash .5s; }
+#roads svg { width: 22px; height: 22px; }
+#week { width: 42px; height: 42px; display: grid; place-items: center; position: relative; font-weight: 700; font-size: 12px; }
+#week canvas { position: absolute; inset: 5px; width: 32px; height: 32px; }
 @keyframes flash { 0%, 100% { transform: none; } 20% { transform: translateX(-4px); color: var(--bad); } 60% { transform: translateX(4px); color: var(--bad); } }
-#coins.gain { animation: gain .35s; }
 @keyframes gain { 50% { transform: scale(1.08); } }
 .coin { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .2); flex: none; }
 #speed { display: flex; padding: 4px; gap: 2px; height: 42px; align-items: center; }
@@ -53,11 +55,12 @@ canvas { position: absolute; inset: 0; display: block; }
   display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; transition: background .15s; }
 #bar button:hover { background: #1d1d1f; }
 #bar button.on { background: #2a2a2d; box-shadow: inset 0 0 0 2px var(--ink); }
-#bar button.poor .cost { color: var(--bad); }
+#bar button.none { opacity: .38; }
+#bar .count { position: absolute; top: 3px; right: 6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--ink); color: var(--pane); font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; font-variant-numeric: tabular-nums; }
+#bar button { position: relative; }
 #bar button canvas { position: static; width: 34px; height: 34px; }
 #bar .name { font-size: 12px; font-weight: 600; }
 #bar .cost { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
-#bar .cost .coin { width: 9px; height: 9px; }
 #bar .sep { width: 1px; background: var(--line); margin: 8px 3px; flex: none; }
 #bar button.new { animation: arrive .7s cubic-bezier(.2, 1.4, .4, 1), glow 1.6s 3 .7s; }
 @keyframes arrive { from { transform: translateY(30px) scale(.6); opacity: 0; } }
@@ -88,6 +91,20 @@ canvas { position: absolute; inset: 0; display: block; }
 #banner b { display: block; font-size: 44px; font-weight: 700; letter-spacing: -.03em; }
 #banner span { font-size: 16px; font-weight: 600; opacity: .6; }
 
+#offer { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(205, 200, 186, .5); z-index: 4; padding: 0 16px; }
+#offer[hidden] { display: none; }
+#offer .pane { padding: 20px 20px 18px; text-align: center; max-width: 100%; }
+#offer h2 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+#offer .sub { color: var(--muted); margin: 4px 0 14px; font-size: 14px; }
+#offer .cards { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+#offer button { font: inherit; color: var(--ink); background: #1b1b1d; border: 0; border-radius: 16px; padding: 14px 12px 12px; width: 132px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: transform .15s, background .15s; animation: arrive .45s cubic-bezier(.2, 1.3, .4, 1) backwards; }
+#offer button:nth-child(2) { animation-delay: .07s; } #offer button:nth-child(3) { animation-delay: .14s; }
+#offer button:hover, #offer button:focus-visible { background: #29292c; transform: translateY(-3px); outline: none; box-shadow: inset 0 0 0 2px var(--ink); }
+#offer button canvas { position: static; width: 52px; height: 52px; }
+#offer button b { font-size: 15px; }
+#offer button small { font-size: 12px; color: var(--muted); line-height: 1.3; }
+#offer .bonus { margin-top: 12px; font-size: 12px; color: var(--accent); }
 #intro { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(235, 229, 211, .55); backdrop-filter: blur(2px); z-index: 5; }
 #intro .pane { padding: 26px 28px 22px; max-width: min(380px, calc(100vw - 32px)); }
 #intro h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -.03em; }
@@ -100,7 +117,7 @@ canvas { position: absolute; inset: 0; display: block; }
   #status .row { gap: 8px; }
   #stPeople .w { display: none; }
   #speed button[data-s="3"], #sound { display: none; }
-  #coins { padding: 0 11px; }
+  #roads { padding: 0 10px 0 8px; }
   #status b { font-size: 15px; }
   #speed button { min-width: 32px; padding: 0 5px; }
   #bar button { min-width: 54px; padding: 5px 6px; }
@@ -111,7 +128,8 @@ canvas { position: absolute; inset: 0; display: block; }
 <div id="top">
   <div class="pane" id="status"><div class="row"><b id="stName">Hamlet</b><span id="stPeople"></span></div><div class="bar"><i id="stBar"></i></div></div>
   <div id="spacer"></div>
-  <div class="pane" id="coins"><span class="coin"></span><span id="coinN">0</span></div>
+  <div class="pane" id="roads" title="Road tiles in hand"><svg viewBox="0 0 22 22" fill="none" stroke="#9aa0aa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17 L10 11 L18 11"/></svg><span id="roadN">0</span></div>
+  <div class="pane" id="week" title="The week: each one ends with a pick"><canvas width="64" height="64"></canvas><span id="weekN">1</span></div>
   <div class="pane" id="speed">
     <button data-s="0" title="Pause (space)" aria-label="Pause">❚❚</button>
     <button data-s="1" class="on" title="Normal speed (1)">1×</button>
@@ -126,11 +144,12 @@ canvas { position: absolute; inset: 0; display: block; }
   <div class="pane" id="panel"></div>
   <div class="pane" id="bar"></div>
 </div>
+<div id="offer" hidden><div class="pane"><h2 id="ofTitle">Week 2</h2><div class="sub" id="ofSub"></div><div class="cards" id="ofCards"></div><div class="bonus" id="ofBonus"></div></div></div>
 <div id="intro"><div class="pane">
   <h1>Sprawl, pinned</h1>
   <p>Houses appear and want things. A pin shows what, and its ring fills while they wait.</p>
   <p>Draw roads, and build what makes what they want. What you build wants things too.</p>
-  <p>Wait too long and a family moves out.</p>
+  <p>Each week brings more road and one pick. Wait too long and a family moves out.</p>
   <button id="go">Start</button>
   <div class="keys">Drag to draw roads · right-drag to erase · space to pause</div>
 </div></div>
@@ -167,6 +186,16 @@ const ICON = {
   brick(g) { rr(g, -0.38, -0.24, 0.76, 0.48, 0.05); g.fill();
     g.save(); g.strokeStyle = 'rgba(255,255,255,.65)'; g.lineWidth = 0.045;
     g.beginPath(); g.moveTo(-0.38, 0); g.lineTo(0.38, 0); g.moveTo(-0.05, -0.24); g.lineTo(-0.05, 0); g.moveTo(0.15, 0); g.lineTo(0.15, 0.24); g.moveTo(-0.22, 0); g.lineTo(-0.22, 0.24); g.stroke(); g.restore(); },
+  sand(g) { g.beginPath(); g.moveTo(-0.4, 0.24); g.quadraticCurveTo(0, -0.42, 0.4, 0.24); g.closePath(); g.fill();
+    g.save(); g.fillStyle = 'rgba(255,255,255,.55)'; for (const [x, y] of [[-0.12, 0.05], [0.08, -0.04], [0.16, 0.14], [-0.04, 0.16]]) { g.beginPath(); g.arc(x, y, 0.035, 0, 7); g.fill(); } g.restore(); },
+  glass(g) { rr(g, -0.3, -0.36, 0.6, 0.72, 0.06); g.fill();
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 0.06; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-0.14, 0.1); g.lineTo(0.06, -0.18); g.moveTo(-0.04, 0.2); g.lineTo(0.14, -0.04); g.stroke(); g.restore(); },
+  wool(g) { for (const [x, y, r] of [[-0.18, 0.06, 0.18], [0.04, -0.1, 0.2], [0.2, 0.08, 0.17], [0, 0.14, 0.18]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } },
+  clothes(g) { g.beginPath(); g.moveTo(-0.14, -0.34); g.lineTo(-0.42, -0.16); g.lineTo(-0.3, 0.02); g.lineTo(-0.22, -0.04); g.lineTo(-0.22, 0.38); g.lineTo(0.22, 0.38);
+    g.lineTo(0.22, -0.04); g.lineTo(0.3, 0.02); g.lineTo(0.42, -0.16); g.lineTo(0.14, -0.34); g.quadraticCurveTo(0, -0.2, -0.14, -0.34); g.fill(); },
+  stump(g) { rr(g, -0.2, -0.05, 0.4, 0.3, 0.06); g.fill(); g.beginPath(); g.ellipse(0, -0.05, 0.2, 0.09, 0, 0, 7); g.fill();
+    g.save(); g.strokeStyle = g.fillStyle; g.lineWidth = 0.07; g.lineCap = 'round'; g.beginPath(); g.moveTo(-0.36, -0.36); g.lineTo(0.36, 0.36); g.stroke(); g.restore(); },
   furniture(g) { rr(g, -0.24, -0.38, 0.12, 0.5, 0.04); g.fill(); rr(g, -0.24, 0.0, 0.5, 0.12, 0.04); g.fill();
     rr(g, -0.24, 0.1, 0.09, 0.3, 0.03); g.fill(); rr(g, 0.17, 0.1, 0.09, 0.3, 0.03); g.fill(); },
 };
@@ -399,7 +428,7 @@ function drawBuildings(now) {
 }
 function drawHouse(h) {
   const L = h.level;
-  const [w, d, tall] = L === 1 ? [0.56, 0.48, 0.07] : L === 2 ? [0.74, 0.56, 0.11] : [0.76, 0.76, 0.22];
+  const [w, d, tall] = L === 1 ? [0.56, 0.48, 0.07] : L === 2 ? [0.74, 0.56, 0.11] : L === 3 ? [0.76, 0.76, 0.2] : [0.84, 0.84, 0.36];
   g.fillStyle = C.shadow;
   g.beginPath(); g.roundRect(-w / 2 + tall, -d / 2 + tall * 1.1, w, d, 0.06); g.fill();
   if (L < 3) {
@@ -409,6 +438,13 @@ function drawHouse(h) {
     g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 0.025;
     g.beginPath(); g.moveTo(-w / 2 + 0.03, 0); g.lineTo(w / 2 - 0.03, 0); g.stroke();
     if (L === 2) { g.fillStyle = C.wall; g.fillRect(w / 2 - 0.16, -d / 2 + 0.06, 0.07, 0.1); }
+  } else if (L === 4) {
+    g.fillStyle = '#d5ccb8'; g.beginPath(); g.roundRect(-w / 2, -d / 2, w, d, 0.07); g.fill();
+    g.fillStyle = C.flat; g.beginPath(); g.roundRect(-w / 2 + 0.05, -d / 2 + 0.05, w - 0.1, d - 0.1, 0.04); g.fill();
+    // a roof garden and two plant rooms: the block is tall, the shadow says so
+    g.fillStyle = C.tree; g.beginPath(); g.roundRect(-0.3, 0.04, 0.3, 0.24, 0.05); g.fill();
+    g.fillStyle = C.roof; g.beginPath(); g.roundRect(0.06, -0.3, 0.22, 0.2, 0.03); g.fill();
+    g.fillStyle = '#d5ccb8'; g.fillRect(0.1, 0.1, 0.14, 0.14);
   } else {
     g.fillStyle = C.flatEdge; g.beginPath(); g.roundRect(-w / 2, -d / 2, w, d, 0.07); g.fill();
     g.fillStyle = C.flat; g.beginPath(); g.roundRect(-w / 2 + 0.06, -d / 2 + 0.06, w - 0.12, d - 0.12, 0.04); g.fill();
@@ -435,6 +471,7 @@ function drawProducer(b, now) {
     g.fillStyle = col; g.beginPath(); g.roundRect(-0.31 + n * 0.17, 0.22, 0.1, 0.1, 0.02); g.fill();
   }
   // progress, a thin line along the top
+  if (b.idle === 'cleared') { g.fillStyle = 'rgba(235,229,211,.5)'; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s, 0.18); g.fill(); }
   if (!b.idle && b.prog > 0) { g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(-0.28, -0.34, 0.56 * b.prog, 0.035); }
   if (selected === b.id) { g.strokeStyle = C.ink; g.lineWidth = 0.05; g.beginPath(); g.roundRect(-s / 2 - 0.08, -s / 2 - 0.08, s + 0.16, s + 0.16, 0.24); g.stroke(); }
 }
@@ -467,7 +504,7 @@ function drawGhost(now) {
   if (hover < 0) return;
   const [x, y] = xy(hover);
   if (KINDS[tool]) {
-    const ok = sim.canPlace(tool, hover) && sim.coins >= KINDS[tool].cost;
+    const ok = sim.canPlace(tool, hover) && sim.tokens[tool] > 0;
     g.save(); g.translate(x + 0.5, y + 0.5); g.globalAlpha = 0.75;
     const col = ok ? GOODS[KINDS[tool].out].col : '#9a948a';
     g.fillStyle = col; g.beginPath(); g.roundRect(-0.4, -0.4, 0.8, 0.8, 0.18); g.fill();
@@ -492,13 +529,17 @@ function drawPins(now) {
     if (!byAt.has(p.at)) byAt.set(p.at, []);
     byAt.get(p.at).push(p);
   }
+  // a woodcutter with no trees left says so, as a pin of its own
+  for (const b of sim.buildings.values()) if (b.idle === 'cleared') byAt.set(b.id, [{ good: 'stump', kind: 'input', born: -9, by: -1, at: b.id, stump: true }]);
   const unit = Math.max(16, Math.min(34, cam.s * 0.9));
-  for (const [id, ps] of byAt) {
+  for (let [id, ps] of byAt) {
     const b = sim.B(id);
     if (!b) continue;
     const [x, y] = xy(b.tile);
     const [sx, sy] = toScreen(x + 0.5, y + 0.5);
     ps.sort((a, c) => (a.kind === 'build') - (c.kind === 'build') || a.born - c.born);
+    const builds = ps.filter(p => p.kind === 'build');
+    if (builds.length > 1) { const first = Object.assign({}, builds[0], { count: builds.length, by: builds.some(p => p.by >= 0) ? 1 : -1 }); ps = ps.filter(p => p.kind !== 'build').concat([first]); }
     const shown = ps.slice(0, 5);
     const step = unit * (b.house ? 0.86 : 0.7);
     const x0 = sx - (shown.length - 1) * step / 2;
@@ -516,7 +557,12 @@ function drawPins(now) {
       g.fillStyle = '#fff'; g.beginPath(); badge(p, 0, r); g.fill();
       if (p.kind === 'input') { g.strokeStyle = 'rgba(20,20,22,.15)'; g.lineWidth = 1.2; g.stroke(); }
       if (p.kind === 'build') { g.strokeStyle = GOODS[p.good].col; g.lineWidth = 2; g.setLineDash([3, 2.5]); g.stroke(); g.setLineDash([]); }
-      icon(g, p.good, 0, 0, r * 1.3, GOODS[p.good].col);
+      icon(g, p.good, 0, 0, r * 1.3, p.stump ? '#8b5e34' : GOODS[p.good].col);
+      if (!p.stump && p.by < 0 && unreachable(p)) {
+        // nothing that makes it can reach it: a broken link, shown loud
+        g.fillStyle = '#e5533d'; g.beginPath(); g.arc(-r * 0.8, -r * 0.8, Math.max(4, r * 0.34), 0, 7); g.fill();
+        g.fillStyle = '#fff'; g.font = `800 ${Math.max(7, r * 0.5)}px Inter Tight, system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('!', -r * 0.8, -r * 0.78);
+      }
       if (p.kind === 'want') {
         g.lineWidth = Math.max(2.5, r * 0.22); g.lineCap = 'round';
         g.strokeStyle = 'rgba(20,20,22,.1)'; g.beginPath(); g.arc(0, 0, r + g.lineWidth * 0.9, 0, 7); g.stroke();
@@ -524,6 +570,11 @@ function drawPins(now) {
           g.strokeStyle = f < 0.5 ? '#9b958a' : f < 0.78 ? '#eb9a35' : '#e5533d';
           g.beginPath(); g.arc(0, 0, r + g.lineWidth * 0.9, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); g.stroke();
         }
+      }
+      if (p.count > 1) {
+        g.fillStyle = C.ink; g.beginPath(); g.arc(r * 0.85, -r * 0.85, Math.max(6, r * 0.4), 0, 7); g.fill();
+        g.fillStyle = '#fff'; g.font = `700 ${Math.max(9, r * 0.55)}px Inter Tight, system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(p.count, r * 0.85, -r * 0.83);
       }
       if (p.by >= 0) {
         // a truck is on its way
@@ -537,6 +588,16 @@ function drawPins(now) {
       g.fillText('+' + (ps.length - shown.length), x0 + shown.length * step - step * 0.4, yy);
     }
   }
+}
+// True when makers of this good exist but none of them can reach the pin by road.
+function unreachable(p) {
+  const at0 = sim.B(p.at);
+  if (!at0) return false;
+  const makers = [...sim.buildings.values()].filter(b => b.kind === S.MAKER[p.good]);
+  if (!makers.length) return false;
+  if (at0.door < 0) return true;
+  const d = sim.dist(at0.door);
+  return !makers.some(m => m.door >= 0 && d.has(m.door));
 }
 function badge(p, off, r) {
   if (p.kind === 'build') g.roundRect(-r + off, -r + off, r * 2, r * 2, r * 0.42);
@@ -617,7 +678,7 @@ function handleEvents(now) {
     const [x, y] = xy(e.tile ?? 0);
     if (e.type === 'deliver') {
       sfx.deliver(e.good);
-      if (e.pay) { fx.push({ kind: 'coin', x: x + 0.5, y: y + 0.5, n: e.pay, t0: now, dur: 1.1 }); coinPulse(); }
+      if (sim.B(sim.tileB.get(e.tile))?.house) fx.push({ kind: 'ring', x: x + 0.5, y: y + 0.5, col: GOODS[e.good].col, r: 0.5, t0: now, dur: 0.5 });
     } else if (e.type === 'spawn' || e.type === 'place') {
       pops.set(e.id, now);
       if (e.type === 'place') sfx.place();
@@ -629,7 +690,7 @@ function handleEvents(now) {
       if (e.level === 3) hint('town', 'A townhouse! It wants furniture as well.');
     } else if (e.type === 'leave') {
       sfx.leave();
-      fx.push({ kind: 'text', x: x + 0.5, y: y + 0.5, text: e.gone ? 'moved away' : 'a family left', col: '#b8432f', dy: 12, t0: now, dur: 1.8 });
+      fx.push({ kind: 'text', x: x + 0.5, y: y + 0.5, text: e.gone ? '−2' : '−' + (LEVELS[e.level ?? 1]?.people || 2), col: '#b8432f', dy: 12, t0: now, dur: 1.6 });
       if (e.gone) fx.push({ kind: 'gone', x: x + 0.5, y: y + 0.5, t0: now, dur: 0.9 });
       hint('left', `A family left: they waited too long for ${GOODS[e.good].name.toLowerCase()}. Watch the rings.`);
     } else if (e.type === 'unlock') {
@@ -645,6 +706,10 @@ function handleEvents(now) {
     } else if (e.type === 'jam') {
       buildBar('roundabout');
       hint('jam', 'Trucks are queuing at a junction. A roundabout lets three through at once.', 8);
+    } else if (e.type === 'week') {
+      showOffer();
+    } else if (e.type === 'felled') {
+      hint('felled', 'Woodcutters fell the forest round them. When it runs out, move them.', 8);
     } else if (e.type === 'remove') { /* nothing */ }
   }
   sim.events.length = 0;
@@ -653,20 +718,70 @@ function handleEvents(now) {
   if (houses.some(h => h.door < 0 && sim.time - h.born > 4 && sim.time > 20)) hint('connect', 'New houses need a road too. Connect them before their rings fill.');
   if (houses.some(h => h.quiet)) hint('quiet', 'A grey cloud means too loud to grow: industry within two tiles.', 8);
   const fishery = [...sim.buildings.values()].find(b => b.kind === 'fishery');
-  if (fishery && sim.pins.filter(p => p.good === 'fish' && p.by < 0 && sim.time - p.born > 18).length >= 2) hint('truck', 'Fish is late. Tap the fishery to give it another truck, or build a second one.', 8);
+  if (fishery && sim.pins.filter(p => p.good === 'fish' && p.by < 0 && sim.time - p.born > 18).length >= 2) hint('truck', 'Fish is late: one truck can only do one trip at a time. A second truck or a second fishery would help.', 8);
 }
-let coinTimer = 0;
-function coinPulse() { const el = document.getElementById('coins'); el.classList.remove('gain'); void el.offsetWidth; el.classList.add('gain'); }
-function coinFlash() { const el = document.getElementById('coins'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); sfx.no(); }
+function roadFlash() { const el = document.getElementById('roads'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); sfx.no(); }
+
+// ---- the week's pick ------------------------------------------------------------
+function offerIcon(o) {
+  if (o.type === 'kind') return cardIcon(o.kind);
+  if (o.type === 'truck') return cardIcon('truck');
+  if (o.type === 'roundabout') return cardIcon('roundabout');
+  return cardIcon('road');
+}
+function offerText(o) {
+  if (o.type === 'kind') return [KINDS[o.kind].name, 'One more to place'];
+  if (o.type === 'truck') return ['2 trucks', 'Add to any building'];
+  if (o.type === 'roundabout') return ['2 roundabouts', 'Three through at once'];
+  return [o.n + ' road', 'Tiles to draw with'];
+}
+function showOffer() {
+  if (!sim.offer) return;
+  const el = document.getElementById('offer');
+  document.getElementById('banner').classList.remove('show');
+  document.getElementById('ofTitle').textContent = 'Week ' + sim.week;
+  document.getElementById('ofSub').textContent = `${S.WEEK_ROADS || 10} road arrived. Pick one more.`;
+  document.getElementById('ofBonus').textContent = sim.offer.length > 2 ? 'Nobody moved away last week: a third choice.' : '';
+  const cards = document.getElementById('ofCards');
+  cards.innerHTML = '';
+  sim.offer.forEach((o, k) => {
+    const b = document.createElement('button');
+    b.appendChild(offerIcon(o));
+    const [t, sub] = offerText(o);
+    const tb = document.createElement('b'); tb.textContent = t;
+    const sm = document.createElement('small'); sm.textContent = sub;
+    b.append(tb, sm);
+    b.onclick = () => pickOffer(k);
+    cards.appendChild(b);
+  });
+  el.hidden = false;
+  sfx.unlock();
+  setTimeout(() => cards.firstChild && cards.firstChild.focus({ preventScroll: true }), 50);
+}
+function pickOffer(k) {
+  if (!sim.offer) return;
+  const o = sim.offer[k];
+  sim.pick(k);
+  document.getElementById('offer').hidden = true;
+  sfx.place();
+  buildBar(o.type === 'kind' ? o.kind : o.type === 'truck' ? 'truck' : o.type === 'roundabout' ? 'roundabout' : null);
+}
 
 // ---- HUD -----------------------------------------------------------------------
 function hud() {
-  document.getElementById('coinN').textContent = sim.coins;
+  document.getElementById('roadN').textContent = sim.roads;
+  document.getElementById('weekN').textContent = sim.week;
+  const wc = document.querySelector('#week canvas').getContext('2d');
+  wc.clearRect(0, 0, 64, 64); wc.lineWidth = 5; wc.lineCap = 'round';
+  wc.strokeStyle = '#2a2a2c'; wc.beginPath(); wc.arc(32, 32, 28, 0, 7); wc.stroke();
+  wc.strokeStyle = '#f4f2ec'; wc.beginPath(); wc.arc(32, 32, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sim.weekT / S.WEEK); wc.stroke();
   const pop = sim.people(), st = sim.status, cur = STATUSES[st], nxt = STATUSES[st + 1];
   document.getElementById('stName').textContent = cur.name;
   document.getElementById('stPeople').innerHTML = nxt ? `<em>${pop}</em> / ${nxt.at}<span class="w"> people</span>` : `<em>${pop}</em><span class="w"> people</span>`;
   document.getElementById('stBar').style.width = (nxt ? Math.min(100, (pop - cur.at) / (nxt.at - cur.at) * 100) : 100) + '%';
-  for (const btn of document.querySelectorAll('#bar button[data-cost]')) btn.classList.toggle('poor', sim.coins < +btn.dataset.cost);
+  // the bar shows what's in hand: rebuild it when that changes
+  const hand = JSON.stringify(sim.tokens);
+  if (hand !== lastHand) { lastHand = hand; buildBar(); if (tool !== 'road' && tool !== 'erase' && !sim.tokens[tool]) setTool('road'); }
   // the card whose good is waiting longest calls for attention
   const late = new Set(sim.pins.filter(p => p.kind === 'want' && sim.time - p.born > S.PATIENCE * 0.55 && p.by < 0).map(p => S.MAKER[p.good]));
   for (const btn of document.querySelectorAll('#bar button[data-kind]')) btn.classList.toggle('call', late.has(btn.dataset.kind) && tool !== btn.dataset.kind);
@@ -684,6 +799,11 @@ function cardIcon(kind) {
   } else if (kind === 'erase') {
     t.strokeStyle = '#e5533d'; t.lineCap = 'round'; t.lineWidth = 0.11;
     t.beginPath(); t.moveTo(0.28, 0.28); t.lineTo(0.72, 0.72); t.moveTo(0.72, 0.28); t.lineTo(0.28, 0.72); t.stroke();
+  } else if (kind === 'truck') {
+    t.save(); t.translate(0.5, 0.5); t.scale(1.7, 1.7);
+    t.fillStyle = '#e9e4d8'; t.beginPath(); t.roundRect(-0.2, -0.1, 0.25, 0.2, 0.04); t.fill();
+    t.fillStyle = '#9aa0aa'; t.beginPath(); t.roundRect(0.06, -0.09, 0.12, 0.18, [0.02, 0.06, 0.06, 0.02]); t.fill();
+    t.restore();
   } else if (kind === 'roundabout') {
     t.strokeStyle = '#9aa0aa'; t.lineWidth = 0.13;
     t.beginPath(); t.arc(0.5, 0.5, 0.22, 0, 7); t.stroke();
@@ -703,20 +823,17 @@ function goodIcon(good) {
   icon(t, good, 0.5, 0.5, 0.62, GOODS[good].col);
   return c;
 }
-const ORDER = ['fishery', 'woodcutter', 'sawmill', 'farm', 'bakery', 'claypit', 'brickworks', 'workshop'];
+const ORDER = ['fishery', 'woodcutter', 'sawmill', 'farm', 'bakery', 'claypit', 'brickworks', 'workshop', 'sandpit', 'glassworks', 'sheep', 'tailor'];
 function buildBar(fresh) {
   const bar = document.getElementById('bar');
   bar.innerHTML = '';
-  const add = (key, name, cost) => {
+  const add = (key, name, counted) => {
     const b = document.createElement('button');
     b.dataset.tool = key;
     if (KINDS[key]) b.dataset.kind = key;
-    if (cost !== undefined) b.dataset.cost = cost;
     b.appendChild(cardIcon(key));
     const n = document.createElement('div'); n.className = 'name'; n.textContent = name; b.appendChild(n);
-    const c = document.createElement('div'); c.className = 'cost';
-    c.innerHTML = cost !== undefined ? `<span class="coin"></span>${cost}` : (key === 'road' ? '<span class="coin"></span>1 a tile' : '&nbsp;');
-    b.appendChild(c);
+    if (counted) { b.dataset.count = key; const c = document.createElement('span'); c.className = 'count'; c.textContent = sim.tokens[key] || 0; b.appendChild(c); b.classList.toggle('none', !sim.tokens[key]); }
     if (key === fresh) b.classList.add('new');
     b.classList.toggle('on', tool === key);
     b.onclick = () => setTool(tool === key && key !== 'road' ? 'road' : key);
@@ -726,12 +843,13 @@ function buildBar(fresh) {
   };
   add('road', 'Road');
   add('erase', 'Erase');
-  if (sim.tools.has('roundabout')) add('roundabout', 'Roundabout', S.ROUNDABOUT_COST);
-  const kinds = ORDER.filter(k => sim.unlocked.has(k));
+  if (sim.tokens.truck) add('truck', 'Truck', true);
+  if (sim.tokens.roundabout) add('roundabout', 'Roundabout', true);
+  const kinds = ORDER.filter(k => sim.tokens[k] > 0);
   if (kinds.length) { const sep = document.createElement('div'); sep.className = 'sep'; bar.appendChild(sep); }
-  for (const k of kinds) add(k, KINDS[k].name, KINDS[k].cost);
+  for (const k of kinds) add(k, KINDS[k].name, true);
 }
-let cardHover = null;
+let cardHover = null, lastHand = '';
 function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('#bar button')) b.classList.toggle('on', b.dataset.tool === t);
@@ -742,7 +860,7 @@ function panel() {
   const el = document.getElementById('panel');
   const b = selected !== null ? sim.B(selected) : null;
   if (!b) { selected = null; el.classList.remove('show'); el.innerHTML = ''; return; }
-  const sig = JSON.stringify(b.house ? [b.level, b.happy, b.quiet, b.door] : [b.trucks.length, b.out, b.idle, sim.coins >= S.truckCost(b.trucks.length + 1), Object.values(b.inBuf)]);
+  const sig = JSON.stringify(b.house ? [b.level, b.happy, b.quiet, b.door] : [b.trucks.length, b.out, b.idle, sim.tokens.truck, Object.values(b.inBuf)]);
   if (el.dataset.sig === sig && el.classList.contains('show')) return;
   el.dataset.sig = sig;
   el.innerHTML = '';
@@ -774,19 +892,20 @@ function panel() {
     const out = k.out, waiting = sim.pins.filter(p => p.good === out && p.by < 0).length;
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
     else if (b.idle === 'starved') { say.className += ' bad'; say.textContent = `Waiting for ${Object.keys(k.needs).map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}.`; }
+    else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'The forest round it is cut bare. Move it to standing trees.'; }
     else if (b.idle === 'full' && waiting) { say.className += ' bad'; say.textContent = `Yard full and ${waiting} waiting: its trucks can't keep up.`; }
     else if (b.idle === 'full') say.textContent = 'Yard full. Nobody wants more right now.';
     else say.textContent = waiting ? `Working. ${waiting} waiting for ${GOODS[out].name.toLowerCase()}.` : 'Working.';
     el.appendChild(say);
     const acts = document.createElement('div'); acts.className = 'acts';
-    const cost = S.truckCost(b.trucks.length + 1);
     const add = document.createElement('button'); add.className = 'go';
-    add.innerHTML = `+ Truck <span class="coin" style="width:10px;height:10px"></span>${cost}`;
-    add.disabled = sim.coins < cost;
-    add.onclick = () => { if (sim.addTruck(b)) { sfx.place(); el.dataset.sig = ''; panel(); } else coinFlash(); };
+    add.textContent = sim.tokens.truck ? `+ Truck (${sim.tokens.truck} in hand)` : '+ Truck (none in hand)';
+    add.disabled = !sim.tokens.truck;
+    add.onclick = () => { if (sim.addTruck(b)) { sfx.place(); el.dataset.sig = ''; panel(); } else sfx.no(); };
     const rm = document.createElement('button'); rm.className = 'quiet';
-    rm.textContent = `Remove · +${Math.floor(b.spent / 2)}`;
-    rm.onclick = () => { sim.removeBuilding(b.id); selected = null; panel(); };
+    rm.textContent = 'Move';
+    rm.title = 'Pick it up: the building and its trucks go back in your hand';
+    rm.onclick = () => { const kind = b.kind; sim.removeBuilding(b.id); selected = null; panel(); buildBar(); setTool(kind); };
     acts.append(add, rm);
     el.appendChild(acts);
   }
@@ -829,7 +948,7 @@ cv.addEventListener('pointermove', e => {
     if (!sim.roadable(prev) || !sim.roadable(j)) continue;
     const c = sim.addRoad(prev, j);
     if (c > 0) { const t = performance.now(); if (t - lastRoadSfx > 40) { sfx.road(); lastRoadSfx = t; } }
-    if (c < 0 && sim.coins < sim.tileCost(prev) + sim.tileCost(j)) { coinFlash(); drag = null; return; }
+    if (c < 0 && sim.roads < sim.tileCost(prev) + sim.tileCost(j)) { roadFlash(); drag = null; return; }
   }
 });
 cv.addEventListener('pointerup', e => {
@@ -844,14 +963,19 @@ cv.addEventListener('contextmenu', e => e.preventDefault());
 function tap(i) {
   if (i < 0) return;
   if (KINDS[tool]) {
-    if (sim.coins < KINDS[tool].cost) { coinFlash(); return; }
+    if (!sim.tokens[tool]) { sfx.no(); return; }
     if (sim.place(tool, i)) { setTool('road'); }
     else sfx.no();
     return;
   }
   if (tool === 'roundabout') {
     if (sim.addRoundabout(i)) { sfx.place(); setTool('road'); }
-    else if (sim.isJunction(i) && sim.coins < S.ROUNDABOUT_COST) coinFlash(); else sfx.no();
+    else sfx.no();
+    return;
+  }
+  if (tool === 'truck') {
+    const b = sim.B(sim.tileB.get(i));
+    if (b && sim.addTruck(b)) { sfx.place(); if (!sim.tokens.truck) setTool('road'); } else sfx.no();
     return;
   }
   const id = sim.tileB.get(i);
@@ -867,6 +991,7 @@ function eraseAt(i, tapped) {
 }
 
 addEventListener('keydown', e => {
+  if (sim.offer && e.key >= '1' && e.key <= '3') { pickOffer(+e.key - 1); return; }
   if (e.key === ' ') { setSpeed(speed ? 0 : lastSpeed); e.preventDefault(); }
   else if (e.key >= '1' && e.key <= '3') setSpeed(+e.key);
   else if (e.key === 'Escape') { setTool('road'); selected = null; panel(); }

@@ -30,7 +30,7 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForTimeout(700);
     const f = path.join(out, `t${String(m).replace('.', '_')}.png`);
     await page.screenshot({ path: f });
-    console.log('shot', f, await page.evaluate(() => `people ${sim.people()} coins ${sim.coins}`));
+    console.log('shot', f, await page.evaluate(() => `people ${sim.people()} roads ${sim.roads}`));
   }
   await browser.close();
 })();

@@ -56,6 +56,17 @@ function bestSpot(kind, near) {
 
 
 return function think() {
+  if (s.offer) {
+    // take the building whose good is most behind, else trucks, else road
+    const o = s.offer;
+    let k = o.findIndex(x => x.type === 'roads' && s.roads < 8);
+    if (k < 0) k = o.findIndex(x => x.type === 'kind' && s.backlog(KINDS[x.kind].out) >= 2);
+    if (k < 0) k = o.findIndex(x => x.type === 'truck');
+    if (k < 0) k = 0;
+    log('PICK', JSON.stringify(o[k]));
+    s.pick(k);
+  }
+  for (const b of [...s.buildings.values()]) if (b.idle === 'cleared') { s.removeBuilding(b.id); log('MOVE woodcutter (bare)'); }
   for (const b of s.buildings.values()) if (b.door < 0) connect(b);
   for (const kind of s.unlocked) {
     const good = KINDS[kind].out;
@@ -63,18 +74,17 @@ return function think() {
     const mine = [...s.buildings.values()].filter(b => b.kind === kind);
     if (!pins.length) continue;
     const backlog = pins.filter(p => p.by < 0 && s.time - p.born > 12).length;
-    if (!mine.length || (backlog >= 3 && mine.every(b => b.trucks.length >= 3))) {
-      if (s.coins < KINDS[kind].cost) continue;
+    if (s.tokens[kind] && (!mine.length || backlog >= 2)) {
       const i = bestSpot(kind, pins.map(p => s.B(p.at).tile));
-      if (i >= 0 && s.place(kind, i)) log('PLACE', kind, xy(i), 'coins', s.coins);
+      if (i >= 0 && s.place(kind, i)) log('PLACE', kind, xy(i), 'roads', s.roads);
       continue;
     }
-    if (backlog >= 2) {
+    if (backlog >= 2 && s.tokens.truck) {
       const b = mine.sort((a, c) => a.trucks.length - c.trucks.length)[0];
-      if (b.trucks.length < 4 && s.coins >= S.truckCost(b.trucks.length + 1) + 5 && s.addTruck(b)) log('TRUCK', kind, b.trucks.length);
+      if (b && s.addTruck(b)) log('TRUCK', kind, b.trucks.length);
     }
   }
-  if (s.jamAt !== undefined && s.tools.has('roundabout') && s.isJunction(s.jamAt) && !s.roundabouts.has(s.jamAt)) {
+  if (s.jamAt !== undefined && s.isJunction(s.jamAt) && !s.roundabouts.has(s.jamAt)) {
     if (s.addRoundabout(s.jamAt)) log('ROUNDABOUT', xy(s.jamAt));
   }
 };
