@@ -1,0 +1,794 @@
+<title>Sprawl Stripped</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+/* One flat board under black Ink panels: the map is the game, the panels only frame it. */
+:root {
+  --ground: #e6e1d3;
+  --ink: #f3f1ea;
+  --pane: #111;
+  --muted: #8d8a82;
+  --accent: #f0a63a;
+  --bad: #e0503c;
+  --sans: "Inter Tight", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; margin: 0; background: var(--ground); overflow: hidden; }
+body { font: 14px/1.3 var(--sans); touch-action: none; user-select: none; -webkit-user-select: none; }
+#c { position: absolute; inset: 0; display: block; }
+#top {
+  position: absolute; left: 0; right: 0; top: env(safe-area-inset-top, 0px);
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; pointer-events: none;
+  padding: 8px max(8px, env(safe-area-inset-right, 0px)) 0 max(8px, env(safe-area-inset-left, 0px));
+}
+.pane { background: var(--pane); color: var(--ink); border-radius: 14px; padding: 7px 11px; pointer-events: auto; }
+#clock { display: flex; gap: 4px; align-items: center; font-variant-numeric: tabular-nums; }
+#clock b { min-width: 44px; font-size: 16px; }
+#clock button, #bar button { font: inherit; color: var(--ink); background: transparent; border: 0; border-radius: 9px; padding: 4px 8px; cursor: pointer; }
+#clock button.on { background: var(--ink); color: var(--pane); }
+#stats { font-variant-numeric: tabular-nums; }
+#hint { flex: 1 1 260px; min-width: 0; }
+#ms { font-size: 12px; color: var(--muted); max-width: 220px; }
+#ms div { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+#ms div.done { color: var(--ink); }
+@media (max-width: 640px) { #ms { display: none; } #top { font-size: 12px; } }
+#bar {
+  position: absolute; left: 0; right: 0; bottom: 0; background: var(--pane);
+  display: flex; gap: 4px; overflow-x: auto;
+  padding: 8px max(8px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+}
+#bar button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 10px; white-space: nowrap; flex: none; }
+#bar button.on { background: #2b2b2b; box-shadow: inset 0 0 0 2px var(--accent); }
+#bar button.locked { opacity: .35; cursor: default; }
+#bar button:focus-visible, #clock button:focus-visible { outline: 2px solid var(--accent); }
+.cost { display: flex; gap: 3px; font-size: 11px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+#end {
+  position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.45);
+  padding: 0 max(16px, env(safe-area-inset-left, 0px));
+}
+#end[hidden] { display: none; }
+#end .pane { padding: 22px 26px; max-width: 340px; }
+#end h2 { margin: 0 0 6px; font-size: 22px; }
+#end button { margin-top: 14px; font: inherit; background: var(--ink); color: var(--pane); border: 0; border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+</style>
+
+<canvas id="c"></canvas>
+<div id="top">
+  <div class="pane" id="clock"></div>
+  <div class="pane" id="stats"></div>
+  <div class="pane" id="hint"></div>
+  <div class="pane" id="ms"></div>
+</div>
+<div id="bar"></div>
+<div id="end" hidden><div class="pane"><h2>The sea opens</h2><div id="endText"></div><button id="endBtn">Keep playing</button></div></div>
+
+<script>
+// Sprawl, stripped: a town built out of what it makes. Roads are free, everything
+// else is hauled. No money, no imports: what you have, you made.
+
+const W = 36, H = 24;
+const GRASS = 0, FOREST = 1, HILL = 2, WATER = 3;
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];   // east, south, west, north
+
+const SPEED = 2.2;      // tiles a second
+const CAP = 4;          // what a van or the lorry carries
+const LOAD = 0.35;      // seconds a box to load or unload
+const CHOP = 1.0;       // seconds a log by hand
+const EAT = 50;         // seconds a worker lives on one fish
+const JAM = 2.5;        // seconds waiting before it counts as a jam
+const GHOST = 10;       // seconds waiting before a car squeezes through anyway
+
+const GOODS = {
+  log:    { name: 'Logs',   col: '#8a5a2e' },
+  plank:  { name: 'Planks', col: '#e3b35c' },
+  food:   { name: 'Fish',   col: '#3b8fd6' },
+  stone:  { name: 'Stone',  col: '#8e8e96' },
+  cement: { name: 'Cement', col: '#a77fd6' },
+};
+
+const KINDS = {
+  camp:       { name: 'Camp',       glyph: '⌂', col: '#c9553c', house: 4, foodCap: 12 },
+  woodcutter: { name: 'Woodcutter', glyph: 'W', col: '#5d7f3a', cost: { log: 2 }, out: 'log', time: 4, workers: 1, near: FOREST },
+  cabin:      { name: 'Cabin',      glyph: '⌂', col: '#b7704a', cost: { log: 4 }, house: 2, foodCap: 4 },
+  sawmill:    { name: 'Sawmill',    glyph: 'S', col: '#a8742f', cost: { log: 4 }, in: 'log', out: 'plank', time: 3, workers: 2 },
+  fisher:     { name: 'Fisher',     glyph: 'F', col: '#2f6fa8', cost: { log: 3 }, out: 'food', time: 5, workers: 1, near: WATER },
+  depot:      { name: 'Depot',      glyph: 'D', col: '#3d3d3d', cost: { plank: 4 }, vans: 2 },
+  quarry:     { name: 'Quarry',     glyph: 'Q', col: '#6d6d74', cost: { plank: 6 }, out: 'stone', time: 4, workers: 2, near: HILL },
+  kiln:       { name: 'Kiln',       glyph: 'K', col: '#7d5aa6', cost: { plank: 4, stone: 4 }, in: 'stone', inN: 2, out: 'cement', time: 6, workers: 2 },
+  flats:      { name: 'Flats',      glyph: '▤', col: '#9a5b78', cost: { plank: 4, cement: 4 }, house: 6, foodCap: 8 },
+  port:       { name: 'Port',       glyph: '⚓', col: '#1f4e79', cost: { plank: 30, stone: 30, cement: 20 }, near: WATER },
+};
+const STOCK = 8;  // what a producer keeps on hand, in and out
+const MENU = ['woodcutter', 'cabin', 'sawmill', 'fisher', 'depot', 'quarry', 'kiln', 'flats', 'port'];
+const MILESTONES = [
+  ['log', 'First log'], ['woodcutter', 'Woodcutter'], ['plank', 'First plank'], ['fisher', 'Fisher'],
+  ['depot', 'Depot'], ['jam', 'First jam'], ['stone', 'First stone'], ['cement', 'First cement'], ['port', 'Port'],
+];
+
+// ---- world -------------------------------------------------------------------
+
+let tiles, buildings, vehicles, occ, seen, ms, time, nextId, lorry, ended;
+
+function rng(seed) {
+  return () => {
+    seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function newWorld() {
+  const r = rng(7);
+  tiles = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const coast = W - 7 + Math.round(Math.sin(y * 0.5) * 1.5 + Math.sin(y * 1.3 + 1) * 0.8);
+    tiles.push({ t: x >= coast ? WATER : GRASS, road: false, b: null, jam: 0 });
+  }
+  const blob = (cx, cy, rad, t) => {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d < rad + (r() - 0.5) * 1.6 && tiles[y * W + x].t !== WATER) tiles[y * W + x].t = t;
+    }
+  };
+  blob(6, 9, 4, FOREST); blob(4, 19, 3.5, FOREST); blob(15, 20, 2.5, FOREST); blob(17, 4, 2.5, FOREST);
+  blob(24, 5, 3.2, HILL); blob(21, 19, 2.2, HILL);
+
+  buildings = new Map(); vehicles = []; occ = new Map();
+  seen = {}; ms = {}; time = 0; nextId = 1; ended = false;
+
+  for (let x = 8; x <= 16; x++) Object.assign(tiles[13 * W + x], { t: GRASS, road: true });
+  tiles[12 * W + 12].t = GRASS;
+  const camp = addBuilding('camp', 12 * W + 12, false);
+  camp.food = 12;
+  lorry = { id: nextId++, kind: 'lorry', home: camp.id, tile: 12 * W + 12, prev: -1, dir: 0, t: 1,
+            path: [], occKey: -1, cargo: null, state: 'parked', wait: 0, parkedOff: true };
+  vehicles.push(lorry);
+}
+
+const B = id => buildings.get(id);
+const K = b => KINDS[b.kind];
+const xy = i => [i % W, (i / W) | 0];
+const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? -1 : y * W + x;
+
+function neighbours(i, diag) {
+  const [x, y] = xy(i), out = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    if (!diag && dx && dy) continue;
+    const j = at(x + dx, y + dy);
+    if (j >= 0) out.push(j);
+  }
+  return out;
+}
+const access = i => neighbours(i, false).filter(j => tiles[j].road);
+const isJunction = i => access(i).length >= 3;
+const dirOf = (a, b) => { const [ax, ay] = xy(a), [bx, by] = xy(b); return DIRS.findIndex(([dx, dy]) => ax + dx === bx && ay + dy === by); };
+
+function addBuilding(kind, i, site) {
+  const b = { id: nextId++, kind, i, site, need: site ? { ...KINDS[kind].cost } : {},
+              incoming: {}, reserved: 0, out: 0, inStock: 0, prog: 0, food: 0, eat: 0,
+              assigned: 0, since: {}, built: site ? null : time };
+  buildings.set(b.id, b);
+  tiles[i].b = b.id;
+  return b;
+}
+
+function canPlace(kind, i) {
+  const tl = tiles[i], k = KINDS[kind];
+  if (tl.t !== GRASS || tl.road || tl.b) return false;
+  if (k.near !== undefined && !neighbours(i, true).some(j => tiles[j].t === k.near)) return false;
+  return true;
+}
+
+function finish(b) {
+  b.site = false; b.built = time; b.need = {};
+  mark(b.kind);
+  const k = K(b);
+  if (k.house) b.food = 1;
+  for (let n = 0; n < (k.vans || 0); n++)
+    vehicles.push({ id: nextId++, kind: 'van', home: b.id, tile: -1, prev: -1, dir: 0, t: 1, path: [],
+                    occKey: -1, cargo: null, state: 'idle', wait: 0, job: null });
+}
+
+function removeAt(i) {
+  const tl = tiles[i];
+  if (tl.b) {
+    const b = B(tl.b);
+    if (b.kind === 'camp') return toast('The camp stays.');
+    buildings.delete(b.id); tl.b = null;
+    vehicles = vehicles.filter(v => {
+      if (v.home !== b.id) return true;
+      release(v); return false;
+    });
+  } else if (tl.road) tl.road = false;
+}
+
+function mark(key) { if (!ms[key]) ms[key] = time; }
+function see(g) { if (!seen[g]) { seen[g] = true; mark(g); renderBar(); } }
+
+// ---- what each place wants ------------------------------------------------------
+
+function wantRaw(b, g) {
+  const k = K(b);
+  if (b.site) return b.need[g] || 0;
+  if (k.in === g) return STOCK - b.inStock;
+  if (k.house && g === 'food') return k.foodCap - b.food;
+  return 0;
+}
+const want = (b, g) => wantRaw(b, g) - (b.incoming[g] || 0);
+
+function give(b, g, n) {
+  const k = K(b);
+  if (b.site) {
+    b.need[g] = Math.max(0, (b.need[g] || 0) - n);
+    if (Object.values(b.need).every(v => v === 0)) finish(b);
+  } else if (k.in === g) b.inStock += n;
+  else if (k.house && g === 'food') b.food = Math.min(k.foodCap, b.food + n);
+}
+
+// ---- roads and moving ----------------------------------------------------------
+
+function bfs(goals) {
+  const dist = new Int32Array(W * H).fill(-1), prev = new Int32Array(W * H).fill(-1), q = [];
+  for (const s of goals) if (tiles[s].road && dist[s] < 0) { dist[s] = 0; q.push(s); }
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h];
+    for (const j of neighbours(i, false)) {
+      if (!tiles[j].road || dist[j] >= 0) continue;
+      dist[j] = dist[i] + 1; prev[j] = i; q.push(j);
+    }
+  }
+  return { dist, prev };
+}
+
+function follow(from, prev, dist) {
+  const p = [];
+  for (let i = from; dist[i] > 0; ) { i = prev[i]; p.push(i); }
+  return p;
+}
+
+// Sets v off toward the nearest of goals; false when no road reaches.
+function trip(v, goals, onArrive) {
+  if (!goals.length) return false;
+  const { dist, prev } = bfs(goals);
+  if (v.tile < 0 || v.parkedOff && !tiles[v.tile].road) {
+    const from = v.tile < 0 ? B(v.home).i : v.tile;
+    let best = -1;
+    for (const a of access(from)) if (dist[a] >= 0 && (best < 0 || dist[a] < dist[best])) best = a;
+    if (best < 0) return false;
+    v.path = [best, ...follow(best, prev, dist)];
+    v.entering = from;
+  } else {
+    if (dist[v.tile] < 0) return false;
+    v.path = follow(v.tile, prev, dist);
+    v.entering = -1;
+  }
+  if (v.state !== 'go') v.t = 1;
+  v.goals = goals; v.onArrive = onArrive; v.state = 'go'; v.wait = 0;
+  return true;
+}
+
+function occupy(v, tile, d) { const k = tile * 4 + d; occ.set(k, (occ.get(k) || 0) + 1); v.occKey = k; }
+function release(v) { if (v.occKey >= 0) { occ.set(v.occKey, occ.get(v.occKey) - 1); v.occKey = -1; } }
+const taken = (tile, d) => (occ.get(tile * 4 + d) || 0) > 0;
+const canEnter = (tile, d) => isJunction(tile) ? ![0, 1, 2, 3].some(k => taken(tile, k)) : !taken(tile, d);
+
+function work(v, secs, then) { v.state = 'work'; v.timer = secs; v.after = then; }
+
+function stepVehicle(v, dt) {
+  if (v.state === 'work') {
+    v.timer -= dt;
+    if (v.timer <= 0) { v.state = 'go-idle'; const f = v.after; v.after = null; f(); if (v.state === 'go-idle') settle(v); }
+    return;
+  }
+  if (v.state !== 'go') return;
+  if (v.t < 1) { v.t = Math.min(1, v.t + dt * SPEED); return; }
+  if (!v.path.length) { const f = v.onArrive; v.onArrive = null; v.state = 'go-idle'; f(); if (v.state === 'go-idle') settle(v); return; }
+  const next = v.path[0];
+  if (!tiles[next].road) {
+    if (!trip(v, v.goals.filter(g => tiles[g].road), v.onArrive)) stranded(v);
+    return;
+  }
+  const from = v.entering >= 0 ? v.entering : v.tile;
+  const d = v.entering >= 0 ? (v.path.length > 1 ? dirOf(next, v.path[1]) : 0) : dirOf(from, next);
+  if (canEnter(next, d) || v.wait > GHOST) {
+    release(v); occupy(v, next, d);
+    v.prev = from; v.tile = next; v.dir = d; v.t = 0; v.path.shift(); v.wait = 0; v.entering = -1; v.parkedOff = false;
+  } else {
+    v.wait += dt;
+    if (v.wait > JAM) { tiles[next].jam = 2; mark('jam'); }
+  }
+}
+
+// A trip ended with nothing more to do.
+function settle(v) {
+  if (v.kind === 'lorry') { release(v); v.state = 'parked'; }
+  else goHome(v);
+}
+
+function stranded(v) {
+  if (v.kind === 'lorry') { release(v); v.state = 'parked'; toast('No road reaches there any more.'); return; }
+  cancelJob(v); park(v);
+}
+
+// ---- vans ----------------------------------------------------------------------
+
+function goHome(v) {
+  const home = B(v.home);
+  v.returning = true;
+  if (!home || !trip(v, access(home.i), () => park(v))) park(v);
+}
+function park(v) { release(v); v.tile = -1; v.state = 'idle'; v.returning = false; v.cargo = null; }
+
+function cancelJob(v) {
+  const j = v.job;
+  if (!j) return;
+  const s = B(j.sup), d = B(j.dem);
+  if (s && !j.loaded) s.reserved -= j.n;
+  if (d) d.incoming[j.g] -= j.n;
+  v.job = null; v.cargo = null;
+}
+
+function assign(v, s, d, g, n) {
+  s.reserved += n; d.incoming[g] = (d.incoming[g] || 0) + n;
+  v.job = { sup: s.id, dem: d.id, g, n, loaded: false };
+  v.returning = false;
+  if (!trip(v, access(s.i), () => vanLoad(v))) { cancelJob(v); if (v.tile >= 0) goHome(v); }
+}
+
+function vanLoad(v) {
+  const j = v.job, s = B(j.sup), d = B(j.dem);
+  if (!s || !d) { cancelJob(v); return goHome(v); }
+  const n = Math.min(j.n, s.out);
+  s.out -= n; s.reserved -= j.n; j.loaded = true;
+  d.incoming[j.g] -= j.n - n; j.n = n;
+  if (!n) { v.job = null; return goHome(v); }
+  v.cargo = { g: j.g, n };
+  work(v, LOAD * n + 0.3, () => {
+    if (!trip(v, access(d.i), () => vanUnload(v))) { cancelJob(v); goHome(v); }
+  });
+}
+
+function vanUnload(v) {
+  const j = v.job, d = B(j.dem);
+  if (d) { d.incoming[j.g] -= j.n; give(d, j.g, j.n); }
+  work(v, LOAD * j.n + 0.3, () => { v.job = null; v.cargo = null; goHome(v); });
+}
+
+// Oldest want first, fed from the nearest stock, by the nearest free van.
+function dispatch() {
+  const free = vehicles.filter(v => v.kind === 'van' && (v.state === 'idle' || v.returning) && B(v.home) && !B(v.home).site);
+  if (!free.length) return;
+  const wants = [];
+  for (const b of buildings.values()) for (const g in GOODS) {
+    const w = want(b, g);
+    const min = b.site ? 1 : 2;
+    if (w >= min) wants.push({ b, g, w, since: b.since['w' + g] ?? time });
+  }
+  wants.sort((a, b) => a.since - b.since);
+  for (const { b, g, w } of wants) {
+    if (!free.length) return;
+    const sups = [...buildings.values()].filter(s => !s.site && K(s).out === g && s.out - s.reserved > 0 && s !== b);
+    if (!sups.length) continue;
+    const near = bfs(access(b.i)).dist;
+    let best = null, bd = Infinity;
+    for (const s of sups) for (const a of access(s.i)) if (near[a] >= 0 && near[a] < bd) { bd = near[a]; best = s; }
+    if (!best) continue;
+    const fromSup = bfs(access(best.i)).dist;
+    let van = null, vd = Infinity;
+    for (const v of free) {
+      const starts = v.tile >= 0 ? [v.tile] : access(B(v.home).i);
+      for (const a of starts) if (fromSup[a] >= 0 && fromSup[a] < vd) { vd = fromSup[a]; van = v; }
+    }
+    if (!van) continue;
+    assign(van, best, b, g, Math.min(CAP, w, best.out - best.reserved));
+    free.splice(free.indexOf(van), 1);
+  }
+}
+
+// ---- your lorry ----------------------------------------------------------------
+
+function lorryDrop() {
+  const j = lorry.job;
+  if (j) { const d = B(j.dem); if (d) d.incoming[j.g] -= j.n; lorry.job = null; }
+}
+
+function tapHand(i) {
+  const L = lorry;
+  if (L.state === 'work') return toast('Your lorry is busy.');
+  lorryDrop();
+  const tl = tiles[i], b = tl.b ? B(tl.b) : null;
+  let ok = true;
+  if (b) {
+    const k = K(b);
+    if (L.cargo && wantRaw(b, L.cargo.g) > 0) {
+      const g = L.cargo.g, n = Math.min(L.cargo.n, wantRaw(b, g));
+      L.job = { dem: b.id, g, n }; b.incoming[g] = (b.incoming[g] || 0) + n;
+      ok = trip(L, access(b.i), () => {
+        lorryDrop();
+        const m = Math.min(L.cargo.n, wantRaw(b, g));
+        work(L, LOAD * m + 0.2, () => { give(b, g, m); L.cargo.n -= m; if (!L.cargo.n) L.cargo = null; });
+      });
+      if (!ok) lorryDrop();
+    } else if (k.out && b.out - b.reserved > 0 && (!L.cargo || (L.cargo.g === k.out && L.cargo.n < CAP))) {
+      ok = trip(L, access(b.i), () => {
+        const n = Math.min(CAP - (L.cargo ? L.cargo.n : 0), b.out - b.reserved);
+        if (n <= 0) return;
+        b.out -= n;
+        work(L, LOAD * n + 0.2, () => { L.cargo = { g: k.out, n: (L.cargo ? L.cargo.n : 0) + n }; });
+      });
+    } else return toast(describe(b));
+  } else if (tl.t === FOREST) {
+    if (L.cargo && L.cargo.g !== 'log') return toast('Unload the lorry first.');
+    if (L.cargo && L.cargo.n >= CAP) return toast('The lorry is full. Tap where the logs should go.');
+    ok = trip(L, access(i), chop);
+  } else return;
+  if (!ok) toast('No road reaches there. Draw one first.');
+}
+
+function chop() {
+  work(lorry, CHOP, () => {
+    lorry.cargo = { g: 'log', n: (lorry.cargo ? lorry.cargo.n : 0) + 1 };
+    see('log');
+    if (lorry.cargo.n < CAP) chop();
+  });
+}
+
+function describe(b) {
+  const k = K(b);
+  if (b.site) return `${k.name} site: still needs ${Object.entries(b.need).filter(([, n]) => n).map(([g, n]) => `${n} ${GOODS[g].name.toLowerCase()}`).join(', ')}.`;
+  const parts = [k.name];
+  if (k.workers) parts.push(`${b.assigned}/${k.workers} workers`);
+  if (k.in) parts.push(`${b.inStock} ${GOODS[k.in].name.toLowerCase()} in`);
+  if (k.out) parts.push(`${b.out} ${GOODS[k.out].name.toLowerCase()} ready`);
+  if (k.house) parts.push(`${k.house} workers, ${b.food} fish`);
+  if (k.vans) parts.push(`${k.vans} vans`);
+  return parts.join(' · ');
+}
+
+// ---- the town working ---------------------------------------------------------
+
+let workersTotal = 0, workersUsed = 0, dispatchT = 0;
+
+function tick(dt) {
+  time += dt;
+  const list = [...buildings.values()].filter(b => !b.site);
+
+  workersTotal = 0;
+  for (const b of list) {
+    const k = K(b);
+    if (!k.house) continue;
+    b.eat += dt * k.house / EAT;
+    while (b.eat >= 1 && b.food > 0) { b.food--; b.eat -= 1; }
+    if (b.food === 0) b.eat = Math.min(b.eat, 1);
+    if (b.food > 0) workersTotal += k.house;
+  }
+  let left = workersTotal;
+  for (const b of list) {
+    const k = K(b);
+    if (!k.workers) continue;
+    b.assigned = Math.min(k.workers, left); left -= b.assigned;
+  }
+  workersUsed = workersTotal - left;
+
+  for (const b of list) {
+    const k = K(b);
+    if (!k.out || !b.assigned) continue;
+    if (k.in && b.inStock < (k.inN || 1)) continue;
+    if (b.out >= STOCK) continue;
+    b.prog += dt * (b.assigned / k.workers) / k.time;
+    if (b.prog >= 1) {
+      b.prog = 0;
+      if (k.in) b.inStock -= k.inN || 1;
+      b.out++;
+      see(k.out);
+    }
+  }
+
+  for (const b of buildings.values()) {
+    for (const g in GOODS) {
+      const key = 'w' + g;
+      if (want(b, g) > 0) b.since[key] ??= time; else delete b.since[key];
+    }
+    const p = pinOf(b);
+    if (p !== b.pin) { b.pin = p; b.pinSince = time; }
+  }
+
+  dispatchT -= dt;
+  if (dispatchT <= 0) { dispatch(); dispatchT = 0.3; }
+  for (const v of vehicles) stepVehicle(v, dt);
+  for (const tl of tiles) if (tl.jam > 0) tl.jam = Math.max(0, tl.jam - dt);
+
+  if (ms.port && !ended) { ended = true; showEnd(); }
+}
+
+// What a place is waiting for, if anything: a trip that should have happened and didn't.
+function pinOf(b) {
+  const k = K(b);
+  if (!access(b.i).length) return 'road';
+  if (b.site) {
+    for (const g in b.need) if (b.need[g] > 0 && want(b, g) > 0) return g;
+    return null;
+  }
+  if (k.house && b.food === 0) return 'food';
+  if (k.workers && b.assigned === 0) return 'worker';
+  if (k.in && b.inStock < (k.inN || 1) && !(b.incoming[k.in] > 0)) return k.in;
+  if (k.out && b.out >= STOCK) return 'full';
+  return null;
+}
+
+// ---- guide ----------------------------------------------------------------------
+
+function hint() {
+  const all = [...buildings.values()];
+  const has = (kind, done = true) => all.some(b => b.kind === kind && (!done || !b.site));
+  const camp = all.find(b => b.kind === 'camp');
+  if (!seen.log) return 'Tap a forest tile beside the road. Your lorry drives there and chops logs.';
+  if (!has('woodcutter', false)) return 'Pick Woodcutter below and place it beside the forest, next to a road.';
+  if (!has('woodcutter')) return 'Tap the woodcutter site: your lorry brings the logs. Empty? Tap the forest again.';
+  if (!has('sawmill', false)) return 'Build a Sawmill. Logs in, planks out.';
+  if (!seen.plank) return 'Haul logs from the woodcutter to the sawmill: tap one, then the other.';
+  if (!has('fisher', false)) return `Your camp has ${camp ? camp.food : 0} fish left. Build a Fisher on the coast: draw a road there.`;
+  if (!has('depot', false)) return 'Build a Depot. Its two vans take over the hauling.';
+  if (workersUsed >= workersTotal && all.some(b => b.pin === 'worker')) return 'Short of workers. Build cabins, and keep them in fish.';
+  if (!has('quarry', false)) return 'Stone is in the hills to the north east. Build a Quarry there.';
+  if (!has('kiln', false)) return 'Build a Kiln: two stone make one cement.';
+  if (!has('port', false)) return 'Build the Port on the coast: 30 planks, 30 stone, 20 cement.';
+  if (!has('port')) return 'The port is rising. Keep the chains flowing.';
+  return 'The sea is open. Keep growing.';
+}
+
+// ---- drawing --------------------------------------------------------------------
+
+const cv = document.getElementById('c'), cx = cv.getContext('2d');
+// A tall screen turns the map a quarter, so the island fills a phone held upright.
+let S = 20, OX = 0, OY = 0, ROT = false;
+const sv = (dx, dy) => ROT ? [-dy, dx] : [dx, dy];
+
+function layout() {
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px';
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const top = document.getElementById('top').getBoundingClientRect().bottom + 6;
+  const bot = document.getElementById('bar').getBoundingClientRect().height + 6;
+  ROT = innerHeight - top - bot > innerWidth;
+  const cols = ROT ? H : W, rows = ROT ? W : H;
+  S = Math.max(8, Math.min(innerWidth / cols, (innerHeight - top - bot) / rows));
+  OX = (innerWidth - S * cols) / 2; OY = top + Math.max(0, (innerHeight - top - bot - S * rows) / 2);
+}
+
+const TCOL = ['#cfe0a8', '#a9c98a', '#d8c9a3', '#7fb3dc'];
+
+function center(i) {
+  const [x, y] = xy(i), sx = ROT ? H - 1 - y : x, sy = ROT ? x : y;
+  return [OX + (sx + 0.5) * S, OY + (sy + 0.5) * S];
+}
+
+function rr(x, y, w, h, r) { cx.beginPath(); cx.roundRect(x, y, w, h, r); }
+
+function draw() {
+  cx.fillStyle = '#e6e1d3'; cx.fillRect(0, 0, innerWidth, innerHeight);
+  for (let i = 0; i < tiles.length; i++) {
+    const tl = tiles[i], [mx, my] = center(i), px = mx - S / 2, py = my - S / 2;
+    cx.fillStyle = TCOL[tl.t === FOREST ? GRASS : tl.t]; cx.fillRect(px, py, S + 0.5, S + 0.5);
+    if (tl.t === FOREST && !tl.road) {
+      const r = rng(i * 13 + 1);
+      cx.fillStyle = '#5f8f45';
+      for (let n = 0; n < 3; n++) { cx.beginPath(); cx.arc(px + (0.25 + r() * 0.5) * S, py + (0.25 + r() * 0.5) * S, S * 0.2, 0, 7); cx.fill(); }
+    }
+    if (tl.t === HILL) {
+      cx.fillStyle = '#b9a67c'; cx.beginPath();
+      cx.moveTo(px + 0.2 * S, py + 0.75 * S); cx.lineTo(px + 0.5 * S, py + 0.3 * S); cx.lineTo(px + 0.8 * S, py + 0.75 * S); cx.fill();
+    }
+  }
+  // roads
+  for (let i = 0; i < tiles.length; i++) {
+    const tl = tiles[i];
+    if (!tl.road) continue;
+    const [px, py] = center(i), w = S * 0.62;
+    cx.fillStyle = tl.jam > 0 ? `rgba(224,80,60,${0.35 + 0.3 * Math.min(1, tl.jam)})` : '#b5ad9c';
+    cx.fillRect(px - w / 2, py - w / 2, w, w);
+    for (const [wx, wy] of DIRS) {
+      const j = at(xy(i)[0] + wx, xy(i)[1] + wy);
+      if (j < 0 || !tiles[j].road) continue;
+      const [dx, dy] = sv(wx, wy);
+      cx.fillRect(px + (dx ? dx * S / 4 - S / 4 : -w / 2), py + (dy ? dy * S / 4 - S / 4 : -w / 2), dx ? S / 2 : w, dy ? S / 2 : w);
+    }
+  }
+  if (drag && mode === 'road') {
+    cx.fillStyle = 'rgba(40,40,40,.25)';
+    for (const i of lPath(drag.a, drag.b)) { const [px, py] = center(i); cx.fillRect(px - S * 0.31, py - S * 0.31, S * 0.62, S * 0.62); }
+  }
+  // buildings
+  for (const b of buildings.values()) {
+    const k = K(b), [px, py] = center(b.i), s = S * 0.84;
+    if (b.site) {
+      const total = Object.values(k.cost).reduce((a, n) => a + n, 0);
+      const left = Object.values(b.need).reduce((a, n) => a + n, 0);
+      cx.fillStyle = k.col + '40'; rr(px - s / 2, py - s / 2, s, s, S * 0.15); cx.fill();
+      cx.fillStyle = k.col + 'b0'; const f = 1 - left / total;
+      cx.fillRect(px - s / 2, py + s / 2 - s * f, s, s * f);
+      cx.setLineDash([S * 0.12, S * 0.1]); cx.strokeStyle = k.col; cx.lineWidth = Math.max(1, S * 0.06);
+      rr(px - s / 2, py - s / 2, s, s, S * 0.15); cx.stroke(); cx.setLineDash([]);
+    } else {
+      cx.fillStyle = k.col; rr(px - s / 2, py - s / 2, s, s, S * 0.15); cx.fill();
+      cx.fillStyle = '#fff'; cx.font = `600 ${S * 0.46}px system-ui, sans-serif`;
+      cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(k.glyph, px, py + S * 0.02);
+      const pip = S * 0.12;
+      if (k.out) { cx.fillStyle = GOODS[k.out].col; for (let n = 0; n < b.out; n++) cx.fillRect(px - s / 2 + 1 + n * (pip + 1), py + s / 2 - pip - 1, pip, pip); }
+      if (k.in) { cx.fillStyle = GOODS[k.in].col; for (let n = 0; n < b.inStock; n++) cx.fillRect(px - s / 2 + 1 + n * (pip + 1), py - s / 2 + 1, pip, pip); }
+      if (k.house) {
+        cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(px - s / 2 + 2, py + s / 2 - pip - 2, s - 4, pip);
+        cx.fillStyle = GOODS.food.col; cx.fillRect(px - s / 2 + 2, py + s / 2 - pip - 2, (s - 4) * b.food / k.foodCap, pip);
+      }
+    }
+  }
+  // vehicles
+  for (const v of vehicles) {
+    if (v.tile < 0) continue;
+    const [ax, ay] = center(v.prev >= 0 ? v.prev : v.tile), [bx, by] = center(v.tile);
+    const t = v.state === 'go' ? Math.min(1, v.t) : 1;
+    const [dx, dy] = sv(...DIRS[v.dir]);
+    const off = v.state === 'parked' ? 0.3 : 0.16;
+    const x = ax + (bx - ax) * t - dy * off * S, y = ay + (by - ay) * t + dx * off * S;
+    const len = S * (v.kind === 'lorry' ? 0.46 : 0.38), wid = S * 0.24;
+    cx.save(); cx.translate(x, y); cx.rotate(Math.atan2(dy, dx));
+    cx.fillStyle = v.kind === 'lorry' ? '#f0a63a' : '#fafafa'; cx.strokeStyle = '#222'; cx.lineWidth = 1;
+    rr(-len / 2, -wid / 2, len, wid, 2); cx.fill(); cx.stroke();
+    if (v.cargo) { cx.fillStyle = GOODS[v.cargo.g].col; cx.fillRect(-len / 2 + 2, -wid / 2 + 2, len * 0.55, wid - 4); }
+    cx.restore();
+  }
+  // pins
+  for (const b of buildings.values()) {
+    if (!b.pin) continue;
+    const [px, py] = center(b.i), r = S * 0.3, y = py - S * 0.62;
+    cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(px, y, r, 0, 7); cx.fill();
+    const f = Math.min(1, (time - b.pinSince) / 30);
+    cx.strokeStyle = f >= 1 ? '#e0503c' : '#e0503c99'; cx.lineWidth = Math.max(1.5, S * 0.08);
+    cx.beginPath(); cx.arc(px, y, r, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); cx.stroke();
+    const g = GOODS[b.pin], kOut = K(b).out;
+    if (g) { cx.fillStyle = g.col; cx.fillRect(px - r * 0.45, y - r * 0.45, r * 0.9, r * 0.9); }
+    else {
+      cx.fillStyle = b.pin === 'full' ? GOODS[kOut].col : '#222';
+      cx.font = `700 ${r * 1.1}px system-ui`; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.fillText(b.pin === 'worker' ? '☺' : b.pin === 'road' ? '═' : '▣', px, y + 1);
+    }
+  }
+  // placement preview
+  if (hover >= 0 && mode.startsWith('build:')) {
+    const [px, py] = center(hover), ok = canPlace(mode.slice(6), hover);
+    cx.strokeStyle = ok ? '#2a8a3a' : '#e0503c'; cx.lineWidth = 2; rr(px - S * 0.45, py - S * 0.45, S * 0.9, S * 0.9, S * 0.15); cx.stroke();
+  }
+}
+
+// ---- input ------------------------------------------------------------------------
+
+let mode = 'hand', drag = null, hover = -1, toastMsg = '', toastT = 0;
+
+function tileAt(e) {
+  const sx = Math.floor((e.clientX - OX) / S), sy = Math.floor((e.clientY - OY) / S);
+  return ROT ? at(sy, H - 1 - sx) : at(sx, sy);
+}
+
+function lPath(a, b) {
+  const [ax, ay] = xy(a), [bx, by] = xy(b), out = [];
+  const sx = Math.sign(bx - ax), sy = Math.sign(by - ay);
+  for (let x = ax; ; x += sx) { out.push(at(x, ay)); if (x === bx) break; }
+  if (sy) for (let y = ay + sy; ; y += sy) { out.push(at(bx, y)); if (y === by) break; }
+  return out;
+}
+
+cv.addEventListener('pointerdown', e => {
+  const i = tileAt(e);
+  if (i < 0) return;
+  if (mode === 'road') { drag = { a: i, b: i }; cv.setPointerCapture(e.pointerId); return; }
+  if (mode === 'remove') return removeAt(i);
+  if (mode.startsWith('build:')) {
+    const kind = mode.slice(6);
+    if (!canPlace(kind, i)) return toast(placeWhy(kind, i));
+    addBuilding(kind, i, true);
+    setMode('hand');
+    return;
+  }
+  tapHand(i);
+});
+cv.addEventListener('pointermove', e => {
+  hover = tileAt(e);
+  if (drag && hover >= 0) drag.b = hover;
+});
+cv.addEventListener('pointerup', () => {
+  if (!drag) return;
+  for (const i of lPath(drag.a, drag.b)) {
+    const tl = tiles[i];
+    if (tl.t === WATER || tl.b) continue;
+    tl.road = true; if (tl.t === FOREST) tl.t = GRASS;
+  }
+  drag = null;
+});
+
+function placeWhy(kind, i) {
+  const tl = tiles[i], k = KINDS[kind];
+  if (tl.t === WATER) return 'Not on the water.';
+  if (tl.road || tl.b) return 'Something is already there.';
+  if (tl.t !== GRASS) return 'Only on open grass.';
+  if (k.near === FOREST) return 'A woodcutter needs forest beside it.';
+  if (k.near === HILL) return 'A quarry needs a hill beside it.';
+  if (k.near === WATER) return `The ${k.name.toLowerCase()} needs the water beside it.`;
+  return 'Not here.';
+}
+
+function toast(m) { toastMsg = m; toastT = 4; }
+
+// ---- panels -----------------------------------------------------------------------
+
+let speed = 1;
+const clockEl = document.getElementById('clock'), statsEl = document.getElementById('stats'),
+      hintEl = document.getElementById('hint'), msEl = document.getElementById('ms'), barEl = document.getElementById('bar');
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function renderClock() {
+  clockEl.innerHTML = `<b id="time"></b>` + [0, 1, 2, 4].map(s => `<button data-s="${s}" class="${s === speed ? 'on' : ''}">${s ? s + '×' : '❚❚'}</button>`).join('');
+  clockEl.querySelectorAll('button').forEach(b => b.onclick = () => { speed = +b.dataset.s; renderClock(); });
+}
+
+const unlocked = kind => Object.keys(KINDS[kind].cost).every(g => seen[g]);
+const chips = cost => Object.entries(cost).map(([g, n]) => `<span class="chip"><i class="dot" style="background:${seen[g] ? GOODS[g].col : '#555'}"></i>${n}</span>`).join('');
+
+function renderBar() {
+  const tools = [['hand', 'Lorry', '<span class="cost">tap to haul</span>'], ['road', 'Road', '<span class="cost">free</span>'], ['remove', 'Remove', '<span class="cost">&nbsp;</span>']];
+  let html = tools.map(([m, name, sub]) => `<button data-m="${m}" class="${mode === m ? 'on' : ''}">${name}${sub}</button>`).join('');
+  let shownLocked = false;
+  for (const kind of MENU) {
+    const k = KINDS[kind], open = unlocked(kind);
+    if (!open && shownLocked) continue;
+    if (!open) shownLocked = true;
+    html += `<button data-m="build:${kind}" class="${mode === 'build:' + kind ? 'on' : ''} ${open ? '' : 'locked'}">${open ? k.name : '?'}<span class="cost">${chips(k.cost)}</span></button>`;
+  }
+  barEl.innerHTML = html;
+  barEl.querySelectorAll('button').forEach(b => b.onclick = () => {
+    if (b.classList.contains('locked')) return toast('Make what it needs first.');
+    setMode(b.dataset.m);
+  });
+  layout();
+}
+
+function setMode(m) { mode = m; renderBar(); }
+
+function renderPanels() {
+  document.getElementById('time').textContent = fmt(time);
+  const vans = vehicles.filter(v => v.kind === 'van');
+  const busy = vans.filter(v => v.job).length;
+  statsEl.textContent = `Workers ${workersUsed}/${workersTotal} · Vans ${busy}/${vans.length}` +
+    (lorry.cargo ? ` · Lorry ${lorry.cargo.n} ${GOODS[lorry.cargo.g].name.toLowerCase()}` : ' · Lorry empty');
+  hintEl.textContent = toastT > 0 ? toastMsg : hint();
+  msEl.innerHTML = MILESTONES.map(([k, n]) => `<div class="${ms[k] !== undefined ? 'done' : ''}"><span>${n}</span><span>${ms[k] !== undefined ? fmt(ms[k]) : '–'}</span></div>`).join('');
+}
+
+function showEnd() {
+  speed = 0; renderClock();
+  document.getElementById('endText').innerHTML =
+    `You built the port in ${fmt(time)}.<br><br>` + MILESTONES.map(([k, n]) => `${n}: ${ms[k] !== undefined ? fmt(ms[k]) : '–'}`).join('<br>');
+  document.getElementById('end').hidden = false;
+}
+document.getElementById('endBtn').onclick = () => { document.getElementById('end').hidden = true; speed = 1; renderClock(); };
+
+// ---- loop -------------------------------------------------------------------------
+
+newWorld();
+renderClock(); renderBar();
+addEventListener('resize', layout);
+let last = performance.now();
+function frame(now) {
+  let dt = Math.min(0.1, (now - last) / 1000); last = now;
+  toastT -= dt;
+  let sim = dt * speed;
+  while (sim > 0) { const h = Math.min(0.05, sim); tick(h); sim -= h; }
+  renderPanels();
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
