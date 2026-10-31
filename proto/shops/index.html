@@ -1,0 +1,1220 @@
+<title>Sprawl Shops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --land: #ebe5d3;
+  --pane: #0e0e0f;
+  --ink: #f4f2ec;
+  --muted: #8e8b84;
+  --line: #2a2a2c;
+  --accent: #f2b544;
+  --bad: #e5533d;
+  --sans: "Inter Tight", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--land); overflow: hidden; }
+body { font: 500 14px/1.25 var(--sans); color: var(--ink); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+canvas { position: absolute; inset: 0; display: block; }
+.pane { background: var(--pane); border-radius: 18px; pointer-events: auto; box-shadow: 0 6px 20px rgba(40, 30, 10, .18); }
+
+#top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
+  display: flex; gap: 8px; align-items: flex-start; pointer-events: none; }
+#status { padding: 10px 14px 11px; min-width: 190px; }
+#status .row { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
+#status b { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+#status span { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+#status span em { color: var(--ink); font-style: normal; }
+.bar { height: 6px; border-radius: 3px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 3px; transition: width .4s cubic-bezier(.2, .8, .2, 1); }
+#spacer { flex: 1; }
+#roads { padding: 0 14px 0 10px; height: 42px; display: flex; align-items: center; gap: 7px; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; transition: transform .15s; }
+#roads.flash { animation: flash .5s; }
+#roads svg { width: 22px; height: 22px; }
+#week { width: 42px; height: 42px; display: grid; place-items: center; position: relative; font-weight: 700; font-size: 12px; }
+#week canvas { position: absolute; inset: 5px; width: 32px; height: 32px; }
+@keyframes flash { 0%, 100% { transform: none; } 20% { transform: translateX(-4px); color: var(--bad); } 60% { transform: translateX(4px); color: var(--bad); } }
+@keyframes gain { 50% { transform: scale(1.08); } }
+.coin { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .2); flex: none; }
+#speed { display: flex; padding: 4px; gap: 2px; height: 42px; align-items: center; }
+#speed button, #sound { font: inherit; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 12px; height: 34px; min-width: 38px; padding: 0 8px; cursor: pointer; }
+#speed button.on { background: var(--ink); color: var(--pane); }
+#speed button:focus-visible, #sound:focus-visible, #bar button:focus-visible, #panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#sound { height: 42px; width: 42px; padding: 0; display: grid; place-items: center; }
+#sound svg { width: 18px; height: 18px; }
+
+#hint { position: absolute; left: 50%; top: max(66px, calc(env(safe-area-inset-top) + 60px)); transform: translate(-50%, -8px); opacity: 0;
+  padding: 10px 16px; max-width: min(460px, calc(100vw - 32px)); text-align: center; pointer-events: none; transition: opacity .35s, transform .35s cubic-bezier(.2, .8, .2, 1); font-size: 15px; }
+#hint.show { opacity: 1; transform: translate(-50%, 0); }
+
+#bottom { position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; padding: 0 12px; }
+#bar { display: flex; gap: 4px; padding: 6px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+#bar::-webkit-scrollbar { display: none; }
+#bar button { font: inherit; color: var(--ink); background: transparent; border: 0; border-radius: 13px; padding: 6px 10px 6px; min-width: 64px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; transition: background .15s; }
+#bar button:hover { background: #1d1d1f; }
+#bar button.on { background: #2a2a2d; box-shadow: inset 0 0 0 2px var(--ink); }
+#bar button.none { opacity: .38; }
+#bar .count { position: absolute; top: 3px; right: 6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--ink); color: var(--pane); font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; font-variant-numeric: tabular-nums; }
+#bar button { position: relative; }
+#bar button canvas { position: static; width: 34px; height: 34px; }
+#bar .name { font-size: 12px; font-weight: 600; }
+#bar .cost { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+#bar .sep { width: 1px; background: var(--line); margin: 8px 3px; flex: none; }
+#bar button.new { animation: arrive .7s cubic-bezier(.2, 1.4, .4, 1), glow 1.6s 3 .7s; }
+@keyframes arrive { from { transform: translateY(30px) scale(.6); opacity: 0; } }
+@keyframes glow { 50% { box-shadow: inset 0 0 0 2px var(--accent), 0 0 18px rgba(242, 181, 68, .5); } }
+#bar button.call { animation: glow 1.2s infinite; }
+
+#panel { padding: 12px 14px; min-width: 240px; max-width: min(340px, calc(100vw - 24px)); display: none; }
+#panel.show { display: block; animation: arrive .3s cubic-bezier(.2, 1.2, .4, 1); }
+#panel h3 { margin: 0; font-size: 16px; font-weight: 700; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+#panel h3 small { font-size: 12px; font-weight: 600; color: var(--muted); }
+#panel .flow { margin: 6px 0 2px; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#panel .flow canvas { position: static; width: 20px; height: 20px; }
+#panel .say { margin: 6px 0 0; font-size: 13px; }
+#panel .say.bad { color: #ff9d8a; }
+#panel .acts { display: flex; gap: 6px; margin-top: 10px; }
+#panel button { font: inherit; font-weight: 600; font-size: 13px; border: 0; border-radius: 11px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+#panel .go { background: var(--ink); color: var(--pane); }
+#panel .go:disabled { opacity: .4; cursor: default; }
+#panel .quiet { background: #232325; color: var(--ink); }
+#panel .pips { display: flex; gap: 4px; margin-top: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+#panel .pip { width: 16px; height: 9px; border-radius: 3px; background: #3b3b3e; }
+#panel .pip.out { background: var(--ink); }
+
+#banner { position: absolute; left: 50%; top: 24%; transform: translate(-50%, -50%) scale(.9); opacity: 0; pointer-events: none; text-align: center; color: var(--ink);
+  background: var(--pane); border-radius: 26px; padding: 16px 30px 18px; box-shadow: 0 10px 30px rgba(40,30,10,.25);
+  transition: opacity .5s, transform .6s cubic-bezier(.2, 1.3, .4, 1); }
+#banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+#banner b { display: block; font-size: 44px; font-weight: 700; letter-spacing: -.03em; }
+#banner span { font-size: 16px; font-weight: 600; opacity: .6; }
+
+#offer { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(205, 200, 186, .5); z-index: 4; padding: 0 16px; }
+#offer[hidden] { display: none; }
+#offer .pane { padding: 20px 20px 18px; text-align: center; max-width: 100%; }
+#offer h2 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+#offer .sub { color: var(--muted); margin: 4px 0 14px; font-size: 14px; }
+#offer .cards { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+#offer button { font: inherit; color: var(--ink); background: #1b1b1d; border: 0; border-radius: 16px; padding: 14px 12px 12px; width: 132px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: transform .15s, background .15s; animation: arrive .45s cubic-bezier(.2, 1.3, .4, 1) backwards; }
+#offer button:nth-child(2) { animation-delay: .07s; } #offer button:nth-child(3) { animation-delay: .14s; }
+#offer button:hover, #offer button:focus-visible { background: #29292c; transform: translateY(-3px); outline: none; box-shadow: inset 0 0 0 2px var(--ink); }
+#offer button canvas { position: static; width: 52px; height: 52px; }
+#offer button b { font-size: 15px; }
+#offer button small { font-size: 12px; color: var(--muted); line-height: 1.3; }
+#offer .bonus { margin-top: 12px; font-size: 12px; color: var(--accent); }
+#intro { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(235, 229, 211, .55); backdrop-filter: blur(2px); z-index: 5; }
+#intro .pane { padding: 26px 28px 22px; max-width: min(380px, calc(100vw - 32px)); }
+#intro h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -.03em; }
+#intro p { margin: 0 0 6px; color: #c9c6be; font-size: 15px; line-height: 1.4; }
+#intro button { margin-top: 14px; font: inherit; font-weight: 700; font-size: 15px; background: var(--ink); color: var(--pane); border: 0; border-radius: 13px; padding: 11px 18px; cursor: pointer; }
+#intro .keys { margin-top: 14px; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 600px) {
+  #status { min-width: 118px; flex: 1 1 auto; padding: 8px 12px 9px; }
+  #status .row { gap: 8px; }
+  #stPeople .w { display: none; }
+  #speed button[data-s="3"], #sound { display: none; }
+  #roads { padding: 0 10px 0 8px; }
+  #status b { font-size: 15px; }
+  #speed button { min-width: 32px; padding: 0 5px; }
+  #bar button { min-width: 54px; padding: 5px 6px; }
+  #banner b { font-size: 40px; }
+}
+</style>
+<canvas id="c"></canvas>
+<div id="top">
+  <div class="pane" id="status"><div class="row"><b id="stName">Hamlet</b><span id="stPeople"></span></div><div class="bar"><i id="stBar"></i></div></div>
+  <div id="spacer"></div>
+  <div class="pane" id="roads" title="Road tiles in hand"><svg viewBox="0 0 22 22" fill="none" stroke="#9aa0aa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17 L10 11 L18 11"/></svg><span id="roadN">0</span></div>
+  <div class="pane" id="week" title="The week: each one ends with a pick"><canvas width="64" height="64"></canvas><span id="weekN">1</span></div>
+  <div class="pane" id="speed">
+    <button data-s="0" title="Pause (space)" aria-label="Pause">❚❚</button>
+    <button data-s="1" class="on" title="Normal speed (1)">1×</button>
+    <button data-s="2" title="Fast (2)">2×</button>
+    <button data-s="3" title="Faster (3)">3×</button>
+  </div>
+  <button class="pane" id="sound" aria-label="Sound on"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8v4h3l4 3V5L6 8z" fill="currentColor"/><path id="waves" d="M13 7.5a3.5 3.5 0 0 1 0 5M15.5 5a7 7 0 0 1 0 10"/></svg></button>
+</div>
+<div class="pane" id="hint"></div>
+<div id="banner"><b id="bnName"></b><span id="bnSub"></span></div>
+<div id="bottom">
+  <div class="pane" id="panel"></div>
+  <div class="pane" id="bar"></div>
+</div>
+<div id="offer" hidden><div class="pane"><h2 id="ofTitle">Week 2</h2><div class="sub" id="ofSub"></div><div class="cards" id="ofCards"></div><div class="bonus" id="ofBonus"></div></div></div>
+<div id="intro"><div class="pane">
+  <h1>Sprawl, pinned</h1>
+  <p>Houses appear and want things. A pin shows what, and its ring fills while they wait.</p>
+  <p>Draw roads, and build what makes what they want. What you build wants things too.</p>
+  <p>Each week brings more road and one pick. Wait too long and a family moves out.</p>
+  <button id="go">Start</button>
+  <div class="keys">View pans and zooms · Road draws · Erase removes · pinch or scroll to zoom · space to pause</div>
+</div></div>
+
+<script src="sim.js"></script>
+<script>
+(() => {
+const S = window.SprawlPinned;
+const { GOODS, KINDS, LEVELS, STATUSES, REACH, SHELF, xy, at, W, H } = S;
+
+// ---- palette ------------------------------------------------------------------
+const C = {
+  land: '#ebe5d3', landDeep: '#e2dbc6', meadow: '#e6dca4', meadowLine: '#d6ca86', clay: '#e6c79c', clayDot: '#cfa676',
+  water: '#a7cfe3', shore: '#c8e2ee', tree: '#9ebd7e', treeDark: '#86a868', treeLight: '#b3cf93',
+  road: '#5b616c', bridge: '#f7f2e6', shadow: 'rgba(70, 55, 30, .2)',
+  wall: '#fbf7ee', roof: '#de7a63', roofShade: '#c4614c', flat: '#efe8da', flatEdge: '#d9d0bd',
+  fog: 'rgba(205, 200, 186, .72)', ink: '#141416',
+};
+
+// ---- icons, drawn in a unit box centred on 0,0 ------------------------------------
+// a shop has no good of its own: a dark front under a striped awning
+const SHOP_COL = '#4d5560';
+const kindCol = k => KINDS[k].shop ? SHOP_COL : GOODS[KINDS[k].out].col;
+const kindIcon = k => KINDS[k].shop ? 'shop' : KINDS[k].out;
+const ICON = {
+  shop(g) { const c = g.fillStyle;
+    g.beginPath(); g.roundRect(-0.3, -0.05, 0.6, 0.38, 0.04); g.fill();
+    for (let k = 0; k < 4; k++) { g.fillStyle = k % 2 ? 'rgba(255,255,255,.55)' : c; g.beginPath(); g.moveTo(-0.38 + k * 0.19, -0.32); g.lineTo(-0.19 + k * 0.19, -0.32); g.lineTo(-0.19 + k * 0.19, -0.08); g.quadraticCurveTo(-0.285 + k * 0.19, 0.02, -0.38 + k * 0.19, -0.08); g.fill(); }
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(-0.08, 0.1, 0.16, 0.23); g.fillStyle = c; },
+  fish(g) { g.beginPath(); g.ellipse(-0.08, 0, 0.3, 0.17, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.moveTo(0.16, 0); g.lineTo(0.42, -0.2); g.lineTo(0.42, 0.2); g.closePath(); g.fill(); },
+  log(g) { rr(g, -0.38, -0.15, 0.7, 0.3, 0.15); g.fill();
+    g.save(); g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.arc(0.24, 0, 0.09, 0, 7); g.fill(); g.restore(); },
+  plank(g) { for (const y of [-0.24, -0.04, 0.16]) { rr(g, -0.38, y, 0.76, 0.14, 0.04); g.fill(); } },
+  wheat(g) { g.save(); g.lineWidth = 0.07; g.lineCap = 'round'; g.strokeStyle = g.fillStyle;
+    g.beginPath(); g.moveTo(0, 0.42); g.lineTo(0, -0.3); g.stroke(); g.restore();
+    for (const y of [-0.3, -0.1, 0.1]) for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 0.11, y, 0.07, 0.13, s * 0.6, 0, 7); g.fill(); } },
+  bread(g) { g.beginPath(); g.moveTo(-0.38, 0.18); g.bezierCurveTo(-0.42, -0.28, 0.42, -0.28, 0.38, 0.18); g.closePath(); g.fill();
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 0.05; g.lineCap = 'round';
+    for (const x of [-0.14, 0.02, 0.18]) { g.beginPath(); g.moveTo(x - 0.05, -0.02); g.lineTo(x + 0.04, -0.12); g.stroke(); } g.restore(); },
+  clay(g) { g.beginPath(); g.moveTo(-0.34, 0.2); g.bezierCurveTo(-0.4, -0.1, -0.15, -0.3, 0.02, -0.22); g.bezierCurveTo(0.22, -0.32, 0.42, -0.1, 0.34, 0.2); g.closePath(); g.fill(); },
+  brick(g) { rr(g, -0.38, -0.24, 0.76, 0.48, 0.05); g.fill();
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.65)'; g.lineWidth = 0.045;
+    g.beginPath(); g.moveTo(-0.38, 0); g.lineTo(0.38, 0); g.moveTo(-0.05, -0.24); g.lineTo(-0.05, 0); g.moveTo(0.15, 0); g.lineTo(0.15, 0.24); g.moveTo(-0.22, 0); g.lineTo(-0.22, 0.24); g.stroke(); g.restore(); },
+  sand(g) { g.beginPath(); g.moveTo(-0.4, 0.24); g.quadraticCurveTo(0, -0.42, 0.4, 0.24); g.closePath(); g.fill();
+    g.save(); g.fillStyle = 'rgba(255,255,255,.55)'; for (const [x, y] of [[-0.12, 0.05], [0.08, -0.04], [0.16, 0.14], [-0.04, 0.16]]) { g.beginPath(); g.arc(x, y, 0.035, 0, 7); g.fill(); } g.restore(); },
+  glass(g) { rr(g, -0.3, -0.36, 0.6, 0.72, 0.06); g.fill();
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 0.06; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-0.14, 0.1); g.lineTo(0.06, -0.18); g.moveTo(-0.04, 0.2); g.lineTo(0.14, -0.04); g.stroke(); g.restore(); },
+  wool(g) { for (const [x, y, r] of [[-0.18, 0.06, 0.18], [0.04, -0.1, 0.2], [0.2, 0.08, 0.17], [0, 0.14, 0.18]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } },
+  clothes(g) { g.beginPath(); g.moveTo(-0.14, -0.34); g.lineTo(-0.42, -0.16); g.lineTo(-0.3, 0.02); g.lineTo(-0.22, -0.04); g.lineTo(-0.22, 0.38); g.lineTo(0.22, 0.38);
+    g.lineTo(0.22, -0.04); g.lineTo(0.3, 0.02); g.lineTo(0.42, -0.16); g.lineTo(0.14, -0.34); g.quadraticCurveTo(0, -0.2, -0.14, -0.34); g.fill(); },
+  stump(g) { rr(g, -0.2, -0.05, 0.4, 0.3, 0.06); g.fill(); g.beginPath(); g.ellipse(0, -0.05, 0.2, 0.09, 0, 0, 7); g.fill();
+    g.save(); g.strokeStyle = g.fillStyle; g.lineWidth = 0.07; g.lineCap = 'round'; g.beginPath(); g.moveTo(-0.36, -0.36); g.lineTo(0.36, 0.36); g.stroke(); g.restore(); },
+  furniture(g) { rr(g, -0.24, -0.38, 0.12, 0.5, 0.04); g.fill(); rr(g, -0.24, 0.0, 0.5, 0.12, 0.04); g.fill();
+    rr(g, -0.24, 0.1, 0.09, 0.3, 0.03); g.fill(); rr(g, 0.17, 0.1, 0.09, 0.3, 0.03); g.fill(); },
+};
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function icon(g, good, x, y, size, col) {
+  g.save(); g.translate(x, y); g.scale(size, size); g.fillStyle = col; ICON[good](g); g.restore();
+}
+
+// ---- state ---------------------------------------------------------------------
+const PACE = 0.6;   // game seconds per real second at 1x: time to look and think
+let sim, speed = 1, tool = 'view', selected = null, hover = -1, hoverPx = null;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let dpr = 1, vw = 0, vh = 0, portrait = false;
+const cam = { s: 40, x: 0, y: 0, ready: false };   // world tile -> screen: (p - cam.x) * cam.s, rotated in portrait
+let terrainCache = null, terrainRes = 0, terrainV = -1;
+const fx = [];       // floating bits: coins, rings
+const pops = new Map(); // building id -> time it appeared, for the bounce
+let lastRoadSfx = 0;
+
+function resize() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  vw = innerWidth; vh = innerHeight;
+  cv.width = vw * dpr; cv.height = vh * dpr;
+  cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
+  portrait = vh > vw * 1.15;
+}
+addEventListener('resize', resize);
+
+// The camera: a base fitted to the town's bounds, which eases out as the
+// town grows, and the player's zoom and pan on top of it. On a small screen
+// it starts zoomed in, so a tile is big enough to touch.
+const base = { s: 40, cx: 0, cy: 0, ready: false };
+const view = { z: 0, ox: 0, oy: 0 };
+function fitCam(snap) {
+  const b = sim.bounds;
+  const top = 74, bottom = 110, side = 14;
+  const bw = b.x1 - b.x0 + 1.6, bh = b.y1 - b.y0 + 1.6;
+  const [aw, ah] = portrait ? [bh, bw] : [bw, bh];
+  const s = Math.min((vw - side * 2) / aw, (vh - top - bottom) / ah);
+  const t = { s, cx: (b.x0 + b.x1 + 1) / 2, cy: (b.y0 + b.y1 + 1) / 2 };
+  if (snap || !base.ready) Object.assign(base, t, { ready: true });
+  else { const k = 0.06; base.s += (t.s - base.s) * k; base.cx += (t.cx - base.cx) * k; base.cy += (t.cy - base.cy) * k; }
+  if (!view.z) {
+    // start on the houses
+    view.z = Math.max(1, 30 / base.s);
+    const hs = [...sim.buildings.values()].filter(q => q.house);
+    const [x, y] = hs.reduce((a, h) => { const [hx, hy] = xy(h.tile); return [a[0] + (hx + 0.5) / hs.length, a[1] + (hy + 0.5) / hs.length]; }, [0, 0]);
+    view.ox = x - base.cx; view.oy = y - base.cy;
+  }
+  cam.sx = vw / 2; cam.sy = top + (vh - top - bottom) / 2;
+  applyView();
+  cam.ready = true;
+}
+// never zoom out past the whole town, never pan the town off the screen
+function applyView() {
+  view.z = Math.max(1, Math.min(5, view.z));
+  const b = sim.bounds, s = base.s * view.z;
+  const [sw, sh] = portrait ? [vh - 184, vw] : [vw, vh - 184];
+  const hw = Math.max(0, (b.x1 - b.x0 + 1) / 2 - sw / 2 / s + 1);
+  const hh = Math.max(0, (b.y1 - b.y0 + 1) / 2 - sh / 2 / s + 1);
+  view.ox = Math.max(-hw, Math.min(hw, view.ox));
+  view.oy = Math.max(-hh, Math.min(hh, view.oy));
+  cam.s = s; cam.cx = base.cx + view.ox; cam.cy = base.cy + view.oy;
+}
+// zoom by k, keeping the world point under px,py where it is
+function zoomAt(px, py, k) {
+  const [wx, wy] = toWorld(px, py);
+  view.z *= k; applyView();
+  const [nx, ny] = toWorld(px, py);
+  view.ox += wx - nx; view.oy += wy - ny; applyView();
+}
+function panBy(dx, dy) {
+  const [ax, ay] = toWorld(0, 0), [bx, by] = toWorld(dx, dy);
+  view.ox -= bx - ax; view.oy -= by - ay; applyView();
+}
+// world (tile units, 0..W) to screen px
+function toScreen(x, y) {
+  const dx = (x - cam.cx) * cam.s, dy = (y - cam.cy) * cam.s;
+  return portrait ? [cam.sx - dy, cam.sy + dx] : [cam.sx + dx, cam.sy + dy];
+}
+function toWorld(px, py) {
+  const dx = px - cam.sx, dy = py - cam.sy;
+  const [wx, wy] = portrait ? [dy, -dx] : [dx, dy];
+  return [cam.cx + wx / cam.s, cam.cy + wy / cam.s];
+}
+function worldTransform() {
+  const m = new DOMMatrix().scale(dpr, dpr).translate(cam.sx, cam.sy);
+  if (portrait) m.rotateSelf(90);
+  return m.scale(cam.s, cam.s).translate(-cam.cx, -cam.cy);
+}
+
+// ---- terrain, drawn once into a cache ----------------------------------------------
+function buildTerrain(res) {
+  const c = document.createElement('canvas');
+  c.width = W * res; c.height = H * res;
+  const t = c.getContext('2d');
+  t.scale(res, res);
+  const T = sim.terrain, R = S.rngFor ? null : null;
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  t.fillStyle = C.land; t.fillRect(0, 0, W, H);
+  // soft patches so the land isn't a flat sheet: light, not colour
+  // tufts of grass: a few short strokes, light not colour
+  t.strokeStyle = 'rgba(150,140,100,.18)'; t.lineWidth = 0.04; t.lineCap = 'round';
+  for (let k = 0; k < W * H * 0.35; k++) { const x = rnd() * W, y = rnd() * H; t.beginPath(); t.moveTo(x, y); t.lineTo(x - 0.05, y - 0.12); t.moveTo(x + 0.07, y); t.lineTo(x + 0.1, y - 0.1); t.stroke(); }
+  const blobby = (kind, col, pad) => {
+    t.fillStyle = col;
+    for (let i = 0; i < W * H; i++) {
+      if (T[i] !== kind) continue;
+      const [x, y] = xy(i);
+      t.beginPath(); t.arc(x + 0.5, y + 0.5, 0.62 + pad, 0, 7); t.fill();
+      if (T[i + 1] === kind && x + 1 < W) t.fillRect(x + 0.5, y - pad, 1, 1 + pad * 2);
+      if (T[i + W] === kind) t.fillRect(x - pad, y + 0.5, 1 + pad * 2, 1);
+      if (T[i + 1] === kind && T[i + W] === kind && T[i + W + 1] === kind && x + 1 < W) t.fillRect(x + 0.5, y + 0.5, 1, 1);
+    }
+  };
+  blobby(S.MEADOW, C.meadow, 0);
+  // furrows across the meadow
+  t.save(); t.beginPath();
+  for (let i = 0; i < W * H; i++) if (T[i] === S.MEADOW) { const [x, y] = xy(i); t.rect(x - 0.1, y - 0.1, 1.2, 1.2); }
+  t.clip(); t.strokeStyle = C.meadowLine; t.lineWidth = 0.05;
+  for (let k = -H; k < W; k += 0.33) { t.beginPath(); t.moveTo(k, 0); t.lineTo(k + H * 0.35, H); t.stroke(); }
+  t.restore();
+  blobby(S.CLAY, C.clay, 0);
+  t.fillStyle = C.clayDot;
+  for (let i = 0; i < W * H; i++) if (T[i] === S.CLAY) { const [x, y] = xy(i); for (let k = 0; k < 4; k++) { t.beginPath(); t.arc(x + 0.2 + rnd() * 0.6, y + 0.2 + rnd() * 0.6, 0.04 + rnd() * 0.03, 0, 7); t.fill(); } }
+  blobby(S.WATER, C.shore, 0.1);
+  blobby(S.WATER, C.water, 0);
+  // little sparkle lines on the water
+  t.strokeStyle = 'rgba(255,255,255,.45)'; t.lineWidth = 0.05; t.lineCap = 'round';
+  for (let i = 0; i < W * H; i++) if (T[i] === S.WATER && rnd() < 0.12) { const [x, y] = xy(i); const ox = x + 0.2 + rnd() * 0.4, oy = y + 0.3 + rnd() * 0.4; t.beginPath(); t.moveTo(ox, oy); t.lineTo(ox + 0.25, oy); t.stroke(); }
+  // trees: a few round crowns a tile, shadow first, then crown, then light
+  const trees = [];
+  for (let i = 0; i < W * H; i++) if (T[i] === S.FOREST) {
+    const [x, y] = xy(i);
+    const n = 3;
+    for (let k = 0; k < n; k++) trees.push([x + 0.2 + rnd() * 0.6, y + 0.2 + rnd() * 0.6, 0.2 + rnd() * 0.1]);
+  }
+  trees.sort((a, b) => a[1] - b[1]);
+  t.fillStyle = 'rgba(70,90,40,.18)';
+  for (const [x, y, r] of trees) { t.beginPath(); t.arc(x + 0.08, y + 0.1, r, 0, 7); t.fill(); }
+  for (const [x, y, r] of trees) {
+    t.fillStyle = C.treeDark; t.beginPath(); t.arc(x, y, r, 0, 7); t.fill();
+    t.fillStyle = C.tree; t.beginPath(); t.arc(x - r * 0.15, y - r * 0.18, r * 0.82, 0, 7); t.fill();
+    t.fillStyle = C.treeLight; t.beginPath(); t.arc(x - r * 0.35, y - r * 0.38, r * 0.32, 0, 7); t.fill();
+  }
+  return c;
+}
+function terrainKey() { let h = 0; for (let i = 0; i < sim.terrain.length; i++) h = (h * 31 + sim.terrain[i]) | 0; return h; }
+
+// ---- drawing -------------------------------------------------------------------
+function frame() {
+  const now = performance.now() / 1000;
+  fitCam(false);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = C.land; g.fillRect(0, 0, cv.width, cv.height);
+
+  const res = Math.min(96, Math.max(24, Math.ceil(cam.s * dpr / 8) * 8));
+  const key = terrainKey();
+  if (!terrainCache || Math.abs(res - terrainRes) > 12 || key !== terrainV) { terrainCache = buildTerrain(res); terrainRes = res; terrainV = key; }
+
+  g.setTransform(worldTransform());
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(terrainCache, 0, 0, W, H);
+  drawHighlights(now);
+  drawRoads(now);
+  drawBuildings(now);
+  drawTrucks();
+  drawFog();
+  drawGhost(now);
+  // upright things on top, in screen space
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawPins(now);
+  drawFx(now);
+}
+
+function drawFog() {
+  const b = sim.bounds;
+  g.fillStyle = C.fog;
+  g.beginPath();
+  g.rect(-2, -2, W + 4, H + 4);
+  g.roundRect(b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1, 0.6);
+  g.fill('evenodd');
+  g.strokeStyle = 'rgba(120,105,70,.25)'; g.lineWidth = 0.04; g.setLineDash([0.15, 0.15]);
+  g.beginPath(); g.roundRect(b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1, 0.6); g.stroke();
+  g.setLineDash([]);
+}
+
+function drawHighlights(now) {
+  // where the card in hand may go
+  if (KINDS[tool]) {
+    g.fillStyle = 'rgba(255,255,255,.38)';
+    for (let i = 0; i < W * H; i++) if (sim.canPlace(tool, i)) { const [x, y] = xy(i); g.beginPath(); g.roundRect(x + 0.08, y + 0.08, 0.84, 0.84, 0.18); g.fill(); }
+    if (KINDS[tool].loud && hover >= 0) {
+      const [x, y] = xy(hover);
+      g.fillStyle = 'rgba(80,70,60,.09)'; g.strokeStyle = 'rgba(80,70,60,.3)'; g.lineWidth = 0.04; g.setLineDash([0.12, 0.1]);
+      g.beginPath(); g.roundRect(x - 2, y - 2, 5, 5, 0.5); g.fill(); g.stroke(); g.setLineDash([]);
+    }
+  }
+  // queues: junctions with trucks waiting glow red
+  const heat = new Map();
+  for (const [k, lane] of sim.lanes) for (const v of lane) if (v.wait > 1.5) { const b = v.route[v.seg + 1]; heat.set(b, Math.max(heat.get(b) || 0, v.wait)); }
+  for (const [n, w] of heat) {
+    const [x, y] = xy(n);
+    const a = Math.min(0.45, w / 10) * (0.75 + 0.25 * Math.sin(now * 6));
+    g.fillStyle = `rgba(229,83,61,${a})`;
+    g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.75, 0, 7); g.fill();
+  }
+}
+
+function drawRoads(now) {
+  const edges = [];
+  for (const [a, set] of sim.adj) for (const b of set) if (a < b) edges.push([a, b]);
+  // bridges get a pale deck under the asphalt
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.strokeStyle = C.bridge; g.lineWidth = 0.66;
+  g.beginPath();
+  for (const [a, b] of edges) if (sim.terrain[a] === S.WATER || sim.terrain[b] === S.WATER) line(a, b);
+  g.stroke();
+  g.strokeStyle = 'rgba(90,80,60,.25)'; g.lineWidth = 0.74;
+  g.globalCompositeOperation = 'destination-over'; g.stroke(); g.globalCompositeOperation = 'source-over';
+  // driveways
+  g.strokeStyle = C.road; g.lineWidth = 0.24;
+  g.beginPath();
+  for (const b of sim.buildings.values()) if (b.door >= 0) { const [x, y] = xy(b.tile), [dx, dy] = xy(b.door); g.moveTo(x + 0.5, y + 0.5); g.lineTo(dx + 0.5, dy + 0.5); }
+  g.stroke();
+  g.lineWidth = 0.44;
+  g.beginPath();
+  for (const [a, b] of edges) line(a, b);
+  g.stroke();
+  g.fillStyle = C.road;
+  for (const n of sim.adj.keys()) { const [x, y] = xy(n); g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.22, 0, 7); g.fill(); }
+  // centre dashes on long straights read as roads, not pipes
+  g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 0.035; g.setLineDash([0.12, 0.16]);
+  g.beginPath();
+  for (const [a, b] of edges) if (!sim.isJunction(a) && !sim.isJunction(b)) line(a, b);
+  g.stroke(); g.setLineDash([]);
+  for (const n of sim.roundabouts) {
+    const [x, y] = xy(n);
+    g.fillStyle = C.road; g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.46, 0, 7); g.fill();
+    g.fillStyle = C.tree; g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.17, 0, 7); g.fill();
+  }
+}
+function line(a, b) { const [ax, ay] = xy(a), [bx, by] = xy(b); g.moveTo(ax + 0.5, ay + 0.5); g.lineTo(bx + 0.5, by + 0.5); }
+
+function bounce(id, now) {
+  const t0 = pops.get(id);
+  if (t0 === undefined) return 1;
+  const t = (now - t0) / 0.45;
+  if (t >= 1) { pops.delete(id); return 1; }
+  const c = 1.9;
+  return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
+}
+
+function drawBuildings(now) {
+  const list = [...sim.buildings.values()].sort((a, b) => a.tile - b.tile);
+  for (const b of list) {
+    const [x, y] = xy(b.tile);
+    const k = bounce(b.id, now);
+    g.save(); g.translate(x + 0.5, y + 0.5); g.scale(k, k);
+    if (b.house) drawHouse(b); else drawProducer(b, now);
+    g.restore();
+  }
+}
+function drawHouse(h) {
+  const L = h.level;
+  const [w, d, tall] = L === 1 ? [0.56, 0.48, 0.07] : L === 2 ? [0.74, 0.56, 0.11] : L === 3 ? [0.76, 0.76, 0.2] : [0.84, 0.84, 0.36];
+  g.fillStyle = C.shadow;
+  g.beginPath(); g.roundRect(-w / 2 + tall, -d / 2 + tall * 1.1, w, d, 0.06); g.fill();
+  if (L < 3) {
+    // a pitched roof seen from above: one side in the sun, one in shade
+    g.fillStyle = C.roof; g.beginPath(); g.roundRect(-w / 2, -d / 2, w, d / 2, [0.06, 0.06, 0, 0]); g.fill();
+    g.fillStyle = C.roofShade; g.beginPath(); g.roundRect(-w / 2, 0, w, d / 2, [0, 0, 0.06, 0.06]); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 0.025;
+    g.beginPath(); g.moveTo(-w / 2 + 0.03, 0); g.lineTo(w / 2 - 0.03, 0); g.stroke();
+    if (L === 2) { g.fillStyle = C.wall; g.fillRect(w / 2 - 0.16, -d / 2 + 0.06, 0.07, 0.1); }
+  } else if (L === 4) {
+    g.fillStyle = '#d5ccb8'; g.beginPath(); g.roundRect(-w / 2, -d / 2, w, d, 0.07); g.fill();
+    g.fillStyle = C.flat; g.beginPath(); g.roundRect(-w / 2 + 0.05, -d / 2 + 0.05, w - 0.1, d - 0.1, 0.04); g.fill();
+    // a roof garden and two plant rooms: the block is tall, the shadow says so
+    g.fillStyle = C.tree; g.beginPath(); g.roundRect(-0.3, 0.04, 0.3, 0.24, 0.05); g.fill();
+    g.fillStyle = C.roof; g.beginPath(); g.roundRect(0.06, -0.3, 0.22, 0.2, 0.03); g.fill();
+    g.fillStyle = '#d5ccb8'; g.fillRect(0.1, 0.1, 0.14, 0.14);
+  } else {
+    g.fillStyle = C.flatEdge; g.beginPath(); g.roundRect(-w / 2, -d / 2, w, d, 0.07); g.fill();
+    g.fillStyle = C.flat; g.beginPath(); g.roundRect(-w / 2 + 0.06, -d / 2 + 0.06, w - 0.12, d - 0.12, 0.04); g.fill();
+    g.fillStyle = C.roof; g.beginPath(); g.roundRect(-0.12, -0.18, 0.24, 0.16, 0.03); g.fill();
+    g.fillStyle = C.flatEdge; g.fillRect(0.1, 0.08, 0.1, 0.1);
+  }
+  // growing: scaffolding round the size it's growing to, and the materials
+  // that have come so far stacked beside it
+  const left = sim.pins.filter(p => p.at === h.id && p.kind === 'build');
+  if (left.length && LEVELS[L].grow) {
+    const [nw, nd] = L === 1 ? [0.74, 0.56] : L === 2 ? [0.76, 0.76] : [0.84, 0.84];
+    g.strokeStyle = '#a77a4a'; g.lineWidth = 0.035;
+    g.strokeRect(-nw / 2 - 0.03, -nd / 2 - 0.03, nw + 0.06, nd + 0.06);
+    g.lineWidth = 0.02;
+    g.beginPath();
+    for (let k = 0; k <= 4; k++) { const x = -nw / 2 - 0.03 + (nw + 0.06) * k / 4; g.moveTo(x, -nd / 2 - 0.03); g.lineTo(x + 0.05, -nd / 2 + 0.03); g.moveTo(x, nd / 2 + 0.03); g.lineTo(x + 0.05, nd / 2 - 0.03); }
+    g.stroke();
+    g.fillStyle = '#a77a4a';
+    for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { g.beginPath(); g.arc(x * (nw / 2 + 0.03), y * (nd / 2 + 0.03), 0.04, 0, 7); g.fill(); }
+    const goods = Object.entries(LEVELS[L].grow).flatMap(([gd, n]) => Array(n).fill(gd));
+    const have = goods.length - left.length;
+    for (let k = 0; k < have; k++) {
+      g.fillStyle = GOODS[goods[k]].col;
+      g.fillRect(nw / 2 + 0.08, nd / 2 - 0.14 - k * 0.13, 0.12, 0.11);
+    }
+  }
+  if (h.quiet) {
+    // too loud to grow: a little grey cloud of noise
+    g.fillStyle = 'rgba(110,105,100,.75)';
+    for (const [cx, cy, r] of [[0.22, -0.28, 0.08], [0.32, -0.3, 0.1], [0.42, -0.27, 0.07]]) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+  }
+}
+function drawProducer(b, now) {
+  const k = KINDS[b.kind], col = kindCol(b.kind);
+  const s = 0.8;
+  g.fillStyle = C.shadow; g.beginPath(); g.roundRect(-s / 2 + 0.1, -s / 2 + 0.12, s, s, 0.18); g.fill();
+  g.fillStyle = col; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s, 0.18); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.16)'; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s * 0.45, [0.18, 0.18, 0.04, 0.04]); g.fill();
+  if (b.idle === 'starved') { g.fillStyle = 'rgba(235,229,211,.45)'; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s, 0.18); g.fill(); }
+  g.save(); if (portrait) g.rotate(-Math.PI / 2); icon(g, kindIcon(b.kind), 0, -0.04, 0.5, '#fff'); g.restore();
+  // a shop's shelves: a crate for each good it has in
+  if (b.stock) {
+    const have = Object.keys(b.stock).filter(gd => b.stock[gd] > 0);
+    have.slice(0, 4).forEach((gd, n) => {
+      g.fillStyle = '#fff'; g.beginPath(); g.roundRect(-0.33 + n * 0.17, 0.2, 0.14, 0.14, 0.03); g.fill();
+      g.fillStyle = GOODS[gd].col; g.beginPath(); g.roundRect(-0.31 + n * 0.17, 0.22, 0.1, 0.1, 0.02); g.fill();
+    });
+  }
+  // the yard: what's made and waiting for a truck
+  for (let n = 0; n < Math.min(b.out, 4); n++) {
+    g.fillStyle = '#fff'; g.beginPath(); g.roundRect(-0.33 + n * 0.17, 0.2, 0.14, 0.14, 0.03); g.fill();
+    g.fillStyle = col; g.beginPath(); g.roundRect(-0.31 + n * 0.17, 0.22, 0.1, 0.1, 0.02); g.fill();
+  }
+  // progress, a thin line along the top
+  if (b.idle === 'cleared') { g.fillStyle = 'rgba(235,229,211,.5)'; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s, 0.18); g.fill(); }
+  if (!b.idle && b.prog > 0) { g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(-0.28, -0.34, 0.56 * b.prog, 0.035); }
+  if (selected === b.id) { g.strokeStyle = C.ink; g.lineWidth = 0.05; g.beginPath(); g.roundRect(-s / 2 - 0.08, -s / 2 - 0.08, s + 0.16, s + 0.16, 0.24); g.stroke(); }
+}
+
+function drawTrucks() {
+  for (const v of sim.vehicles) {
+    const p = sim.vehiclePose(v);
+    if (!p) continue;
+    const home = sim.B(v.home);
+    if (!home) continue;
+    if (v.car) { drawCar(v, p); continue; }
+    const col = GOODS[KINDS[home.kind].out].col;
+    g.save();
+    g.translate(p.x + 0.5, p.y + 0.5);
+    g.rotate(Math.atan2(p.hy, p.hx));
+    const k = v.hop > 0 ? 1 - v.hop * 2.4 : 1;
+    g.scale(k * 1.3, k * 1.3);
+    g.globalAlpha = p.ghost ? 0.45 : 1;
+    g.fillStyle = 'rgba(40,30,20,.22)'; g.beginPath(); g.roundRect(-0.17, -0.07, 0.36, 0.2, 0.06); g.fill();
+    // bed: the load in its colour, or empty
+    g.fillStyle = v.cargo ? col : '#e9e4d8';
+    g.beginPath(); g.roundRect(-0.2, -0.1, 0.25, 0.2, 0.04); g.fill();
+    if (!v.cargo) { g.strokeStyle = col; g.lineWidth = 0.03; g.stroke(); }
+    // a lorry for a shop carries several crates: a seam between each
+    const n = v.cargo ? 1 + (v.more?.length || 0) : 0;
+    if (n > 1) { g.strokeStyle = 'rgba(0,0,0,.28)'; g.lineWidth = 0.02; g.beginPath(); for (let c = 1; c < n; c++) { const x = -0.2 + 0.25 * c / n; g.moveTo(x, -0.1); g.lineTo(x, 0.1); } g.stroke(); }
+    g.fillStyle = '#33373e'; g.beginPath(); g.roundRect(0.06, -0.09, 0.12, 0.18, [0.02, 0.06, 0.06, 0.02]); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(0.13, -0.06, 0.03, 0.12);
+    g.restore();
+  }
+}
+
+// A resident's car: small, in the roof's colour, with the shopping on the back seat.
+function drawCar(v, p) {
+  g.save();
+  g.translate(p.x + 0.5, p.y + 0.5);
+  g.rotate(Math.atan2(p.hy, p.hx));
+  const k = v.hop > 0 ? 1 - v.hop * 2.4 : 1;
+  g.scale(k * 1.15, k * 1.15);
+  g.globalAlpha = p.ghost ? 0.45 : 1;
+  g.fillStyle = 'rgba(40,30,20,.22)'; g.beginPath(); g.roundRect(-0.12, -0.06, 0.27, 0.16, 0.06); g.fill();
+  g.fillStyle = C.roof; g.beginPath(); g.roundRect(-0.14, -0.08, 0.27, 0.16, 0.06); g.fill();
+  g.fillStyle = '#fbf7ee'; g.beginPath(); g.roundRect(-0.06, -0.06, 0.12, 0.12, 0.03); g.fill();
+  v.bag.slice(0, 2).forEach((gd, n) => { g.fillStyle = GOODS[gd].col; g.fillRect(-0.04 + n * 0.05, -0.03, 0.04, 0.06); });
+  g.restore();
+}
+function drawGhost(now) {
+  if (hover < 0) return;
+  const [x, y] = xy(hover);
+  if (KINDS[tool]) {
+    const ok = sim.canPlace(tool, hover) && sim.tokens[tool] > 0;
+    g.save(); g.translate(x + 0.5, y + 0.5); g.globalAlpha = 0.75;
+    const col = ok ? kindCol(tool) : '#9a948a';
+    g.fillStyle = col; g.beginPath(); g.roundRect(-0.4, -0.4, 0.8, 0.8, 0.18); g.fill();
+    icon(g, kindIcon(tool), 0, -0.04, 0.5, '#fff');
+    g.restore();
+  } else if (tool === 'road' || tool === 'erase' || tool === 'roundabout') {
+    g.strokeStyle = tool === 'erase' ? 'rgba(229,83,61,.8)' : 'rgba(20,20,22,.35)'; g.lineWidth = 0.05;
+    g.beginPath(); g.roundRect(x + 0.06, y + 0.06, 0.88, 0.88, 0.2); g.stroke();
+  }
+}
+
+// Pins: a white badge with the good's icon. A want carries a ring that fills
+// while the house waits; growth asks in a rounded square; inputs are small.
+function drawPins(now) {
+  const byAt = new Map();
+  for (const p of sim.pins) {
+    if (p.kind === 'input') {
+      const b = sim.B(p.at);
+      if (!b || b.idle !== 'starved' || (b.stock ? (b.stock[p.good] || 0) - (b.held[p.good] || 0) > 0 : b.inBuf[p.good] >= KINDS[b.kind].needs[p.good])) continue;
+      if ((byAt.get(p.at) || []).some(q => q.good === p.good)) continue;
+    }
+    if (!byAt.has(p.at)) byAt.set(p.at, []);
+    byAt.get(p.at).push(p);
+  }
+  // a woodcutter with no trees left says so, as a pin of its own
+  for (const b of sim.buildings.values()) if (b.idle === 'cleared') byAt.set(b.id, [{ good: 'stump', kind: 'input', born: -9, by: -1, at: b.id, stump: true }]);
+  const unit = Math.max(16, Math.min(34, cam.s * 0.9));
+  for (let [id, ps] of byAt) {
+    const b = sim.B(id);
+    if (!b) continue;
+    const [x, y] = xy(b.tile);
+    const [sx, sy] = toScreen(x + 0.5, y + 0.5);
+    ps.sort((a, c) => (a.kind === 'build') - (c.kind === 'build') || a.born - c.born);
+    const builds = ps.filter(p => p.kind === 'build');
+    if (builds.length > 1) { const first = Object.assign({}, builds[0], { count: builds.length, by: builds.some(p => p.by >= 0) ? 1 : -1 }); ps = ps.filter(p => p.kind !== 'build').concat([first]); }
+    const shown = ps.slice(0, 5);
+    const step = unit * (b.house ? 0.86 : 0.7);
+    const x0 = sx - (shown.length - 1) * step / 2;
+    const yy = sy - unit * (b.house ? 0.95 : 0.85);
+    shown.forEach((p, n) => {
+      const px = x0 + n * step;
+      const r = unit * (p.kind === 'input' ? 0.3 : 0.38);
+      const age = sim.time - p.born;
+      const f = p.kind === 'want' ? Math.min(1, age / S.PATIENCE) : 0;
+      const pulse = f > 0.7 ? 1 + 0.08 * Math.sin(now * 10) : 1;
+      const born = Math.min(1, age / 0.25);
+      const k = pulse * (0.4 + 0.6 * born);
+      g.save(); g.translate(px, yy); g.scale(k, k);
+      g.fillStyle = 'rgba(60,45,20,.18)'; g.beginPath(); badge(p, 1.5, r); g.fill();
+      g.fillStyle = '#fff'; g.beginPath(); badge(p, 0, r); g.fill();
+      if (p.kind === 'input') { g.strokeStyle = 'rgba(20,20,22,.15)'; g.lineWidth = 1.2; g.stroke(); }
+      if (p.kind === 'build') { g.strokeStyle = GOODS[p.good].col; g.lineWidth = 2; g.setLineDash([3, 2.5]); g.stroke(); g.setLineDash([]); }
+      icon(g, p.good, 0, 0, r * 1.3, p.stump ? '#8b5e34' : GOODS[p.good].col);
+      if (!p.stump && p.by < 0 && unreachable(p)) {
+        // nothing that makes it can reach it: a broken link, shown loud
+        g.fillStyle = '#e5533d'; g.beginPath(); g.arc(-r * 0.8, -r * 0.8, Math.max(4, r * 0.34), 0, 7); g.fill();
+        g.fillStyle = '#fff'; g.font = `800 ${Math.max(7, r * 0.5)}px Inter Tight, system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('!', -r * 0.8, -r * 0.78);
+      }
+      if (p.kind === 'want') {
+        g.lineWidth = Math.max(2.5, r * 0.22); g.lineCap = 'round';
+        g.strokeStyle = 'rgba(20,20,22,.1)'; g.beginPath(); g.arc(0, 0, r + g.lineWidth * 0.9, 0, 7); g.stroke();
+        if (f > 0.01) {
+          g.strokeStyle = f < 0.5 ? '#9b958a' : f < 0.78 ? '#eb9a35' : '#e5533d';
+          g.beginPath(); g.arc(0, 0, r + g.lineWidth * 0.9, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); g.stroke();
+        }
+      }
+      if (p.count > 1) {
+        g.fillStyle = C.ink; g.beginPath(); g.arc(r * 0.85, -r * 0.85, Math.max(6, r * 0.4), 0, 7); g.fill();
+        g.fillStyle = '#fff'; g.font = `700 ${Math.max(9, r * 0.55)}px Inter Tight, system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(p.count, r * 0.85, -r * 0.83);
+      }
+      if (p.by >= 0) {
+        // a truck is on its way
+        g.fillStyle = C.ink; g.beginPath(); g.arc(r * 0.78, r * 0.78, Math.max(2.5, r * 0.26), 0, 7); g.fill();
+        g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.stroke();
+      }
+      g.restore();
+    });
+    if (ps.length > shown.length) {
+      g.fillStyle = C.ink; g.font = `700 ${Math.round(unit * 0.4)}px Inter Tight, system-ui`; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText('+' + (ps.length - shown.length), x0 + shown.length * step - step * 0.4, yy);
+    }
+  }
+}
+// True when makers of this good exist but none of them can reach the pin by road.
+function unreachable(p) {
+  const at0 = sim.B(p.at);
+  if (!at0) return false;
+  if (p.kind === 'want') return at0.door < 0 || at0.shop == null;
+  const makers = [...sim.buildings.values()].filter(b => b.kind === S.MAKER[p.good]);
+  if (!makers.length) return false;
+  if (at0.door < 0) return true;
+  const d = sim.dist(at0.door);
+  return !makers.some(m => m.door >= 0 && d.has(m.door));
+}
+function badge(p, off, r) {
+  if (p.kind === 'build') g.roundRect(-r + off, -r + off, r * 2, r * 2, r * 0.42);
+  else g.arc(off, off, r, 0, 7);
+}
+
+function drawFx(now) {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i];
+    const t = (now - f.t0) / f.dur;
+    if (t >= 1) { fx.splice(i, 1); continue; }
+    const [sx, sy] = toScreen(f.x, f.y);
+    if (f.kind === 'coin') {
+      const yy = sy - 20 - t * 26, a = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+      g.globalAlpha = a;
+      g.fillStyle = '#f2b544'; g.beginPath(); g.arc(sx - 8, yy, 6, 0, 7); g.fill();
+      g.fillStyle = C.ink; g.font = '700 14px Inter Tight, system-ui'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText('+' + f.n, sx, yy + 0.5);
+      g.globalAlpha = 1;
+    } else if (f.kind === 'ring') {
+      g.strokeStyle = f.col; g.globalAlpha = 1 - t; g.lineWidth = 3 * (1 - t) + 1;
+      g.beginPath(); g.arc(sx, sy, cam.s * (0.3 + t * f.r), 0, 7); g.stroke(); g.globalAlpha = 1;
+    } else if (f.kind === 'text') {
+      g.globalAlpha = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
+      g.fillStyle = f.col; g.font = '700 14px Inter Tight, system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(f.text, sx, sy - 22 + t * f.dy);
+      g.globalAlpha = 1;
+    } else if (f.kind === 'gone') {
+      // a cottage that emptied, fading where it stood
+      const k = 1 - t;
+      g.save(); g.setTransform(worldTransform()); g.translate(f.x, f.y); g.scale(k, k); g.globalAlpha = k * 0.8;
+      g.fillStyle = '#b9b2a4'; g.beginPath(); g.roundRect(-0.25, -0.22, 0.5, 0.44, 0.06); g.fill();
+      g.restore(); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.globalAlpha = 1;
+    }
+  }
+}
+
+// ---- sound: small sine plucks, one note per good ----------------------------------
+let ac = null, muted = false;
+const NOTE = { fish: 0, plank: 4, bread: 7, brick: 9, furniture: 12, log: -5, wheat: -3, clay: -7 };
+function tone(semi, dur = 0.18, vol = 0.07, type = 'sine', when = 0) {
+  if (!ac || muted) return;
+  const t = ac.currentTime + when;
+  const o = ac.createOscillator(), gn = ac.createGain();
+  o.type = type; o.frequency.value = 523.25 * Math.pow(2, semi / 12);
+  gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(vol, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(gn).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  deliver: g0 => tone(NOTE[g0] ?? 0, 0.2, 0.05),
+  place: () => { tone(-12, 0.16, 0.08, 'triangle'); tone(-5, 0.12, 0.04, 'sine', 0.04); },
+  road: () => tone(-17, 0.05, 0.03, 'triangle'),
+  grow: () => { tone(0, 0.25, 0.06); tone(4, 0.25, 0.06, 'sine', 0.08); tone(7, 0.35, 0.06, 'sine', 0.16); },
+  unlock: () => { [0, 4, 7, 12].forEach((s, k) => tone(s + 7, 0.3, 0.05, 'sine', k * 0.07)); },
+  leave: () => { tone(-8, 0.35, 0.06, 'triangle'); tone(-13, 0.45, 0.05, 'triangle', 0.12); },
+  status: () => { [0, 4, 7, 11, 14].forEach((s, k) => tone(s, 0.5, 0.05, 'sine', k * 0.09)); },
+  no: () => tone(-20, 0.12, 0.05, 'square'),
+};
+
+// ---- the events the sim reports ---------------------------------------------------
+const hints = { shown: new Set(), queue: [], cur: null, until: 0 };
+function hint(key, text, hold = 7) {
+  if (hints.shown.has(key)) return;
+  hints.shown.add(key);
+  hints.queue.push({ text, hold });
+}
+function tickHints(now) {
+  const el = document.getElementById('hint');
+  if (hints.cur && now > hints.until && !(hints.cur.until && !hints.cur.until())) { hints.cur = null; el.classList.remove('show'); hints.next = now + 0.5; }
+  if (!hints.cur && hints.queue.length && now > (hints.next || 0)) {
+    hints.cur = hints.queue.shift(); hints.until = now + hints.cur.hold;
+    el.textContent = hints.cur.text; el.classList.add('show');
+  }
+}
+
+function handleEvents(now) {
+  for (const e of sim.events) {
+    const [x, y] = xy(e.tile ?? 0);
+    if (e.type === 'deliver') {
+      sfx.deliver(e.good);
+      if (sim.B(sim.tileB.get(e.tile))?.house) fx.push({ kind: 'ring', x: x + 0.5, y: y + 0.5, col: GOODS[e.good].col, r: 0.5, t0: now, dur: 0.5 });
+    } else if (e.type === 'spawn' || e.type === 'place') {
+      pops.set(e.id, now);
+      if (e.type === 'place') sfx.place();
+      else if (sim.time > 1) tone(12, 0.08, 0.025, 'sine');
+    } else if (e.type === 'grow') {
+      pops.set(e.id, now); sfx.grow();
+      fx.push({ kind: 'ring', x: x + 0.5, y: y + 0.5, col: '#f2b544', r: 1.2, t0: now, dur: 0.8 });
+      if (e.level === 2) hint('house', 'A cottage grew into a house. Houses want bread too.');
+      if (e.level === 3) hint('town', 'A townhouse! It wants furniture as well.');
+    } else if (e.type === 'leave') {
+      sfx.leave();
+      fx.push({ kind: 'text', x: x + 0.5, y: y + 0.5, text: e.gone ? '−2' : '−' + (LEVELS[e.level ?? 1]?.people || 2), col: '#b8432f', dy: 12, t0: now, dur: 1.6 });
+      if (e.gone) fx.push({ kind: 'gone', x: x + 0.5, y: y + 0.5, t0: now, dur: 0.9 });
+      hint('left', `A family left: they waited too long for ${GOODS[e.good].name.toLowerCase()}. Watch the rings.`);
+    } else if (e.type === 'unlock') {
+      sfx.unlock();
+      buildBar(e.kind);
+      hint('unlock:' + e.kind, e.why, 8);
+    } else if (e.type === 'status') {
+      sfx.status();
+      const el = document.getElementById('banner');
+      document.getElementById('bnName').textContent = e.name;
+      document.getElementById('bnSub').textContent = 'The map grows';
+      el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2600);
+    } else if (e.type === 'jam') {
+      buildBar('roundabout');
+      hint('jam', 'Trucks are queuing at a junction. A roundabout lets three through at once.', 8);
+    } else if (e.type === 'week') {
+      showOffer();
+    } else if (e.type === 'felled') {
+      hint('felled', 'A woodcutter cut a patch bare. Trees grow back: with plenty of forest round it, a woodcutter never runs dry.', 8);
+    } else if (e.type === 'buy') {
+      tone(19, 0.06, 0.02, 'triangle');
+    } else if (e.type === 'remove') { /* nothing */ }
+  }
+  sim.events.length = 0;
+  // hints from the state of things, each once
+  const houses = [...sim.buildings.values()].filter(b => b.house);
+  if (houses.some(h => h.door < 0 && sim.time - h.born > 4 && sim.time > 20)) hint('connect', 'New houses need a road too. Connect them before their rings fill.');
+  if (houses.some(h => h.door >= 0 && h.shop == null && sim.time - h.born > 15 && sim.time > 30)) hint('noshop', `A house has no shop within ${REACH} tiles of road. Its residents can't buy anything: place a shop near it.`, 8);
+  if (houses.some(h => h.quiet)) hint('quiet', 'A grey cloud means too loud to grow: industry within two tiles.', 8);
+  const fishery = [...sim.buildings.values()].find(b => b.kind === 'fishery');
+  if (fishery && sim.pins.filter(p => p.good === 'fish' && p.by < 0 && sim.time - p.born > 18).length >= 2) hint('truck', 'Fish is late: one truck can only do one trip at a time. A second truck or a second fishery would help.', 8);
+}
+function roadFlash() { const el = document.getElementById('roads'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); sfx.no(); }
+
+// ---- the week's pick ------------------------------------------------------------
+function offerIcon(o) {
+  if (o.type === 'kind') return cardIcon(o.kind);
+  if (o.type === 'truck') return cardIcon('truck');
+  if (o.type === 'roundabout') return cardIcon('roundabout');
+  return cardIcon('road');
+}
+function offerText(o) {
+  if (o.type === 'kind') return [KINDS[o.kind].name, 'One more to place'];
+  if (o.type === 'truck') return ['2 trucks', 'Add to any building'];
+  if (o.type === 'roundabout') return ['2 roundabouts', 'Three through at once'];
+  return [o.n + ' road', 'Tiles to draw with'];
+}
+function showOffer() {
+  if (!sim.offer) return;
+  const el = document.getElementById('offer');
+  document.getElementById('banner').classList.remove('show');
+  document.getElementById('ofTitle').textContent = 'Week ' + sim.week;
+  document.getElementById('ofSub').textContent = `${S.WEEK_ROADS || 10} road arrived. Pick one more.`;
+  document.getElementById('ofBonus').textContent = sim.offer.length > 2 ? 'Nobody moved away last week: a third choice.' : '';
+  const cards = document.getElementById('ofCards');
+  cards.innerHTML = '';
+  sim.offer.forEach((o, k) => {
+    const b = document.createElement('button');
+    b.appendChild(offerIcon(o));
+    const [t, sub] = offerText(o);
+    const tb = document.createElement('b'); tb.textContent = t;
+    const sm = document.createElement('small'); sm.textContent = sub;
+    b.append(tb, sm);
+    b.onclick = () => pickOffer(k);
+    cards.appendChild(b);
+  });
+  el.hidden = false;
+  sfx.unlock();
+  setTimeout(() => cards.firstChild && cards.firstChild.focus({ preventScroll: true }), 50);
+}
+function pickOffer(k) {
+  if (!sim.offer) return;
+  const o = sim.offer[k];
+  sim.pick(k);
+  document.getElementById('offer').hidden = true;
+  sfx.place();
+  buildBar(o.type === 'kind' ? o.kind : o.type === 'truck' ? 'truck' : o.type === 'roundabout' ? 'roundabout' : null);
+}
+
+// ---- HUD -----------------------------------------------------------------------
+function hud() {
+  document.getElementById('roadN').textContent = sim.roads;
+  document.getElementById('weekN').textContent = sim.week;
+  const wc = document.querySelector('#week canvas').getContext('2d');
+  wc.clearRect(0, 0, 64, 64); wc.lineWidth = 5; wc.lineCap = 'round';
+  wc.strokeStyle = '#2a2a2c'; wc.beginPath(); wc.arc(32, 32, 28, 0, 7); wc.stroke();
+  wc.strokeStyle = '#f4f2ec'; wc.beginPath(); wc.arc(32, 32, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sim.weekT / S.WEEK); wc.stroke();
+  const pop = sim.people(), st = sim.status, cur = STATUSES[st], nxt = STATUSES[st + 1];
+  document.getElementById('stName').textContent = cur.name;
+  document.getElementById('stPeople').innerHTML = nxt ? `<em>${pop}</em> / ${nxt.at}<span class="w"> people</span>` : `<em>${pop}</em><span class="w"> people</span>`;
+  document.getElementById('stBar').style.width = (nxt ? Math.min(100, (pop - cur.at) / (nxt.at - cur.at) * 100) : 100) + '%';
+  // the bar shows what's in hand: rebuild it when that changes
+  const hand = JSON.stringify(sim.tokens);
+  if (hand !== lastHand) { lastHand = hand; buildBar(); if (tool !== 'view' && tool !== 'road' && tool !== 'erase' && !sim.tokens[tool]) setTool('view'); }
+  // the card whose good is waiting longest calls for attention
+  const late = new Set(sim.pins.filter(p => p.kind === 'want' && sim.time - p.born > S.PATIENCE * 0.55 && p.by < 0).map(p => S.MAKER[p.good]));
+  for (const btn of document.querySelectorAll('#bar button[data-kind]')) btn.classList.toggle('call', late.has(btn.dataset.kind) && tool !== btn.dataset.kind);
+  if (selected !== null) panel();
+}
+
+function cardIcon(kind) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 68;
+  const t = c.getContext('2d');
+  t.scale(68, 68);
+  if (kind === 'view') {
+    // a hand: the tool that only looks
+    t.save(); t.translate(0.5, 0.52); t.fillStyle = '#e9e4d8';
+    for (const [x, h] of [[-0.15, 0.2], [-0.05, 0.27], [0.05, 0.26], [0.15, 0.2]]) { t.beginPath(); t.roundRect(x - 0.04, -h, 0.08, h + 0.05, 0.04); t.fill(); }
+    t.beginPath(); t.roundRect(-0.19, -0.02, 0.38, 0.26, 0.1); t.fill();
+    t.beginPath(); t.ellipse(-0.22, 0.05, 0.05, 0.12, -0.7, 0, 7); t.fill();
+    t.restore();
+  } else if (kind === 'road') {
+    t.strokeStyle = '#9aa0aa'; t.lineCap = 'round'; t.lineWidth = 0.16;
+    t.beginPath(); t.moveTo(0.18, 0.78); t.lineTo(0.45, 0.5); t.lineTo(0.82, 0.5); t.stroke();
+  } else if (kind === 'erase') {
+    t.strokeStyle = '#e5533d'; t.lineCap = 'round'; t.lineWidth = 0.11;
+    t.beginPath(); t.moveTo(0.28, 0.28); t.lineTo(0.72, 0.72); t.moveTo(0.72, 0.28); t.lineTo(0.28, 0.72); t.stroke();
+  } else if (kind === 'truck') {
+    t.save(); t.translate(0.5, 0.5); t.scale(1.7, 1.7);
+    t.fillStyle = '#e9e4d8'; t.beginPath(); t.roundRect(-0.2, -0.1, 0.25, 0.2, 0.04); t.fill();
+    t.fillStyle = '#9aa0aa'; t.beginPath(); t.roundRect(0.06, -0.09, 0.12, 0.18, [0.02, 0.06, 0.06, 0.02]); t.fill();
+    t.restore();
+  } else if (kind === 'roundabout') {
+    t.strokeStyle = '#9aa0aa'; t.lineWidth = 0.13;
+    t.beginPath(); t.arc(0.5, 0.5, 0.22, 0, 7); t.stroke();
+    t.lineCap = 'round'; t.beginPath(); t.moveTo(0.5, 0.06); t.lineTo(0.5, 0.26); t.moveTo(0.5, 0.74); t.lineTo(0.5, 0.94); t.moveTo(0.06, 0.5); t.lineTo(0.26, 0.5); t.moveTo(0.74, 0.5); t.lineTo(0.94, 0.5); t.stroke();
+  } else {
+    const col = kindCol(kind);
+    t.fillStyle = col; t.beginPath(); t.roundRect(0.1, 0.1, 0.8, 0.8, 0.2); t.fill();
+    t.fillStyle = 'rgba(255,255,255,.16)'; t.beginPath(); t.roundRect(0.1, 0.1, 0.8, 0.36, [0.2, 0.2, 0.04, 0.04]); t.fill();
+    icon(t, kindIcon(kind), 0.5, 0.5, 0.5, '#fff');
+  }
+  return c;
+}
+function goodIcon(good) {
+  const c = document.createElement('canvas'); c.width = c.height = 40;
+  const t = c.getContext('2d'); t.scale(40, 40);
+  t.fillStyle = '#fff'; t.beginPath(); t.arc(0.5, 0.5, 0.48, 0, 7); t.fill();
+  icon(t, good, 0.5, 0.5, 0.62, GOODS[good].col);
+  return c;
+}
+const ORDER = ['shop', 'fishery', 'woodcutter', 'sawmill', 'farm', 'bakery', 'claypit', 'brickworks', 'workshop', 'sandpit', 'glassworks', 'sheep', 'tailor'];
+function buildBar(fresh) {
+  const bar = document.getElementById('bar');
+  bar.innerHTML = '';
+  const add = (key, name, counted) => {
+    const b = document.createElement('button');
+    b.dataset.tool = key;
+    if (KINDS[key]) b.dataset.kind = key;
+    b.appendChild(cardIcon(key));
+    const n = document.createElement('div'); n.className = 'name'; n.textContent = name; b.appendChild(n);
+    if (counted) { b.dataset.count = key; const c = document.createElement('span'); c.className = 'count'; c.textContent = sim.tokens[key] || 0; b.appendChild(c); b.classList.toggle('none', !sim.tokens[key]); }
+    if (key === fresh) b.classList.add('new');
+    b.classList.toggle('on', tool === key);
+    b.onclick = () => setTool(tool === key ? 'view' : key);
+    b.onpointerenter = () => { cardHover = key; };
+    b.onpointerleave = () => { cardHover = null; };
+    bar.appendChild(b);
+  };
+  add('view', 'View');
+  add('road', 'Road');
+  add('erase', 'Erase');
+  if (sim.tokens.truck) add('truck', 'Truck', true);
+  if (sim.tokens.roundabout) add('roundabout', 'Roundabout', true);
+  const kinds = ORDER.filter(k => sim.tokens[k] > 0);
+  if (kinds.length) { const sep = document.createElement('div'); sep.className = 'sep'; bar.appendChild(sep); }
+  for (const k of kinds) add(k, KINDS[k].name, true);
+}
+let cardHover = null, lastHand = '';
+function setTool(t) {
+  tool = t;
+  for (const b of document.querySelectorAll('#bar button')) b.classList.toggle('on', b.dataset.tool === t);
+  if (KINDS[t]) { selected = null; panel(); }
+}
+
+function panel() {
+  const el = document.getElementById('panel');
+  const b = selected !== null ? sim.B(selected) : null;
+  if (!b) { selected = null; el.classList.remove('show'); el.innerHTML = ''; return; }
+  const sig = JSON.stringify(b.house ? [b.level, b.happy, b.quiet, b.door, b.shop] : b.stock ? [b.door, b.idle, b.stock, [...b.sells]] : [b.trucks.length, b.out, b.idle, sim.tokens.truck, Object.values(b.inBuf)]);
+  if (el.dataset.sig === sig && el.classList.contains('show')) return;
+  el.dataset.sig = sig;
+  el.innerHTML = '';
+  const h = document.createElement('h3');
+  if (b.house) {
+    const L = LEVELS[b.level];
+    h.innerHTML = `${L.name} <small>${L.people} people</small>`;
+    el.appendChild(h);
+    const f = document.createElement('div'); f.className = 'flow';
+    f.append('Wants');
+    for (const gd in L.wants) f.appendChild(goodIcon(gd));
+    el.appendChild(f);
+    const say = document.createElement('div'); say.className = 'say';
+    if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road. Nothing can reach it.'; }
+    else if (b.shop == null) { say.className += ' bad'; say.textContent = `No shop within ${REACH} tiles by road. Its residents have nowhere to buy.`; }
+    else if (!L.grow) say.textContent = 'As big as houses get, for now.';
+    else if (b.quiet) { say.className += ' bad'; say.textContent = 'Too loud to grow: industry within two tiles.'; }
+    else if (sim.pins.some(p => p.at === b.id && p.kind === 'build')) say.textContent = `Growing: waiting for ${Object.entries(L.grow).map(([gd, n]) => n + ' ' + GOODS[gd].name.toLowerCase()).join(' and ')}.`;
+    else say.textContent = `Happy ${b.happy} of ${L.after}. Then it asks for ${Object.entries(L.grow).map(([gd, n]) => n + ' ' + GOODS[gd].name.toLowerCase()).join(' and ')} to grow.`;
+    el.appendChild(say);
+  } else if (b.stock) {
+    h.innerHTML = `Shop <small>${[...sim.buildings.values()].filter(o => o.house && o.shop === b.id).length} houses shop here</small>`;
+    el.appendChild(h);
+    const f = document.createElement('div'); f.className = 'flow';
+    f.append('Shelves');
+    for (const gd of b.sells) { const ic = goodIcon(gd); if (!(b.stock[gd] > 0)) ic.style.opacity = 0.3; f.append(ic, `${b.stock[gd] || 0}/${b.shelf[gd] || SHELF} `); }
+    if (!b.sells.size) f.append('empty');
+    el.appendChild(f);
+    const say = document.createElement('div'); say.className = 'say';
+    const low = [...b.sells].filter(gd => !(b.stock[gd] > 0));
+    if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
+    else if (!b.sells.size) say.textContent = `No houses within ${REACH} tiles by road shop here yet.`;
+    else if (low.length) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}. Lorries bring it from the maker.`; }
+    else say.textContent = 'Stocked. Residents drive over to buy.';
+    el.appendChild(say);
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const rm = document.createElement('button'); rm.className = 'quiet';
+    rm.textContent = 'Move';
+    rm.onclick = () => { sim.removeBuilding(b.id); selected = null; panel(); buildBar(); setTool('shop'); };
+    acts.append(rm);
+    el.appendChild(acts);
+  } else {
+    const k = KINDS[b.kind];
+    h.innerHTML = `${k.name} <small>${b.trucks.length} truck${b.trucks.length > 1 ? 's' : ''}</small>`;
+    el.appendChild(h);
+    const f = document.createElement('div'); f.className = 'flow';
+    if (k.needs) { for (const gd in k.needs) { for (let n = 0; n < k.needs[gd]; n++) f.appendChild(goodIcon(gd)); } f.append('→'); }
+    f.appendChild(goodIcon(k.out)); f.append(GOODS[k.out].name);
+    el.appendChild(f);
+    const say = document.createElement('div'); say.className = 'say';
+    const out = k.out, waiting = sim.pins.filter(p => p.good === out && p.by < 0).length;
+    if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
+    else if (b.idle === 'starved') { say.className += ' bad'; say.textContent = `Waiting for ${Object.keys(k.needs).map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}.`; }
+    else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'Waiting for the trees round it to grow back. More forest round it, or a second spot, would keep it busy.'; }
+    else if (b.idle === 'full' && waiting) { say.className += ' bad'; say.textContent = `Yard full and ${waiting} waiting: its trucks can't keep up.`; }
+    else if (b.idle === 'full') say.textContent = 'Yard full. Nobody wants more right now.';
+    else say.textContent = waiting ? `Working. ${waiting} waiting for ${GOODS[out].name.toLowerCase()}.` : 'Working.';
+    el.appendChild(say);
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const add = document.createElement('button'); add.className = 'go';
+    add.textContent = sim.tokens.truck ? `+ Truck (${sim.tokens.truck} in hand)` : '+ Truck (none in hand)';
+    add.disabled = !sim.tokens.truck;
+    add.onclick = () => { if (sim.addTruck(b)) { sfx.place(); el.dataset.sig = ''; panel(); } else sfx.no(); };
+    const rm = document.createElement('button'); rm.className = 'quiet';
+    rm.textContent = 'Move';
+    rm.title = 'Pick it up: the building and its trucks go back in your hand';
+    rm.onclick = () => { const kind = b.kind; sim.removeBuilding(b.id); selected = null; panel(); buildBar(); setTool(kind); };
+    acts.append(add, rm);
+    el.appendChild(acts);
+  }
+  el.classList.add('show');
+}
+
+// ---- input ---------------------------------------------------------------------
+let drag = null;
+function tileAt(px, py) {
+  const [wx, wy] = toWorld(px, py);
+  const x = Math.floor(wx), y = Math.floor(wy);
+  return at(x, y);
+}
+function line8(a, b) {
+  // the 8-connected steps from tile a to tile b
+  const out = [];
+  let [x, y] = xy(a); const [tx, ty] = xy(b);
+  while (x !== tx || y !== ty) { x += Math.sign(tx - x); y += Math.sign(ty - y); out.push(at(x, y)); }
+  return out;
+}
+// One finger or the mouse draws and taps; two fingers pinch and pan; the
+// wheel zooms, and a trackpad's two-finger scroll pans.
+const fingers = new Map();
+let pinch = null;
+cv.addEventListener('pointerdown', e => {
+  unlockAudio();
+  cv.setPointerCapture(e.pointerId);
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (fingers.size === 2) {
+    // a second finger: the stroke the first one began becomes a pinch
+    drag = null;
+    const [a, b] = [...fingers.values()];
+    pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    return;
+  }
+  if (fingers.size > 2) return;
+  const i = tileAt(e.clientX, e.clientY);
+  const erase = e.button === 2 || tool === 'erase';
+  drag = { last: i, start: i, moved: false, erase, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t0: performance.now(), pan: tool === 'view' && e.button !== 2 };
+  if (erase) eraseAt(i, true);
+});
+cv.addEventListener('pointermove', e => {
+  hover = tileAt(e.clientX, e.clientY);
+  if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && fingers.size === 2) {
+    const [a, b] = [...fingers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    panBy(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    zoomAt(mid[0], mid[1], d / pinch.d);
+    pinch = { d, mid };
+    return;
+  }
+  if (!drag) return;
+  if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6) drag.moved = true;
+  if (drag.pan) { if (drag.moved) panBy(e.clientX - drag.lx, e.clientY - drag.ly); drag.lx = e.clientX; drag.ly = e.clientY; return; }
+  const i = hover;
+  if (i < 0 || i === drag.last) return;
+  // a finger waits a moment before it draws, in case a second one is coming to pinch
+  if (e.pointerType === 'touch' && performance.now() - drag.t0 < 140) return;
+  if (drag.erase) { for (const j of line8(drag.last, i)) eraseAt(j, false); drag.last = i; return; }
+  if (tool !== 'road') return;
+  for (const j of line8(drag.last, i)) {
+    const prev = drag.last;
+    drag.last = j;
+    // from a building onto a road beside it, or back: that's its driveway now
+    const from = sim.tileB.get(prev), to = sim.tileB.get(j);
+    if (from !== undefined && to === undefined && sim.setDoor(from, j)) { sfx.road(); continue; }
+    if (to !== undefined && from === undefined && sim.setDoor(to, prev)) { sfx.road(); continue; }
+    if (!sim.roadable(prev) || !sim.roadable(j)) continue;
+    const c = sim.addRoad(prev, j);
+    if (c > 0) { const t = performance.now(); if (t - lastRoadSfx > 40) { sfx.road(); lastRoadSfx = t; } }
+    if (c < 0 && sim.roads < sim.tileCost(prev) + sim.tileCost(j)) { roadFlash(); drag = null; return; }
+  }
+});
+function lift(e) {
+  fingers.delete(e.pointerId);
+  if (!pinch) return false;
+  if (fingers.size < 2) pinch = null;
+  return true;
+}
+cv.addEventListener('pointercancel', e => { lift(e); drag = null; });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  // a trackpad pinch comes as a wheel with ctrl held, a mouse wheel in big
+  // steps; a trackpad's two-finger scroll pans
+  if (e.ctrlKey) zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+  else if (e.deltaMode || (Math.abs(e.deltaY) >= 50 && !e.deltaX)) zoomAt(e.clientX, e.clientY, Math.exp(-Math.sign(e.deltaY) * 0.18));
+  else panBy(-e.deltaX, -e.deltaY);
+}, { passive: false });
+cv.addEventListener('pointerup', e => {
+  if (lift(e) || !drag) return;
+  const i = tileAt(e.clientX, e.clientY);
+  if (!drag.moved && !drag.erase) tap(i);
+  drag = null;
+});
+cv.addEventListener('pointerleave', () => { hover = -1; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+function tap(i) {
+  if (i < 0) return;
+  if (KINDS[tool]) {
+    if (!sim.tokens[tool]) { sfx.no(); return; }
+    if (sim.place(tool, i)) { setTool('view'); }
+    else sfx.no();
+    return;
+  }
+  if (tool === 'roundabout') {
+    if (sim.addRoundabout(i)) { sfx.place(); setTool('view'); }
+    else sfx.no();
+    return;
+  }
+  if (tool === 'truck') {
+    const b = sim.B(sim.tileB.get(i));
+    if (b && sim.addTruck(b)) { sfx.place(); if (!sim.tokens.truck) setTool('view'); } else sfx.no();
+    return;
+  }
+  const id = sim.tileB.get(i);
+  selected = id ?? null;
+  const el = document.getElementById('panel'); el.dataset.sig = '';
+  panel();
+}
+function eraseAt(i, tapped) {
+  if (i < 0) return;
+  if (sim.adj.has(i)) { sim.removeRoadTile(i); sfx.road(); return; }
+  const id = sim.tileB.get(i);
+  if (tapped && id !== undefined && !sim.B(id).house) { sim.removeBuilding(id); sfx.leave(); if (selected === id) { selected = null; panel(); } }
+}
+
+addEventListener('keydown', e => {
+  if (sim.offer && e.key >= '1' && e.key <= '3') { pickOffer(+e.key - 1); return; }
+  if (e.key === '=' || e.key === '+') zoomAt(vw / 2, vh / 2, 1.25);
+  if (e.key === '-') zoomAt(vw / 2, vh / 2, 0.8);
+  if (e.key === ' ') { setSpeed(speed ? 0 : lastSpeed); e.preventDefault(); }
+  else if (e.key >= '1' && e.key <= '3') setSpeed(+e.key);
+  else if (e.key === 'Escape') { setTool('view'); selected = null; panel(); }
+  else if (e.key === 'v') setTool('view');
+  else if (e.key === 'r') setTool('road');
+  else if (e.key === 'x' || e.key === 'e') setTool('erase');
+});
+let lastSpeed = 1;
+function setSpeed(n) {
+  if (n) lastSpeed = n;
+  speed = n;
+  for (const b of document.querySelectorAll('#speed button')) b.classList.toggle('on', +b.dataset.s === n);
+}
+for (const b of document.querySelectorAll('#speed button')) b.onclick = () => setSpeed(+b.dataset.s);
+document.getElementById('sound').onclick = () => {
+  muted = !muted;
+  document.getElementById('waves').style.display = muted ? 'none' : '';
+  document.getElementById('sound').setAttribute('aria-label', muted ? 'Sound off' : 'Sound on');
+};
+function unlockAudio() {
+  if (ac) return;
+  try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; }
+}
+
+// ---- loop ----------------------------------------------------------------------
+let last = performance.now(), started = false, hudT = 0;
+function loop(t) {
+  const real = Math.min(0.1, (t - last) / 1000);
+  last = t;
+  if (started && speed) {
+    const n = speed * 2;   // two half-steps per frame-share keeps trucks smooth at 3x
+    for (let k = 0; k < n; k++) sim.step(real / 2 * PACE);
+  }
+  const now = t / 1000;
+  handleEvents(now);
+  tickHints(now);
+  if (now - hudT > 0.12) { hud(); hudT = now; }
+  frame();
+  requestAnimationFrame(loop);
+}
+
+function start() {
+  sim = new S.Sim(+(new URLSearchParams(location.search).get('seed') || 7));
+  window.sim = sim; window.__toScreen = toScreen; window.__view = () => ({ ...view, s: cam.s });
+  for (const b of sim.buildings.values()) pops.set(b.id, performance.now() / 1000 + 0.3);
+  resize(); fitCam(true); buildBar(); hud();
+  sim.events.length = 0;
+}
+start();
+document.getElementById('go').onclick = () => {
+  unlockAudio();
+  document.getElementById('intro').remove();
+  started = true;
+  hints.queue.push({ text: 'Pick Road, then drag a road from the house to the fishery.', hold: 3, until: () => [...sim.buildings.values()].every(b => b.door >= 0) });
+};
+if (new URLSearchParams(location.search).has('auto')) { document.getElementById('intro').remove(); started = true; }
+requestAnimationFrame(loop);
+})();
+</script>
