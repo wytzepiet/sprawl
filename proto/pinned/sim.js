@@ -6,7 +6,8 @@
 
 const W = 48, H = 32;
 const GRASS = 0, FOREST = 1, WATER = 2, MEADOW = 3, CLAY = 4, SAND = 5;
-const WOOD = 7;          // logs a forest tile gives before it is bare
+const WOOD = 4;          // logs a forest tile holds
+const REGROW = 14;       // seconds for every forest tile to grow back a log
 const STEPS8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 const STEPS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
@@ -140,6 +141,7 @@ function Sim(seed = 7) {
   s.pins = [];
   s.events = [];
   s.unlocked = new Set();
+  s.waiting = new Set();         // makers that come once what feeds them is down
   s.time = 0; s.roads = START_ROADS; s.tokens = { truck: 0, roundabout: 0 };
   s.week = 1; s.weekT = 0; s.offer = null; s.leftThisWeek = 0;
   s.nextId = 1; s.graphV = 0; s.distCache = new Map();
@@ -324,6 +326,7 @@ P.place = function (kind, i, free) {
   this.findDoor(b);
   this.addTruck(b, true);
   this.unlocked.add(kind);
+  this.release();
   this.first('built:' + kind);
   this.emit({ type: 'place', id: b.id, tile: i });
   return b;
@@ -390,14 +393,28 @@ P.spawnSpot = function () {
 P.addPin = function (atId, good, kind) {
   const p = { id: this.nextId++, at: atId, good, kind, born: this.time, by: -1, dead: false };
   this.pins.push(p);
-  const maker = MAKER[good];
-  if (!this.unlocked.has(maker)) {
-    this.unlocked.add(maker);
-    this.tokens[maker] = (this.tokens[maker] || 0) + 1;
-    this.first('unlock:' + maker);
-    this.emit({ type: 'unlock', kind: maker, why: KINDS[maker].why });
-  }
+  this.unlock(MAKER[good]);
   return p;
+};
+// A chain arrives from its raw end: what feeds a maker comes to hand first,
+// and the maker itself once its supply is down on the map.
+P.unlock = function (kind) {
+  if (this.unlocked.has(kind)) return;
+  this.unlocked.add(kind);
+  this.waiting.add(kind);
+  for (const g in KINDS[kind].needs || {}) this.unlock(MAKER[g]);
+  this.release();
+};
+P.release = function () {
+  const down = k => [...this.buildings.values()].some(b => b.kind === k);
+  for (const kind of [...this.waiting]) {
+    if (!Object.keys(KINDS[kind].needs || {}).every(g => down(MAKER[g]))) continue;
+    this.waiting.delete(kind);
+    this.tokens[kind] = (this.tokens[kind] || 0) + 1;
+    this.first('unlock:' + kind);
+    const next = [...this.waiting].find(k => KINDS[k].needs && KINDS[k].needs[KINDS[kind].out]);
+    this.emit({ type: 'unlock', kind, why: next ? `${KINDS[next].why.split('. ')[0]}. First, ${KINDS[kind].why[0].toLowerCase()}${KINDS[kind].why.slice(1)} Once it's down, the ${KINDS[next].name.toLowerCase()} comes.` : KINDS[kind].why });
+  }
 };
 P.killPin = function (p) {
   p.dead = true;
@@ -501,14 +518,17 @@ P.nearestWood = function (i) {
   }
   return best;
 };
+// Felling takes a log from a tile; trees grow back a log at a time, so a
+// woodcutter with enough forest round it never runs dry.
 P.fell = function (j) {
-  const n = this.wood.get(j) - 1;
-  if (n > 0) { this.wood.set(j, n); return; }
-  this.wood.delete(j);
-  this.terrain[j] = GRASS;
-  this.terrainV = (this.terrainV || 0) + 1;
-  this.first('felled');
-  this.emit({ type: 'felled', tile: j });
+  this.wood.set(j, this.wood.get(j) - 1);
+  if (this.wood.get(j) === 0) { this.first('felled'); this.emit({ type: 'felled', tile: j }); }
+};
+P.regrow = function (dt) {
+  this.growT = (this.growT || 0) + dt;
+  if (this.growT < REGROW) return;
+  this.growT -= REGROW;
+  for (const [j, n] of this.wood) if (n < WOOD && this.terrain[j] === FOREST) this.wood.set(j, n + 1);
 };
 
 // ---- trucks -------------------------------------------------------------------
@@ -616,6 +636,7 @@ P.step = function (dt) {
   if (s.weekT >= WEEK) { s.weekT = 0; s.week++; s.roads += WEEK_ROADS; s.offer = s.makeOffer(); s.emit({ type: 'week', week: s.week }); return; }
   s.time += dt;
   s.tick = (s.tick || 0) + 1;
+  s.regrow(dt);
 
   // spawning
   s.nextSpawn -= dt;
@@ -763,12 +784,26 @@ P.moveTraffic = function (dt) {
 P.backlog = function (good) {
   return this.pins.filter(p => p.good === good && p.by < 0 && this.time - p.born > 8).length;
 };
+// Where a shortage of a good really comes from: its makers waiting on an input
+// (follow that input), its makers with full yards (they lack trucks), or its
+// makers working flat out (it needs another maker).
+P.rootOf = function (good, depth = 0) {
+  const kind = MAKER[good];
+  const makers = [...this.buildings.values()].filter(b => b.kind === kind && b.door >= 0);
+  if (!makers.length || depth > 4) return this.tokens[kind] ? null : 'kind:' + kind;
+  const starved = makers.find(b => b.idle === 'starved');
+  if (starved) for (const g in KINDS[kind].needs) if (starved.inBuf[g] < KINDS[kind].needs[g]) return this.rootOf(g, depth + 1);
+  if (makers.some(b => b.idle === 'full')) return 'truck';
+  return 'kind:' + kind;
+};
 P.makeOffer = function () {
   const s = this;
   const cands = [];
-  const kinds = [...s.unlocked].map(k => ({ k, n: s.backlog(KINDS[k].out) })).sort((a, b) => b.n - a.n);
-  for (const { k, n } of kinds) cands.push({ type: 'kind', kind: k, n: 1, w: 1 + n * 2 });
-  cands.push({ type: 'truck', n: 2, w: 3 + s.pins.filter(p => p.by < 0).length * 0.3 });
+  // each good that's short counts toward what would really fix it
+  const weight = {};
+  for (const k of s.unlocked) { const n = s.backlog(KINDS[k].out); const r = n && s.rootOf(KINDS[k].out); if (r) weight[r] = (weight[r] || 0) + n; }
+  for (const k of s.unlocked) cands.push({ type: 'kind', kind: k, n: 1, w: 1 + (weight['kind:' + k] || 0) * 2 });
+  cands.push({ type: 'truck', n: 2, w: 3 + (weight.truck || 0) * 2 });
   cands.push({ type: 'roads', n: 15, w: s.roads < 10 ? 6 : 2 });
   if (s.tools.has('roundabout')) cands.push({ type: 'roundabout', n: 2, w: 2 });
   const want = s.leftThisWeek === 0 ? 3 : 2;   // a week nobody left earns a wider choice

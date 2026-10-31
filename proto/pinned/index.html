@@ -151,7 +151,7 @@ canvas { position: absolute; inset: 0; display: block; }
   <p>Draw roads, and build what makes what they want. What you build wants things too.</p>
   <p>Each week brings more road and one pick. Wait too long and a family moves out.</p>
   <button id="go">Start</button>
-  <div class="keys">Drag to draw roads · right-drag to erase · pinch or scroll to zoom, two fingers to pan · space to pause</div>
+  <div class="keys">View pans and zooms · Road draws · Erase removes · pinch or scroll to zoom · space to pause</div>
 </div></div>
 
 <script src="sim.js"></script>
@@ -205,7 +205,8 @@ function icon(g, good, x, y, size, col) {
 }
 
 // ---- state ---------------------------------------------------------------------
-let sim, speed = 1, tool = 'road', selected = null, hover = -1, hoverPx = null;
+const PACE = 0.6;   // game seconds per real second at 1x: time to look and think
+let sim, speed = 1, tool = 'view', selected = null, hover = -1, hoverPx = null;
 const cv = document.getElementById('c'), g = cv.getContext('2d');
 let dpr = 1, vw = 0, vh = 0, portrait = false;
 const cam = { s: 40, x: 0, y: 0, ready: false };   // world tile -> screen: (p - cam.x) * cam.s, rotated in portrait
@@ -483,6 +484,26 @@ function drawHouse(h) {
     g.fillStyle = C.roof; g.beginPath(); g.roundRect(-0.12, -0.18, 0.24, 0.16, 0.03); g.fill();
     g.fillStyle = C.flatEdge; g.fillRect(0.1, 0.08, 0.1, 0.1);
   }
+  // growing: scaffolding round the size it's growing to, and the materials
+  // that have come so far stacked beside it
+  const left = sim.pins.filter(p => p.at === h.id && p.kind === 'build');
+  if (left.length && LEVELS[L].grow) {
+    const [nw, nd] = L === 1 ? [0.74, 0.56] : L === 2 ? [0.76, 0.76] : [0.84, 0.84];
+    g.strokeStyle = '#a77a4a'; g.lineWidth = 0.035;
+    g.strokeRect(-nw / 2 - 0.03, -nd / 2 - 0.03, nw + 0.06, nd + 0.06);
+    g.lineWidth = 0.02;
+    g.beginPath();
+    for (let k = 0; k <= 4; k++) { const x = -nw / 2 - 0.03 + (nw + 0.06) * k / 4; g.moveTo(x, -nd / 2 - 0.03); g.lineTo(x + 0.05, -nd / 2 + 0.03); g.moveTo(x, nd / 2 + 0.03); g.lineTo(x + 0.05, nd / 2 - 0.03); }
+    g.stroke();
+    g.fillStyle = '#a77a4a';
+    for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { g.beginPath(); g.arc(x * (nw / 2 + 0.03), y * (nd / 2 + 0.03), 0.04, 0, 7); g.fill(); }
+    const goods = Object.entries(LEVELS[L].grow).flatMap(([gd, n]) => Array(n).fill(gd));
+    const have = goods.length - left.length;
+    for (let k = 0; k < have; k++) {
+      g.fillStyle = GOODS[goods[k]].col;
+      g.fillRect(nw / 2 + 0.08, nd / 2 - 0.14 - k * 0.13, 0.12, 0.11);
+    }
+  }
   if (h.quiet) {
     // too loud to grow: a little grey cloud of noise
     g.fillStyle = 'rgba(110,105,100,.75)';
@@ -741,7 +762,7 @@ function handleEvents(now) {
     } else if (e.type === 'week') {
       showOffer();
     } else if (e.type === 'felled') {
-      hint('felled', 'Woodcutters fell the forest round them. When it runs out, move them.', 8);
+      hint('felled', 'A woodcutter cut a patch bare. Trees grow back: with plenty of forest round it, a woodcutter never runs dry.', 8);
     } else if (e.type === 'remove') { /* nothing */ }
   }
   sim.events.length = 0;
@@ -813,7 +834,7 @@ function hud() {
   document.getElementById('stBar').style.width = (nxt ? Math.min(100, (pop - cur.at) / (nxt.at - cur.at) * 100) : 100) + '%';
   // the bar shows what's in hand: rebuild it when that changes
   const hand = JSON.stringify(sim.tokens);
-  if (hand !== lastHand) { lastHand = hand; buildBar(); if (tool !== 'road' && tool !== 'erase' && !sim.tokens[tool]) setTool('road'); }
+  if (hand !== lastHand) { lastHand = hand; buildBar(); if (tool !== 'view' && tool !== 'road' && tool !== 'erase' && !sim.tokens[tool]) setTool('view'); }
   // the card whose good is waiting longest calls for attention
   const late = new Set(sim.pins.filter(p => p.kind === 'want' && sim.time - p.born > S.PATIENCE * 0.55 && p.by < 0).map(p => S.MAKER[p.good]));
   for (const btn of document.querySelectorAll('#bar button[data-kind]')) btn.classList.toggle('call', late.has(btn.dataset.kind) && tool !== btn.dataset.kind);
@@ -825,7 +846,14 @@ function cardIcon(kind) {
   c.width = c.height = 68;
   const t = c.getContext('2d');
   t.scale(68, 68);
-  if (kind === 'road') {
+  if (kind === 'view') {
+    // a hand: the tool that only looks
+    t.save(); t.translate(0.5, 0.52); t.fillStyle = '#e9e4d8';
+    for (const [x, h] of [[-0.15, 0.2], [-0.05, 0.27], [0.05, 0.26], [0.15, 0.2]]) { t.beginPath(); t.roundRect(x - 0.04, -h, 0.08, h + 0.05, 0.04); t.fill(); }
+    t.beginPath(); t.roundRect(-0.19, -0.02, 0.38, 0.26, 0.1); t.fill();
+    t.beginPath(); t.ellipse(-0.22, 0.05, 0.05, 0.12, -0.7, 0, 7); t.fill();
+    t.restore();
+  } else if (kind === 'road') {
     t.strokeStyle = '#9aa0aa'; t.lineCap = 'round'; t.lineWidth = 0.16;
     t.beginPath(); t.moveTo(0.18, 0.78); t.lineTo(0.45, 0.5); t.lineTo(0.82, 0.5); t.stroke();
   } else if (kind === 'erase') {
@@ -868,11 +896,12 @@ function buildBar(fresh) {
     if (counted) { b.dataset.count = key; const c = document.createElement('span'); c.className = 'count'; c.textContent = sim.tokens[key] || 0; b.appendChild(c); b.classList.toggle('none', !sim.tokens[key]); }
     if (key === fresh) b.classList.add('new');
     b.classList.toggle('on', tool === key);
-    b.onclick = () => setTool(tool === key && key !== 'road' ? 'road' : key);
+    b.onclick = () => setTool(tool === key ? 'view' : key);
     b.onpointerenter = () => { cardHover = key; };
     b.onpointerleave = () => { cardHover = null; };
     bar.appendChild(b);
   };
+  add('view', 'View');
   add('road', 'Road');
   add('erase', 'Erase');
   if (sim.tokens.truck) add('truck', 'Truck', true);
@@ -924,7 +953,7 @@ function panel() {
     const out = k.out, waiting = sim.pins.filter(p => p.good === out && p.by < 0).length;
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
     else if (b.idle === 'starved') { say.className += ' bad'; say.textContent = `Waiting for ${Object.keys(k.needs).map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}.`; }
-    else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'The forest round it is cut bare. Move it to standing trees.'; }
+    else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'Waiting for the trees round it to grow back. More forest round it, or a second spot, would keep it busy.'; }
     else if (b.idle === 'full' && waiting) { say.className += ' bad'; say.textContent = `Yard full and ${waiting} waiting: its trucks can't keep up.`; }
     else if (b.idle === 'full') say.textContent = 'Yard full. Nobody wants more right now.';
     else say.textContent = waiting ? `Working. ${waiting} waiting for ${GOODS[out].name.toLowerCase()}.` : 'Working.';
@@ -976,7 +1005,7 @@ cv.addEventListener('pointerdown', e => {
   if (fingers.size > 2) return;
   const i = tileAt(e.clientX, e.clientY);
   const erase = e.button === 2 || tool === 'erase';
-  drag = { last: i, start: i, moved: false, erase, x: e.clientX, y: e.clientY, t0: performance.now() };
+  drag = { last: i, start: i, moved: false, erase, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t0: performance.now(), pan: tool === 'view' && e.button !== 2 };
   if (erase) eraseAt(i, true);
 });
 cv.addEventListener('pointermove', e => {
@@ -992,6 +1021,7 @@ cv.addEventListener('pointermove', e => {
   }
   if (!drag) return;
   if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6) drag.moved = true;
+  if (drag.pan) { if (drag.moved) panBy(e.clientX - drag.lx, e.clientY - drag.ly); drag.lx = e.clientX; drag.ly = e.clientY; return; }
   const i = hover;
   if (i < 0 || i === drag.last) return;
   // a finger waits a moment before it draws, in case a second one is coming to pinch
@@ -1035,18 +1065,18 @@ function tap(i) {
   if (i < 0) return;
   if (KINDS[tool]) {
     if (!sim.tokens[tool]) { sfx.no(); return; }
-    if (sim.place(tool, i)) { setTool('road'); }
+    if (sim.place(tool, i)) { setTool('view'); }
     else sfx.no();
     return;
   }
   if (tool === 'roundabout') {
-    if (sim.addRoundabout(i)) { sfx.place(); setTool('road'); }
+    if (sim.addRoundabout(i)) { sfx.place(); setTool('view'); }
     else sfx.no();
     return;
   }
   if (tool === 'truck') {
     const b = sim.B(sim.tileB.get(i));
-    if (b && sim.addTruck(b)) { sfx.place(); if (!sim.tokens.truck) setTool('road'); } else sfx.no();
+    if (b && sim.addTruck(b)) { sfx.place(); if (!sim.tokens.truck) setTool('view'); } else sfx.no();
     return;
   }
   const id = sim.tileB.get(i);
@@ -1067,7 +1097,8 @@ addEventListener('keydown', e => {
   if (e.key === '-') zoomAt(vw / 2, vh / 2, 0.8);
   if (e.key === ' ') { setSpeed(speed ? 0 : lastSpeed); e.preventDefault(); }
   else if (e.key >= '1' && e.key <= '3') setSpeed(+e.key);
-  else if (e.key === 'Escape') { setTool('road'); selected = null; panel(); }
+  else if (e.key === 'Escape') { setTool('view'); selected = null; panel(); }
+  else if (e.key === 'v') setTool('view');
   else if (e.key === 'r') setTool('road');
   else if (e.key === 'x' || e.key === 'e') setTool('erase');
 });
@@ -1095,7 +1126,7 @@ function loop(t) {
   last = t;
   if (started && speed) {
     const n = speed * 2;   // two half-steps per frame-share keeps trucks smooth at 3x
-    for (let k = 0; k < n; k++) sim.step(real / 2);
+    for (let k = 0; k < n; k++) sim.step(real / 2 * PACE);
   }
   const now = t / 1000;
   handleEvents(now);
@@ -1117,7 +1148,7 @@ document.getElementById('go').onclick = () => {
   unlockAudio();
   document.getElementById('intro').remove();
   started = true;
-  hints.queue.push({ text: 'Drag a road from the house to the fishery.', hold: 3, until: () => [...sim.buildings.values()].every(b => b.door >= 0) });
+  hints.queue.push({ text: 'Pick Road, then drag a road from the house to the fishery.', hold: 3, until: () => [...sim.buildings.values()].every(b => b.door >= 0) });
 };
 if (new URLSearchParams(location.search).has('auto')) { document.getElementById('intro').remove(); started = true; }
 requestAnimationFrame(loop);
