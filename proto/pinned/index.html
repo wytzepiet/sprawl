@@ -1031,6 +1031,10 @@ cv.addEventListener('pointermove', e => {
   for (const j of line8(drag.last, i)) {
     const prev = drag.last;
     drag.last = j;
+    // from a building onto a road beside it, or back: that's its driveway now
+    const from = sim.tileB.get(prev), to = sim.tileB.get(j);
+    if (from !== undefined && to === undefined && sim.setDoor(from, j)) { sfx.road(); continue; }
+    if (to !== undefined && from === undefined && sim.setDoor(to, prev)) { sfx.road(); continue; }
     if (!sim.roadable(prev) || !sim.roadable(j)) continue;
     const c = sim.addRoad(prev, j);
     if (c > 0) { const t = performance.now(); if (t - lastRoadSfx > 40) { sfx.road(); lastRoadSfx = t; } }

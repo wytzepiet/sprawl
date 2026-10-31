@@ -251,14 +251,26 @@ P.graphChanged = function () {
   this.distCache.clear();
   for (const b of this.buildings.values()) this.findDoor(b);
 };
+// A building's driveway: the road beside it the player chose, or else the
+// first road beside it.
 P.findDoor = function (b) {
   const [x, y] = xy(b.tile);
+  if (b.doorPref >= 0 && this.adj.has(b.doorPref)) { b.door = b.doorPref; return; }
   let door = -1;
   for (const [dx, dy] of STEPS4) {
     const j = at(x + dx, y + dy);
     if (j >= 0 && this.adj.has(j)) { door = j; break; }
   }
   b.door = door;
+};
+P.setDoor = function (id, j) {
+  const b = this.B(id);
+  if (!b || !this.adj.has(j) || !STEPS4.some(([dx, dy]) => { const [x, y] = xy(b.tile); return at(x + dx, y + dy) === j; })) return false;
+  if (b.door === j) return true;
+  b.doorPref = j; b.door = j;
+  this.distCache.clear();
+  this.emit({ type: 'door', tile: b.tile });
+  return true;
 };
 P.addRoundabout = function (i) {
   if (!this.tokens.roundabout || !this.isJunction(i) || this.roundabouts.has(i)) return false;
