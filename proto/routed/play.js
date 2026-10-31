@@ -19,6 +19,7 @@ function desc(e) {
   if (e.type === 'status') return `STATUS ${e.name}`;
   if (e.type === 'week') return `WEEK ${e.week} offer ${s.offer}`;
   if (e.type === 'spawn') return `house${p}`;
+  if (e.type === 'token') return `TOKEN ${e.kind}`;
   return null;
 }
 function apply(c, rec) {
@@ -30,6 +31,7 @@ function apply(c, rec) {
   else if (op === 'truck') r = s.addTruck(R(a[0]), false, a[1] === 'big') ? 'truck' : 'REFUSED truck';
   else if (op === 'trim') r = s.trim(R(a[0]), +a[1]) ? 'trimmed' : 'REFUSED';
   else if (op === 'remove') r = s.removeRoute(R(a[0])) ? 'removed' : 'REFUSED';
+  else if (op === 'place') r = s.placeMaker(a[0], T(a[1])) ? 'placed ' + a[0] : 'REFUSED place';
   else if (op === 'depot') r = s.placeDepot(T(a[0])) ? 'depot' : 'REFUSED depot';
   else if (op === 'pick') r = s.pick(+a[0]) ? 'picked ' + a[0] : 'REFUSED pick';
   else if (op === 'run') { const u = s.time + +a[0]; while (s.time < u - 1e-9 && !s.offer) { s.step(1 / 30); for (const e of s.events) { const d = desc(e); if (rec && d) notes.push(fmt(s.time) + ' ' + d); } s.events.length = 0; } r = `ran to ${fmt(s.time)}`; }

@@ -115,7 +115,7 @@ function makeTerrain(seed) {
     }
   };
   blob(10, 13, 3.2, FOREST); blob(28, 6, 3, FOREST); blob(6, 24, 3.6, FOREST); blob(36, 12, 2.4, FOREST); blob(22, 26, 2.2, FOREST);
-  blob(26, 15, 2.2, MEADOW); blob(9, 19, 2.4, MEADOW); blob(31, 26, 2.6, MEADOW); blob(38, 4, 2.4, MEADOW);
+  blob(29, 9, 2.2, MEADOW); blob(9, 19, 2.4, MEADOW); blob(31, 26, 2.6, MEADOW); blob(38, 4, 2.4, MEADOW);
   return t;
 }
 
@@ -289,9 +289,14 @@ P.site = function (kind) {
   const houses = [...this.places.values()].filter(p => p.house);
   const [cx, cy] = houses.reduce((a, h) => { const [x, y] = xy(h.tile); return [a[0] + x / houses.length, a[1] + y / houses.length]; }, [0, 0]);
   const c = at(Math.round(cx), Math.round(cy));
+  // the land you can reach from town without a new bridge; early on, makers
+  // open there, later the far shore is fair game now and then
+  const land = new Set([c]), stack = [c];
+  while (stack.length) { const j = stack.pop(), [x, y] = xy(j); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = at(x + dx, y + dy); if (k >= 0 && !land.has(k) && this.terrain[k] !== WATER) { land.add(k); stack.push(k); } } }
+  const across = this.week >= 3 && this.r() < 0.35;
   let best = -1, bestScore = -Infinity;
   for (let i = 0; i < W * H; i++) {
-    if (!this.free(i)) continue;
+    if (!this.free(i) || (!across && !land.has(i))) continue;
     const t = this.terrain[i];
     const [x, y] = xy(i);
     const near = k => STEPS8.some(([dx, dy]) => { const j = at(x + dx, y + dy); return j >= 0 && this.terrain[j] === k; });
@@ -302,7 +307,7 @@ P.site = function (kind) {
     if (STEPS8.some(([dx, dy]) => this.tileP.has(at(x + dx, y + dy)))) continue;
     const d = dist(i, c);
     // raw goods out where the land is; workshops a short way out of town
-    const want = K.needs ? 6 : 8;
+    const want = 9;
     const score = -Math.abs(d - want) + this.r() * 3;
     if (score > bestScore) { bestScore = score; best = i; }
   }

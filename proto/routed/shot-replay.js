@@ -17,6 +17,7 @@ const path = require('path'), fs = require('fs');
       else if (op === 'truck') s.addTruck(R(a[0]), false, a[1] === 'big');
       else if (op === 'trim') s.trim(R(a[0]), +a[1]);
       else if (op === 'remove') s.removeRoute(R(a[0]));
+      else if (op === 'place') s.placeMaker(a[0], T(a[1]));
       else if (op === 'depot') s.placeDepot(T(a[0]));
       else if (op === 'pick') s.pick(+a[0]);
       else if (op === 'run') { const u = s.time + +a[0]; while (s.time < u - 1e-9 && !s.offer) s.step(1 / 30); }
