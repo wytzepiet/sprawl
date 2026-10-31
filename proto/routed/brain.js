@@ -26,6 +26,21 @@ root.makeBot = function (s, S, log = () => {}) {
       log('pick', s.offer[k]); s.pick(k); failed = 0; return;
     }
     if (s.dirty) s.reachAll();
+    // a maker in hand goes between what feeds it and the town
+    for (const kind in KINDS) {
+      if (!s.hand[kind]) continue;
+      const src = [...s.places.values()].find(p => p.kind === MAKER[KINDS[kind].needs]);
+      const hs = [...s.places.values()].filter(p => p.house);
+      const [hx, hy] = hs.reduce((a, h) => { const [x, y] = S.xy(h.tile); return [a[0] + x / hs.length, a[1] + y / hs.length]; }, [0, 0]);
+      const [sx, sy] = src ? S.xy(src.tile) : [hx, hy];
+      let best = -1, bd = Infinity;
+      for (let i = 0; i < S.W * S.H; i++) {
+        if (!s.free(i) || s.terrain[i] === S.FOREST) continue;
+        const [x, y] = S.xy(i), d = Math.hypot(x - (hx * 0.6 + sx * 0.4), y - (hy * 0.6 + sy * 0.4));
+        if (d < bd) { bd = d; best = i; }
+      }
+      if (best >= 0) { s.placeMaker(kind, best); log('placed', kind, S.xy(best)); }
+    }
     const places = [...s.places.values()];
     const need = [];
     for (const h of places.filter(p => p.house && !p.vacant)) for (const g of LEVELS[h.level].wants) if (h.wants[g].since >= 0) need.push([h, g]);

@@ -14,7 +14,7 @@ const STEPS8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1,
 const SPEED = 2.6;       // tiles a second
 const DWELL = 0.5;       // seconds at a stop
 const CAP = 4;           // crates a truck carries
-const PATIENCE = 50;     // seconds a house waits for a want
+const PATIENCE = 55;     // seconds a house waits for a want
 const OUT_CAP = 6;       // crates a producer keeps before it stops
 const IN_CAP = 4;
 const DEPOT_CAP = 12;
@@ -48,7 +48,7 @@ for (const k in KINDS) MAKER[KINDS[k].out] = k;
 
 // A house grows on deliveries and wants one thing more each time it does.
 const LEVELS = [
-  { name: 'Cottage',   people: 2,  wants: ['fish'],                              every: 26, grow: 4 },
+  { name: 'Cottage',   people: 2,  wants: ['fish'],                              every: 24, grow: 3 },
   { name: 'House',     people: 5,  wants: ['fish', 'bread'],                     every: 30, grow: 8 },
   { name: 'Townhouse', people: 10, wants: ['fish', 'bread', 'furniture'],        every: 34, grow: 12 },
   { name: 'Mansion',   people: 18, wants: ['fish', 'bread', 'furniture', 'clothes'], every: 38 },
@@ -57,8 +57,9 @@ const LEVELS = [
 const STATUSES = [
   { name: 'Hamlet',     at: 0,   size: [18, 12] },
   { name: 'Village',    at: 16,  size: [26, 17] },
-  { name: 'Town',       at: 50,  size: [34, 23] },
-  { name: 'City',       at: 120, size: [44, 30] },
+  { name: 'Town',       at: 50,  size: [32, 22] },
+  { name: 'City',       at: 140, size: [38, 26] },
+  { name: 'Metropolis', at: 300, size: [44, 30] },
 ];
 
 const PICKS = {
@@ -213,7 +214,7 @@ P.tickHouse = function (h) {
   for (const g of L.wants) {
     const w = h.wants[g];
     if (w.since < 0 && this.time >= w.due) { w.since = this.time; this.emit('want', { tile: h.tile, good: g }); this.first('want:' + g); this.supply(g); }
-    if (w.since >= 0 && this.time - w.since > PATIENCE) this.shrink(h, g);
+    if (w.since >= 0 && this.time - w.since > PATIENCE) { this.shrink(h, g); return; }
   }
 };
 
@@ -248,11 +249,29 @@ P.feed = function (h, g) {
 
 // When a good is wanted and nobody makes it, someone opens a place that does.
 // When the wanting outruns the making, a second one opens.
+// What grows or is dug opens where the land has it, by itself; what is made
+// from something comes to the player's hand, to put where routes can feed it.
 P.supply = function (good) {
   const kind = MAKER[good];
   const makers = [...this.places.values()].filter(p => p.kind === kind);
-  if (makers.length) return;
-  this.open(kind);
+  if (makers.length || this.hand[kind]) return;
+  this.more(kind);
+};
+P.more = function (kind) {
+  const K = KINDS[kind];
+  if (!K.needs) return this.open(kind);
+  this.hand[kind] = (this.hand[kind] || 0) + 1;
+  this.emit('token', { kind });
+  this.first('token:' + kind);
+  this.supply(K.needs);
+};
+P.placeMaker = function (kind, tile) {
+  if (!this.hand[kind] || !this.free(tile) || this.terrain[tile] === FOREST) return null;
+  this.hand[kind]--;
+  const p = this.addPlace({ kind, out: 0, inBuf: 0, prog: 0, coming: 0 }, tile);
+  this.emit('open', { tile, kind, placed: true });
+  this.first('open:' + kind);
+  return p;
 };
 
 P.open = function (kind) {
@@ -262,7 +281,6 @@ P.open = function (kind) {
   const p = this.addPlace({ kind, out: 0, inBuf: 0, prog: 0, coming: 0 }, site);
   this.emit('open', { tile: site, kind });
   this.first('open:' + kind);
-  if (K.needs) this.supply(K.needs);
   return p;
 };
 
@@ -293,6 +311,7 @@ P.site = function (kind) {
 
 P.tickProducer = function (p) {
   const K = KINDS[p.kind];
+  p.dry = p.out === 0 && p.idle !== 'starved' ? (p.dry || 0) + 1 / 30 : 0;
   if (p.out >= OUT_CAP) { p.idle = 'full'; return; }
   if (K.needs && p.inBuf <= 0 && p.prog === 0) { p.idle = 'starved'; return; }
   p.idle = null;
@@ -330,7 +349,7 @@ P.path = function (a, b, bridges) {
         if (c1 === WATER || c2 === WATER || tj === WATER || c1 === BRIDGE || c2 === BRIDGE) continue;
       }
       // places are in the way, unless it is where we start or end
-      if (j !== b && this.tileP.has(j)) continue;
+      if (j !== b && this.tileP.has(j) && !this.placeAt(j).depot) continue;
       const cost = (dx && dy ? 1.414 : 1) * (road.has(j) ? 0.8 : tj === FOREST ? 1.4 : tj === WATER ? 1.8 : 1);
       const ng = g[i] + cost;
       if (ng < g[j]) { g[j] = ng; prev[j] = i; used[j] = u; const [jx, jy] = xy(j); open.push([ng + Math.hypot(jx - bx, jy - by) * 0.8, j]); }
@@ -365,7 +384,7 @@ P.newRoute = function (a, b) {
 P.laid = function (leg) {
   for (const t of leg.tiles) if (this.terrain[t] === WATER) this.terrain[t] = BRIDGE;
   this.hand.bridge = this.bridgeStock - this.bridgesUsed();
-  this.dirty = true;
+  this.reachAll();
 };
 
 // Extend a route from one of its ends (0 the first, 1 the last) to a tile.
@@ -407,7 +426,7 @@ P.trim = function (r, end) {
     for (const t of this.trucks) if (t.route === r) { t.pos = Math.min(last, t.pos); if (t.pos === last) t.dir = -1; }
   }
   this.dropBridges();
-  this.dirty = true;
+  this.reachAll();
   return true;
 };
 
@@ -419,7 +438,7 @@ P.removeRoute = function (r) {
   this.routes = this.routes.filter(q => q !== r);
   this.hand.route++;
   this.dropBridges();
-  this.dirty = true;
+  this.reachAll();
   return true;
 };
 
@@ -604,7 +623,8 @@ P.truckPose = function (t) {
 // ---------- depots ----------
 
 P.placeDepot = function (tile) {
-  if (this.hand.depot <= 0 || !this.free(tile) || this.terrain[tile] === WATER) return null;
+  // a depot may stand on a street: trucks drive through it
+  if (this.hand.depot <= 0 || tile < 0 || !this.inBounds(tile) || this.tileP.has(tile) || this.terrain[tile] === WATER || this.terrain[tile] === BRIDGE) return null;
   this.hand.depot--;
   const d = this.addPlace({ depot: true, store: [], coming: 0 }, tile);
   this.emit('depot', { tile });
@@ -656,7 +676,7 @@ P.step = function (dt) {
     else { const i = this.spawnSpot(); if (i >= 0) this.addHouse(i); }
     this.spawned++;
     const strained = [...this.places.values()].filter(p => p.house && Object.values(p.wants).some(w => w.since >= 0 && this.time - w.since > PATIENCE / 2)).length;
-    this.nextSpawn = this.time + Math.max(5, 16 - this.time / 50) * (1 + 0.3 * strained);
+    this.nextSpawn = this.time + Math.max(7, 17 - this.time / 60) * (1 + 0.4 * strained);
   }
   for (const p of [...this.places.values()]) {
     if (p.house) this.tickHouse(p);
@@ -675,18 +695,18 @@ P.step = function (dt) {
   }
 };
 
+// A good runs short when every place making it is served and its yard has
+// stood empty a while with someone still waiting: then another opens.
+// Makers nobody's route reaches don't count as short; join them first.
 P.demand = function () {
-  const want = {};
-  for (const p of this.places.values()) if (p.house) for (const g of LEVELS[p.level].wants) want[g] = (want[g] || 0) + 1;
-  for (const g in want) {
-    const kind = MAKER[g];
-    const n = [...this.places.values()].filter(p => p.kind === kind).length;
-    if (n && want[g] > n * 7) this.open(kind);
-    const up = KINDS[kind].needs;
-    if (up) {
-      const kind2 = MAKER[up], n2 = [...this.places.values()].filter(p => p.kind === kind2).length;
-      if (n2 && n > n2 * 1.5) this.open(kind2);
-    }
+  const waiting = new Set();
+  for (const p of this.places.values()) {
+    if (p.house && !p.vacant) for (const g of LEVELS[p.level].wants) { if (p.wants[g].since >= 0) waiting.add(g); }
+    if (p.kind && p.idle === 'starved') waiting.add(KINDS[p.kind].needs);
+  }
+  for (const g of waiting) {
+    const makers = [...this.places.values()].filter(p => p.kind === MAKER[g]);
+    if (makers.length && makers.every(m => this.served(m) && m.dry > 25)) { if (!this.hand[MAKER[g]]) this.more(MAKER[g]); makers.forEach(m => m.dry = 0); }
   }
 };
 

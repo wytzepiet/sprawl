@@ -52,6 +52,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #hand canvas { position: static; width: 34px; height: 34px; }
 #hand .name { font-size: 12px; font-weight: 600; }
 #hand .n { position: absolute; top: 3px; right: 6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--ink); color: var(--pane); font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 4px; font-variant-numeric: tabular-nums; }
+#hand button.call .n { background: var(--accent); }
 #hand button.new { animation: arrive .7s cubic-bezier(.2, 1.4, .4, 1), glow 1.6s 3 .7s; }
 @keyframes arrive { from { transform: translateY(30px) scale(.6); opacity: 0; } }
 @keyframes glow { 50% { box-shadow: inset 0 0 0 2px var(--accent), 0 0 18px rgba(242, 181, 68, .5); } }
@@ -351,6 +352,17 @@ function drawRoutes(now) {
     for (const i of drag.leg) if (sim.terrain[i] === S.WATER) { const [x, y] = xy(i); g.strokeStyle = col; g.lineWidth = 0.06; g.setLineDash([0.1, 0.08]); g.strokeRect(x + 0.18, y + 0.18, 0.64, 0.64); g.setLineDash([]); }
   }
 }
+function drawCover() {
+  let tiles = null, col = null;
+  if (drag && drag.leg && drag.ok) { tiles = drag.kind === 'extend' ? [...drag.route.path, ...drag.leg] : drag.leg; col = drag.route ? drag.route.col : nextColour(); }
+  else if (selected && selected.route && sim.routes.includes(selected.route)) { tiles = selected.route.path; col = selected.route.col; }
+  if (!tiles) return;
+  const near = new Set();
+  for (const t of tiles) { const [x, y] = xy(t); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const j = at(x + dx, y + dy); if (j >= 0) near.add(j); } }
+  g.fillStyle = col; g.globalAlpha = 0.13;
+  for (const j of near) { const [x, y] = xy(j); g.fillRect(x, y, 1, 1); }
+  g.globalAlpha = 1;
+}
 function nextColour() { const used = new Set(sim.routes.map(r => r.col)); return ['#e8504a', '#3f7fe0', '#2fae6a', '#f0a92e', '#9b5fd6', '#e2689f', '#37b5c4', '#7a8a2e'].find(c => !used.has(c)); }
 
 // ---- places ---------------------------------------------------------------------------
@@ -506,6 +518,7 @@ function drawFog() {
 
 function frame() {
   const now = performance.now() / 1000;
+  if (sim.dirty) sim.reachAll();
   fitCam(false);
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = C.land; g.fillRect(0, 0, cv.width, cv.height);
@@ -515,13 +528,27 @@ function frame() {
   g.setTransform(worldTransform());
   g.drawImage(terrainCache, 0, 0, W, H);
   // where a route would serve, while drawing one: the tiles beside the line
+  drawCover();
   drawRoutes(now);
   const list = [...sim.places.values()].sort((a, b) => a.tile - b.tile);
   for (const p of list) { if (p.house) drawHouse(p, now); else if (p.kind) drawProducer(p, now); else drawDepot(p, now); }
   for (const t of sim.trucks) drawTruck(t);
+  if ((KINDS[tool] || tool === 'depot') && hoverT >= 0) {
+    const [x, y] = xy(hoverT), ok = KINDS[tool] ? sim.free(hoverT) && sim.terrain[hoverT] !== S.FOREST : !sim.tileP.has(hoverT) && sim.terrain[hoverT] !== S.WATER;
+    g.globalAlpha = 0.55; g.fillStyle = ok ? (KINDS[tool] ? GOODS[KINDS[tool].out].col : '#2b2b2e') : '#e5533d';
+    rr(g, x + 0.1, y + 0.1, 0.8, 0.8, 0.16); g.fill(); g.globalAlpha = 1;
+    if (KINDS[tool] && ok) { const fake = { tile: hoverT, kind: tool }; g.strokeStyle = GOODS[KINDS[tool].out].col; g.lineWidth = 0.05; g.setLineDash([0.12, 0.1]); g.strokeRect(x - 1, y - 1, 3, 3); g.setLineDash([]); }
+  }
   drawFog();
   drawPins(now);
   drawFx(now);
+  if (drag && drag.why && drag.px) {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.font = '600 13px Inter Tight, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+    const w = g.measureText(drag.why).width + 20, [x, y] = [Math.min(vw - w - 8, drag.px[0] + 18), drag.px[1] - 30];
+    g.fillStyle = C.ink; rr(g, x, y - 14, w, 28, 14); g.fill();
+    g.fillStyle = '#ff9d8a'; g.fillText(drag.why, x + 10, y + 1);
+  }
 }
 
 // ---- sound: tiny plucks ------------------------------------------------------------------
@@ -562,14 +589,17 @@ function onEvents() {
     if (e.type === 'deliver') { fx.push({ kind: 'ring', x: pos[0], y: pos[1], col: GOODS[e.good].col, t0: now, life: 0.6 }); sfx.deliver(); }
     if (e.type === 'grow') { fx.push({ kind: 'ring', x: pos[0], y: pos[1], col: C.ink, t0: now, life: 0.9 }); pops.set(sim.tileP.get(e.tile), now); sfx.grow();
       if (e.level === 1) hint('grow', 'A cottage became a house. Houses want bread as well as fish.'); }
-    if (e.type === 'open') { const K = KINDS[e.kind]; fx.push({ kind: 'text', x: pos[0], y: pos[1], col: C.ink, text: K.name + ' opened', t0: now, life: 2.2 }); fx.push({ kind: 'ring', x: pos[0], y: pos[1], col: GOODS[K.out].col, t0: now, life: 1 }); sfx.open();
-      if (!sim.routes.length) hint('first', `A ${K.name.toLowerCase()} opened. Drag from it to the houses to draw a route.`);
-      else if (K.needs) hint('needs-' + e.kind, `A ${K.name.toLowerCase()} opened. It needs ${GOODS[K.needs].name.toLowerCase()}: a route has to pass both.`);
-      else hint('open-' + e.kind, `A ${K.name.toLowerCase()} opened. Run a route past it and past whoever wants ${GOODS[K.out].name.toLowerCase()}.`); }
+    if (e.type === 'open') { const K = KINDS[e.kind];
+      if (!e.placed) fx.push({ kind: 'text', x: pos[0], y: pos[1], col: C.ink, text: K.name + ' opened', t0: now, life: 2.2 });
+      fx.push({ kind: 'ring', x: pos[0], y: pos[1], col: GOODS[K.out].col, t0: now, life: 1 }); sfx.open();
+      if (e.placed) hint('placed-' + e.kind, `Now a route past the ${K.name.toLowerCase()} and a ${KINDS[S.MAKER[K.needs]].name.toLowerCase()}, and past the houses.`);
+      else if (!sim.routes.length) hint('first', `A ${K.name.toLowerCase()} opened by the water. Drag from it to the houses to draw a route.`);
+      else hint('open-' + e.kind, `A ${K.name.toLowerCase()} opened. Its ${GOODS[K.out].name.toLowerCase()} is for a ${(Object.values(KINDS).find(k => k.needs === K.out) || { name: 'house' }).name.toLowerCase()}.`); }
     if (e.type === 'leave') { fx.push({ kind: 'text', x: pos[0], y: pos[1], col: '#c0392b', text: e.gone ? 'Moved out' : 'Shrank', t0: now, life: 1.4 }); sfx.leave();
       hint('leave', 'Nobody brought what they wanted in time. Empty lots fill again later.'); }
     if (e.type === 'status') { const el = document.getElementById('banner'); document.getElementById('bnName').textContent = e.name; document.getElementById('bnSub').textContent = 'The map grows'; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2600); sfx.grow(); }
     if (e.type === 'route' || e.type === 'extend') sfx.route();
+    if (e.type === 'token') { const K = KINDS[e.kind]; sfx.open(); hint('token-' + e.kind, `Houses want ${GOODS[K.out].name.toLowerCase()}. You have a ${K.name.toLowerCase()} to place: it makes it from ${GOODS[K.needs].name.toLowerCase()}.`); }
     if (e.type === 'week') { sfx.week(); }
     if (e.type === 'spawn' && sim.spawned === 5) hint('street', 'New houses like to stand on a street. Where you draw, the town fills in.');
   }
@@ -586,22 +616,29 @@ function buildHand() {
   handKey = key;
   const el = document.getElementById('hand');
   el.innerHTML = '';
-  const item = (id, ico, name, n, col, onClick, title) => {
+  const item = (id, ico, name, n, col, onClick, title, bg) => {
     const b = document.createElement('button');
-    b.appendChild(iconCanvas(ico, col));
+    b.appendChild(iconCanvas(ico, col, 34, bg));
     const s = document.createElement('span'); s.className = 'name'; s.textContent = name; b.appendChild(s);
     const c = document.createElement('span'); c.className = 'n'; c.textContent = n; b.appendChild(c);
     if (!n) b.classList.add('none');
     if (prev[id] !== undefined && n > prev[id]) b.classList.add('new');
+    else if ((id === 'truck' || id === 'big') && n && sim.routes.length) b.classList.add('call');
+    else if (KINDS[id] && n) b.classList.add('call');
     if (tool === id) b.classList.add('on');
     b.title = title;
     b.onclick = onClick;
     el.appendChild(b);
   };
   item('route', 'route', 'Route', h.route, h.route ? nextColour() || '#f4f2ec' : '#f4f2ec', () => { tool = 'route'; handKey = ''; }, 'New routes in hand: drag on the map to draw one');
-  item('truck', 'truck', 'Truck', h.truck, '#f4f2ec', () => { hint('truck-how', 'Tap a route to put a truck on it.'); }, 'Trucks in hand: tap a route to add one');
-  if (h.big) item('big', 'big', 'Big truck', h.big, '#f4f2ec', () => hint('big-how', 'Tap a route to put the big truck on it.'), 'Big trucks carry eight crates');
+  const holdT = id => () => { tool = tool === id || !h[id] ? 'route' : id; handKey = ''; if (tool === id) hint(id + '-how', 'Now tap a route to put the truck on it.'); };
+  item('truck', 'truck', 'Truck', h.truck, '#f4f2ec', holdT('truck'), 'Trucks in hand: tap here, then a route');
+  if (h.big) item('big', 'big', 'Big truck', h.big, '#f4f2ec', holdT('big'), 'Big trucks carry eight crates');
   item('bridge', 'bridge', 'Bridge', h.bridge, '#f4f2ec', () => hint('bridge-how', 'Draw a route over the water: each stretch of water takes a bridge.'), 'Bridges in hand');
+  for (const kind in KINDS) if (h[kind]) {
+    const K = KINDS[kind];
+    item(kind, K.out, K.name, h[kind], '#fff', () => { tool = tool === kind ? 'route' : kind; handKey = ''; if (tool === kind) hint('place-how-' + kind, `Tap the map to put the ${K.name.toLowerCase()} down. Somewhere a route can bring it ${GOODS[K.needs].name.toLowerCase()} and take its ${GOODS[K.out].name.toLowerCase()} to the houses.`); }, `Place a ${K.name.toLowerCase()}`, GOODS[K.out].col);
+  }
   if (h.depot) item('depot', 'depot', 'Depot', h.depot, '#f4f2ec', () => { tool = tool === 'depot' ? 'route' : 'depot'; handKey = ''; }, 'Tap the map to place a depot where routes can swap crates');
 }
 
@@ -686,14 +723,20 @@ function nearRoute(px, py) {
   return best;
 }
 
+// While drawing: the path as it would be laid, and if it cannot be, why.
 function preview() {
   if (!drag || drag.to < 0) return;
   const from = drag.kind === 'extend' ? (drag.end === 0 ? drag.route.stops[0] : drag.route.stops[drag.route.stops.length - 1]) : drag.from;
+  drag.why = '';
   if (drag.to === from) { drag.leg = null; return; }
   const leg = sim.canEnd(drag.to) ? sim.path(from, drag.to, sim.hand.bridge) : null;
-  if (leg && drag.kind === 'extend') { const mine = new Set(drag.route.path); if (leg.tiles.slice(1).some(t => mine.has(t))) { drag.leg = leg.tiles; drag.ok = false; return; } }
-  drag.leg = leg ? leg.tiles : [from, drag.to];
-  drag.ok = !!leg && (drag.kind === 'extend' || sim.hand.route > 0);
+  const any = leg || (sim.canEnd(drag.to) ? sim.path(from, drag.to, 9) : null);
+  drag.leg = any ? any.tiles : [from, drag.to];
+  drag.ok = !!leg;
+  if (!leg) drag.why = any ? (sim.hand.bridge ? `Needs ${any.bridges} bridges, you have ${sim.hand.bridge}` : any.bridges > 1 ? `Needs ${any.bridges} bridges` : 'Needs a bridge') : 'No way through';
+  else if (drag.kind === 'extend' && leg.tiles.slice(1).some(t => drag.route.path.includes(t))) { drag.ok = false; drag.why = 'A route cannot cross itself'; }
+  else if (drag.kind === 'new' && sim.hand.route <= 0) { drag.ok = false; drag.why = 'No route in hand: drag from a route\'s end to lengthen it'; }
+  drag.px = drag.px || [0, 0];
 }
 
 let down = null;
@@ -705,10 +748,12 @@ cv.addEventListener('pointerdown', e => {
   if (end) drag = { kind: 'extend', route: end.route, end: end.end, to: -1 };
   else if (tool === 'route') drag = { kind: 'new', from: tileAt(e.clientX, e.clientY), to: -1 };
 });
+let hoverT = -1;
 cv.addEventListener('pointermove', e => {
+  hoverT = tileAt(e.clientX, e.clientY);
   if (!down) return;
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) down.moved = true;
-  if (drag && down.moved) { const t = tileAt(e.clientX, e.clientY); if (t !== drag.to) { drag.to = t; preview(); } }
+  if (drag && down.moved) { drag.px = [e.clientX, e.clientY]; const t = tileAt(e.clientX, e.clientY); if (t !== drag.to) { drag.to = t; preview(); } }
 });
 cv.addEventListener('pointerup', e => {
   if (!down) return;
@@ -719,7 +764,7 @@ cv.addEventListener('pointerup', e => {
     if (drag.kind === 'extend') ok = sim.extend(drag.route, drag.end, drag.to);
     else if (sim.hand.route <= 0) hint('no-route', 'No route in hand. Lengthen one from its end, or wait for the week\'s pick.');
     else { const r = sim.newRoute(drag.from, drag.to); ok = !!r; if (r) { selected = { route: r }; hint('route-made', 'Trucks run the route end to end and serve whatever stands beside it.'); } }
-    if (!ok) sfx.no();
+    if (!ok) { sfx.no(); if (drag.why) hint('why-' + drag.why, drag.why + '.'); }
     drag = null; handKey = ''; showPanel(); return;
   }
   drag = null;
@@ -727,7 +772,13 @@ cv.addEventListener('pointerup', e => {
   // a tap: place a depot, put a truck on a route, or look at something
   const t = tileAt(e.clientX, e.clientY);
   if (tool === 'depot') { if (sim.placeDepot(t)) { tool = 'route'; handKey = ''; } else sfx.no(); return; }
+  if (KINDS[tool]) { const q = sim.placeMaker(tool, t); if (q) { selected = { place: q.id }; tool = 'route'; handKey = ''; showPanel(); } else sfx.no(); return; }
   const r = nearRoute(e.clientX, e.clientY);
+  if (tool === 'truck' || tool === 'big') {
+    if (r && sim.addTruck(r, false, tool === 'big')) { selected = { route: r }; sfx.route(); if (!sim.hand[tool]) tool = 'route'; handKey = ''; showPanel(); }
+    else sfx.no();
+    return;
+  }
   const p = sim.placeAt(t);
   if (p) selected = { place: p.id };
   else if (r) selected = { route: r };
@@ -766,7 +817,7 @@ function pickOffer(k) {
   document.getElementById('offer').hidden = true;
   handKey = '';
   const o = sim.events.find(e => e.type === 'picked');
-  if (o && o.pick === 'depot') { tool = 'depot'; hint('depot', 'Tap the map to place the depot where two routes meet.'); }
+  if (o && o.pick === 'depot') { tool = 'depot'; hint('depot', 'Tap a street where two routes meet to put the depot there.'); }
 }
 
 // ---- HUD ---------------------------------------------------------------------------------
