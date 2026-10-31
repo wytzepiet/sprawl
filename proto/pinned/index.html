@@ -151,7 +151,7 @@ canvas { position: absolute; inset: 0; display: block; }
   <p>Draw roads, and build what makes what they want. What you build wants things too.</p>
   <p>Each week brings more road and one pick. Wait too long and a family moves out.</p>
   <button id="go">Start</button>
-  <div class="keys">Drag to draw roads · right-drag to erase · space to pause</div>
+  <div class="keys">Drag to draw roads · right-drag to erase · pinch or scroll to zoom, two fingers to pan · space to pause</div>
 </div></div>
 
 <script src="sim.js"></script>
@@ -223,20 +223,52 @@ function resize() {
 }
 addEventListener('resize', resize);
 
+// The camera: a base fitted to the town's bounds, which eases out as the
+// town grows, and the player's zoom and pan on top of it. On a small screen
+// it starts zoomed in, so a tile is big enough to touch.
+const base = { s: 40, cx: 0, cy: 0, ready: false };
+const view = { z: 0, ox: 0, oy: 0 };
 function fitCam(snap) {
   const b = sim.bounds;
   const top = 74, bottom = 110, side = 14;
   const bw = b.x1 - b.x0 + 1.6, bh = b.y1 - b.y0 + 1.6;
   const [aw, ah] = portrait ? [bh, bw] : [bw, bh];
   const s = Math.min((vw - side * 2) / aw, (vh - top - bottom) / ah);
-  const cx = (b.x0 + b.x1 + 1) / 2, cy = (b.y0 + b.y1 + 1) / 2;
-  const target = { s, cx, cy, sx: vw / 2, sy: top + (vh - top - bottom) / 2 };
-  if (snap || !cam.ready) Object.assign(cam, target, { ready: true });
-  else {
-    const k = 0.06;
-    cam.s += (target.s - cam.s) * k; cam.cx += (target.cx - cam.cx) * k; cam.cy += (target.cy - cam.cy) * k;
-    cam.sx = target.sx; cam.sy = target.sy;
+  const t = { s, cx: (b.x0 + b.x1 + 1) / 2, cy: (b.y0 + b.y1 + 1) / 2 };
+  if (snap || !base.ready) Object.assign(base, t, { ready: true });
+  else { const k = 0.06; base.s += (t.s - base.s) * k; base.cx += (t.cx - base.cx) * k; base.cy += (t.cy - base.cy) * k; }
+  if (!view.z) {
+    // start on the houses
+    view.z = Math.max(1, 30 / base.s);
+    const hs = [...sim.buildings.values()].filter(q => q.house);
+    const [x, y] = hs.reduce((a, h) => { const [hx, hy] = xy(h.tile); return [a[0] + (hx + 0.5) / hs.length, a[1] + (hy + 0.5) / hs.length]; }, [0, 0]);
+    view.ox = x - base.cx; view.oy = y - base.cy;
   }
+  cam.sx = vw / 2; cam.sy = top + (vh - top - bottom) / 2;
+  applyView();
+  cam.ready = true;
+}
+// never zoom out past the whole town, never pan the town off the screen
+function applyView() {
+  view.z = Math.max(1, Math.min(5, view.z));
+  const b = sim.bounds, s = base.s * view.z;
+  const [sw, sh] = portrait ? [vh - 184, vw] : [vw, vh - 184];
+  const hw = Math.max(0, (b.x1 - b.x0 + 1) / 2 - sw / 2 / s + 1);
+  const hh = Math.max(0, (b.y1 - b.y0 + 1) / 2 - sh / 2 / s + 1);
+  view.ox = Math.max(-hw, Math.min(hw, view.ox));
+  view.oy = Math.max(-hh, Math.min(hh, view.oy));
+  cam.s = s; cam.cx = base.cx + view.ox; cam.cy = base.cy + view.oy;
+}
+// zoom by k, keeping the world point under px,py where it is
+function zoomAt(px, py, k) {
+  const [wx, wy] = toWorld(px, py);
+  view.z *= k; applyView();
+  const [nx, ny] = toWorld(px, py);
+  view.ox += wx - nx; view.oy += wy - ny; applyView();
+}
+function panBy(dx, dy) {
+  const [ax, ay] = toWorld(0, 0), [bx, by] = toWorld(dx, dy);
+  view.ox -= bx - ax; view.oy -= by - ay; applyView();
 }
 // world (tile units, 0..W) to screen px
 function toScreen(x, y) {
@@ -926,20 +958,44 @@ function line8(a, b) {
   while (x !== tx || y !== ty) { x += Math.sign(tx - x); y += Math.sign(ty - y); out.push(at(x, y)); }
   return out;
 }
+// One finger or the mouse draws and taps; two fingers pinch and pan; the
+// wheel zooms, and a trackpad's two-finger scroll pans.
+const fingers = new Map();
+let pinch = null;
 cv.addEventListener('pointerdown', e => {
   unlockAudio();
   cv.setPointerCapture(e.pointerId);
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (fingers.size === 2) {
+    // a second finger: the stroke the first one began becomes a pinch
+    drag = null;
+    const [a, b] = [...fingers.values()];
+    pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    return;
+  }
+  if (fingers.size > 2) return;
   const i = tileAt(e.clientX, e.clientY);
   const erase = e.button === 2 || tool === 'erase';
-  drag = { last: i, start: i, moved: false, erase, x: e.clientX, y: e.clientY };
+  drag = { last: i, start: i, moved: false, erase, x: e.clientX, y: e.clientY, t0: performance.now() };
   if (erase) eraseAt(i, true);
 });
 cv.addEventListener('pointermove', e => {
   hover = tileAt(e.clientX, e.clientY);
+  if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && fingers.size === 2) {
+    const [a, b] = [...fingers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    panBy(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    zoomAt(mid[0], mid[1], d / pinch.d);
+    pinch = { d, mid };
+    return;
+  }
   if (!drag) return;
   if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6) drag.moved = true;
   const i = hover;
   if (i < 0 || i === drag.last) return;
+  // a finger waits a moment before it draws, in case a second one is coming to pinch
+  if (e.pointerType === 'touch' && performance.now() - drag.t0 < 140) return;
   if (drag.erase) { for (const j of line8(drag.last, i)) eraseAt(j, false); drag.last = i; return; }
   if (tool !== 'road') return;
   for (const j of line8(drag.last, i)) {
@@ -951,8 +1007,23 @@ cv.addEventListener('pointermove', e => {
     if (c < 0 && sim.roads < sim.tileCost(prev) + sim.tileCost(j)) { roadFlash(); drag = null; return; }
   }
 });
+function lift(e) {
+  fingers.delete(e.pointerId);
+  if (!pinch) return false;
+  if (fingers.size < 2) pinch = null;
+  return true;
+}
+cv.addEventListener('pointercancel', e => { lift(e); drag = null; });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  // a trackpad pinch comes as a wheel with ctrl held, a mouse wheel in big
+  // steps; a trackpad's two-finger scroll pans
+  if (e.ctrlKey) zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+  else if (e.deltaMode || (Math.abs(e.deltaY) >= 50 && !e.deltaX)) zoomAt(e.clientX, e.clientY, Math.exp(-Math.sign(e.deltaY) * 0.18));
+  else panBy(-e.deltaX, -e.deltaY);
+}, { passive: false });
 cv.addEventListener('pointerup', e => {
-  if (!drag) return;
+  if (lift(e) || !drag) return;
   const i = tileAt(e.clientX, e.clientY);
   if (!drag.moved && !drag.erase) tap(i);
   drag = null;
@@ -992,6 +1063,8 @@ function eraseAt(i, tapped) {
 
 addEventListener('keydown', e => {
   if (sim.offer && e.key >= '1' && e.key <= '3') { pickOffer(+e.key - 1); return; }
+  if (e.key === '=' || e.key === '+') zoomAt(vw / 2, vh / 2, 1.25);
+  if (e.key === '-') zoomAt(vw / 2, vh / 2, 0.8);
   if (e.key === ' ') { setSpeed(speed ? 0 : lastSpeed); e.preventDefault(); }
   else if (e.key >= '1' && e.key <= '3') setSpeed(+e.key);
   else if (e.key === 'Escape') { setTool('road'); selected = null; panel(); }
@@ -1034,7 +1107,7 @@ function loop(t) {
 
 function start() {
   sim = new S.Sim(+(new URLSearchParams(location.search).get('seed') || 7));
-  window.sim = sim;
+  window.sim = sim; window.__toScreen = toScreen; window.__view = () => ({ ...view, s: cam.s });
   for (const b of sim.buildings.values()) pops.set(b.id, performance.now() / 1000 + 0.3);
   resize(); fitCam(true); buildBar(); hud();
   sim.events.length = 0;

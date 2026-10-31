@@ -137,7 +137,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   <p>You draw the streets. Trucks run each one end to end and serve everything beside it.</p>
   <p>Each week brings a truck and one pick. A house that waits too long shrinks.</p>
   <button id="go">Start</button>
-  <div class="keys">Drag to draw a route · drag from a route's end to lengthen it · tap a route for its trucks · space to pause</div>
+  <div class="keys">Drag from a building to draw a route, from a route's end to lengthen it, anywhere else to pan · pinch or scroll to zoom · space to pause</div>
 </div></div>
 
 <script src="sim.js"></script>
@@ -210,15 +210,48 @@ function resize() {
 }
 addEventListener('resize', resize);
 
+// The camera: a base fitted to the town's bounds, which eases out as the
+// town grows, and the player's zoom and pan on top of it. On a small screen
+// it starts zoomed in, so a tile is big enough to touch.
+const base = { s: 40, cx: 0, cy: 0, ready: false };
+const view = { z: 0, ox: 0, oy: 0 };
 function fitCam(snap) {
   const b = sim.bounds;
   const top = 70, bottom = 96, side = 12;
   const bw = b.x1 - b.x0 + 1.4, bh = b.y1 - b.y0 + 1.4;
   const s = Math.min((vw - side * 2) / bw, (vh - top - bottom) / bh);
-  const target = { s, cx: (b.x0 + b.x1 + 1) / 2, cy: (b.y0 + b.y1 + 1) / 2, sx: vw / 2, sy: top + (vh - top - bottom) / 2 };
-  if (snap || !cam.ready) Object.assign(cam, target, { ready: true });
-  else { const k = 0.06; cam.s += (target.s - cam.s) * k; cam.cx += (target.cx - cam.cx) * k; cam.cy += (target.cy - cam.cy) * k; cam.sx = target.sx; cam.sy = target.sy; }
+  const t = { s, cx: (b.x0 + b.x1 + 1) / 2, cy: (b.y0 + b.y1 + 1) / 2 };
+  if (snap || !base.ready) Object.assign(base, t, { ready: true });
+  else { const k = 0.06; base.s += (t.s - base.s) * k; base.cx += (t.cx - base.cx) * k; base.cy += (t.cy - base.cy) * k; }
+  if (!view.z) {
+    // start on the houses
+    view.z = Math.max(1, 30 / base.s);
+    const hs = [...sim.places.values()].filter(p => p.house);
+    const [x, y] = hs.reduce((a, h) => { const [hx, hy] = xy(h.tile); return [a[0] + (hx + 0.5) / hs.length, a[1] + (hy + 0.5) / hs.length]; }, [0, 0]);
+    view.ox = x - base.cx; view.oy = y - base.cy;
+  }
+  clampView();
+  cam.s = base.s * view.z; cam.cx = base.cx + view.ox; cam.cy = base.cy + view.oy;
+  cam.sx = vw / 2; cam.sy = top + (vh - top - bottom) / 2;
 }
+// never zoom out past the whole town, never pan the town off the screen
+function clampView() {
+  view.z = Math.max(1, Math.min(5, view.z));
+  const b = sim.bounds, s = base.s * view.z;
+  const hw = Math.max(0, (b.x1 - b.x0 + 1) / 2 - vw / 2 / s + 1);
+  const hh = Math.max(0, (b.y1 - b.y0 + 1) / 2 - (vh - 166) / 2 / s + 1);
+  view.ox = Math.max(-hw, Math.min(hw, view.ox));
+  view.oy = Math.max(-hh, Math.min(hh, view.oy));
+}
+function applyView() { clampView(); cam.s = base.s * view.z; cam.cx = base.cx + view.ox; cam.cy = base.cy + view.oy; }
+// zoom by k, keeping the world point under px,py where it is
+function zoomAt(px, py, k) {
+  const [wx, wy] = toWorld(px, py);
+  view.z *= k; applyView();
+  const [nx, ny] = toWorld(px, py);
+  view.ox += wx - nx; view.oy += wy - ny; applyView();
+}
+function panBy(dx, dy) { view.ox -= dx / cam.s; view.oy -= dy / cam.s; applyView(); }
 const toScreen = (x, y) => [cam.sx + (x - cam.cx) * cam.s, cam.sy + (y - cam.cy) * cam.s];
 const toWorld = (px, py) => [cam.cx + (px - cam.sx) / cam.s, cam.cy + (py - cam.sy) / cam.s];
 const worldTransform = () => new DOMMatrix().scale(dpr, dpr).translate(cam.sx, cam.sy).scale(cam.s, cam.s).translate(-cam.cx, -cam.cy);
@@ -359,7 +392,7 @@ function drawCover() {
   if (!tiles) return;
   const near = new Set();
   for (const t of tiles) { const [x, y] = xy(t); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const j = at(x + dx, y + dy); if (j >= 0) near.add(j); } }
-  g.fillStyle = col; g.globalAlpha = 0.13;
+  g.fillStyle = col; g.globalAlpha = 0.09;
   for (const j of near) { const [x, y] = xy(j); g.fillRect(x, y, 1, 1); }
   g.globalAlpha = 1;
 }
@@ -739,25 +772,59 @@ function preview() {
   drag.px = drag.px || [0, 0];
 }
 
-let down = null;
+// One finger or the mouse: drag from a building or a route's end to draw,
+// drag anywhere else to pan, tap to act. Two fingers pinch and pan; the
+// wheel zooms, and a trackpad's two-finger scroll pans.
+let down = null, hoverT = -1, pinch = null;
+const fingers = new Map();
 cv.addEventListener('pointerdown', e => {
   if (!sim || sim.offer) return;
   cv.setPointerCapture(e.pointerId);
-  down = { x: e.clientX, y: e.clientY, moved: false };
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (fingers.size === 2) {
+    // a second finger: whatever the first was doing becomes a pinch
+    drag = null; down = null;
+    const [a, b] = [...fingers.values()];
+    pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+    return;
+  }
+  if (fingers.size > 2) return;
+  down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, pan: false };
   const end = nearEnd(e.clientX, e.clientY);
+  const t = tileAt(e.clientX, e.clientY);
   if (end) drag = { kind: 'extend', route: end.route, end: end.end, to: -1 };
-  else if (tool === 'route') drag = { kind: 'new', from: tileAt(e.clientX, e.clientY), to: -1 };
+  else if (tool === 'route' && sim.placeAt(t)) drag = { kind: 'new', from: t, to: -1 };
+  else down.pan = true;
 });
-let hoverT = -1;
 cv.addEventListener('pointermove', e => {
   hoverT = tileAt(e.clientX, e.clientY);
+  if (!fingers.has(e.pointerId)) return;
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && fingers.size === 2) {
+    const [a, b] = [...fingers.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    panBy(mid[0] - pinch.mid[0], mid[1] - pinch.mid[1]);
+    zoomAt(mid[0], mid[1], d / pinch.d);
+    pinch = { d, mid };
+    return;
+  }
   if (!down) return;
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) down.moved = true;
+  if (down.pan && down.moved) panBy(e.clientX - down.lx, e.clientY - down.ly);
+  down.lx = e.clientX; down.ly = e.clientY;
   if (drag && down.moved) { drag.px = [e.clientX, e.clientY]; const t = tileAt(e.clientX, e.clientY); if (t !== drag.to) { drag.to = t; preview(); } }
 });
+// true while the lifted finger was part of a pinch, which acts on nothing
+function lift(e) {
+  fingers.delete(e.pointerId);
+  if (!pinch) return false;
+  if (fingers.size < 2) pinch = null;
+  return true;
+}
+cv.addEventListener('pointercancel', e => { lift(e); down = null; drag = null; });
 cv.addEventListener('pointerup', e => {
-  if (!down) return;
-  const tapped = !down.moved;
+  if (lift(e) || !down) return;
+  const tapped = !down.moved, panned = down.pan;
   down = null;
   if (drag && !tapped && drag.leg) {
     let ok = false;
@@ -768,7 +835,7 @@ cv.addEventListener('pointerup', e => {
     drag = null; handKey = ''; showPanel(); return;
   }
   drag = null;
-  if (!tapped) return;
+  if (!tapped) { if (panned) hint('pan', 'Routes start from a building or from a route\'s end.'); return; }
   // a tap: place a depot, put a truck on a route, or look at something
   const t = tileAt(e.clientX, e.clientY);
   if (tool === 'depot') { if (sim.placeDepot(t)) { tool = 'route'; handKey = ''; } else sfx.no(); return; }
@@ -785,10 +852,20 @@ cv.addEventListener('pointerup', e => {
   else selected = null;
   showPanel();
 });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  // a trackpad pinch comes as a wheel with ctrl held, a mouse wheel in big
+  // steps; a trackpad's two-finger scroll pans
+  if (e.ctrlKey) zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+  else if (e.deltaMode || (Math.abs(e.deltaY) >= 50 && !e.deltaX)) zoomAt(e.clientX, e.clientY, Math.exp(-Math.sign(e.deltaY) * 0.18));
+  else panBy(-e.deltaX, -e.deltaY);
+}, { passive: false });
 addEventListener('keydown', e => {
   if (sim.offer && /^[123]$/.test(e.key)) { pickOffer(+e.key - 1); return; }
   if (e.key === ' ') { setSpeed(speed ? 0 : 1); e.preventDefault(); }
   if (/^[123]$/.test(e.key)) setSpeed(+e.key);
+  if (e.key === '=' || e.key === '+') zoomAt(vw / 2, vh / 2, 1.25);
+  if (e.key === '-') zoomAt(vw / 2, vh / 2, 0.8);
   if (e.key === 'Escape') { selected = null; tool = 'route'; drag = null; handKey = ''; showPanel(); }
 });
 
@@ -857,6 +934,7 @@ function loop(t) {
 const params = new URLSearchParams(location.search);
 sim = new S.Sim(+(params.get('seed') || 7));
 window.sim = sim;
+window.__toScreen = toScreen; window.__view = () => ({ ...view, s: cam.s });
 resize();
 fitCam(true);
 const start = () => {
