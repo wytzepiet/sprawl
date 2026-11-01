@@ -346,7 +346,8 @@ P.place = function (kind, i, free) {
   if (k.shop) { b.stock = {}; b.sells = new Set(); b.shelf = {}; }
   this.buildings.set(b.id, b); this.tileB.set(i, b.id);
   this.findDoor(b);
-  if (k.needs || k.shop) this.addTruck(b);   // a lorry to fetch with; raw makers wait to be fetched from
+  // lorries to fetch with; raw makers wait to be fetched from
+  for (let n = 0; n < (k.shop ? SHOP_LORRIES : k.needs ? 1 : 0); n++) this.addTruck(b);
   this.unlocked.add(kind);
   this.release();
   this.first('built:' + kind);
@@ -512,14 +513,10 @@ P.catchment = function () {
     const goods = [...Object.keys(LEVELS[h.level].wants), ...this.pins.filter(p => p.at === h.id && p.kind === 'build').map(p => p.good)];
     for (const g of new Set(goods)) { sh.sells.add(g); sh.shelf[g] = Math.min(SHELF_MAX, (sh.shelf[g] || SHELF - 1) + 1); }
   }
-  // a shop runs a lorry for every few houses it serves
-  for (const sh of shops) {
-    const served = [...this.buildings.values()].filter(h => h.house && h.shop === sh.id).length;
-    const want = Math.min(SHOP_LORRIES, 1 + Math.floor(served / HOUSES_PER_LORRY));
-    while (sh.trucks.length < want) this.addTruck(sh);
-    const idle = sh.trucks.map(id => this.vehicles.find(v => v.id === id)).filter(v => v && v.state === 'in');
-    while (sh.trucks.length > want && idle.length) { const v = idle.pop(); sh.trucks.splice(sh.trucks.indexOf(v.id), 1); this.dropVehicle(v); }
-  }
+};
+// A shop out of something with every lorry out fetching: it can't keep up.
+P.swamped = function (b) {
+  return !!b.stock && b.idle === 'starved' && b.trucks.every(id => this.vehicles.find(u => u.id === id)?.state !== 'in');
 };
 P.nearestShop = function (h) {
   if (h.door < 0) return null;
@@ -600,7 +597,7 @@ P.regrow = function (dt) {
 
 const LOAD = 3;          // crates a lorry carries
 const SPOTS = 2, SHOP_SPOTS = 4;   // vehicles that can wait beside a building
-const SHOP_LORRIES = 4, HOUSES_PER_LORRY = 4;   // a shop's fleet grows with the houses it serves
+const SHOP_LORRIES = 2;   // a busier town needs more shops, not bigger ones
 
 // What a building has of a good for whoever comes for it.
 P.avail = function (b, g) {
@@ -932,7 +929,8 @@ P.makeOffer = function () {
     const r = n && s.rootOf(g); if (r) weight[r] = (weight[r] || 0) + n;
   }
   // houses with no shop in reach want one
-  weight['kind:shop'] = [...s.buildings.values()].filter(h => h.house && h.door >= 0 && h.shop == null).length * 1.5;
+  weight['kind:shop'] = [...s.buildings.values()].filter(h => h.house && h.door >= 0 && h.shop == null).length * 1.5
+    + [...s.buildings.values()].filter(sh => s.swamped(sh)).length * 6;
   for (const k of s.unlocked) cands.push({ type: 'kind', kind: k, n: 1, w: 1 + (weight['kind:' + k] || 0) * 2 });
   cands.push({ type: 'roads', n: 15, w: s.roads < 10 ? 6 : 2 });
   if (s.tools.has('roundabout')) cands.push({ type: 'roundabout', n: 2, w: 2 });

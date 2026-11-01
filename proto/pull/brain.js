@@ -60,7 +60,7 @@ return function think() {
     // take the building whose good is most behind, else trucks, else road
     const o = s.offer;
     let k = o.findIndex(x => x.type === 'roads' && s.roads < 8);
-    if (k < 0) k = o.findIndex(x => x.type === 'kind' && (x.kind === 'shop' ? [...s.buildings.values()].some(h => h.house && h.shop == null) : s.backlog(KINDS[x.kind].out) >= 2));
+    if (k < 0) k = o.findIndex(x => x.type === 'kind' && (x.kind === 'shop' ? [...s.buildings.values()].some(h => h.house && (h.shop == null || s.swamped(s.B(h.shop)))) : s.backlog(KINDS[x.kind].out) >= 2));
     if (k < 0) k = 0;
     log('PICK', JSON.stringify(o[k]));
     s.pick(k);
@@ -68,7 +68,7 @@ return function think() {
   for (const b of s.buildings.values()) if (b.door < 0) connect(b);
   // a shop among the houses that have none within reach
   if (s.tokens.shop) {
-    const lonely = [...s.buildings.values()].filter(h => h.house && h.door >= 0 && h.shop == null);
+    const lonely = [...s.buildings.values()].filter(h => h.house && h.door >= 0 && (h.shop == null || s.swamped(s.B(h.shop))));
     if (lonely.length) { const i = bestSpot('shop', lonely.map(h => h.tile)); if (i >= 0 && s.place('shop', i)) log('PLACE shop', xy(i)); }
   }
   for (const kind of s.unlocked) {

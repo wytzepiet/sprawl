@@ -558,6 +558,12 @@ function drawProducer(b, now) {
   g.fillStyle = 'rgba(255,255,255,.16)'; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s * 0.45, [0.18, 0.18, 0.04, 0.04]); g.fill();
   if (b.idle === 'starved') { g.fillStyle = 'rgba(235,229,211,.45)'; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s, 0.18); g.fill(); }
   g.save(); if (portrait) g.rotate(-Math.PI / 2); icon(g, kindIcon(b.kind), 0, -0.04, 0.5, '#fff'); g.restore();
+  // its lorries down the right edge: solid while home, hollow while out
+  b.trucks.forEach((id, n) => {
+    const v = sim.vehicles.find(u => u.id === id), home = !v || v.state === 'in';
+    g.beginPath(); g.roundRect(s / 2 - 0.15, -0.3 + n * 0.13, 0.1, 0.09, 0.025);
+    if (home) { g.fillStyle = '#fff'; g.fill(); } else { g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 0.025; g.stroke(); }
+  });
   // a shop's shelves: a crate for each good it has in
   if (b.stock) {
     const have = Object.keys(b.stock).filter(gd => b.stock[gd] > 0);
@@ -857,6 +863,7 @@ function handleEvents(now) {
   const houses = [...sim.buildings.values()].filter(b => b.house);
   if (houses.some(h => h.door < 0 && sim.time - h.born > 4 && sim.time > 20)) hint('connect', 'New houses need a road too. Connect them before their rings fill.');
   if (houses.some(h => h.door >= 0 && h.shop == null && sim.time - h.born > 15 && sim.time > 30)) hint('noshop', `A house has no shop within ${REACH} tiles of road. Its residents can't buy anything: place a shop near it.`, 8);
+  if ([...sim.buildings.values()].some(b => sim.swamped(b) && sim.time > 60)) hint('swamped', 'A shop has run out with both its lorries out fetching: it can\'t keep up. A second shop nearby shares the houses and the work.', 9);
   if (houses.some(h => h.quiet)) hint('quiet', 'A grey cloud means too loud to grow: industry within two tiles.', 8);
   const fishery = [...sim.buildings.values()].find(b => b.kind === 'fishery');
   if (fishery && sim.pins.filter(p => p.good === 'fish' && p.by < 0 && sim.time - p.born > 18).length >= 2) hint('truck', 'Fish is late. Lorries lined up beside a fishery mean it can\'t catch fast enough: a second fishery would help.', 8);
@@ -1035,7 +1042,8 @@ function panel() {
     const low = [...b.sells].filter(gd => !(b.stock[gd] > 0));
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
     else if (!b.sells.size) say.textContent = `No houses within ${REACH} tiles by road shop here yet.`;
-    else if (low.length) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}. Lorries bring it from the maker.`; }
+    else if (sim.swamped(b)) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}, and both its lorries are out fetching: it can't keep up. Another shop nearby would share the work.`; }
+    else if (low.length) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}. Nobody has it to fetch: its maker is short, or missing.`; }
     else say.textContent = 'Stocked. Residents drive over to buy.';
     el.appendChild(say);
     const acts = document.createElement('div'); acts.className = 'acts';
