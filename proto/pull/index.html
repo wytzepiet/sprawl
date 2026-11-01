@@ -1038,7 +1038,7 @@ function panel() {
     else say.textContent = `Happy ${b.happy} of ${L.after}. Then it asks for ${Object.entries(L.grow).map(([gd, n]) => n + ' ' + GOODS[gd].name.toLowerCase()).join(' and ')} to grow.`;
     el.appendChild(say);
   } else if (b.stock) {
-    h.innerHTML = `Shop <small>${[...sim.buildings.values()].filter(o => o.house && o.shop === b.id).length} houses shop here</small>`;
+    h.innerHTML = `Shop <small>${[...sim.buildings.values()].filter(o => o.house && o.door >= 0 && b.door >= 0 && (sim.dist(b.door).get(o.door) ?? 99) <= REACH).length} houses in reach</small>`;
     el.appendChild(h);
     const f = document.createElement('div'); f.className = 'flow';
     f.append('Shelves');
@@ -1048,7 +1048,7 @@ function panel() {
     const say = document.createElement('div'); say.className = 'say';
     const low = [...b.sells].filter(gd => !(b.stock[gd] > 0));
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
-    else if (!b.sells.size) say.textContent = `No houses within ${REACH} tiles by road shop here yet.`;
+    else if (!b.sells.size) say.textContent = `No houses within ${REACH} road tiles yet.`;
     else if (sim.swamped(b)) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}, and both its lorries are out fetching: it can't keep up. Another shop nearby would share the work.`; }
     else if (low.length) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}. Nobody has it to fetch: its maker is short, or missing.`; }
     else say.textContent = 'Stocked. Residents drive over to buy.';

@@ -499,20 +499,22 @@ P.tickShop = function (b) {
   const empty = [...b.sells].some(g => !(b.stock[g] > 0));
   b.idle = !b.sells.size ? 'quiet' : empty ? 'starved' : '';
 };
-// Which shop each house would drive to: the nearest by road. Its wants become
-// what that shop sells.
+// Every shop stocks what the houses within its reach want, building materials
+// too; a house within reach of two shops counts half at each, so a second shop
+// beside a busy one takes half the work. A house's own shop is its nearest.
 P.catchment = function () {
   const shops = [...this.buildings.values()].filter(b => b.stock && b.door >= 0);
-  for (const sh of shops) { sh.sells = new Set(); sh.shelf = {}; }
+  const share = new Map(shops.map(sh => [sh, {}]));
+  for (const sh of shops) sh.sells = new Set();
   for (const h of this.buildings.values()) {
     if (!h.house) continue;
     h.shop = this.nearestShop(h);
-    if (h.shop == null) continue;
-    const sh = this.B(h.shop);
-    // what it eats, and what it's building with: a shop sells planks and bricks too
-    const goods = [...Object.keys(LEVELS[h.level].wants), ...this.pins.filter(p => p.at === h.id && p.kind === 'build').map(p => p.good)];
-    for (const g of new Set(goods)) { sh.sells.add(g); sh.shelf[g] = Math.min(SHELF_MAX, (sh.shelf[g] || SHELF - 1) + 1); }
+    if (h.door < 0) continue;
+    const near = shops.filter(sh => { const d = this.dist(sh.door).get(h.door); return d !== undefined && d <= REACH; });
+    const goods = new Set([...Object.keys(LEVELS[h.level].wants), ...this.pins.filter(p => p.at === h.id && p.kind === 'build').map(p => p.good)]);
+    for (const sh of near) for (const g of goods) { sh.sells.add(g); share.get(sh)[g] = (share.get(sh)[g] || 0) + 1 / near.length; }
   }
+  for (const sh of shops) { sh.shelf = {}; for (const g in share.get(sh)) sh.shelf[g] = Math.min(SHELF_MAX, SHELF - 1 + Math.ceil(share.get(sh)[g])); }
 };
 // A shop out of something with every lorry out fetching: it can't keep up.
 P.swamped = function (b) {
