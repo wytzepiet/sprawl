@@ -61,12 +61,10 @@ return function think() {
     const o = s.offer;
     let k = o.findIndex(x => x.type === 'roads' && s.roads < 8);
     if (k < 0) k = o.findIndex(x => x.type === 'kind' && (x.kind === 'shop' ? [...s.buildings.values()].some(h => h.house && h.shop == null) : s.backlog(KINDS[x.kind].out) >= 2));
-    if (k < 0) k = o.findIndex(x => x.type === 'truck');
     if (k < 0) k = 0;
     log('PICK', JSON.stringify(o[k]));
     s.pick(k);
   }
-  for (const b of [...s.buildings.values()]) if (b.idle === 'cleared') { s.removeBuilding(b.id); log('MOVE woodcutter (bare)'); }
   for (const b of s.buildings.values()) if (b.door < 0) connect(b);
   // a shop among the houses that have none within reach
   if (s.tokens.shop) {
@@ -84,10 +82,6 @@ return function think() {
       const i = bestSpot(kind, pins.map(p => s.B(p.at).tile));
       if (i >= 0 && s.place(kind, i)) log('PLACE', kind, xy(i), 'roads', s.roads);
       continue;
-    }
-    if (backlog >= 2 && s.tokens.truck) {
-      const b = mine.sort((a, c) => a.trucks.length - c.trucks.length)[0];
-      if (b && s.addTruck(b)) log('TRUCK', kind, b.trucks.length);
     }
   }
   if (s.jamAt !== undefined && s.isJunction(s.jamAt) && !s.roundabouts.has(s.jamAt)) {

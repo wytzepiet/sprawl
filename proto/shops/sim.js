@@ -8,7 +8,7 @@
 const W = 48, H = 32;
 const GRASS = 0, FOREST = 1, WATER = 2, MEADOW = 3, CLAY = 4, SAND = 5;
 const WOOD = 4;          // logs a forest tile holds
-const REGROW = 14;       // seconds for every forest tile to grow back a log
+const REGROW = 8;        // seconds for every forest tile to grow back a log
 const STEPS8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 const STEPS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
@@ -18,7 +18,7 @@ const STOP = 0.5;        // a junction's stop line, short of its centre
 const DWELL = 0.6;       // seconds loading or unloading
 const GHOST = 12;        // seconds stuck before a truck squeezes through
 const PATIENCE = 60;     // seconds a house waits on a want
-const OUT_CAP = 3;
+const OUT_CAP = 4;
 const START = [32, 12];
 
 const GOODS = {
@@ -37,23 +37,23 @@ const GOODS = {
 };
 
 const KINDS = {
-  fishery:    { name: 'Fishery',    out: 'fish',      time: 4.0, cost: 12, near: WATER,  why: 'Houses want fish. A fishery on the water catches it; its lorry stocks the shop, and residents drive to the shop to buy.' },
-  woodcutter: { name: 'Woodcutter', out: 'log',       time: 3.5, cost: 10, near: FOREST, why: 'A woodcutter by the forest cuts logs.' },
-  sawmill:    { name: 'Sawmill',    out: 'plank',     time: 3.0, cost: 15, needs: { log: 1 }, loud: true, why: 'A house wants planks to grow. A sawmill makes them.' },
-  farm:       { name: 'Farm',       out: 'wheat',     time: 4.0, cost: 12, on: MEADOW,  why: 'A farm on the meadow grows wheat.' },
-  bakery:     { name: 'Bakery',     out: 'bread',     time: 3.5, cost: 18, needs: { wheat: 1 }, why: 'Bigger houses want bread. A bakery bakes it.' },
-  claypit:    { name: 'Clay pit',   out: 'clay',      time: 4.0, cost: 12, on: CLAY,    why: 'A clay pit digs clay where the ground is ochre.' },
-  brickworks: { name: 'Brickworks', out: 'brick',     time: 4.0, cost: 25, needs: { clay: 1, log: 1 }, loud: true, why: 'A house wants bricks to grow. A brickworks fires them from clay and logs.' },
-  workshop:   { name: 'Workshop',   out: 'furniture', time: 5.0, cost: 25, needs: { plank: 2 }, loud: true, why: 'Townhouses want furniture. A workshop makes it from planks.' },
-  sandpit:    { name: 'Sand pit',   out: 'sand',      time: 4.0, on: SAND,  why: 'A sand pit digs on the beach across the river.' },
-  glassworks: { name: 'Glassworks', out: 'glass',     time: 4.5, needs: { sand: 1, log: 1 }, loud: true, why: 'A townhouse wants glass to grow. A glassworks melts sand over a wood fire.' },
-  sheep:      { name: 'Sheep farm', out: 'wool',      time: 4.5, on: MEADOW, why: 'Sheep on the meadow give wool. They want the same meadow as the farms.' },
-  tailor:     { name: 'Tailor',     out: 'clothes',   time: 4.0, needs: { wool: 1 }, why: 'Apartments want clothes. A tailor sews them from wool.' },
+  fishery:    { name: 'Fishery',    out: 'fish',      time: 2.2, cost: 12, near: WATER,  why: 'Houses want fish. A fishery on the water catches it; its lorry stocks the shop, and residents drive to the shop to buy.' },
+  woodcutter: { name: 'Woodcutter', out: 'log',       time: 1.9, cost: 10, near: FOREST, why: 'A woodcutter by the forest cuts logs.' },
+  sawmill:    { name: 'Sawmill',    out: 'plank',     time: 1.7, cost: 15, needs: { log: 1 }, loud: true, why: 'A house wants planks to grow. A sawmill makes them.' },
+  farm:       { name: 'Farm',       out: 'wheat',     time: 2.2, cost: 12, on: MEADOW,  why: 'A farm on the meadow grows wheat.' },
+  bakery:     { name: 'Bakery',     out: 'bread',     time: 1.9, cost: 18, needs: { wheat: 1 }, why: 'Bigger houses want bread. A bakery bakes it.' },
+  claypit:    { name: 'Clay pit',   out: 'clay',      time: 2.2, cost: 12, on: CLAY,    why: 'A clay pit digs clay where the ground is ochre.' },
+  brickworks: { name: 'Brickworks', out: 'brick',     time: 2.2, cost: 25, needs: { clay: 1, log: 1 }, loud: true, why: 'A house wants bricks to grow. A brickworks fires them from clay and logs.' },
+  workshop:   { name: 'Workshop',   out: 'furniture', time: 2.8, cost: 25, needs: { plank: 2 }, loud: true, why: 'Townhouses want furniture. A workshop makes it from planks.' },
+  sandpit:    { name: 'Sand pit',   out: 'sand',      time: 2.2, on: SAND,  why: 'A sand pit digs on the beach across the river.' },
+  glassworks: { name: 'Glassworks', out: 'glass',     time: 2.5, needs: { sand: 1, log: 1 }, loud: true, why: 'A townhouse wants glass to grow. A glassworks melts sand over a wood fire.' },
+  sheep:      { name: 'Sheep farm', out: 'wool',      time: 2.5, on: MEADOW, why: 'Sheep on the meadow give wool. They want the same meadow as the farms.' },
+  tailor:     { name: 'Tailor',     out: 'clothes',   time: 2.2, needs: { wool: 1 }, why: 'Apartments want clothes. A tailor sews them from wool.' },
 };
 // A shop makes nothing: lorries stock its shelves and residents drive there.
 KINDS.shop = { name: 'Shop', out: null, shop: true, why: 'Houses buy what they want at a shop. Lorries keep its shelves stocked; residents drive over to buy.' };
 const SHELF = 3, SHELF_MAX = 10;   // a few of each on the shelf, one more for every house that shops there
-const REACH = 16;        // road tiles a resident will drive to a shop
+const REACH = 10;        // road tiles a resident will drive to a shop
 const MAKER = {};
 for (const k in KINDS) if (KINDS[k].out) MAKER[KINDS[k].out] = k;
 
@@ -73,8 +73,9 @@ const STATUSES = [
   { name: 'Metropolis', at: 250, size: [48, 32] },
 ];
 
-// No money: the week hands you road and one pick, Mini Motorways' way.
-const ROAD_COST = 1, BRIDGE_COST = 3, WEEK = 60, WEEK_ROADS = 6, START_ROADS = 24;
+// No money. Growth hands you the picks: every PICK_STEP people moving in or up, one. And
+// every new house brings a little road, so supply keeps pace with the town.
+const ROAD_COST = 1, BRIDGE_COST = 3, PICK_STEP = 10, HOUSE_ROADS = 2, START_ROADS = 24;
 
 function rng(seed) {
   return () => {
@@ -147,8 +148,8 @@ function Sim(seed = 7) {
   s.events = [];
   s.unlocked = new Set();
   s.waiting = new Set();         // makers that come once what feeds them is down
-  s.time = 0; s.roads = START_ROADS; s.tokens = { truck: 0, roundabout: 0, shop: 1 };
-  s.week = 1; s.weekT = 0; s.offer = null; s.leftThisWeek = 0;
+  s.time = 0; s.roads = START_ROADS; s.tokens = { roundabout: 0, shop: 1 };
+  s.week = 1; s.weekT = 0; s.arrived = 0; s.pickFrom = 0; s.offer = null; s.leftThisWeek = 0;
   s.nextId = 1; s.graphV = 0; s.distCache = new Map();
   s.spawned = 0; s.nextSpawn = 30; s.status = 0;
   s.stats = { delivered: 0, left: 0, firsts: {} };
@@ -343,7 +344,7 @@ P.place = function (kind, i, free) {
   if (k.shop) { b.stock = {}; b.held = {}; b.sells = new Set(); b.shelf = {}; }
   this.buildings.set(b.id, b); this.tileB.set(i, b.id);
   this.findDoor(b);
-  if (!k.shop) this.addTruck(b, true);
+  if (!k.shop) this.addTruck(b);   // one lorry, always
   this.unlocked.add(kind);
   this.release();
   this.first('built:' + kind);
@@ -356,9 +357,8 @@ P.addCar = function (h) {
   this.vehicles.push(v);
   return v;
 };
-P.addTruck = function (b, free) {
+P.addTruck = function (b) {
   if (!b || b.house) return false;
-  if (!free) { if (!this.tokens.truck) return false; this.tokens.truck--; }
   const v = { id: this.nextId++, home: b.id, state: 'in', cargo: null, pin: null, route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dwell: 0, dest: -1, hop: 0 };
   b.trucks.push(v.id);
   this.vehicles.push(v);
@@ -367,9 +367,8 @@ P.addTruck = function (b, free) {
 P.removeBuilding = function (id) {
   const b = this.B(id);
   if (!b) return false;
-  // everything comes back to hand: the building and its extra trucks
+  // the building comes back to hand
   if (!b.house && !b.free) this.tokens[b.kind] = (this.tokens[b.kind] || 0) + 1;
-  if (!b.house) this.tokens.truck += Math.max(0, b.trucks.length - 1);
   for (const v of this.vehicles.filter(v => v.car && v.dest === id)) this.sendHome(v);
   for (const v of this.vehicles.filter(v => v.home === id)) this.dropVehicle(v);
   for (const p of this.pins.filter(p => p.at === id)) this.killPin(p);
@@ -386,7 +385,7 @@ P.removeBuilding = function (id) {
       const score = d + this.r() - (STEPS4.some(([ex, ey]) => this.adj.has(at(x + dx + ex, y + dy + ey))) ? 1 : 0);
       if (score < bd) { bd = score; best = i; }
     }
-    if (best >= 0) this.addHouse(best, false);
+    if (best >= 0) this.addHouse(best, true);
     else this.emit({ type: 'leave', tile: b.tile, gone: true, level: b.level, good: Object.keys(LEVELS[b.level].wants)[0] });
   }
   return true;
@@ -400,6 +399,7 @@ P.addHouse = function (i, first) {
   this.buildings.set(h.id, h); this.tileB.set(i, h.id);
   this.findDoor(h);
   this.addCar(h);
+  if (!first) { this.roads += HOUSE_ROADS; this.arrived += LEVELS[1].people; }
   this.emit({ type: 'spawn', id: h.id, tile: i });
   return h;
 };
@@ -505,32 +505,27 @@ P.deliver = function (v) {
   const p = v.pin, b = this.B(v.dest);
   v.pin = null;
   if (!p || p.dead || !b) return false;
-  this.killPin(p);
-  const good = v.cargo;
+  const load = [p, ...(v.more || []).filter(q => !q.dead)];
+  for (const q of load) this.killPin(q);
+  v.more = [];
+  const good = v.cargo, n = load.length;
   v.cargo = null;
-  this.stats.delivered++;
+  this.stats.delivered += n;
   if (b.house) {
-    const pay = GOODS[good].pay;
-    if (p.kind === 'want') {
-      b.happy++;
-      this.first('fed');
-    }
-    this.emit({ type: 'deliver', tile: b.tile, good, pay });
+    this.emit({ type: 'deliver', tile: b.tile, good, pay: GOODS[good].pay });
     if (p.kind === 'build' && !this.pins.some(q => q.at === b.id && q.kind === 'build')) {
       b.level++;
       b.happy = 0;
       for (const g in LEVELS[b.level].wants) if (b.timers[g] === undefined) b.timers[g] = 6 + this.r() * 6;
       this.first('level:' + b.level);
+      this.arrived += LEVELS[b.level].people - LEVELS[b.level - 1].people;
       this.emit({ type: 'grow', id: b.id, tile: b.tile, level: b.level });
     }
   } else if (b.stock) {
-    const more = (v.more || []).filter(q => !q.dead);
-    for (const q of more) this.killPin(q);
-    v.more = [];
-    b.stock[good] = (b.stock[good] || 0) + 1 + more.length;
+    b.stock[good] = (b.stock[good] || 0) + n;
     this.emit({ type: 'deliver', tile: b.tile, good, pay: 0 });
   } else {
-    b.inBuf[good] = (b.inBuf[good] || 0) + 1;
+    b.inBuf[good] = (b.inBuf[good] || 0) + n;
     this.emit({ type: 'deliver', tile: b.tile, good, pay: 0 });
   }
   return true;
@@ -725,8 +720,8 @@ P.tickVehicleIdle = function (v, dt) {
     if (!p) return;
     if (!this.depart(v, home.door, p.at)) return;
     p.by = v.id; v.pin = p; v.cargo = KINDS[home.kind].out; home.out--;
-    // a lorry for a shop fills up: every crate that shop is short of, as far as the yard has them
-    v.more = this.B(p.at).stock ? this.pins.filter(q => q !== p && q.at === p.at && q.good === p.good && q.by < 0).slice(0, home.out) : [];
+    // a lorry fills up: every crate that building is short of, as far as the yard has them
+    v.more = this.pins.filter(q => q !== p && q.at === p.at && q.good === p.good && q.by < 0).slice(0, home.out);
     for (const q of v.more) { q.by = v.id; home.out--; }
     v.state = 'dwell'; v.dwell = DWELL; v.loading = true;
     return;
@@ -783,9 +778,9 @@ P.carHome = function (v) {
 };
 P.step = function (dt) {
   const s = this;
-  if (s.offer) return;          // the week's pick waits for the player
-  s.weekT += dt;
-  if (s.weekT >= WEEK) { s.weekT = 0; s.week++; s.roads += WEEK_ROADS; s.offer = s.makeOffer(); s.emit({ type: 'week', week: s.week }); return; }
+  if (s.offer) return;          // the pick waits for the player
+  s.weekT = (s.arrived - s.pickFrom) / PICK_STEP;   // people who moved in or up, not who stayed
+  if (s.weekT >= 1) { s.pickFrom += PICK_STEP; s.week++; s.offer = s.makeOffer(); s.emit({ type: 'week', week: s.week }); return; }
   s.time += dt;
   s.tick = (s.tick || 0) + 1;
   s.regrow(dt);
@@ -944,15 +939,13 @@ P.backlog = function (good) {
   return this.pins.filter(p => p.good === good && p.by < 0 && this.time - p.born > 8).length;
 };
 // Where a shortage of a good really comes from: its makers waiting on an input
-// (follow that input), its makers with full yards (they lack trucks), or its
-// makers working flat out (it needs another maker).
+// (follow that input), or too few makers.
 P.rootOf = function (good, depth = 0) {
   const kind = MAKER[good];
   const makers = [...this.buildings.values()].filter(b => b.kind === kind && b.door >= 0);
   if (!makers.length || depth > 4) return this.tokens[kind] ? null : 'kind:' + kind;
   const starved = makers.find(b => b.idle === 'starved');
   if (starved) for (const g in KINDS[kind].needs) if (starved.inBuf[g] < KINDS[kind].needs[g]) return this.rootOf(g, depth + 1);
-  if (makers.some(b => b.idle === 'full')) return 'truck';
   return 'kind:' + kind;
 };
 P.makeOffer = function () {
@@ -968,7 +961,6 @@ P.makeOffer = function () {
   // houses with no shop in reach want one
   weight['kind:shop'] = [...s.buildings.values()].filter(h => h.house && h.door >= 0 && h.shop == null).length * 1.5;
   for (const k of s.unlocked) cands.push({ type: 'kind', kind: k, n: 1, w: 1 + (weight['kind:' + k] || 0) * 2 });
-  cands.push({ type: 'truck', n: 2, w: 3 + (weight.truck || 0) * 2 });
   cands.push({ type: 'roads', n: 15, w: s.roads < 10 ? 6 : 2 });
   if (s.tools.has('roundabout')) cands.push({ type: 'roundabout', n: 2, w: 2 });
   const want = s.leftThisWeek === 0 ? 3 : 2;   // a week nobody left earns a wider choice
@@ -988,7 +980,6 @@ P.pick = function (n) {
   const o = this.offer && this.offer[n];
   if (!o) return false;
   if (o.type === 'kind') this.tokens[o.kind] = (this.tokens[o.kind] || 0) + o.n;
-  else if (o.type === 'truck') this.tokens.truck += o.n;
   else if (o.type === 'roads') this.roads += o.n;
   else if (o.type === 'roundabout') this.tokens.roundabout += o.n;
   this.offer = null;
@@ -1035,5 +1026,5 @@ P.vehiclePose = function (v) {
 };
 
 root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, REACH, SHELF,
-  OUT_CAP, ROAD_COST, BRIDGE_COST, WEEK, WEEK_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
+  OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
 })(typeof window !== 'undefined' ? window : globalThis);

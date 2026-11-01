@@ -23,7 +23,7 @@ for (let tick = 0; s.time < minutes * 60; tick++) {
     if (e.type === 'leave') log('LEFT', e.good, e.gone ? '(house gone)' : '(shrank)');
     if (e.type === 'status') log('STATUS', e.name);
     if (e.type === 'jam') log('JAM at', xy(e.tile));
-    if (e.type === 'week') log('WEEK', e.week, 'left last week', s.leftThisWeek);
+    if (e.type === 'week') log('PICKTIME', e.week, 'left last week', s.leftThisWeek);
   }
   s.events.length = 0;
   if (tick % 15) continue;   // the bot thinks twice a second
@@ -32,7 +32,7 @@ for (let tick = 0; s.time < minutes * 60; tick++) {
   const ppl = s.people();
   if (tick % 1800 === 0) {
     const waiting = s.pins.filter(p => p.kind === 'want').length;
-    log(`people ${ppl} roads ${s.roads} week ${s.week} houses ${[...s.buildings.values()].filter(b => b.house).length} trucks ${s.vehicles.length} pins ${s.pins.length} (wants ${waiting}) delivered ${s.stats.delivered} left ${s.stats.left}`);
+    log(`people ${ppl} roads ${s.roads} week ${s.week} picks ${[...s.buildings.values()].filter(b => b.house).length} trucks ${s.vehicles.length} pins ${s.pins.length} (wants ${waiting}) delivered ${s.stats.delivered} left ${s.stats.left}`);
   }
 }
 console.log('firsts', Object.fromEntries(Object.entries(s.stats.firsts).map(([k, v]) => [k, fmt(v)])));

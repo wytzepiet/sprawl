@@ -129,7 +129,7 @@ canvas { position: absolute; inset: 0; display: block; }
   <div class="pane" id="status"><div class="row"><b id="stName">Hamlet</b><span id="stPeople"></span></div><div class="bar"><i id="stBar"></i></div></div>
   <div id="spacer"></div>
   <div class="pane" id="roads" title="Road tiles in hand"><svg viewBox="0 0 22 22" fill="none" stroke="#9aa0aa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17 L10 11 L18 11"/></svg><span id="roadN">0</span></div>
-  <div class="pane" id="week" title="The week: each one ends with a pick"><canvas width="64" height="64"></canvas><span id="weekN">1</span></div>
+  <div class="pane" id="week" title="Fills as people move in or up: a full ring is a pick"><canvas width="64" height="64"></canvas><span id="weekN">1</span></div>
   <div class="pane" id="speed">
     <button data-s="0" title="Pause (space)" aria-label="Pause">❚❚</button>
     <button data-s="1" class="on" title="Normal speed (1)">1×</button>
@@ -149,7 +149,7 @@ canvas { position: absolute; inset: 0; display: block; }
   <h1>Sprawl, pinned</h1>
   <p>Houses appear and want things. A pin shows what, and its ring fills while they wait.</p>
   <p>Draw roads, and build what makes what they want. What you build wants things too.</p>
-  <p>Each week brings more road and one pick. Wait too long and a family moves out.</p>
+  <p>Every new house brings a little road; every ten people moving in or up bring a pick. Wait too long and a family moves out.</p>
   <button id="go">Start</button>
   <div class="keys">View pans and zooms · Road draws · Erase removes · pinch or scroll to zoom · space to pause</div>
 </div></div>
@@ -809,20 +809,18 @@ function handleEvents(now) {
   if (houses.some(h => h.door >= 0 && h.shop == null && sim.time - h.born > 15 && sim.time > 30)) hint('noshop', `A house has no shop within ${REACH} tiles of road. Its residents can't buy anything: place a shop near it.`, 8);
   if (houses.some(h => h.quiet)) hint('quiet', 'A grey cloud means too loud to grow: industry within two tiles.', 8);
   const fishery = [...sim.buildings.values()].find(b => b.kind === 'fishery');
-  if (fishery && sim.pins.filter(p => p.good === 'fish' && p.by < 0 && sim.time - p.born > 18).length >= 2) hint('truck', 'Fish is late: one truck can only do one trip at a time. A second truck or a second fishery would help.', 8);
+  if (fishery && sim.pins.filter(p => p.good === 'fish' && p.by < 0 && sim.time - p.born > 18).length >= 2) hint('truck', 'Fish is late: one lorry can only make one trip at a time. A second fishery, nearer the shop, would help.', 8);
 }
 function roadFlash() { const el = document.getElementById('roads'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); sfx.no(); }
 
-// ---- the week's pick ------------------------------------------------------------
+// ---- the pick ------------------------------------------------------------
 function offerIcon(o) {
   if (o.type === 'kind') return cardIcon(o.kind);
-  if (o.type === 'truck') return cardIcon('truck');
   if (o.type === 'roundabout') return cardIcon('roundabout');
   return cardIcon('road');
 }
 function offerText(o) {
   if (o.type === 'kind') return [KINDS[o.kind].name, 'One more to place'];
-  if (o.type === 'truck') return ['2 trucks', 'Add to any building'];
   if (o.type === 'roundabout') return ['2 roundabouts', 'Three through at once'];
   return [o.n + ' road', 'Tiles to draw with'];
 }
@@ -830,9 +828,9 @@ function showOffer() {
   if (!sim.offer) return;
   const el = document.getElementById('offer');
   document.getElementById('banner').classList.remove('show');
-  document.getElementById('ofTitle').textContent = 'Week ' + sim.week;
-  document.getElementById('ofSub').textContent = `${S.WEEK_ROADS || 10} road arrived. Pick one more.`;
-  document.getElementById('ofBonus').textContent = sim.offer.length > 2 ? 'Nobody moved away last week: a third choice.' : '';
+  document.getElementById('ofTitle').textContent = 'The town grew';
+  document.getElementById('ofSub').textContent = `${S.PICK_STEP} more people moved in or up. Pick one.`;
+  document.getElementById('ofBonus').textContent = sim.offer.length > 2 ? 'Nobody moved away since the last pick: a third choice.' : '';
   const cards = document.getElementById('ofCards');
   cards.innerHTML = '';
   sim.offer.forEach((o, k) => {
@@ -855,7 +853,7 @@ function pickOffer(k) {
   sim.pick(k);
   document.getElementById('offer').hidden = true;
   sfx.place();
-  buildBar(o.type === 'kind' ? o.kind : o.type === 'truck' ? 'truck' : o.type === 'roundabout' ? 'roundabout' : null);
+  buildBar(o.type === 'kind' ? o.kind : o.type === 'roundabout' ? 'roundabout' : null);
 }
 
 // ---- HUD -----------------------------------------------------------------------
@@ -865,7 +863,7 @@ function hud() {
   const wc = document.querySelector('#week canvas').getContext('2d');
   wc.clearRect(0, 0, 64, 64); wc.lineWidth = 5; wc.lineCap = 'round';
   wc.strokeStyle = '#2a2a2c'; wc.beginPath(); wc.arc(32, 32, 28, 0, 7); wc.stroke();
-  wc.strokeStyle = '#f4f2ec'; wc.beginPath(); wc.arc(32, 32, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sim.weekT / S.WEEK); wc.stroke();
+  wc.strokeStyle = '#f4f2ec'; wc.beginPath(); wc.arc(32, 32, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, sim.weekT)); wc.stroke();
   const pop = sim.people(), st = sim.status, cur = STATUSES[st], nxt = STATUSES[st + 1];
   document.getElementById('stName').textContent = cur.name;
   document.getElementById('stPeople').innerHTML = nxt ? `<em>${pop}</em> / ${nxt.at}<span class="w"> people</span>` : `<em>${pop}</em><span class="w"> people</span>`;
@@ -897,11 +895,6 @@ function cardIcon(kind) {
   } else if (kind === 'erase') {
     t.strokeStyle = '#e5533d'; t.lineCap = 'round'; t.lineWidth = 0.11;
     t.beginPath(); t.moveTo(0.28, 0.28); t.lineTo(0.72, 0.72); t.moveTo(0.72, 0.28); t.lineTo(0.28, 0.72); t.stroke();
-  } else if (kind === 'truck') {
-    t.save(); t.translate(0.5, 0.5); t.scale(1.7, 1.7);
-    t.fillStyle = '#e9e4d8'; t.beginPath(); t.roundRect(-0.2, -0.1, 0.25, 0.2, 0.04); t.fill();
-    t.fillStyle = '#9aa0aa'; t.beginPath(); t.roundRect(0.06, -0.09, 0.12, 0.18, [0.02, 0.06, 0.06, 0.02]); t.fill();
-    t.restore();
   } else if (kind === 'roundabout') {
     t.strokeStyle = '#9aa0aa'; t.lineWidth = 0.13;
     t.beginPath(); t.arc(0.5, 0.5, 0.22, 0, 7); t.stroke();
@@ -942,7 +935,6 @@ function buildBar(fresh) {
   add('view', 'View');
   add('road', 'Road');
   add('erase', 'Erase');
-  if (sim.tokens.truck) add('truck', 'Truck', true);
   if (sim.tokens.roundabout) add('roundabout', 'Roundabout', true);
   const kinds = ORDER.filter(k => sim.tokens[k] > 0);
   if (kinds.length) { const sep = document.createElement('div'); sep.className = 'sep'; bar.appendChild(sep); }
@@ -960,7 +952,7 @@ function panel() {
   const el = document.getElementById('panel');
   const b = selected !== null ? sim.B(selected) : null;
   if (!b) { selected = null; el.classList.remove('show'); el.innerHTML = ''; return; }
-  const sig = JSON.stringify(b.house ? [b.level, b.happy, b.quiet, b.door, b.shop] : b.stock ? [b.door, b.idle, b.stock, [...b.sells]] : [b.trucks.length, b.out, b.idle, sim.tokens.truck, Object.values(b.inBuf)]);
+  const sig = JSON.stringify(b.house ? [b.level, b.happy, b.quiet, b.door, b.shop] : b.stock ? [b.door, b.idle, b.stock, [...b.sells]] : [b.out, b.idle, Object.values(b.inBuf)]);
   if (el.dataset.sig === sig && el.classList.contains('show')) return;
   el.dataset.sig = sig;
   el.innerHTML = '';
@@ -1004,7 +996,7 @@ function panel() {
     el.appendChild(acts);
   } else {
     const k = KINDS[b.kind];
-    h.innerHTML = `${k.name} <small>${b.trucks.length} truck${b.trucks.length > 1 ? 's' : ''}</small>`;
+    h.textContent = k.name;
     el.appendChild(h);
     const f = document.createElement('div'); f.className = 'flow';
     if (k.needs) { for (const gd in k.needs) { for (let n = 0; n < k.needs[gd]; n++) f.appendChild(goodIcon(gd)); } f.append('→'); }
@@ -1015,20 +1007,16 @@ function panel() {
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
     else if (b.idle === 'starved') { say.className += ' bad'; say.textContent = `Waiting for ${Object.keys(k.needs).map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}.`; }
     else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'Waiting for the trees round it to grow back. More forest round it, or a second spot, would keep it busy.'; }
-    else if (b.idle === 'full' && waiting) { say.className += ' bad'; say.textContent = `Yard full and ${waiting} waiting: its trucks can't keep up.`; }
+    else if (b.idle === 'full' && waiting) { say.className += ' bad'; say.textContent = `Yard full and ${waiting} waiting: its lorry can't keep up. A second one nearer the need would help.`; }
     else if (b.idle === 'full') say.textContent = 'Yard full. Nobody wants more right now.';
     else say.textContent = waiting ? `Working. ${waiting} waiting for ${GOODS[out].name.toLowerCase()}.` : 'Working.';
     el.appendChild(say);
     const acts = document.createElement('div'); acts.className = 'acts';
-    const add = document.createElement('button'); add.className = 'go';
-    add.textContent = sim.tokens.truck ? `+ Truck (${sim.tokens.truck} in hand)` : '+ Truck (none in hand)';
-    add.disabled = !sim.tokens.truck;
-    add.onclick = () => { if (sim.addTruck(b)) { sfx.place(); el.dataset.sig = ''; panel(); } else sfx.no(); };
     const rm = document.createElement('button'); rm.className = 'quiet';
     rm.textContent = 'Move';
-    rm.title = 'Pick it up: the building and its trucks go back in your hand';
+    rm.title = 'Pick it up: the building goes back in your hand';
     rm.onclick = () => { const kind = b.kind; sim.removeBuilding(b.id); selected = null; panel(); buildBar(); setTool(kind); };
-    acts.append(add, rm);
+    acts.append(rm);
     el.appendChild(acts);
   }
   el.classList.add('show');
@@ -1137,11 +1125,6 @@ function tap(i) {
   if (tool === 'roundabout') {
     if (sim.addRoundabout(i)) { sfx.place(); setTool('view'); }
     else sfx.no();
-    return;
-  }
-  if (tool === 'truck') {
-    const b = sim.B(sim.tileB.get(i));
-    if (b && sim.addTruck(b)) { sfx.place(); if (!sim.tokens.truck) setTool('view'); } else sfx.no();
     return;
   }
   const id = sim.tileB.get(i);
