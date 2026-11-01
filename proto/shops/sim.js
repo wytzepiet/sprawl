@@ -52,6 +52,7 @@ const KINDS = {
 };
 // A shop makes nothing: lorries stock its shelves and residents drive there.
 KINDS.shop = { name: 'Shop', out: null, shop: true, why: 'Houses buy what they want at a shop. Lorries keep its shelves stocked; residents drive over to buy.' };
+const WOOD_NEED = REGROW / KINDS.woodcutter.time;   // forest tiles that keep one woodcutter cutting for good
 const SHELF = 3, SHELF_MAX = 10;   // a few of each on the shelf, one more for every house that shops there
 const REACH = 10;        // road tiles a resident will drive to a shop
 const MAKER = {};
@@ -327,7 +328,7 @@ P.route = function (from, to) {
 P.canPlace = function (kind, i) {
   if (i < 0 || !this.inBounds(i) || this.tileB.has(i) || this.adj.has(i)) return false;
   const k = KINDS[kind], t = this.terrain[i];
-  if (t === WATER || t === FOREST) return false;
+  if (t === WATER) return false;
   if (k.on !== undefined) return t === k.on;
   if (k.near !== undefined) {
     const [x, y] = xy(i);
@@ -341,6 +342,7 @@ P.place = function (kind, i, free) {
   if (!free) { if (!this.tokens[kind]) return null; this.tokens[kind]--; }
   const b = { id: this.nextId++, kind, tile: i, door: -1, out: 0, inBuf: {}, prog: 0, trucks: [], born: this.time, free };
   for (const g in k.needs || {}) b.inBuf[g] = 0;
+  if (this.terrain[i] === FOREST) { this.terrain[i] = GRASS; this.wood.delete(i); }   // built over: cleared
   if (k.shop) { b.stock = {}; b.held = {}; b.sells = new Set(); b.shelf = {}; }
   this.buildings.set(b.id, b); this.tileB.set(i, b.id);
   this.findDoor(b);
@@ -590,6 +592,21 @@ P.tickProducer = function (b, dt) {
 };
 
 // A woodcutter fells the forest round it, two tiles each way, until it's bare.
+// How much forest a woodcutter at i would have to itself: each forest tile in
+// its reach counts, shared evenly with the other woodcutters that reach it.
+// It never runs dry at WOOD_NEED or more.
+P.forestShare = function (i, self) {
+  const [x, y] = xy(i);
+  const cutters = [...this.buildings.values()].filter(b => b.kind === 'woodcutter' && b.id !== self);
+  let share = 0;
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const j = at(x + dx, y + dy);
+    if (j < 0 || j === i || this.terrain[j] !== FOREST) continue;
+    const [jx, jy] = xy(j);
+    share += 1 / (1 + cutters.filter(b => { const [bx, by] = xy(b.tile); return Math.abs(bx - jx) <= 2 && Math.abs(by - jy) <= 2; }).length);
+  }
+  return share;
+};
 P.nearestWood = function (i) {
   const [x, y] = xy(i);
   let best = -1, bd = 99;
@@ -1025,6 +1042,6 @@ P.vehiclePose = function (v) {
   return { x: x - hy * off, y: y + hx * off, hx, hy, ghost: v.ghost > 0 };
 };
 
-root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, REACH, SHELF,
+root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, REACH, SHELF, WOOD_NEED,
   OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
 })(typeof window !== 'undefined' ? window : globalThis);

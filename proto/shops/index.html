@@ -334,22 +334,40 @@ function buildTerrain(res) {
   // little sparkle lines on the water
   t.strokeStyle = 'rgba(255,255,255,.45)'; t.lineWidth = 0.05; t.lineCap = 'round';
   for (let i = 0; i < W * H; i++) if (T[i] === S.WATER && rnd() < 0.12) { const [x, y] = xy(i); const ox = x + 0.2 + rnd() * 0.4, oy = y + 0.3 + rnd() * 0.4; t.beginPath(); t.moveTo(ox, oy); t.lineTo(ox + 0.25, oy); t.stroke(); }
-  // trees: a few round crowns a tile, shadow first, then crown, then light
-  const trees = [];
-  for (let i = 0; i < W * H; i++) if (T[i] === S.FOREST) {
-    const [x, y] = xy(i);
-    const n = 3;
-    for (let k = 0; k < n; k++) trees.push([x + 0.2 + rnd() * 0.6, y + 0.2 + rnd() * 0.6, 0.2 + rnd() * 0.1]);
-  }
-  trees.sort((a, b) => a[1] - b[1]);
-  t.fillStyle = 'rgba(70,90,40,.18)';
-  for (const [x, y, r] of trees) { t.beginPath(); t.arc(x + 0.08, y + 0.1, r, 0, 7); t.fill(); }
-  for (const [x, y, r] of trees) {
-    t.fillStyle = C.treeDark; t.beginPath(); t.arc(x, y, r, 0, 7); t.fill();
-    t.fillStyle = C.tree; t.beginPath(); t.arc(x - r * 0.15, y - r * 0.18, r * 0.82, 0, 7); t.fill();
-    t.fillStyle = C.treeLight; t.beginPath(); t.arc(x - r * 0.35, y - r * 0.38, r * 0.32, 0, 7); t.fill();
-  }
   return c;
+}
+
+// Trees are drawn live, not baked: each tile's crowns shrink as its logs are
+// cut and swell back as they regrow; a bare tile shows stumps. The paths are
+// rebuilt only when some tile's logs change.
+let treePaths = null, treeKey = '';
+function drawTrees() {
+  let key = '';
+  for (const [j, n] of sim.wood) if (sim.terrain[j] === S.FOREST) key += n;
+  if (key !== treeKey || !treePaths) {
+    treeKey = key;
+    const P = { shade: new Path2D(), dark: new Path2D(), mid: new Path2D(), light: new Path2D(), stump: new Path2D() };
+    for (const [j, n] of sim.wood) {
+      if (sim.terrain[j] !== S.FOREST) continue;
+      const [x, y] = xy(j);
+      let seed = j * 7919 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let k = 0; k < 3; k++) {
+        const tx = x + 0.2 + rnd() * 0.6, ty = y + 0.2 + rnd() * 0.6, full = 0.2 + rnd() * 0.1;
+        if (n === 0) { P.stump.moveTo(tx + 0.06, ty); P.stump.arc(tx, ty, 0.06, 0, 7); continue; }
+        const r = full * (0.35 + 0.65 * n / S.WOOD);
+        P.shade.moveTo(tx + 0.08 + r, ty + 0.1); P.shade.arc(tx + 0.08, ty + 0.1, r, 0, 7);
+        P.dark.moveTo(tx + r, ty); P.dark.arc(tx, ty, r, 0, 7);
+        P.mid.moveTo(tx - r * 0.15 + r * 0.82, ty - r * 0.18); P.mid.arc(tx - r * 0.15, ty - r * 0.18, r * 0.82, 0, 7);
+        P.light.moveTo(tx - r * 0.35 + r * 0.32, ty - r * 0.38); P.light.arc(tx - r * 0.35, ty - r * 0.38, r * 0.32, 0, 7);
+      }
+    }
+    treePaths = P;
+  }
+  g.fillStyle = 'rgba(70,90,40,.18)'; g.fill(treePaths.shade);
+  g.fillStyle = C.treeDark; g.fill(treePaths.dark);
+  g.fillStyle = C.tree; g.fill(treePaths.mid);
+  g.fillStyle = C.treeLight; g.fill(treePaths.light);
+  g.fillStyle = '#9b7a52'; g.fill(treePaths.stump);
 }
 function terrainKey() { let h = 0; for (let i = 0; i < sim.terrain.length; i++) h = (h * 31 + sim.terrain[i]) | 0; return h; }
 
@@ -367,6 +385,7 @@ function frame() {
   g.setTransform(worldTransform());
   g.imageSmoothingQuality = 'high';
   g.drawImage(terrainCache, 0, 0, W, H);
+  drawTrees();
   drawHighlights(now);
   drawRoads(now);
   drawBuildings(now);
@@ -400,6 +419,18 @@ function drawHighlights(now) {
       const [x, y] = xy(hover);
       g.fillStyle = 'rgba(80,70,60,.09)'; g.strokeStyle = 'rgba(80,70,60,.3)'; g.lineWidth = 0.04; g.setLineDash([0.12, 0.1]);
       g.beginPath(); g.roundRect(x - 2, y - 2, 5, 5, 0.5); g.fill(); g.stroke(); g.setLineDash([]);
+    }
+    // a woodcutter's reach: the others' faintly, and this spot's in green when
+    // the forest in it (shared with theirs) keeps it cutting for good, amber when not
+    if (tool === 'woodcutter') {
+      g.lineWidth = 0.04; g.setLineDash([0.12, 0.1]); g.strokeStyle = 'rgba(80,70,60,.25)';
+      for (const b of sim.buildings.values()) if (b.kind === 'woodcutter') { const [x, y] = xy(b.tile); g.beginPath(); g.roundRect(x - 2, y - 2, 5, 5, 0.5); g.stroke(); }
+      if (hover >= 0 && sim.canPlace(tool, hover)) {
+        const [x, y] = xy(hover), ok = sim.forestShare(hover) >= S.WOOD_NEED;
+        g.fillStyle = ok ? 'rgba(90,150,60,.14)' : 'rgba(220,140,40,.16)'; g.strokeStyle = ok ? 'rgba(70,130,40,.7)' : 'rgba(200,120,30,.8)';
+        g.beginPath(); g.roundRect(x - 2, y - 2, 5, 5, 0.5); g.fill(); g.stroke();
+      }
+      g.setLineDash([]);
     }
   }
   // queues: junctions with trucks waiting glow red
@@ -797,7 +828,7 @@ function handleEvents(now) {
     } else if (e.type === 'week') {
       showOffer();
     } else if (e.type === 'felled') {
-      hint('felled', 'A woodcutter cut a patch bare. Trees grow back: with plenty of forest round it, a woodcutter never runs dry.', 8);
+      hint('felled', 'A woodcutter cut a patch bare: the trees shrink as they are cut and grow back. Placing one, its reach shows green when the forest in it, shared with other woodcutters, keeps it going.', 9);
     } else if (e.type === 'buy') {
       tone(19, 0.06, 0.02, 'triangle');
     } else if (e.type === 'remove') { /* nothing */ }
@@ -1006,9 +1037,10 @@ function panel() {
     const out = k.out, waiting = sim.pins.filter(p => p.good === out && p.by < 0).length;
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
     else if (b.idle === 'starved') { say.className += ' bad'; say.textContent = `Waiting for ${Object.keys(k.needs).map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}.`; }
-    else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'Waiting for the trees round it to grow back. More forest round it, or a second spot, would keep it busy.'; }
+    else if (b.idle === 'cleared') { say.className += ' bad'; say.textContent = 'Waiting for the trees round it to grow back. It shares too little forest: move it somewhere greener.'; }
     else if (b.idle === 'full' && waiting) { say.className += ' bad'; say.textContent = `Yard full and ${waiting} waiting: its lorry can't keep up. A second one nearer the need would help.`; }
     else if (b.idle === 'full') say.textContent = 'Yard full. Nobody wants more right now.';
+    else if (b.kind === 'woodcutter' && sim.forestShare(b.tile, b.id) < S.WOOD_NEED) { say.className += ' bad'; say.textContent = 'Working, but it cuts faster than its share of the forest grows back: it will run bare.'; }
     else say.textContent = waiting ? `Working. ${waiting} waiting for ${GOODS[out].name.toLowerCase()}.` : 'Working.';
     el.appendChild(say);
     const acts = document.createElement('div'); acts.className = 'acts';
