@@ -953,6 +953,7 @@ function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('#bar button')) b.classList.toggle('on', b.dataset.tool === t);
   if (KINDS[t]) { selected = null; panel(); }
+  if (t === 'erase') hint('erase', 'Drag over roads to lift them. Tap a building to pick it up. Tap a house and its family moves to a cottage nearby: whatever it grew into is lost.', 8);
 }
 
 function panel() {
@@ -1152,7 +1153,7 @@ function eraseAt(i, tapped) {
   if (i < 0) return;
   if (sim.adj.has(i)) { sim.removeRoadTile(i); sfx.road(); return; }
   const id = sim.tileB.get(i);
-  if (tapped && id !== undefined && !sim.B(id).house) { sim.removeBuilding(id); sfx.leave(); if (selected === id) { selected = null; panel(); } }
+  if (tapped && id !== undefined) { sim.removeBuilding(id); sfx.leave(); if (selected === id) { selected = null; panel(); } }
 }
 
 addEventListener('keydown', e => {

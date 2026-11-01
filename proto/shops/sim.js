@@ -366,15 +366,29 @@ P.addTruck = function (b, free) {
 };
 P.removeBuilding = function (id) {
   const b = this.B(id);
-  if (!b || b.house) return false;
+  if (!b) return false;
   // everything comes back to hand: the building and its extra trucks
-  if (!b.free) this.tokens[b.kind] = (this.tokens[b.kind] || 0) + 1;
-  this.tokens.truck += Math.max(0, b.trucks.length - 1);
+  if (!b.house && !b.free) this.tokens[b.kind] = (this.tokens[b.kind] || 0) + 1;
+  if (!b.house) this.tokens.truck += Math.max(0, b.trucks.length - 1);
   for (const v of this.vehicles.filter(v => v.car && v.dest === id)) this.sendHome(v);
   for (const v of this.vehicles.filter(v => v.home === id)) this.dropVehicle(v);
   for (const p of this.pins.filter(p => p.at === id)) this.killPin(p);
   this.buildings.delete(id); this.tileB.delete(b.tile);
   this.emit({ type: 'remove', tile: b.tile });
+  // a family whose house came down moves to a cottage nearby, if there's room;
+  // what the house had grown into is lost
+  if (b.house) {
+    const [x, y] = xy(b.tile);
+    let best = -1, bd = Infinity;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const i = at(x + dx, y + dy), d = Math.max(Math.abs(dx), Math.abs(dy));
+      if (d < 2 || !this.homeOk(i)) continue;
+      const score = d + this.r() - (STEPS4.some(([ex, ey]) => this.adj.has(at(x + dx + ex, y + dy + ey))) ? 1 : 0);
+      if (score < bd) { bd = score; best = i; }
+    }
+    if (best >= 0) this.addHouse(best, false);
+    else this.emit({ type: 'leave', tile: b.tile, gone: true, level: b.level, good: Object.keys(LEVELS[b.level].wants)[0] });
+  }
   return true;
 };
 
@@ -389,9 +403,12 @@ P.addHouse = function (i, first) {
   this.emit({ type: 'spawn', id: h.id, tile: i });
   return h;
 };
+P.homeOk = function (i) {
+  return i >= 0 && this.inBounds(i) && this.terrain[i] === GRASS && !this.tileB.has(i) && !this.adj.has(i) && !this.loudNear(i);
+};
 P.spawnSpot = function () {
   const houses = [...this.buildings.values()].filter(b => b.house);
-  const ok = i => i >= 0 && this.inBounds(i) && this.terrain[i] === GRASS && !this.tileB.has(i) && !this.adj.has(i) && !this.loudNear(i);
+  const ok = i => this.homeOk(i);
   this.spawned++;
   const hamlet = this.spawned >= 8 && this.spawned % 7 === 1;
   if (!hamlet && houses.length) {
