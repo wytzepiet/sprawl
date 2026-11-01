@@ -597,7 +597,7 @@ P.regrow = function (dt) {
 // shop, a shop's or a workshop's lorry to whoever makes what it lacks. Makers of
 // raw goods have no lorry; they stack their yard and wait to be fetched from.
 
-const LOAD = 3;          // crates a lorry carries
+const LOAD = 3, SHOP_LOAD = 6;   // crates a lorry carries; a shop's are bigger
 const SPOTS = 2, SHOP_SPOTS = 4;   // vehicles that can wait beside a building
 const SHOP_LORRIES = 2;   // a busier town needs more shops, not bigger ones
 
@@ -635,12 +635,12 @@ P.source = function (home, g, car) {
 };
 
 P.addCar = function (h) {
-  const v = { id: this.nextId++, car: true, home: h.id, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
+  const v = { id: this.nextId++, car: true, home: h.id, cap: LOAD + 1, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
   this.vehicles.push(v);
   return v;
 };
 P.addTruck = function (b) {
-  const v = { id: this.nextId++, home: b.id, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
+  const v = { id: this.nextId++, home: b.id, cap: b.stock ? SHOP_LOAD : LOAD, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
   b.trucks.push(v.id);
   this.vehicles.push(v);
   return true;
@@ -656,7 +656,7 @@ P.errand = function (v, home) {
     if (!src || !this.depart(v, home.door, src.id)) continue;
     // a car buys everything the house wants that this shop sells; a lorry
     // fills up with the one good
-    v.claims = (v.car ? open.filter(q => src.sells.has(q.good)) : open.filter(q => q.good === p.good)).slice(0, LOAD + (v.car ? 1 : 0));
+    v.claims = (v.car ? open.filter(q => src.sells.has(q.good)) : open.filter(q => q.good === p.good)).slice(0, v.cap);
     for (const q of v.claims) q.by = v.id;
     v.bag = [];
     // what's there now is set aside for it
@@ -672,7 +672,7 @@ P.load = function (v, dt) {
   if (!src) return this.goHome(v, this.B(v.home)?.door);
   v.claims = v.claims.filter(q => !q.dead || v.bag.includes(q.id));
   // what home has come to need meanwhile, if it's here, comes along too
-  for (const q of this.pins) if (q.at === v.home && q.by < 0 && v.claims.length <= LOAD && this.avail(src, q.good) > 0 && (v.car ? src.sells.has(q.good) : true)) { q.by = v.id; v.claims.push(q); }
+  for (const q of this.pins) if (q.at === v.home && q.by < 0 && v.claims.length < v.cap && this.avail(src, q.good) > 0 && (v.car ? src.sells.has(q.good) : true)) { q.by = v.id; v.claims.push(q); }
   for (const q of v.claims) if (!v.bag.includes(q.id) && this.avail(src, q.good) > 0) { this.take(src, q.good); v.bag.push(q.id); v.waited = 0; }
   v.waited = (v.waited || 0) + dt;
   const done = v.claims.every(q => v.bag.includes(q.id));
