@@ -8,7 +8,7 @@
 const W = 48, H = 32;
 const GRASS = 0, FOREST = 1, WATER = 2, MEADOW = 3, CLAY = 4, SAND = 5;
 const WOOD = 4;          // logs a forest tile holds
-const REGROW = 8;        // seconds for every forest tile to grow back a log
+const REGROW = 14;       // seconds for every forest tile to grow back a log
 const STEPS8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 const STEPS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
@@ -18,7 +18,7 @@ const STOP = 0.5;        // a junction's stop line, short of its centre
 const DWELL = 0.6;       // seconds loading or unloading
 const GHOST = 12;        // seconds stuck before a truck squeezes through
 const PATIENCE = 60;     // seconds a house waits on a want
-const OUT_CAP = 4;
+const OUT_CAP = 3;
 const START = [32, 12];
 
 const GOODS = {
@@ -37,18 +37,18 @@ const GOODS = {
 };
 
 const KINDS = {
-  fishery:    { name: 'Fishery',    out: 'fish',      time: 2.2, cost: 12, near: WATER,  why: 'Houses want fish. A fishery on the water catches it; its lorry stocks the shop, and residents drive to the shop to buy.' },
-  woodcutter: { name: 'Woodcutter', out: 'log',       time: 1.9, cost: 10, near: FOREST, why: 'A woodcutter by the forest cuts logs.' },
-  sawmill:    { name: 'Sawmill',    out: 'plank',     time: 1.7, cost: 15, needs: { log: 1 }, loud: true, why: 'A house wants planks to grow. A sawmill makes them.' },
-  farm:       { name: 'Farm',       out: 'wheat',     time: 2.2, cost: 12, on: MEADOW,  why: 'A farm on the meadow grows wheat.' },
-  bakery:     { name: 'Bakery',     out: 'bread',     time: 1.9, cost: 18, needs: { wheat: 1 }, why: 'Bigger houses want bread. A bakery bakes it.' },
-  claypit:    { name: 'Clay pit',   out: 'clay',      time: 2.2, cost: 12, on: CLAY,    why: 'A clay pit digs clay where the ground is ochre.' },
-  brickworks: { name: 'Brickworks', out: 'brick',     time: 2.2, cost: 25, needs: { clay: 1, log: 1 }, loud: true, why: 'A house wants bricks to grow. A brickworks fires them from clay and logs.' },
-  workshop:   { name: 'Workshop',   out: 'furniture', time: 2.8, cost: 25, needs: { plank: 2 }, loud: true, why: 'Townhouses want furniture. A workshop makes it from planks.' },
-  sandpit:    { name: 'Sand pit',   out: 'sand',      time: 2.2, on: SAND,  why: 'A sand pit digs on the beach across the river.' },
-  glassworks: { name: 'Glassworks', out: 'glass',     time: 2.5, needs: { sand: 1, log: 1 }, loud: true, why: 'A townhouse wants glass to grow. A glassworks melts sand over a wood fire.' },
-  sheep:      { name: 'Sheep farm', out: 'wool',      time: 2.5, on: MEADOW, why: 'Sheep on the meadow give wool. They want the same meadow as the farms.' },
-  tailor:     { name: 'Tailor',     out: 'clothes',   time: 2.2, needs: { wool: 1 }, why: 'Apartments want clothes. A tailor sews them from wool.' },
+  fishery:    { name: 'Fishery',    out: 'fish',      time: 4.0, cost: 12, near: WATER,  why: 'Houses want fish. A fishery on the water catches it; its lorry stocks the shop, and residents drive to the shop to buy.' },
+  woodcutter: { name: 'Woodcutter', out: 'log',       time: 3.5, cost: 10, near: FOREST, why: 'A woodcutter by the forest cuts logs.' },
+  sawmill:    { name: 'Sawmill',    out: 'plank',     time: 3.0, cost: 15, needs: { log: 1 }, loud: true, why: 'A house wants planks to grow. A sawmill makes them.' },
+  farm:       { name: 'Farm',       out: 'wheat',     time: 4.0, cost: 12, on: MEADOW,  why: 'A farm on the meadow grows wheat.' },
+  bakery:     { name: 'Bakery',     out: 'bread',     time: 3.5, cost: 18, needs: { wheat: 1 }, why: 'Bigger houses want bread. A bakery bakes it.' },
+  claypit:    { name: 'Clay pit',   out: 'clay',      time: 4.0, cost: 12, on: CLAY,    why: 'A clay pit digs clay where the ground is ochre.' },
+  brickworks: { name: 'Brickworks', out: 'brick',     time: 4.0, cost: 25, needs: { clay: 1, log: 1 }, loud: true, why: 'A house wants bricks to grow. A brickworks fires them from clay and logs.' },
+  workshop:   { name: 'Workshop',   out: 'furniture', time: 5.0, cost: 25, needs: { plank: 2 }, loud: true, why: 'Townhouses want furniture. A workshop makes it from planks.' },
+  sandpit:    { name: 'Sand pit',   out: 'sand',      time: 4.0, on: SAND,  why: 'A sand pit digs on the beach across the river.' },
+  glassworks: { name: 'Glassworks', out: 'glass',     time: 4.5, needs: { sand: 1, log: 1 }, loud: true, why: 'A townhouse wants glass to grow. A glassworks melts sand over a wood fire.' },
+  sheep:      { name: 'Sheep farm', out: 'wool',      time: 4.5, on: MEADOW, why: 'Sheep on the meadow give wool. They want the same meadow as the farms.' },
+  tailor:     { name: 'Tailor',     out: 'clothes',   time: 4.0, needs: { wool: 1 }, why: 'Apartments want clothes. A tailor sews them from wool.' },
 };
 // A shop makes nothing: lorries stock its shelves and residents drive there.
 KINDS.shop = { name: 'Shop', out: null, shop: true, why: 'Houses buy what they want at a shop. Lorries keep its shelves stocked; residents drive over to buy.' };
