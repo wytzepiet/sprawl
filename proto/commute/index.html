@@ -150,7 +150,7 @@ canvas { position: absolute; inset: 0; display: block; }
   <p>Houses appear and want things. A pin shows what, and its ring fills while they wait.</p>
   <p>Whoever needs something goes and gets it: cars drive to the shop, lorries to whoever makes what's missing. A queue beside a building means it can't keep up.</p>
   <p>A house's car also takes its worker to the nearest maker with a free job (blue while commuting), and shops only off shift. A maker slows while its workers are on the road, so jams cost you.</p>
-  <p>Every new house brings a little road; every ten people moving in or up bring a pick. Wait too long and a family moves out.</p>
+  <p>Shops sell by day and stock up at night. Every new house brings a little road, and a day nobody leaves brings three more; every ten people moving in or up bring a pick. Wait too long and a family moves out.</p>
   <button id="go">Start</button>
   <div class="keys">View pans and zooms · Road draws · Erase removes · pinch or scroll to zoom · space to pause</div>
 </div></div>
@@ -592,13 +592,18 @@ function drawProducer(b, now) {
       else { g.strokeStyle = w ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.3)'; g.lineWidth = 0.025; g.stroke(); }
     }
   }
-  // a shop's shelves: a crate for each good it has in
+  // a shop's shelves: a column for each good it sells, as full as the shelf
   if (b.stock) {
-    const have = Object.keys(b.stock).filter(gd => b.stock[gd] > 0);
-    have.slice(0, 4).forEach((gd, n) => {
-      g.fillStyle = '#fff'; g.beginPath(); g.roundRect(-0.33 + n * 0.17, 0.2, 0.14, 0.14, 0.03); g.fill();
-      g.fillStyle = GOODS[gd].col; g.beginPath(); g.roundRect(-0.31 + n * 0.17, 0.22, 0.1, 0.1, 0.02); g.fill();
+    [...b.sells].slice(0, 5).forEach((gd, n) => {
+      const x0 = -0.32 + n * 0.135, full = Math.min(1, (b.stock[gd] || 0) / (b.shelf[gd] || S.SHELF));
+      g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.roundRect(x0, 0.12, 0.11, 0.24, 0.025); g.fill();
+      if (full > 0) { g.fillStyle = GOODS[gd].col; g.fillRect(x0 + 0.015, 0.345 - 0.21 * full, 0.08, 0.21 * full); }
     });
+    // shut at night: the shutter's down
+    if (!sim.open()) {
+      g.strokeStyle = 'rgba(40,40,48,.55)'; g.lineWidth = 0.03;
+      for (let n = 0; n < 4; n++) { g.beginPath(); g.moveTo(-0.3, -0.3 + n * 0.08); g.lineTo(0.3, -0.3 + n * 0.08); g.stroke(); }
+    }
   }
   // the yard: what's made and waiting to be fetched
   for (let n = 0; n < Math.min(b.out, 4); n++) {
@@ -882,6 +887,15 @@ function handleEvents(now) {
       document.getElementById('bnName').textContent = e.name;
       document.getElementById('bnSub').textContent = 'The map grows';
       el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2600);
+    } else if (e.type === 'day') {
+      const el = document.getElementById('banner');
+      document.getElementById('bnName').textContent = `Day ${e.day}`;
+      const moved = e.moved ? `${e.moved} moved in or up` : 'nobody moved in';
+      document.getElementById('bnSub').textContent = e.left
+        ? `${moved} · ${e.left === 1 ? 'a family' : e.left + ' families'} left`
+        : `${moved} · nobody left${e.streak > 1 ? `, ${e.streak} days running` : ''} · +${e.roads} road`;
+      el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2600);
+      if (e.day === 2) hint('day', 'A new day. Shops shut at night and take in stock, so their shelves should be full by morning. A shop that runs dry by day and never fills at night needs help: another shop nearby.', 9);
     } else if (e.type === 'jam') {
       buildBar('roundabout');
       hint('jam', 'Trucks are queuing at a junction. A roundabout lets three through at once.', 8);
@@ -1077,6 +1091,7 @@ function panel() {
     const low = [...b.sells].filter(gd => !(b.stock[gd] > 0));
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
     else if (!b.sells.size) say.textContent = `No houses within ${REACH} road tiles yet.`;
+    else if (!sim.open()) say.textContent = `Shut for the night, taking in stock: its shelves should be full by morning.`;
     else if (sim.swamped(b)) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}, and both its lorries are out fetching: it can't keep up. Another shop nearby would share the work.`; }
     else if (low.length) { say.className += ' bad'; say.textContent = `Out of ${low.map(gd => GOODS[gd].name.toLowerCase()).join(' and ')}. Nobody has it to fetch: its maker is short, or missing.`; }
     else say.textContent = 'Stocked. Residents drive over to buy.';

@@ -15,8 +15,12 @@ const think = globalThis.makeBot(s, S, log);
 const seenEv = new Set();
 let lastPeople = -1, maxQueue = 0;
 const dt = 1 / 30;
+function fill() { let have = 0, room = 0; for (const b of s.buildings.values()) if (b.stock) for (const g of b.sells) { have += Math.min(b.stock[g] || 0, b.shelf[g] || 2); room += b.shelf[g] || 2; } return room ? (have / room).toFixed(2) + ' of ' + room : '-'; }
+let wasOpen = true;
 for (let tick = 0; s.time < minutes * 60; tick++) {
   s.step(dt);
+  if (process.env.SHELVES && wasOpen && !s.open()) log('DUSK shelves', fill());
+  wasOpen = s.open();
   for (const e of s.events) {
     if (e.type === 'unlock') log('UNLOCK', e.kind);
     if (e.type === 'grow') log('GROW to', S.LEVELS[e.level].name);
@@ -24,6 +28,7 @@ for (let tick = 0; s.time < minutes * 60; tick++) {
     if (e.type === 'status') log('STATUS', e.name);
     if (e.type === 'jam') log('JAM at', xy(e.tile));
     if (e.type === 'week') log('PICKTIME', e.week, 'left last week', s.leftThisWeek);
+    if (e.type === 'day' && process.env.SHELVES) log('DAWN', e.day, 'left', e.left, 'shelves', fill());
   }
   s.events.length = 0;
   if (tick % 15) continue;   // the bot thinks twice a second

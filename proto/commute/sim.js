@@ -24,7 +24,8 @@ const PATIENCE = 60;     // seconds a house waits on a want
 const SEATS = 2, JOBS = 2;   // workers a maker hires, and needs to work full speed
 const SHIFT = 20, REST = 10;   // seconds at work, and at home between shifts; a maker
                                // loses only the time its workers spend on the road
-const DAY = 120;         // seconds from one morning to the next; the last quarter or so is night
+const DAY = 120;
+const CLEAN_DAY_ROADS = 3;   // road tiles for a day nobody left         // seconds from one morning to the next; the last quarter or so is night
 const OUT_CAP = 3;
 const START = [32, 12];
 
@@ -60,7 +61,8 @@ const KINDS = {
 // A shop makes nothing: lorries stock its shelves and residents drive there.
 KINDS.shop = { name: 'Shop', out: null, shop: true, why: 'Houses buy what they want at a shop, building materials too. Its lorries fetch from whoever makes it; residents drive over to buy.' };
 const WOOD_NEED = REGROW / KINDS.woodcutter.time;   // forest tiles that keep one woodcutter cutting for good
-const SHELF = 3, SHELF_MAX = 10;   // a few of each on the shelf, one more for every house that shops there
+const SHELF = 2, SHELF_MAX = 30, DAY_NEED = 2.5;   // a shop holds a day's worth: a couple of each, and
+                                                 // about what a house buys in a day for each house it serves
 const REACH = 10;        // road tiles a resident will drive to a shop
 const MAKER = {};
 for (const k in KINDS) if (KINDS[k].out) MAKER[KINDS[k].out] = k;
@@ -156,8 +158,8 @@ function Sim(seed = 7) {
   s.events = [];
   s.unlocked = new Set();
   s.waiting = new Set();         // makers that come once what feeds them is down
-  s.time = 0; s.roads = START_ROADS; s.tokens = { roundabout: 0, shop: 1 };
-  s.week = 1; s.weekT = 0; s.arrived = 0; s.pickFrom = 0; s.offer = null; s.leftThisWeek = 0;
+  s.time = 0; s.day = 1; s.streak = 0; s.roads = START_ROADS; s.tokens = { roundabout: 0, shop: 1 };
+  s.week = 1; s.weekT = 0; s.arrived = 0; s.pickFrom = 0; s.offer = null; s.leftThisWeek = 0; s.dayFrom = { arrived: 0, left: 0 };
   s.nextId = 1; s.graphV = 0; s.distCache = new Map();
   s.spawned = 0; s.nextSpawn = 30; s.status = 0;
   s.stats = { delivered: 0, left: 0, firsts: {} };
@@ -485,6 +487,8 @@ P.dark = function () {
   const ph = (this.time / DAY) % 1;
   return ph < 0.68 ? 0 : ph < 0.74 ? (ph - 0.68) / 0.06 : ph < 0.94 ? 1 : (1 - ph) / 0.06;
 };
+// Shops sell by day; at night their shutters are down and they only take in stock.
+P.open = function () { return this.dark() < 0.5; };
 P.tickHouse = function (h, dt) {
   const L = LEVELS[h.level];
   const busy = 1 - 0.7 * this.dark();
@@ -493,8 +497,11 @@ P.tickHouse = function (h, dt) {
     h.timers[g] -= dt * busy;
     if (h.timers[g] <= 0) { this.addPin(h.id, g, 'want'); h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); }
   }
+  // a family is patient at night, when the shops are shut
   for (const p of this.pins) {
-    if (p.at === h.id && p.kind === 'want' && this.time - p.born > PATIENCE) { this.levelDown(h, p.good); return; }
+    if (p.at !== h.id || p.kind !== 'want') continue;
+    p.age = (p.age || 0) + dt * busy;
+    if (p.age > PATIENCE) { this.levelDown(h, p.good); return; }
   }
   h.quiet = this.loudNear(h.tile);
   const building = this.pins.some(p => p.at === h.id && p.kind === 'build');
@@ -529,7 +536,7 @@ P.catchment = function () {
     const goods = new Set([...Object.keys(LEVELS[h.level].wants), ...this.pins.filter(p => p.at === h.id && p.kind === 'build').map(p => p.good)]);
     for (const sh of near) for (const g of goods) { sh.sells.add(g); share.get(sh)[g] = (share.get(sh)[g] || 0) + 1 / near.length; }
   }
-  for (const sh of shops) { sh.shelf = {}; for (const g in share.get(sh)) sh.shelf[g] = Math.min(SHELF_MAX, SHELF - 1 + Math.ceil(share.get(sh)[g])); }
+  for (const sh of shops) { sh.shelf = {}; for (const g in share.get(sh)) sh.shelf[g] = Math.min(SHELF_MAX, SHELF + Math.ceil(DAY_NEED * share.get(sh)[g])); }
 };
 // A shop out of something with every lorry out fetching: it can't keep up.
 P.swamped = function (b) {
@@ -640,7 +647,7 @@ P.source = function (home, g, car) {
   for (const b of this.buildings.values()) {
     if (b.door < 0 || b === home) continue;
     if (b.house || (car ? !b.stock : KINDS[b.kind].out !== g)) continue;
-    if (car && !b.sells.has(g)) continue;
+    if (car && (!b.sells.has(g) || !this.open())) continue;
     const d = this.dist(b.door).get(home.door);
     if (d === undefined || (car && d > REACH)) continue;
     if (this.avail(b, g) > 0) { if (d < bd) { bd = d; best = b; } }
@@ -724,6 +731,7 @@ P.errand = function (v, home, from = home.door) {
 P.load = function (v, dt) {
   const src = this.B(v.dest);
   if (!src) return this.goHome(v, this.B(v.home)?.door);
+  if (v.car && !this.open()) return this.goHome(v, src.door);
   v.claims = v.claims.filter(q => !q.dead || v.bag.includes(q.id));
   // what home has come to need meanwhile, if it's here, comes along too
   for (const q of this.pins) if (q.at === v.home && q.by < 0 && v.claims.length < v.cap && this.avail(src, q.good) > 0 && (v.car ? src.sells.has(q.good) : true)) { q.by = v.id; v.claims.push(q); }
@@ -838,6 +846,15 @@ P.step = function (dt) {
   if (s.weekT >= 1) { s.pickFrom += PICK_STEP; s.week++; s.offer = s.makeOffer(); s.emit({ type: 'week', week: s.week }); return; }
   s.time += dt;
   s.tick = (s.tick || 0) + 1;
+  // dawn: the day that ended, and a streak of days nobody left
+  const day = Math.floor(s.time / DAY) + 1;
+  if (day > s.day) {
+    const moved = s.arrived - s.dayFrom.arrived, left = s.stats.left - s.dayFrom.left;
+    s.streak = left ? 0 : s.streak + 1;
+    if (!left) s.roads += CLEAN_DAY_ROADS;
+    s.emit({ type: 'day', day, moved, left, streak: s.streak, roads: left ? 0 : CLEAN_DAY_ROADS });
+    s.day = day; s.dayFrom = { arrived: s.arrived, left: s.stats.left };
+  }
   s.regrow(dt);
 
   // spawning
@@ -1064,6 +1081,6 @@ P.vehiclePose = function (v) {
   return { x: x - hy * off, y: y + hx * off, hx, hy, ghost: v.ghost > 0 };
 };
 
-root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, DAY, SEATS, JOBS, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS,
+root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, DAY, CLEAN_DAY_ROADS, SEATS, JOBS, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS,
   OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
 })(typeof window !== 'undefined' ? window : globalThis);
