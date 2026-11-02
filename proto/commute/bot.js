@@ -15,10 +15,16 @@ const think = globalThis.makeBot(s, S, log);
 const seenEv = new Set();
 let lastPeople = -1, maxQueue = 0;
 const dt = 1 / 30;
+const DG = { idle: {}, lorry: {}, next: 120 };
 function fill() { let have = 0, room = 0; for (const b of s.buildings.values()) if (b.stock) for (const g of b.sells) { have += Math.min(b.stock[g] || 0, b.shelf[g] || 2); room += b.shelf[g] || 2; } return room ? (have / room).toFixed(2) + ' of ' + room : '-'; }
 let wasOpen = true;
 for (let tick = 0; s.time < minutes * 60; tick++) {
   s.step(dt);
+  if (process.env.DIAG) {
+    for (const b of s.buildings.values()) if (!b.house) { const key = b.stock ? 'shop' : b.kind; const st = DG.idle[key] ||= {}; const why = b.stock ? (b.idle || 'ok') : (b.idle || 'working') + (b.crew < 2 ? '-short' : ''); st[why] = (st[why] || 0) + dt; }
+    for (const v of s.vehicles) if (!v.car) { const b = s.B(v.home); if (b && b.stock) DG.lorry[v.state] = (DG.lorry[v.state] || 0) + dt; }
+    if (s.time >= DG.next) { DG.next += 120; const out = {}; for (const k in DG.idle) { const t = Object.values(DG.idle[k]).reduce((a, b) => a + b, 0); out[k] = Object.entries(DG.idle[k]).map(([w, x]) => w + ' ' + Math.round(100 * x / t) + '%').join(', '); } log('DIAG wanted', JSON.stringify(s.stats.wanted), 'made', JSON.stringify(s.stats.made)); for (const k in out) log('   ', k, out[k]); const lt = Object.values(DG.lorry).reduce((a, b) => a + b, 0); log('    shop lorries', Object.entries(DG.lorry).map(([w, x]) => w + ' ' + Math.round(100 * x / lt) + '%').join(', ')); DG.idle = {}; DG.lorry = {}; }
+  }
   if (process.env.SHELVES && wasOpen && !s.open()) log('DUSK shelves', fill());
   wasOpen = s.open();
   for (const e of s.events) {

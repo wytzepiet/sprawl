@@ -22,7 +22,7 @@ const STOP = 0.5;        // a junction's stop line, short of its centre
 const GHOST = 12;        // seconds stuck before a truck squeezes through
 const PATIENCE = 60;     // seconds a house waits on a want
 const SEATS = 2, JOBS = 2;   // workers a maker hires, and needs to work full speed
-const SHIFT = 20, REST = 10;   // seconds at work, and at home between shifts; a maker
+const SHIFT = 40, REST = 20;   // seconds at work, and at home between shifts; a maker
                                // loses only the time its workers spend on the road
 const DAY = 120;
 const CLEAN_DAY_ROADS = 3;   // road tiles for a day nobody left         // seconds from one morning to the next; the last quarter or so is night
@@ -162,7 +162,7 @@ function Sim(seed = 7) {
   s.week = 1; s.weekT = 0; s.arrived = 0; s.pickFrom = 0; s.offer = null; s.leftThisWeek = 0; s.dayFrom = { arrived: 0, left: 0 };
   s.nextId = 1; s.graphV = 0; s.distCache = new Map();
   s.spawned = 0; s.nextSpawn = 30; s.status = 0;
-  s.stats = { delivered: 0, left: 0, firsts: {} };
+  s.stats = { delivered: 0, left: 0, firsts: {}, wanted: {}, made: {} };
   s.tools = new Set(['road', 'bulldoze']);
 
   s.computeBounds(true);
@@ -495,7 +495,7 @@ P.tickHouse = function (h, dt) {
   for (const g in L.wants) {
     if (this.pins.some(p => p.at === h.id && p.good === g)) continue;
     h.timers[g] -= dt * busy;
-    if (h.timers[g] <= 0) { this.addPin(h.id, g, 'want'); h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); }
+    if (h.timers[g] <= 0) { this.addPin(h.id, g, 'want'); this.stats.wanted[g] = (this.stats.wanted[g] || 0) + 1; h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); }
   }
   // a family is patient at night, when the shops are shut
   for (const p of this.pins) {
@@ -570,7 +570,7 @@ P.tickProducer = function (b, dt) {
       b.prog = 0;
       for (const g in k.needs || {}) b.inBuf[g] -= k.needs[g];
       if (tree > 0) this.fell(tree);
-      b.out++;
+      b.out++; this.stats.made[k.out] = (this.stats.made[k.out] || 0) + 1;
       this.first('made:' + k.out);
     }
   }
@@ -619,7 +619,7 @@ P.regrow = function (dt) {
 // shop, a shop's or a workshop's lorry to whoever makes what it lacks. Makers of
 // raw goods have no lorry; they stack their yard and wait to be fetched from.
 
-const LOAD = 3, SHOP_LOAD = 6;   // crates a lorry carries; a shop's are bigger
+const LOAD = 3, SHOP_LOAD = 10;   // crates a lorry carries; a shop's are bigger
 const SPOTS = 2, SHOP_SPOTS = 4;   // vehicles that can wait beside a building
 const SHOP_LORRIES = 2;   // a busier town needs more shops, not bigger ones
 
@@ -712,9 +712,12 @@ P.errand = function (v, home, from = home.door) {
   if (from < 0) return;
   // wants first (a family waits on them), then the oldest
   const open = this.pins.filter(p => p.at === home.id && p.by < 0).sort((a, b) => (a.kind === 'want' ? 0 : 1) - (b.kind === 'want' ? 0 : 1) || a.born - b.born);
-  for (const p of open) {
-    const src = this.source(home, p.good, v.car);
-    if (!src || !this.depart(v, from, src.id)) continue;
+  // what's ready somewhere first; only if nothing is, go and wait for it
+  const tries = [];
+  for (const p of open) { const src = this.source(home, p.good, v.car); if (src) tries.push([p, src]); }
+  tries.sort((a, b) => (this.avail(b[1], b[0].good) > 0) - (this.avail(a[1], a[0].good) > 0));
+  for (const [p, src] of tries) {
+    if (!this.depart(v, from, src.id)) continue;
     // a car buys everything the house wants that this shop sells; a lorry
     // fills up with the one good
     v.claims = (v.car ? open.filter(q => src.sells.has(q.good)) : open.filter(q => q.good === p.good)).slice(0, v.cap);
