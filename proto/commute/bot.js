@@ -32,6 +32,7 @@ for (let tick = 0; s.time < minutes * 60; tick++) {
   const ppl = s.people();
   if (tick % 1800 === 0) {
     const waiting = s.pins.filter(p => p.kind === 'want').length;
+    if (process.env.DUMP) for (const v of s.vehicles.filter(v => v.commute)) log(" w", v.id, v.state, "job", v.job, "rest", v.rest.toFixed(1), "door", s.B(v.job)?.door, "home door", s.B(v.home)?.door);
     if (process.env.CREW) { const w = s.vehicles.filter(v => v.commute), mk = [...s.buildings.values()].filter(b => !b.house && !b.stock); log(`crew: makers ${mk.length} seats ${mk.length * S.SEATS} hired ${w.filter(v => v.job >= 0).length}/${w.length} working ${w.filter(v => v.state === 'work').length} drive ${w.filter(v => v.state === 'drive').length} door ${w.filter(v => v.state === 'leave').length} ghost ${w.filter(v => v.ghost > 0).length} home ${w.filter(v => v.state === 'in').length}`); }
     log(`people ${ppl} roads ${s.roads} week ${s.week} picks ${[...s.buildings.values()].filter(b => b.house).length} trucks ${s.vehicles.length} pins ${s.pins.length} (wants ${waiting}) delivered ${s.stats.delivered} left ${s.stats.left}`);
   }

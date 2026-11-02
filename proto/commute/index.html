@@ -149,7 +149,7 @@ canvas { position: absolute; inset: 0; display: block; }
   <h1>Sprawl, commute</h1>
   <p>Houses appear and want things. A pin shows what, and its ring fills while they wait.</p>
   <p>Whoever needs something goes and gets it: cars drive to the shop, lorries to whoever makes what's missing. A queue beside a building means it can't keep up.</p>
-  <p>Every house has a worker, who drives to the nearest maker with a free job (the blue cars). A maker without its workers is slow.</p>
+  <p>Every house has a worker, who drives to the nearest maker with a free job (the blue cars). A maker slows while its workers are on the road, so jams cost you.</p>
   <p>Every new house brings a little road; every ten people moving in or up bring a pick. Wait too long and a family moves out.</p>
   <button id="go">Start</button>
   <div class="keys">View pans and zooms · Road draws · Erase removes · pinch or scroll to zoom · space to pause</div>
@@ -166,7 +166,7 @@ const C = {
   land: '#ebe5d3', landDeep: '#e2dbc6', meadow: '#e6dca4', meadowLine: '#d6ca86', clay: '#e6c79c', clayDot: '#cfa676',
   water: '#a7cfe3', shore: '#c8e2ee', tree: '#9ebd7e', treeDark: '#86a868', treeLight: '#b3cf93',
   road: '#5b616c', bridge: '#f7f2e6', shadow: 'rgba(70, 55, 30, .2)',
-  wall: '#fbf7ee', roof: '#de7a63', worker: '#5d84c4', roofShade: '#c4614c', flat: '#efe8da', flatEdge: '#d9d0bd',
+  wall: '#fbf7ee', roof: '#de7a63', worker: '#3b78e0', roofShade: '#c4614c', flat: '#efe8da', flatEdge: '#d9d0bd',
   fog: 'rgba(205, 200, 186, .72)', ink: '#141416',
 };
 
@@ -586,14 +586,14 @@ function drawProducer(b, now) {
     g.beginPath(); g.roundRect(s / 2 - 0.15, -0.3 + n * 0.13, 0.1, 0.09, 0.025);
     if (home) { g.fillStyle = '#fff'; g.fill(); } else { g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 0.025; g.stroke(); }
   });
-  // its seats down the left edge: filled while the worker is in, a ring while
-  // they're on their way or off shift, faint while nobody has the job
+  // its jobs down the left edge: filled while the worker is off the road, a
+  // ring while they're driving, faint while nobody has the job
   if (!b.stock) {
     const hired = sim.vehicles.filter(u => u.commute && u.job === b.id);
     for (let n = 0; n < S.JOBS; n++) {
       const w = hired[n];
       g.beginPath(); g.arc(-s / 2 + 0.1, -0.25 + n * 0.13, 0.045, 0, 7);
-      if (w && w.state === 'work') { g.fillStyle = '#fff'; g.fill(); }
+      if (w && w.state !== 'drive' && w.state !== 'leave') { g.fillStyle = '#fff'; g.fill(); }
       else { g.strokeStyle = w ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.3)'; g.lineWidth = 0.025; g.stroke(); }
     }
   }
@@ -1110,10 +1110,10 @@ function panel() {
     else if (b.kind === 'woodcutter' && sim.forestShare(b.tile, b.id) < S.WOOD_NEED) { say.className += ' bad'; say.textContent = 'Working, but it cuts faster than its share of the forest grows back: it will run bare.'; }
     else say.textContent = 'Working.';
     el.appendChild(say);
-    const hired = sim.vehicles.filter(u => u.commute && u.job === b.id), inNow = hired.filter(u => u.state === 'work').length;
+    const hired = sim.vehicles.filter(u => u.commute && u.job === b.id), onRoad = hired.filter(u => u.state === 'drive' || u.state === 'leave').length;
     const crew = document.createElement('div'); crew.className = 'say';
     if (!hired.length) { crew.className += ' bad'; crew.textContent = `Nobody works here yet: every house nearby already has its worker placed. It runs at a quarter speed. More houses near it would bring hands.`; }
-    else crew.textContent = `${hired.length} of ${S.JOBS} jobs filled, ${inNow} at work now: it runs at full speed with ${S.SEATS} in. Each worker keeps their own hours.`;
+    else crew.textContent = `${hired.length} of ${S.JOBS} jobs filled${onRoad ? `, ${onRoad} on the road now` : ''}. It loses the time its workers spend driving to and from work, so a jam on their way slows it.`;
     el.appendChild(crew);
     const acts = document.createElement('div'); acts.className = 'acts';
     const rm = document.createElement('button'); rm.className = 'quiet';

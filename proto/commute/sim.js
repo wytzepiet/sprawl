@@ -3,7 +3,8 @@
 // woodcutters, farms and pits stack their yards and wait to be fetched from.
 // Every errand is a trip on your roads, and a queue shows where supply is short.
 // Every house also has a worker, who keeps their own hours at the nearest
-// maker with a seat free: that is what takes cars out of their neighbourhood.
+// maker with a seat free: that is what takes cars out of their neighbourhood,
+// and a maker loses the time its workers spend on the road.
 // The sim knows nothing of the screen: index.html draws it, bot.js plays it.
 
 (function (root) {
@@ -20,9 +21,9 @@ const GAP = 0.42;        // bumper to bumper, in tiles
 const STOP = 0.5;        // a junction's stop line, short of its centre
 const GHOST = 12;        // seconds stuck before a truck squeezes through
 const PATIENCE = 60;     // seconds a house waits on a want
-const SEATS = 2, JOBS = 2;   // workers a maker hires, and needs in to work full speed
-const SHIFT = 50, REST = 4;    // seconds at work, and at home between shifts: the
-                               // hours a maker loses are the ones spent on the road
+const SEATS = 2, JOBS = 2;   // workers a maker hires, and needs to work full speed
+const SHIFT = 20, REST = 10;   // seconds at work, and at home between shifts; a maker
+                               // loses only the time its workers spend on the road
 const DAY = 120;         // seconds from one morning to the next; the last quarter or so is night
 const OUT_CAP = 3;
 const START = [32, 12];
@@ -842,7 +843,7 @@ P.step = function (dt) {
 
   if (s.tick % 60 === 1) s.catchment();
   for (const b of s.buildings.values()) b.crew = 0;
-  for (const v of s.vehicles) if (v.state === 'work') { const b = s.B(v.dest); if (b) b.crew++; }
+  for (const v of s.vehicles) if (v.commute && v.job >= 0 && v.state !== 'drive' && v.state !== 'leave') { const b = s.B(v.job); if (b) b.crew++; }
   for (const b of [...s.buildings.values()]) {
     if (!s.buildings.has(b.id)) continue;
     if (b.house) s.tickHouse(b, dt); else s.tickProducer(b, dt);
