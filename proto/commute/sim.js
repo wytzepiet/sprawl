@@ -491,13 +491,14 @@ P.dark = function () {
 P.open = function () { return this.dark() < 0.5; };
 P.tickHouse = function (h, dt) {
   const L = LEVELS[h.level];
-  const busy = 1 - 0.7 * this.dark();
+  // nothing is used while everyone's at work; less at night, when the shops are shut
+  const home = this.vehicles.some(v => v.car && v.home === h.id && v.state !== 'work' && !v.commuting);
+  const busy = home ? 1 - 0.7 * this.dark() : 0;
   for (const g in L.wants) {
     if (this.pins.some(p => p.at === h.id && p.good === g)) continue;
     h.timers[g] -= dt * busy;
     if (h.timers[g] <= 0) { this.addPin(h.id, g, 'want'); this.stats.wanted[g] = (this.stats.wanted[g] || 0) + 1; h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); }
   }
-  // a family is patient at night, when the shops are shut
   for (const p of this.pins) {
     if (p.at !== h.id || p.kind !== 'want') continue;
     p.age = (p.age || 0) + dt * busy;
