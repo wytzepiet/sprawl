@@ -71,8 +71,12 @@ return function think() {
     const lonely = [...s.buildings.values()].filter(h => h.house && h.door >= 0 && (h.shop == null || s.swamped(s.B(h.shop))));
     if (lonely.length) { const i = bestSpot('shop', lonely.map(h => h.tile)); if (i >= 0 && s.place('shop', i)) log('PLACE shop', xy(i)); }
   }
+  if (s.tokens.depot) {
+    const users = [...s.buildings.values()].filter(b => !b.house && (b.stock || KINDS[b.kind].needs)).map(b => b.tile);
+    if (users.length >= 3) { const i = bestSpot('depot', users); if (i >= 0 && s.place('depot', i)) log('PLACE depot', xy(i)); }
+  }
   for (const kind of s.unlocked) {
-    if (kind === 'shop') continue;
+    if (kind === 'shop' || kind === 'depot') continue;
     const good = KINDS[kind].out;
     const pins = s.pins.filter(p => p.good === good);
     const mine = [...s.buildings.values()].filter(b => b.kind === kind);
