@@ -18,6 +18,7 @@ const GAP = 0.42;        // bumper to bumper, in tiles
 const STOP = 0.5;        // a junction's stop line, short of its centre
 const GHOST = 12;        // seconds stuck before a truck squeezes through
 const PATIENCE = 60;     // seconds a house waits on a want
+const DAY = 120;         // seconds from one morning to the next; the last quarter or so is night
 const OUT_CAP = 3;
 const START = [32, 12];
 
@@ -471,11 +472,18 @@ P.levelDown = function (h, good) {
     this.emit({ type: 'leave', tile: h.tile, good, gone: false, id: h.id });
   }
 };
+// How dark it is, 0 by day to 1 at night. Makers and lorries work through
+// the night; residents mostly stay in, so the roads clear and lorries catch up.
+P.dark = function () {
+  const ph = (this.time / DAY) % 1;
+  return ph < 0.68 ? 0 : ph < 0.74 ? (ph - 0.68) / 0.06 : ph < 0.94 ? 1 : (1 - ph) / 0.06;
+};
 P.tickHouse = function (h, dt) {
   const L = LEVELS[h.level];
+  const busy = 1 - 0.7 * this.dark();
   for (const g in L.wants) {
     if (this.pins.some(p => p.at === h.id && p.good === g)) continue;
-    h.timers[g] -= dt;
+    h.timers[g] -= dt * busy;
     if (h.timers[g] <= 0) { this.addPin(h.id, g, 'want'); h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); }
   }
   for (const p of this.pins) {
@@ -998,6 +1006,6 @@ P.vehiclePose = function (v) {
   return { x: x - hy * off, y: y + hx * off, hx, hy, ghost: v.ghost > 0 };
 };
 
-root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS,
+root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, DAY, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS,
   OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
 })(typeof window !== 'undefined' ? window : globalThis);
