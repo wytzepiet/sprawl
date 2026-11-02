@@ -396,7 +396,6 @@ P.addHouse = function (i, first) {
   this.buildings.set(h.id, h); this.tileB.set(i, h.id);
   this.findDoor(h);
   this.addCar(h);
-  this.addWorker(h);
   if (!first) { this.roads += HOUSE_ROADS; this.arrived += LEVELS[1].people; }
   this.emit({ type: 'spawn', id: h.id, tile: i });
   return h;
@@ -474,6 +473,7 @@ P.levelDown = function (h, good) {
     this.emit({ type: 'leave', tile: h.tile, good, gone: true });
   } else {
     h.level--;
+    this.fitCars(h);
     h.timers = {};
     for (const g in LEVELS[h.level].wants) h.timers[g] = 8 + this.r() * 8;
     this.emit({ type: 'leave', tile: h.tile, good, gone: false, id: h.id });
@@ -629,7 +629,7 @@ P.take = function (b, g) {
 P.cargo = function (v) { return v.claims.filter(q => v.bag.includes(q.id)).map(q => q.good); };
 P.waitingAt = function (b) {
   let n = 0;
-  for (const v of this.vehicles) if (!v.commute && v.dest === b.id && v.dest !== v.home && (v.state === 'wait' || v.state === 'drive' || v.state === 'leave')) n++;
+  for (const v of this.vehicles) if (!(v.car && v.dest === v.job) && v.dest === b.id && v.dest !== v.home && (v.state === 'wait' || v.state === 'drive' || v.state === 'leave')) n++;
   return n;
 };
 P.spots = function (b) { return b.stock ? SHOP_SPOTS : SPOTS; };
@@ -650,20 +650,16 @@ P.source = function (home, g, car) {
 };
 
 P.addCar = function (h) {
-  const v = { id: this.nextId++, car: true, home: h.id, cap: LOAD + 1, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
+  const v = { id: this.nextId++, car: true, home: h.id, job: -1, rest: this.r() * REST, commuting: false, cap: LOAD + 1, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
   this.vehicles.push(v);
   return v;
 };
-// Every house has a worker, who drives to a job at the nearest maker with a
-// seat free and keeps it; each keeps their own hours, so someone is always on
-// the road. A maker short of workers works slower.
-P.addWorker = function (h) {
-  const v = { id: this.nextId++, commute: true, home: h.id, job: -1, rest: this.r() * REST, cap: 0, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
-  this.vehicles.push(v);
-};
+// Every house's car is also its worker's: it drives to a job at the nearest
+// maker with a seat free and keeps it, each house on its own hours. It shops
+// only when off shift, on the way home from work if something is wanted.
 P.findJob = function (home) {
   const taken = new Map();
-  for (const v of this.vehicles) if (v.commute && v.job >= 0) taken.set(v.job, (taken.get(v.job) || 0) + 1);
+  for (const v of this.vehicles) if (v.car && v.job >= 0) taken.set(v.job, (taken.get(v.job) || 0) + 1);
   const d = this.dist(home.door);
   let best = null, bd = Infinity;
   for (const b of this.buildings.values()) {
@@ -676,13 +672,26 @@ P.findJob = function (home) {
 P.commute = function (v, dt, home) {
   if (v.state === 'work') {
     v.wait += dt;
-    if (v.wait >= SHIFT || !this.B(v.job)) this.goHome(v, this.B(v.dest)?.door ?? -1);
+    const job = this.B(v.job);
+    if (v.wait < SHIFT && job) return;
+    v.commuting = true;
+    if (job) this.errand(v, home, job.door);
+    if (v.state === 'work') this.goHome(v, job ? job.door : -1);
     return;
   }
-  if ((v.rest -= dt) > 0 || home.door < 0) return;
-  if (!this.B(v.job)) v.job = this.findJob(home)?.id ?? -1;
-  if (v.job >= 0 && this.depart(v, home.door, v.job)) v.state = 'leave';
-  else v.rest = 5;
+  if (home.door < 0) return;
+  if ((v.rest -= dt) <= 0) {
+    if (!this.B(v.job)) v.job = this.findJob(home)?.id ?? -1;
+    if (v.job >= 0 && this.depart(v, home.door, v.job)) { v.state = 'leave'; v.commuting = true; return; }
+    v.rest = 5;
+  }
+  this.errand(v, home, home.door);
+};
+// A cottage has one car, and a house or bigger two: two workers, two errands.
+P.fitCars = function (h) {
+  const cars = this.vehicles.filter(v => v.car && v.home === h.id), want = h.level >= 2 ? 2 : 1;
+  for (let n = cars.length; n < want; n++) this.addCar(h);
+  for (const v of cars.slice(want)) this.dropVehicle(v);
 };
 P.addTruck = function (b) {
   const v = { id: this.nextId++, home: b.id, cap: b.stock ? SHOP_LOAD : LOAD, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
@@ -692,13 +701,13 @@ P.addTruck = function (b) {
 };
 
 // Set off for what home lacks, the oldest need first.
-P.errand = function (v, home) {
-  if (home.door < 0) return;
+P.errand = function (v, home, from = home.door) {
+  if (from < 0) return;
   // wants first (a family waits on them), then the oldest
   const open = this.pins.filter(p => p.at === home.id && p.by < 0).sort((a, b) => (a.kind === 'want' ? 0 : 1) - (b.kind === 'want' ? 0 : 1) || a.born - b.born);
   for (const p of open) {
     const src = this.source(home, p.good, v.car);
-    if (!src || !this.depart(v, home.door, src.id)) continue;
+    if (!src || !this.depart(v, from, src.id)) continue;
     // a car buys everything the house wants that this shop sells; a lorry
     // fills up with the one good
     v.claims = (v.car ? open.filter(q => src.sells.has(q.good)) : open.filter(q => q.good === p.good)).slice(0, v.cap);
@@ -744,6 +753,7 @@ P.unpack = function (v) {
       this.emit({ type: 'deliver', tile: b.tile, good: q.good, pay: GOODS[q.good].pay });
       if (q.kind === 'build' && !this.pins.some(r => r.at === b.id && r.kind === 'build')) {
         b.level++;
+        this.fitCars(b);
         b.happy = 0;
         for (const g in LEVELS[b.level].wants) if (b.timers[g] === undefined) b.timers[g] = 6 + this.r() * 6;
         this.first('level:' + b.level);
@@ -817,7 +827,7 @@ P.depart = function (v, node, destId) {
 P.tickVehicleIdle = function (v, dt) {
   const home = this.B(v.home);
   if (!home) return;
-  if (v.commute) return this.commute(v, dt, home);
+  if (v.car && v.state !== 'wait') return this.commute(v, dt, home);
   if (v.state === 'in') this.errand(v, home);
   else if (v.state === 'wait') this.load(v, dt);
 };
@@ -843,7 +853,7 @@ P.step = function (dt) {
 
   if (s.tick % 60 === 1) s.catchment();
   for (const b of s.buildings.values()) b.crew = 0;
-  for (const v of s.vehicles) if (v.commute && v.job >= 0 && v.state !== 'drive' && v.state !== 'leave') { const b = s.B(v.job); if (b) b.crew++; }
+  for (const v of s.vehicles) if (v.car && v.job >= 0 && !v.commuting) { const b = s.B(v.job); if (b) b.crew++; }
   for (const b of [...s.buildings.values()]) {
     if (!s.buildings.has(b.id)) continue;
     if (b.house) s.tickHouse(b, dt); else s.tickProducer(b, dt);
@@ -878,8 +888,15 @@ P.arrive = function (v) {
   // off the road, into the building at the end of the route
   this.releaseLock(v);
   v.route = null;
-  if (v.dest === v.home) { this.unpack(v); v.state = 'in'; v.dest = -1; v.rest = REST * (0.7 + 0.6 * this.r()); return; }
-  if (v.commute) { v.state = 'work'; v.wait = 0; return; }
+  // a car's trip to work ends at work; its trip from work at the shop or home
+  const toWork = v.car && v.commuting && v.dest === v.job;
+  v.commuting = false;
+  if (v.dest === v.home) {
+    this.unpack(v); v.state = 'in'; v.dest = -1;
+    if (v.shiftDone) { v.shiftDone = false; v.rest = REST * (0.7 + 0.6 * this.r()); }
+    return;
+  }
+  if (toWork) { v.state = 'work'; v.wait = 0; v.shiftDone = true; return; }
   v.state = 'wait'; v.waited = 0;
 };
 // Off the road at a node, the way ahead gone: find another, or give up and go in.
