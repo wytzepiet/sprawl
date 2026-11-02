@@ -401,7 +401,7 @@ function frame() {
   drawFx(now);
 }
 
-// Night: the map dims, windows and headlights glow. Lorries keep going.
+// Night: the map dims and headlights glow. Lorries keep going.
 function drawNight() {
   const d = sim.dark();
   if (d <= 0) return;
@@ -410,11 +410,6 @@ function drawNight() {
   g.fillRect(0, 0, cv.width, cv.height);
   g.restore();
   g.fillStyle = `rgba(255, 214, 120, ${0.9 * d})`;
-  for (const b of sim.buildings.values()) {
-    const [x, y] = xy(b.tile);
-    const r = b.house ? 0.05 + 0.015 * b.level : 0.06;
-    g.beginPath(); g.arc(x + 0.5, y + 0.5, r, 0, 7); g.fill();
-  }
   for (const v of sim.vehicles) {
     const p = sim.vehiclePose(v);
     if (!p || !sim.B(v.home)) continue;
