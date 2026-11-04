@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createEffect, createRoot, createSignal, on } from "solid-js";
 import { dayLengthMs, simNow } from "../network/clock";
 import type { Town } from "../generated";
 
@@ -47,3 +47,19 @@ export function clockAt(t: number): string {
   const m = Math.floor(((t % dayLengthMs()) + dayLengthMs()) % dayLengthMs() / minute());
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
+
+// Each dawn, yesterday in a line: who came, who grew, who left.
+createRoot(() =>
+  createEffect(
+    on(
+      () => town().dawn?.day,
+      (day) => {
+        const d = town().dawn;
+        if (!day || !d) return;
+        const parts = [d.came && `${plural(d.came, "person", "people")} came`, d.grew && `${plural(d.grew, "house", "houses")} grew`, d.left ? `${d.left} left` : "nobody left"].filter(Boolean);
+        tell(`Day ${day + 1}`, parts.join(", "), 0);
+      },
+      { defer: true },
+    ),
+  ),
+);
