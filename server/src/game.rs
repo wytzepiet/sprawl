@@ -86,7 +86,9 @@ impl Game {
     }
 
     fn clock(&self) -> Clock {
-        Clock { now: self.now, speed: self.speed, day_ms: DAY_MS }
+        // While a pick is on the table the clock stands, and says so: a
+        // client would otherwise run its own on.
+        Clock { now: self.now, speed: if self.picking() { 0 } else { self.speed }, day_ms: DAY_MS }
     }
 
     fn send(&mut self, to: ClientId, msg: ServerMessage) {

@@ -18,13 +18,14 @@ const TOOL: Record<Unlock, { id: string; label: string; about: string }> = {
 const road = (id: string) => ROAD_KINDS.find((r) => r.id === id) ?? ROAD_KINDS[0];
 
 /** The houses waiting on a good now, or growing with it. */
-function waiting(good: Good): number {
+function waiting(good: Good, growing: boolean): number {
   // Read again as the buildings change: the entities are not a signal.
   builtVersion();
   let n = 0;
   eachEntity((e) => {
     const h = e.object.kind === "Building" ? (e.object.data as Building).home : null;
-    if (h && (h.wants.some((w) => w.good === good) || (h.growing?.[good] && h.growing[good]!.level < h.growing[good]!.cap))) n++;
+    const grows = h?.growing?.[good];
+    if (h && (growing ? grows && grows.level < grows.cap : h.wants.some((w) => w.good === good))) n++;
   });
   return n;
 }
@@ -34,8 +35,10 @@ function waiting(good: Good): number {
 function need(o: Offer): string | null {
   if (o.kind === "Building") {
     const makes = BLUEPRINTS[o.data[0]].makes;
-    const n = makes ? waiting(makes) : 0;
-    return n ? `${n} ${n === 1 ? "house wants" : "houses want"} ${GOODS[makes!].label.toLowerCase()}` : null;
+    if (!makes) return null;
+    const [want, grow] = [waiting(makes, false), waiting(makes, true)];
+    const what = GOODS[makes].label.toLowerCase();
+    return want ? `${want} ${want === 1 ? "house wants" : "houses want"} ${what}` : grow ? `${grow} ${grow === 1 ? "house grows" : "houses grow"} with ${what}` : null;
   }
   if (o.kind === "Roads") return town().roads < 10 ? `${town().roads} left` : null;
   return null;

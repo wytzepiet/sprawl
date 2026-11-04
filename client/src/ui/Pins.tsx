@@ -57,16 +57,17 @@ function Over(props: { id: number; building: () => Building }) {
 function Pin(props: { want: Want; onTap: () => void }) {
   const { color, glyph } = GOODS[props.want.good];
   const full = () => Math.min(1, Math.max(0, (now() - props.want.since) / PATIENCE_MS));
-  const R = 12.5;
+  const R = 15;
   const round = 2 * Math.PI * R;
   return (
-    <Press w={30} h={30} align="center" justify="center" onTap={props.onTap}>
-      <svg width="30" height="30" viewBox="-15 -15 30 30" style={{ position: "absolute", left: "0", top: "0" }}>
-        <circle r={R} fill="white" />
-        <circle r={R} fill="none" stroke={BAD} stroke-width="3" stroke-dasharray={`${full() * round} ${round}`} transform="rotate(-90)" />
-        <circle r="10" fill={color} />
+    <Press w={38} h={38} align="center" justify="center" onTap={props.onTap}>
+      <svg width="38" height="38" viewBox="-19 -19 38 38" style={{ position: "absolute", left: "0", top: "0" }}>
+        <circle r="18.5" fill="white" />
+        <circle r={R} fill="none" stroke="#0000001f" stroke-width="5" />
+        <circle r={R} fill="none" stroke={BAD} stroke-width="5" stroke-dasharray={`${full() * round} ${round}`} transform="rotate(-90)" />
+        <circle r="11.5" fill={full() > 0.75 ? BAD : color} />
       </svg>
-      <Icon d={glyph} size={12} ink="white" />
+      <Icon d={glyph} size={14} ink="white" />
     </Press>
   );
 }
