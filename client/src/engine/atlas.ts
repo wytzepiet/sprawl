@@ -68,8 +68,11 @@ export class Atlas {
     this.stale = false;
     if (this.texture.height === this.rows * this.side) updateTexture2DFromPixels(this.engine, this.texture, this.data);
     else {
-      // Let go once nothing is drawn with it: the rebound draws come a frame or two on.
-      retire(this.texture);
+      // The old one is never destroyed: what is bound to it may stay
+      // unbound until it is next in view, and would draw with a destroyed
+      // texture, an error every frame. Let go, it goes with the last of
+      // them; the rows double, so all the old ones together are smaller
+      // than the new.
       this.texture = this.make();
       this.regrown();
     }

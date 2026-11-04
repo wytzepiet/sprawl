@@ -70,6 +70,11 @@ export function useEngine() {
  * pixels for it — on every pass, the shadow-receiving ground included.
  */
 const MAX_DEVICE_RATIO = 2;
+/** And in this many pixels at most, whatever the ratio: what a frame costs
+ *  the GPU is mostly its pixels, and a laptop's retina screen at 2 is near
+ *  six million of them, four times a phone's, and runs hot for it. Here it
+ *  is drawn at about 1.4 instead, the flat colours no worse for it. */
+const MAX_PIXELS = 3e6;
 
 /** Frames a second while the view moves: a 120Hz display shows the town no
  *  better than a 60Hz one, for twice the shading. */
@@ -178,6 +183,7 @@ export default function Canvas(props: ParentProps) {
       lastFrame = now;
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
+      engine.surfaces[0].maxDevicePixelRatio = Math.min(MAX_DEVICE_RATIO, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
       resizeEngine(engine);
       renderFrame(engine, delta);
       after.run();

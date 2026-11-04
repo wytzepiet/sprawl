@@ -208,10 +208,11 @@ export default function PerfReport() {
     if (phase === PHASES.length) {
       clearInterval(timer);
       setDone(sent);
-      // Then what each kind of thing in view costs (`cost.ts`): close in
-      // by day, the shadows on, and by night, the lights on, and the whole
-      // town by day, where the most is drawn. The run is over once that is in.
-      eye.look(x, y, h);
+      // Then what each kind of thing in view costs (`cost.ts`): close in,
+      // as a street is built, by day, the shadows on, and by night, the
+      // lights on; and the whole town by day, where the most is drawn. The
+      // run is over once that is in.
+      eye.look(x, y, h / 2);
       const meter = (window as { sprawlCost?: (rounds: number) => Promise<CostReport> }).sprawlCost;
       const post = (phase: string) => (cost: CostReport) => fetch("/perf", { method: "POST", body: JSON.stringify({ at: new Date().toISOString(), tab: run, phase, cost }) });
       if (meter) {

@@ -59,8 +59,12 @@ export function kerbsOf(g: MeshGeometry, kerb: KerbRule = () => true): Kerb[] {
   return out;
 }
 
-/** Texels to a tile, at most; a big sheet takes fewer. */
-const DENSITY = 32;
+/** Texels to a tile, at most; a big sheet takes fewer. A kerb's distance
+ *  changes evenly and is read between texels evenly, so a straight kerb is
+ *  as sharp at 16 as at 32 and a corner is rounded a sixteenth of a tile,
+ *  which no zoom shows; at 32 a town's kerbs took 130 MB, uploaded as the
+ *  view zoomed out, a hitch a chunk. */
+const DENSITY = 16;
 /** The longest side a kerb texture may have, in texels. */
 const MOST = 2048;
 /** Beyond reach of every kerb. */
