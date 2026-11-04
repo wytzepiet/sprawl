@@ -98,7 +98,11 @@ export default function World(props: { brush?: () => JSX.Element }) {
   // Red where no joined road reaches it; grey where any stock is bare.
   const lookOf = (entry: GameObjectEntry) =>
     !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY;
-  const town = new TownLayer(ctx, casters()!, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
+  const town = new TownLayer(ctx, casters()!, eachEntity, (x, y) => {
+    // Clay is grass to the town: it builds on it alike.
+    const t = terrain.typeAt(x, y);
+    return t === "Clay" ? "Grass" : t;
+  }, lookOf);
 
   // The building in hand, or let go until the server answers, drawn where
   // it would stand, and the trees out of its way.
@@ -204,7 +208,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
   setOpsListener(processOps);
   setTerrainListener({
     setChunk: (chunk) => {
-      terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles, chunk.heights);
+      terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles, chunk.heights, chunk.deposits ?? new Uint8Array());
     },
     unloadChunk: (coord) => {
       terrain.unloadChunk(coord.cx, coord.cy);

@@ -8,7 +8,8 @@ import { ITEM } from "../engine/objects/goods";
 import { atPad, ends, packagesOf, padOf, placeIn } from "../engine/objects/pads";
 import { forkliftAt, yardsOf } from "../engine/objects/forklift";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, GameObjectEntry, Good, RoadNode, TerrainType, Pose as Stand } from "../generated";
+import type { Ground } from "../engine/objects/terrainGeometry";
+import type { Building, Car, GameObjectEntry, Good, RoadNode, Pose as Stand } from "../generated";
 
 /**
  * The game drawn flat, on a 2D canvas, `@napi-rs/canvas`'s in a script
@@ -50,7 +51,7 @@ const css = (c: Rgb, a = 1) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g *
 const INK = "#1d2330";
 const RED = "#d23c32";
 
-const TERRAIN: Record<TerrainType, Rgb> = { Sea: theme.water, Water: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.rock };
+const TERRAIN: Record<Ground, Rgb> = { Clay: theme.clay, Sea: theme.water, Water: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.rock };
 
 /** A chunk's ground, a pixel a tile, made once for its tiles. */
 function chunkImage(tiles: Uint8Array, sheet: Sheet): unknown {

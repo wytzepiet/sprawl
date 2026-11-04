@@ -103,6 +103,9 @@ const LOOKS = [
   // Grass rounds over onto the rock more tightly, half as far, and stops
   // short of the cliff, as the wood floor does.
   { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0, matte: 0 },
+  // Clay through the turf: bare earth, frayed into the grass round it,
+  // unmottled, which would warm it to brick.
+  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 0, slate: 0, matte: 0 },
   // The wood floor frays into the grass, thinning blade by blade, and
   // further in than the grass does: it lies under the trees, not past them.
   // Needle litter in shade: fully matte.

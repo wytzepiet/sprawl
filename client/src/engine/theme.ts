@@ -12,6 +12,9 @@ export const theme = {
   // bending toward the crowns' teal, so a forest reads as one zoomed out
   // past its trees without standing stark against the open land.
   forest: hex("#5F8466"),
+  // Clay showing through the turf: a soft ochre, warm against the sage,
+  // where a clay pit can dig (`Deposit::Clay`).
+  clay: hex("#DCC08E"),
   // Tree crowns, dark to light: deep teal-greens, the dark note, light
   // enough that a forest reads as a wood and not a hole.
   crowns: [hex("#325E57"), hex("#3F705E"), hex("#52846A")],
