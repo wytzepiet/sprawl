@@ -1,8 +1,8 @@
-import { addToScene, markMaterialUboDirty, setThinInstances, type MaterialPlugin, type Mesh } from "@babylonjs/lite";
+import { markMaterialUboDirty, type MaterialPlugin } from "@babylonjs/lite";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
-import type { Area } from "./cull";
-import { drop, meshOf, slab, type P } from "./geometry";
+import { merged, type Part } from "./merged";
+import { slab, type P } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { PROP_FLOATS } from "./town/layer";
 import { PROP_KINDS } from "./town/roof";
@@ -220,7 +220,7 @@ function kitOf(ctx: EngineContext): Kit {
 }
 
 /** A chunk's props, placed: the meshes they are drawn with. */
-export function placeProps(ctx: EngineContext, name: string, props: Float32Array, [ox, oy]: [number, number], area: Area, casters: Casters | undefined): Mesh[] {
+export function placeProps(ctx: EngineContext, props: Float32Array, [ox, oy]: [number, number], casters: Casters | undefined): Part[] {
   const count = props.length / PROP_FLOATS;
   if (!count) return [];
   const kit = kitOf(ctx);
@@ -293,22 +293,13 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
       }
     }
   }
-  const meshes: Mesh[] = [];
-  for (const [part, { geo, material, cast, m }] of Object.entries(parts)) {
-    if (!m.length) continue;
-    const mesh = meshOf(ctx.engine, `${name}_prop_${part}`, geo);
-    mesh.material = material;
-    mesh.receiveShadows = true;
-    mesh.position.x = ox;
-    mesh.position.y = oy;
-    setThinInstances(mesh, new Float32Array(m), m.length / 16);
-    ctx.cull.keep(mesh, area);
-    addToScene(ctx.scene, mesh);
-    if (cast) casters?.add(mesh);
-    meshes.push(mesh);
-  }
-  if (heads.length) lamps.set(meshes, new Float32Array(heads));
-  return meshes;
+  // Each part drawn with every other of its kind near it (`merged.ts`).
+  const piles = merged(ctx, casters);
+  const placed = Object.entries(parts)
+    .filter(([, { m }]) => m.length)
+    .map(([part, { geo, material, cast, m }]) => piles.add({ name: `prop_${part}`, geo, material, cast, receive: true, colored: false }, [ox, oy], new Float32Array(m)));
+  if (heads.length) lamps.set(placed, new Float32Array(heads));
+  return placed;
 }
 
 /** A lamp's rank among the lights, the same every time for where it stands. */
@@ -319,11 +310,14 @@ function rank(x: number, y: number) {
 }
 
 /** A chunk's props gone. */
-export function clearProps(ctx: EngineContext, meshes: Mesh[], casters: Casters | undefined) {
-  lamps.delete(meshes);
-  for (const mesh of meshes) {
-    casters?.remove(mesh);
-    ctx.cull.forget(mesh);
-    drop(ctx.scene, mesh);
-  }
+export function clearProps(ctx: EngineContext, placed: Part[], casters: Casters | undefined) {
+  lamps.delete(placed);
+  const piles = merged(ctx, casters);
+  for (const p of placed) piles.remove(p);
+}
+
+/** A chunk's props drawn or not, whatever the view. */
+export function showProps(ctx: EngineContext, placed: Part[], shown: boolean) {
+  const piles = merged(ctx, undefined);
+  for (const p of placed) piles.show(p, shown);
 }

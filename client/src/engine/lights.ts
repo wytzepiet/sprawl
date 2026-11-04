@@ -6,7 +6,6 @@ import {
   markClusteredLightContainerDirty,
   type ClusteredPointLight,
   type ClusteredSpotLight,
-  type Mesh,
 } from "@babylonjs/lite";
 import type { EngineContext } from "./Canvas";
 import { groundCover } from "./view";
@@ -51,7 +50,7 @@ const FARTHEST = 60;
 
 /** Each chunk's lamps (`props.ts`): x, y and z of its head and a rank, four
  *  numbers to a lamp, by the meshes that draw them. */
-export const lamps = new Map<Mesh[], Float32Array>();
+export const lamps = new Map<object, Float32Array>();
 /** Each moving vehicle's headlight: where it is, its height, its heading. */
 const beams = new Map<number, [number, number, number, number]>();
 export const beam = (id: number, x: number, y: number, z: number, heading: number) => void beams.set(id, [x, y, z, heading]);

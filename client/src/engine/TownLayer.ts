@@ -24,8 +24,9 @@ import type { Box } from "./town/clip";
 import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
-import { grove, plant, uproot, type Grove } from "./trees";
-import { clearProps, placeProps } from "./props";
+import { grove, plant, showGrove, uproot, type Grove } from "./trees";
+import { clearProps, placeProps, showProps } from "./props";
+import type { Part } from "./merged";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
 
@@ -51,7 +52,7 @@ interface Shown {
   meshes: Mesh[];
   trees: Grove;
   kerbs: KerbField | null;
-  props: Mesh[];
+  props: Part[];
 }
 
 /** The world as a drawing is made of it. */
@@ -301,7 +302,9 @@ export class TownLayer {
 
   /** A chunk shown or hidden, whatever the view. */
   private want(shown: Shown, wanted: boolean) {
-    for (const m of [...shown.meshes, ...shown.trees.meshes, ...shown.props]) this.ctx.cull.want(m, wanted);
+    for (const m of shown.meshes) this.ctx.cull.want(m, wanted);
+    showGrove(this.ctx, shown.trees, wanted);
+    showProps(this.ctx, shown.props, wanted);
   }
 
   private draw(world: () => Town) {
@@ -518,9 +521,9 @@ export class TownLayer {
       meshes.push(mesh);
     }
     const { matrices, colors } = trees;
-    const g = grove(`town_${key}`, [ox, oy]);
-    plant(this.ctx, g, matrices, colors, this.casters, area);
-    const placed = placeProps(this.ctx, `town_${key}`, props, [ox, oy], area, this.casters);
+    const g = grove("town", [ox, oy]);
+    plant(this.ctx, g, matrices, colors, this.casters);
+    const placed = placeProps(this.ctx, props, [ox, oy], this.casters);
     return { meshes, trees: g, kerbs, props: placed };
   }
 

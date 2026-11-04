@@ -18,7 +18,7 @@ import {
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
-import { grove, plant, uproot, type Grove, type Kind } from "./trees";
+import { grove, plant, showGrove, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
@@ -234,7 +234,7 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove(`chunk_${key}`, [ox, oy]), conifer: grove(`chunk_${key}`, [ox, oy], "conifer") }, dispose: [], tick: null };
+    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     this.ground.set(key, [ox, oy], geometry.layers);
@@ -283,10 +283,9 @@ export class TerrainChunks {
 
     const [cx, cy] = parseKey(key);
     const sets = buildTrees(tiles, cx, cy, this.isBuilt, theme);
-    const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     for (const kind of ["broad", "conifer"] as const) {
       const { matrices, colors } = sets[kind];
-      plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
+      plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters);
     }
     this.applyDetail(chunk);
   }
@@ -320,10 +319,7 @@ export class TerrainChunks {
   }
 
   private applyDetail(chunk: ChunkMeshes): void {
-    const { cull } = this.ctx;
-    for (const kind of ["broad", "conifer"] as const) {
-      for (const mesh of chunk.trees[kind].meshes) cull.want(mesh, this.detailVisible);
-    }
+    for (const kind of ["broad", "conifer"] as const) showGrove(this.ctx, chunk.trees[kind], this.detailVisible);
   }
 
   dispose(): void {

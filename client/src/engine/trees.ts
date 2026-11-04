@@ -1,9 +1,8 @@
-import { addToScene, markMaterialUboDirty, setThinInstanceColors, setThinInstances, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { markMaterialUboDirty, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
-import { drop, meshOf } from "./geometry";
-import type { Area } from "./cull";
+import { merged, type Kind as Kind2, type Part } from "./merged";
 import { lacquer } from "./bevel";
 import { BROAD_LAYERS, COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS, SIDES } from "./crowns";
 import recipe from "./crowns.ts?raw";
@@ -263,54 +262,50 @@ function treeMaterials({ engine, scene, beforeRender }: EngineContext, kind: Kin
 }
 
 export interface Grove {
-  name: string;
+  /** Whose trees, piled apart from others': the wild's, the town's. */
+  whose: string;
   kind: Kind;
   /** The corner its trees are placed from. */
   at: [number, number];
-  /** Its bodies and its tops while it has trees; none while it has none. */
-  meshes: Mesh[];
+  /** Its bodies and its tops in their piles while it has trees (`merged.ts`). */
+  parts: Part[];
+  /** Whether it is drawn at all: detail let go far out, or under a building held. */
+  shown: boolean;
 }
 
 /** A set of trees of a kind, none planted yet. */
-export const grove = (name: string, at: [number, number], kind: Kind = "broad"): Grove => ({ name, kind, at, meshes: [] });
+export const grove = (whose: string, at: [number, number], kind: Kind = "broad"): Grove => ({ whose, kind, at, parts: [], shown: true });
 
 /** Trees planted, 16 floats of matrix and 4 of colour each, in place of
- *  any before, over an area of the map: shown while it is in view, and
- *  casting, its tops taking shadows. None uproots it. */
-export function plant(ctx: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined, area: Area) {
-  const count = matrices.length / 16;
-  if (!count) return uproot(ctx, g, casters);
-  const fresh = !g.meshes.length;
-  if (fresh) {
-    const { body, top } = treeMaterials(ctx, g.kind);
-    g.meshes = ([[BODY, body], [g.kind === "conifer" ? CONIFER_TOP : BROAD_TOP, top]] as const).map(([geo, material], i) => {
-      const mesh = meshOf(ctx.engine, `${g.name}_${g.kind === "broad" ? "tree" : "conifer"}_${i ? "tops" : "bodies"}`, geo);
-      mesh.material = material;
-      mesh.position.x = g.at[0];
-      mesh.position.y = g.at[1];
-      mesh.receiveShadows = i === 1;
-      return mesh;
-    });
-  }
-  for (const [i, mesh] of g.meshes.entries()) {
-    setThinInstances(mesh, matrices, count);
-    setThinInstanceColors(mesh, colors);
-    if (!fresh) continue;
-    ctx.cull.keep(mesh, area);
-    addToScene(ctx.scene, mesh);
-    // What of it casts: a broadleaf its card and its crown, which costs no
-    // frame (it stands still, and the shadows' cache keeps it); a conifer
-    // its card alone, as its layered top is not one surface.
-    if (i === 0 || g.kind === "broad") casters?.add(mesh);
-  }
+ *  any before: drawn with every other tree of their kind near them, one
+ *  mesh for the lot, casting, its tops taking shadows. None uproots it. */
+export function plant(ctx: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined) {
+  uproot(ctx, g, casters);
+  if (!matrices.length) return;
+  const { body, top } = treeMaterials(ctx, g.kind);
+  const name = `${g.whose}_${g.kind === "broad" ? "tree" : "conifer"}`;
+  // What of it casts: a broadleaf its card and its crown, which costs no
+  // frame (it stands still, and the shadows' cache keeps it); a conifer
+  // its card alone, as its layered top is not one surface.
+  const kinds: Kind2[] = [
+    { name: `${name}_bodies`, geo: BODY, material: body, cast: true, receive: false, colored: true },
+    { name: `${name}_tops`, geo: g.kind === "conifer" ? CONIFER_TOP : BROAD_TOP, material: top, cast: g.kind === "broad", receive: true, colored: true },
+  ];
+  const piles = merged(ctx, casters);
+  g.parts = kinds.map((k) => piles.add(k, g.at, matrices, colors));
+  if (!g.shown) for (const p of g.parts) piles.show(p, false);
 }
 
-/** A grove's trees gone, and its meshes with them. */
-export function uproot({ scene, cull }: EngineContext, g: Grove, casters: Casters | undefined) {
-  for (const mesh of g.meshes) {
-    casters?.remove(mesh);
-    cull.forget(mesh);
-    drop(scene, mesh);
-  }
-  g.meshes = [];
+/** A grove's trees gone. */
+export function uproot(ctx: EngineContext, g: Grove, casters: Casters | undefined) {
+  const piles = merged(ctx, casters);
+  for (const p of g.parts) piles.remove(p);
+  g.parts = [];
+}
+
+/** A grove drawn or not, whatever the view. */
+export function showGrove(ctx: EngineContext, g: Grove, shown: boolean) {
+  g.shown = shown;
+  const piles = merged(ctx, undefined);
+  for (const p of g.parts) piles.show(p, shown);
 }
