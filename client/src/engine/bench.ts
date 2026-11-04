@@ -1,11 +1,16 @@
 /** The bench's phases, its reports and what they sum to: what
  *  `PerfReport.tsx` posts and `scripts/bench.ts` reads. */
 /**
- * What the camera does, a phase a report: the first two are the land
- * coming in, not measured; then still, panning out over new land and back,
- * zooming in and out, and the whole town from far out.
+ * What the camera does, a phase a report: the first four are the land
+ * coming in and a test town's traffic filling its streets, not measured;
+ * then still, panning out over new land and back, zooming in and out, and
+ * the whole town from far out, by day and again by night (`n-`), its lamps
+ * and headlights on.
  */
-export const PHASES = ["settle", "settle", ...(["still", "pan", "zoom", "far"] as const).flatMap((p) => [p, p, p])];
+const LOOKS = ["still", "pan", "zoom", "far"] as const;
+export const PHASES = ["settle", "settle", "settle", "settle", ...["", "n-"].flatMap((night) => LOOKS.flatMap((p) => [`${night}${p}`, `${night}${p}`, `${night}${p}`]))];
+/** The light each kind of phase is drawn in: noon, or nearly midnight. */
+export const lightOf = (phase: string) => (phase.startsWith("n-") ? 0.95 : 0.5);
 
 import type { CostReport } from "./cost";
 

@@ -16,7 +16,7 @@
  *   --runs                           the runs that game has, newest last
  */
 import { args, CLIENT, flag, has, launch, word } from "./lib";
-import { costLines, summarise, type Report } from "../src/engine/bench";
+import { costLines, PHASES, summarise, type Report } from "../src/engine/bench";
 import type { CostReport } from "../src/engine/cost";
 
 const url = (word("--url") ?? CLIENT).replace(/\/$/, "");
@@ -42,20 +42,20 @@ if (!tab) {
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
   page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
   await page.goto(`${url}/?t=${t}&bench=${where}&tab=${tab}${town ? `&town=${town}` : ""}`);
-  // Two reports settling and four phases of three, five seconds each.
-  for (let n = 0; n < 14; ) {
+  // A report every five seconds, a phase each.
+  for (let n = 0; n < PHASES.length; ) {
     await page.waitForTimeout(5000);
     const now = (await fetchRuns(tab)).length;
     if (now === n && now > 0) console.log(`no report in five seconds after ${n}`);
     n = now;
-    process.stdout.write(`\r${n}/14 reports`);
+    process.stdout.write(`\r${n}/${PHASES.length} reports`);
   }
   console.log();
   await browser.close();
 }
 
 const lines = await fetchRuns(tab);
-const reports = lines.filter((r) => r.phase !== "cost");
+const reports = lines.filter((r) => !r.phase.endsWith("cost"));
 if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
 const [first] = reports;
 console.log(`${tab}: ${first.canvas.join("×")} at ${first.dpr}x, ${first.gpu}\n${first.agent}`);
@@ -64,7 +64,7 @@ for (const s of summarise(reports)) {
   const mine = s.reports;
   const busy = mine.reduce((a, r) => a + (typeof r.profile === "string" ? 0 : r.profile.busyMs), 0) / (mine.length * 5000);
   console.log(
-    `${s.phase.padEnd(6)} ${f1(s.fps)} fps, gaps p90 ${f1(s.p90)} max ${f1(s.worst)} ms, over 34 ms ${mine.reduce((a, r) => a + r.gap.over34, 0)}; ` +
+    `${s.phase.padEnd(8)} ${f1(s.fps)} fps, gaps p90 ${f1(s.p90)} max ${f1(s.worst)} ms, over 34 ms ${mine.reduce((a, r) => a + r.gap.over34, 0)}; ` +
       `CPU ${f1(s.cpu)} ms, GPU ${s.gpu === null ? "?" : f1(s.gpu)} ms a frame; ${Math.round(s.draws)} draws; JS busy ${(busy * 100).toFixed(0)}%`,
   );
   const own = new Map<string, number>();
@@ -80,5 +80,7 @@ for (const s of summarise(reports)) {
   const worst = mine.flatMap((r) => r.long).sort((a, b) => b.ms - a.ms)[0];
   if (worst) console.log(`       longest frame ${worst.ms} ms: ${worst.scripts.slice(0, 3).map((s) => `${s.what} ${s.ms}`).join(", ") || "no script"}`);
 }
-const cost = (lines.find((r) => r.phase === "cost") as unknown as { cost: CostReport } | undefined)?.cost;
-if (cost) console.log(`\n${costLines(cost, "what each kind costs, still").join("\n")}`);
+for (const [phase, title] of [["cost", "what each kind costs, still, by day"], ["n-cost", "and by night"]]) {
+  const cost = (lines.find((r) => r.phase === phase) as unknown as { cost: CostReport } | undefined)?.cost;
+  if (cost) console.log(`\n${costLines(cost, title).join("\n")}`);
+}

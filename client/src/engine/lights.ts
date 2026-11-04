@@ -56,6 +56,8 @@ export const lamps = new Map<Mesh[], Float32Array>();
 const beams = new Map<number, [number, number, number, number]>();
 export const beam = (id: number, x: number, y: number, z: number, heading: number) => void beams.set(id, [x, y, z, heading]);
 export const unbeam = (id: number) => void beams.delete(id);
+/** How many vehicles are out with their lights, lit or not: the bench's count. */
+export const beamCount = () => beams.size;
 
 /** How on the lights are, 0 by day to 1 by night: what the lamps' heads
  *  glow with (`props.ts`). */

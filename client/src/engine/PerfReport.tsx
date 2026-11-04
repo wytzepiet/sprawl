@@ -4,7 +4,11 @@ import { isGpuTimingSupported, setGpuTimingEnabled } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { eye } from "./Camera";
 import { groundCover } from "./view";
-import { PHASES, summarise, type Report } from "./bench";
+import { lightOf, PHASES, summarise, type Report } from "./bench";
+import { pinTimeOfDay } from "./DayNightCycle";
+import { beamCount } from "./lights";
+import { useGame } from "../state/gameObjects";
+import { simNow } from "../network/clock";
 import type { CostReport } from "./cost";
 
 const params = new URLSearchParams(location.search);
@@ -23,6 +27,8 @@ export function perfCount(name: string, by = 1) {
 /** How often the tab reports, and how finely it samples its JavaScript. */
 const EVERY_MS = 5000;
 const SAMPLE_MS = 5;
+/** How much of a test town's day is lived through before the bench. */
+const TRAFFIC_MS = 8 * 60_000;
 
 /** The browser's sampling profiler, where the page has asked for it. */
 interface ProfilerTrace {
@@ -76,10 +82,16 @@ export default function PerfReport() {
   const gpuError = (e: Event) => caught({ message: `GPU: ${(e as GPUUncapturedErrorEvent).error.message}` } as ErrorEvent);
   device.addEventListener("uncapturederror", gpuError);
   void device.lost.then((l) => caught({ message: `GPU lost: ${l.reason} ${l.message}` } as ErrorEvent));
+  // A test town's traffic comes in from its edges: the first minutes of it
+  // lived through at once, so the streets are full when the bench begins.
+  const { send } = useGame();
+  let filled = 0;
+  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + TRAFFIC_MS) }), 1000);
   const look = () => {
     if (phase >= PHASES.length) return;
     const t = (performance.now() - phaseBegan) / 1000;
-    const p = PHASES[phase];
+    pinTimeOfDay(lightOf(PHASES[phase]));
+    const p = PHASES[phase].replace("n-", "");
     if (p === "pan") eye.look(x + h * 3 * Math.sin((Math.PI * t) / 7.5), y, h);
     else if (p === "zoom") eye.look(x, y, h * 2 ** (1.2 * Math.sin((2 * Math.PI * t) / 5)));
     else eye.look(x, y, p === "far" ? h * 2.5 : h);
@@ -178,7 +190,7 @@ export default function PerfReport() {
       draws: engine.drawCallCount,
       long: long.sort((a, b) => b.ms - a.ms).slice(0, 6),
       errors: Object.fromEntries(errors),
-      counts: Object.fromEntries([...counts].map(([k, v]) => [k, Math.round(v)])),
+      counts: Object.fromEntries([...counts, ["vehicles moving", beamCount()] as const].map(([k, v]) => [k, Math.round(v)])),
       profile: trace ? tally(trace) : "unavailable",
       agent: navigator.userAgent,
     };
@@ -187,15 +199,24 @@ export default function PerfReport() {
     counts.clear();
     void fetch("/perf", { method: "POST", body: JSON.stringify(body) });
     sent.push(body);
-    phase++;
+    // The last settle lasts until the traffic has filled the streets.
+    if (!(PHASES[phase] === "settle" && PHASES[phase + 1] !== "settle" && simNow() < filled)) phase++;
     phaseBegan = performance.now();
     if (phase === PHASES.length) {
       clearInterval(timer);
       setDone(sent);
-      // Then what each kind of thing in the still view costs (`cost.ts`).
+      // Then what each kind of thing in the still view costs (`cost.ts`),
+      // by night and then by day: the run is over once that is in.
       eye.look(x, y, h);
       const meter = (window as { sprawlCost?: (rounds: number) => Promise<CostReport> }).sprawlCost;
-      void meter?.(3).then((cost) => fetch("/perf", { method: "POST", body: JSON.stringify({ at: new Date().toISOString(), tab: run, phase: "cost", cost }) }));
+      const post = (phase: string) => (cost: CostReport) => fetch("/perf", { method: "POST", body: JSON.stringify({ at: new Date().toISOString(), tab: run, phase, cost }) });
+      if (meter) {
+        pinTimeOfDay(lightOf("n-"));
+        void meter(3)
+          .then(post("n-cost"))
+          .then(() => (pinTimeOfDay(lightOf("")), meter(3)))
+          .then(post("cost"));
+      }
     }
   };
   const timer = setInterval(() => void report(), EVERY_MS);

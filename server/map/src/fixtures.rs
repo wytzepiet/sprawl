@@ -22,7 +22,9 @@
 //! the sea, which stand on it: a kind bigger than a tile is one
 //! building as far as its letter runs, of whatever shape, which the hand
 //! cannot place but the look must draw; a house is a house a tile. Lines starting with `#` are the fixture's
-//! description; the first is its title.
+//! description; the first is its title. Lines starting with `@`, and
+//! digits on its edge, are a level's (`interchange/src/level.rs`): traffic
+//! run through a test town, where it runs as one.
 
 use std::path::Path;
 use std::sync::OnceLock;
@@ -115,7 +117,7 @@ pub fn build(world: &mut Map, dir: &Path) {
 /// One fixture's text built into the world with its north-west corner at
 /// `x0`: its size, and its title.
 pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, String) {
-    let (notes, rows): (Vec<&str>, Vec<&str>) = text.lines().partition(|l| l.starts_with('#'));
+    let (notes, rows): (Vec<&str>, Vec<&str>) = text.lines().partition(|l| l.starts_with('#') || l.starts_with('@'));
     let rows: Vec<Vec<char>> = rows.iter().map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
     let w = rows.iter().map(Vec::len).max().unwrap_or(0) as i32;
     let h = rows.len() as i32;
@@ -338,7 +340,7 @@ mod tests {
         let mut wrong = Vec::new();
         for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {
             let text = std::fs::read_to_string(&path).unwrap();
-            let rows: Vec<Vec<char>> = text.lines().filter(|l| !l.starts_with('#')).map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
+            let rows: Vec<Vec<char>> = text.lines().filter(|l| !l.starts_with('#') && !l.starts_with('@')).map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
             for (row, line) in rows.iter().enumerate() {
                 for (col, &c) in line.iter().enumerate() {
                     let at = GridCoord { x: p.x + p.w - 1 - col as i32, y: -(row as i32) };

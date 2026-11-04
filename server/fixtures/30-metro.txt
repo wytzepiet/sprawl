@@ -1,0 +1,146 @@
+# Metro: the city four times over, with traffic through it from every side
+# The bench's heavy town: 15-city twice each way, and cars between ten gates on its edges.
+@gate 1 both
+@gate 2 both
+@gate 3 both
+@gate 4 both
+@gate 5 both
+@gate 6 both
+@gate 7 both
+@gate 8 both
+@gate 9 both
+@gate 0 both
+@want 1 4 8
+@want 4 1 8
+@want 1 5 8
+@want 5 1 8
+@want 1 6 8
+@want 6 1 8
+@want 2 4 8
+@want 4 2 8
+@want 2 5 8
+@want 5 2 8
+@want 2 6 8
+@want 6 2 8
+@want 3 4 8
+@want 4 3 8
+@want 3 5 8
+@want 5 3 8
+@want 3 6 8
+@want 6 3 8
+@want 7 1 8
+@want 1 7 8
+@want 7 3 8
+@want 3 7 8
+@want 7 5 8
+@want 5 7 8
+@want 8 2 8
+@want 2 8 8
+@want 8 4 8
+@want 4 8 8
+@want 8 6 8
+@want 6 8 8
+@want 9 1 8
+@want 1 9 8
+@want 9 3 8
+@want 3 9 8
+@want 9 5 8
+@want 5 9 8
+@want 0 2 8
+@want 2 0 8
+@want 0 4 8
+@want 4 0 8
+@want 0 6 8
+@want 6 0 8
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+==================================#================================================================#===============================
+=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#...............H=H............=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#...............H=H............=
+=H.....H=H...H=H...H~~H..H=H.....S#..............H=H....TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#..............H=H....TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#.............H=H.....TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#.............H=H.....TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#............H=H......TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#............H=H......TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#...........H=H.......TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#...........H=H.......TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#..........H=H........TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#..........H=H........TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#.........H=H.........TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#.........H=H.........TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#........H=H..........TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#........H=H..........TTTTTTTT.=
+=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#.......H=H...........TTTTTTTT.=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#.......H=H...........TTTTTTTT.=
+1=================================#......H=H.....................==================================#......H=H.....................=
+=HHHHHHH=HHHHH=HHHHHHHHHHH=AAAHHHS#.....H=H......................=HHHHHHH=HHHHH=HHHHHHHHHHH=AAAHHHS#.....H=H......................=
+=H.....H=H...H=H.........H=AAA...S#....H=H.......................=H.....H=H...H=H.........H=AAA...S#....H=H.......................=
+=H.....H=H...H=H.:::::::.H=H.....S#...H=H........................=H.....H=H...H=H.:::::::.H=H.....S#...H=H........................=
+=H.....H=H...H=H.:::::::.H=H.....S#..H=H.........................=H.....H=H...H=H.:::::::.H=H.....S#..H=H.........................=
+=H.....H=H...H=H.:::::::.H=H.....S#.OOO..........................=H.....H=H...H=H.:::::::.H=H.....S#.OOO..........................=
+=H.....H=H...H=H.:::::::.H=H.....S#HOOO.OOOO.....................=H.....H=H...H=H.:::::::.H=H.....S#HOOO.OOOO.....................=
+=H.....H=H...H=H.........H=H.....S#=OOO.OOOO.....................=H.....H=H...H=H.........H=H.....S#=OOO.OOOO.....................=
+=SSSSSSS=SSSSS=HHHHHHHHHHH=SSSSSSS#.OOO.OOOO.....................=SSSSSSS=SSSSS=HHHHHHHHHHH=SSSSSSS#.OOO.OOOO.....................=
+=##################################################################################################################################
+=AAAAAAAAAAAAAAA=AAAAAAAAAAAAAAAAA#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=AAAAAAAAAAAAAAA=AAAAAAAAAAAAAAAAA#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
+=...............=...........MMMM..#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=...............=...........MMMM..#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
+=...............=...........MMMM..#:DDDDDDFFFF::::=DDDDDDDFFFF:::=...............=...........MMMM..#:DDDDDDFFFF::::=DDDDDDDFFFF:::=
+=...............=...........MMMM..#:DDDDDD::::GG::=DDDDDDDFFFF:::=...............=...........MMMM..#:DDDDDD::::GG::=DDDDDDDFFFF:::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHH::::HH#:::::::::::::::=:::::::FFFF:::=HHHHHHHHHHHHHHH=HHHHHHHHHHH::::HH#:::::::::::::::=:::::::FFFF:::=
+==================================#:::::::::::::::=::::::::::::::==================================#:::::::::::::::=::::::::::::::4
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=::::::::::::::=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=::::::::::::::=
+=...............=.................#===============================...............=.................#===============================
+=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=
+=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:DDDDDDDFFFF:::=DDDDDDD:FFFFFF=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:DDDDDDDFFFF:::=DDDDDDD:FFFFFF=
+==================================#:DDDDDDD:::::::=DDDDDDD:::::::==================================#:DDDDDDD:::::::=DDDDDDD:::::::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=DDDDDDD:::::::=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=DDDDDDD:::::::=
+=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=
+=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=
+=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#===============================HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#===============================
+2=================================#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF==================================#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=
+=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=
+=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD::::::=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD::::::=
+=...............=.................#::::::::TTTTTT:=::::::::::::::=...............=.................#::::::::TTTTTT:=::::::::::::::=
+=...............=.................#::::::::TTTTTT:=::::::::::::::=...............=.................#::::::::TTTTTT:=::::::::::::::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#::::::::TTTTTT:=::::::::::::::=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#::::::::TTTTTT:=::::::::::::::=
+==================================#================================================================#===============================
+=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#...............H=H............=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#...............H=H............=
+=H.....H=H...H=H...H~~H..H=H.....S#..............H=H....TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#..............H=H....TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#.............H=H.....TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#.............H=H.....TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#............H=H......TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#............H=H......TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#...........H=H.......TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#...........H=H.......TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#..........H=H........TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#..........H=H........TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#.........H=H.........TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#.........H=H.........TTTTTTTT.=
+=H.....H=H...H=H...H~~H..H=H.....S#........H=H..........TTTTTTTT.=H.....H=H...H=H...H~~H..H=H.....S#........H=H..........TTTTTTTT.=
+=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#.......H=H...........TTTTTTTT.=HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#.......H=H...........TTTTTTTT.=
+==================================#......H=H.....................==================================#......H=H.....................5
+=HHHHHHH=HHHHH=HHHHHHHHHHH=AAAHHHS#.....H=H......................=HHHHHHH=HHHHH=HHHHHHHHHHH=AAAHHHS#.....H=H......................=
+=H.....H=H...H=H.........H=AAA...S#....H=H.......................=H.....H=H...H=H.........H=AAA...S#....H=H.......................=
+=H.....H=H...H=H.:::::::.H=H.....S#...H=H........................=H.....H=H...H=H.:::::::.H=H.....S#...H=H........................=
+=H.....H=H...H=H.:::::::.H=H.....S#..H=H.........................=H.....H=H...H=H.:::::::.H=H.....S#..H=H.........................=
+=H.....H=H...H=H.:::::::.H=H.....S#.OOO..........................=H.....H=H...H=H.:::::::.H=H.....S#.OOO..........................=
+=H.....H=H...H=H.:::::::.H=H.....S#HOOO.OOOO.....................=H.....H=H...H=H.:::::::.H=H.....S#HOOO.OOOO.....................=
+=H.....H=H...H=H.........H=H.....S#=OOO.OOOO.....................=H.....H=H...H=H.........H=H.....S#=OOO.OOOO.....................=
+=SSSSSSS=SSSSS=HHHHHHHHHHH=SSSSSSS#.OOO.OOOO.....................=SSSSSSS=SSSSS=HHHHHHHHHHH=SSSSSSS#.OOO.OOOO.....................=
+=##################################################################################################################################
+=AAAAAAAAAAAAAAA=AAAAAAAAAAAAAAAAA#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=AAAAAAAAAAAAAAA=AAAAAAAAAAAAAAAAA#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
+=...............=...........MMMM..#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=...............=...........MMMM..#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
+=...............=...........MMMM..#:DDDDDDFFFF::::=DDDDDDDFFFF:::=...............=...........MMMM..#:DDDDDDFFFF::::=DDDDDDDFFFF:::=
+=...............=...........MMMM..#:DDDDDD::::GG::=DDDDDDDFFFF:::=...............=...........MMMM..#:DDDDDD::::GG::=DDDDDDDFFFF:::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHH::::HH#:::::::::::::::=:::::::FFFF:::=HHHHHHHHHHHHHHH=HHHHHHHHHHH::::HH#:::::::::::::::=:::::::FFFF:::=
+3=================================#:::::::::::::::=::::::::::::::==================================#:::::::::::::::=::::::::::::::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=::::::::::::::=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=::::::::::::::=
+=...............=.................#===============================...............=.................#===============================
+=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=
+=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=...............=.................#:DDDDDDDFFFFFFF=DDDDDDD:FFFFFF=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:DDDDDDDFFFF:::=DDDDDDD:FFFFFF=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:DDDDDDDFFFF:::=DDDDDDD:FFFFFF=
+==================================#:DDDDDDD:::::::=DDDDDDD:::::::==================================#:DDDDDDD:::::::=DDDDDDD:::::::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=DDDDDDD:::::::=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:::::::::::::::=DDDDDDD:::::::=
+=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=
+=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=
+=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=...............=.....TTTTT.......#:FFFFF::DDDDDDD=::::::::FFFFFF=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#===============================HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#===============================
+==================================#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF==================================#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF6
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=
+=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD:FFFFF=
+=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD::::::=...............=.................#:FFFFFF:TTTTTT:=DDDDDDDD::::::=
+=...............=.................#::::::::TTTTTT:=::::::::::::::=...............=.................#::::::::TTTTTT:=::::::::::::::=
+=...............=.................#::::::::TTTTTT:=::::::::::::::=...............=.................#::::::::TTTTTT:=::::::::::::::=
+=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#::::::::TTTTTT:=::::::::::::::=HHHHHHHHHHHHHHH=HHHHHHHHHHHHHHHHH#::::::::TTTTTT:=::::::::::::::=
+================7=================#===============8==============================9=================#===============0===============

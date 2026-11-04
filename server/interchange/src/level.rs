@@ -310,6 +310,12 @@ impl Level {
                         }
                     }
                 }
+                // A gate drawn on a road's end joins it: a town's street
+                // runs on out to the edge.
+                let inner = at(col - dc, row - dr);
+                if way == Way::Both && rows.get((row - dr) as usize).and_then(|r| r.get((col - dc) as usize)).is_some_and(|&c| c == '=' || c == '#') {
+                    world.map.place_road_path_of(&[path[0], inner], false);
+                }
                 let end = path[path.len() - 1];
                 if let Some(node) = world.map.road_node_at(end) {
                     world.map.open_exit(node);
@@ -584,6 +590,11 @@ impl Level {
                 let car = game.world.map.insert_at(GameObject::Car(Car::new(0, CarRole::Private)), start);
                 if !game.world.drive(&mut game.events, |t, e| traffic::car::spawn::drive_through(t, e, car, route, now)) {
                     game.world.map.despawn_car(car);
+                    // Building: one that cannot get on never came, rather
+                    // than look for its way again every step.
+                    if !testing {
+                        self.queue[i].clear();
+                    }
                     break;
                 }
                 self.queue[i].pop_front();
