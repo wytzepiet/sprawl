@@ -375,8 +375,7 @@ fn unplace(world: &mut World, events: &mut EventQueue, id: EntityId, kind: Build
         None => model::blueprint::takes(kind),
     };
     // The van arrives empty.
-    let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
-    materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
+    materials.extend(crate::logistics::recall(world, id));
     world.map.remove_building(id);
     take_up(world, events, laid, now);
     let mut back = vec![refund(world, paid, now)];

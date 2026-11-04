@@ -92,7 +92,7 @@ fn place(world: &mut World, events: &mut EventQueue, kind: BuildingKind, at: Gri
         }
     }
     let id = world.map.raise(kind, tiles, facing);
-    crate::calls::turn(world, events, id, now);
+    crate::logistics::turn(world, events, id, now);
     let paid = purse.paid(world);
     crate::undo::placed(world, id, laid, paid, after, now);
     None

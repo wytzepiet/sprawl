@@ -186,13 +186,24 @@ impl Db {
     }
 }
 
-/// Whether an object is worth saving. A journey is not — a trip's route
+/// What of an object is worth saving. A journey is not — a trip's route
 /// references live world state, and a run or a voyage is timed by wakes
-/// that die with the process, so a restart ends all of them anyway. The parked car is; a save mid-journey keeps the
-/// version last seen parked, and the driver self-heals home, or the
-/// shelves the ship was fetching for call again.
-pub fn kept(entry: &GameObjectEntry) -> bool {
-    !matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some())
+/// that die with the process, so a restart ends all of them anyway. The
+/// parked car is; a save mid-journey keeps the version last seen parked,
+/// and the driver self-heals home. A depot's van or lorry on its way is
+/// saved at `home`, its depot's tile, with what it carries and its errand,
+/// and goes on from there: what it took is never lost, or found again
+/// where it was.
+pub fn kept(entry: &GameObjectEntry, home: Option<model::GridCoord>) -> Option<GameObjectEntry> {
+    let GameObject::Car(ref c) = entry.object else { return Some(entry.clone()) };
+    if c.trip.is_none() && c.run.is_none() && c.sail.is_none() {
+        return Some(entry.clone());
+    }
+    if !matches!(c.role, model::CarRole::Van | model::CarRole::Truck) || c.run.is_some() || c.sail.is_some() {
+        return None;
+    }
+    let car = model::Car { trip: None, spot: None, ..c.clone() };
+    Some(GameObjectEntry { id: entry.id, object: GameObject::Car(car), position: home })
 }
 
 #[cfg(test)]
@@ -237,8 +248,8 @@ mod tests {
         let scratch = Scratch::new("journey");
         let mut db = Db::open(&scratch.0);
         let mut save = |e: GameObjectEntry| {
-            let saved: Vec<_> = Some(&e).into_iter().filter(|e| kept(e)).collect();
-            db.save(&saved, &[], &Meta::default());
+            let saved: Vec<_> = kept(&e, None).into_iter().collect();
+            db.save(&saved.iter().collect::<Vec<_>>(), &[], &Meta::default());
         };
         let quay = GridCoord { x: 5, y: 5 };
         let mut ship = Car::new(1, CarRole::Ferry);

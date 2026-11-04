@@ -285,15 +285,14 @@ fn noise(seed: u32, hour: u64, mayor: u64, good: u64) -> f64 {
 /// Every hour gone by since the market last stepped, stepped, and the
 /// town's goods kept. Read each step of the game: no wake of its own, so
 /// a level or a replay with no market plays as it did.
-pub fn hour(world: &mut World, events: &mut traffic::event_queue::EventQueue, now: GameTime) {
-    let mut traded = false;
+pub fn hour(world: &mut World, now: GameTime) {
     while (world.market.hour + 1) * HOUR <= now {
         world.market.step(world.map.terrain_seed);
         crate::research::hour(world);
-        traded |= keep(world, now);
-    }
-    if traded {
-        crate::haul::call_lorries(world, events);
+        keep(world, now);
+        // What was booked to go out wants fetching; and once an hour the
+        // planner looks whatever happened, at places left to others.
+        world.plan_due = true;
     }
 }
 
@@ -307,7 +306,6 @@ fn position(world: &World, good: Good) -> f64 {
         .iter()
         .filter_map(|e| match e.object {
             GameObject::Building(ref b) if depot(b.kind) || model::blueprint::makes(b.kind, good) => b.stocks.get(&good).map(|s| s.level),
-            GameObject::Car(ref c) => c.load.filter(|l| l.0 == good).map(|l| l.1),
             _ => None,
         })
         .sum();
@@ -354,19 +352,19 @@ fn room(world: &World, good: Good) -> f64 {
 /// it stands on the quay, and the ferry has nowhere to land the rest.
 fn intake(world: &World, good: Good) -> u32 {
     let free: u32 = world.map.depots().into_iter().filter_map(|(_, b)| b.stocks.get(&good)).map(|s| crate::economy::whole(s.short(), good)).sum();
-    let coming = crate::haul::packages(world).iter().filter(|(t, ..)| t.good == good && !t.outbound).count() as u32;
+    let to_depot = |t: &Package| t.to.is_none_or(|d| world.map.building(d).is_none_or(|b| depot(b.kind)));
+    let coming = crate::haul::packages(world).iter().filter(|(t, ..)| t.good == good && !t.outbound && to_depot(t)).count() as u32;
     free.saturating_sub(coming)
 }
 
 /// An hour's trade: each good bought up to what the town will want, as
 /// far as its depots have room, and
 /// sold over twice that or over that and a full depot's, whichever is
-/// more. Whether anything was booked.
-fn keep(world: &mut World, now: GameTime) -> bool {
-    let Some(&harbour) = world.map.harbours.keys().next() else { return false };
-    let (Some(lands), Some(line)) = (world.next_ferry(harbour).and_then(|f| world.next_call(f)), world.lines.get(&harbour)) else { return false };
+/// more.
+fn keep(world: &mut World, now: GameTime) {
+    let Some(&harbour) = world.map.harbours.keys().next() else { return };
+    let (Some(lands), Some(line)) = (world.next_ferry(harbour).and_then(|f| world.next_call(f)), world.lines.get(&harbour)) else { return };
     let ahead = lands.saturating_sub(now) + line.cycle() / line.every_call() as GameTime;
-    let mut traded = false;
     let mut buys = Vec::new();
     for good in GOODS {
         let (have, want, per) = (position(world, good), want(world, good, ahead), good.per_package());
@@ -374,7 +372,7 @@ fn keep(world: &mut World, now: GameTime) -> bool {
         if have < want {
             buys.push((good, (((want - have) / per).ceil() as u32).min(intake(world, good))));
         } else {
-            traded |= trade(world, harbour, good, true, ((have - sell) / per).floor().max(0.0) as u32) > 0;
+            trade(world, harbour, good, true, ((have - sell) / per).floor().max(0.0) as u32);
         }
     }
     // The deck is shared: a package of each good wanted in turn, so one
@@ -389,12 +387,10 @@ fn keep(world: &mut World, now: GameTime) -> bool {
             *n -= 1;
             booked = true;
         }
-        traded |= booked;
         if !booked {
             break;
         }
     }
-    traded
 }
 
 /// Buy so many packages of a good from the market, on the next ferry in, or

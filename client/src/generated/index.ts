@@ -20,6 +20,7 @@ export type * from "./Deal";
 export type * from "./Deposit";
 export type * from "./DepotLine";
 export type * from "./Door";
+export type * from "./Errand";
 export type * from "./Flow";
 export type * from "./GameObject";
 export type * from "./GameObjectEntry";

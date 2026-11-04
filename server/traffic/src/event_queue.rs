@@ -89,6 +89,11 @@ impl EventQueue {
         self.heap.push(Scheduled { time: fire_at, id, generation });
     }
 
+    /// When `id` wakes next, if it is due to.
+    pub fn pending(&self, id: EntityId) -> Option<GameTime> {
+        self.dedup.get(&id).map(|d| d.time)
+    }
+
     /// When the next wake is scheduled, stale or not.
     pub fn next_due(&self) -> Option<GameTime> {
         self.heap.peek().map(|s| s.time)

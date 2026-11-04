@@ -237,7 +237,7 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         // A home's kitchen is its residents' alone.
         .filter(|&id| id == r.home || world.map.building(id).map(|b| b.kind).is_some_and(|k| blueprint(k).homes == 0))
         // Empty shelves sell nothing.
-        .filter(|&id| crate::calls::stocked(world, id))
+        .filter(|&id| crate::logistics::stocked(world, id))
         // No road, no visit. Without this a building the road never reached
         // is scored on the crow-flies estimate — which, having no route to
         // lengthen it, comes out *cheaper* than anywhere real — so it wins,
@@ -564,7 +564,7 @@ pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: E
     // A hand arriving is a change at the workplace: a farm's tractor goes
     // out with someone to drive it (`map/fields.rs`).
     if hired {
-        crate::calls::turn(world, events, place, now);
+        crate::logistics::turn(world, events, place, now);
     }
 }
 
@@ -589,7 +589,7 @@ fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: Entit
     let (Some(need), tab) = (r.selected, std::mem::take(&mut r.tab)) else { return };
     if tab > 0.0 && matches!(world.map.objects.get(at).map(|e| &e.object), Some(GameObject::Building(_))) {
         economy::visited(world, at, need, tab, now);
-        crate::calls::turn(world, events, at, now);
+        crate::logistics::turn(world, events, at, now);
     }
 }
 

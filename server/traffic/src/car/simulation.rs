@@ -798,10 +798,57 @@ pub fn handle_car_wake_up(
     let (road, standing) = road_ahead(world, &h, &trip, &gates, reached, waiting, turning_in);
     obstacles.extend(road);
     obstacles.extend(slotting.iter().copied());
+    // Stood still past all patience, in a loop of waits no rule of the
+    // road breaks, or far longer than anyone waits for traffic: it goes
+    // through, minding only the road, over the node ahead and the next.
+    trip.stood = if h.speed > 0.01 { None } else { trip.stood.or(Some(now)) };
+    if trip.ghost.is_none() && trip.stood.is_some_and(|t| now >= t + 10 * crate::car::GHOST_MS || now >= t + crate::car::GHOST_MS && deadlocked(world, car_id, now)) {
+        trip.ghost = Some(h.ri + 1);
+    }
+    trip.ghost = trip.ghost.filter(|&k| h.ri <= k);
+    if trip.ghost.is_some() {
+        obstacles.retain(|(o, _)| matches!(o, Obstacle::SpeedLimit { .. } | Obstacle::Halt { .. }));
+    }
     // Waiting for a gap: look again soon. Waiting for someone else to turn
     // needs no looking: they wake whoever is coming once they are clear.
-    let soon = waiting || turning_in || !slotting.is_empty();
+    let soon = trip.ghost.is_none() && (waiting || turning_in || !slotting.is_empty());
     settle(world, events, &h, &trip, &obstacles, soon, standing, [tail_clears, look], lanes_changed);
+}
+
+/// Is this car the one to give way in a loop: what it waits on waits, by
+/// way of whatever that waits on, on this car again, every one of them
+/// standing, a loop no rule of the road breaks; and of that loop it has
+/// the lowest id, so one goes through and the rest keep their order.
+/// Waiting for a gap in moving traffic is no loop, however long.
+fn deadlocked(world: &Traffic, car_id: EntityId, now: GameTime) -> bool {
+    let waits_on = |id: EntityId| -> Vec<EntityId> {
+        let Some(t) = world.map.car(id).and_then(|c| c.trip.as_ref()).filter(|t| t.at(now).1 < 0.01) else { return Vec::new() };
+        match t.why.map(|w| w.0) {
+            Some(Cause::Ahead(o) | Cause::Merging(o) | Cause::LettingIn(o) | Cause::Turn(o) | Cause::GettingIn(Some(o))) => vec![o],
+            Some(Cause::Junction(n)) => world.streets.who(n).0,
+            _ => Vec::new(),
+        }
+    };
+    // Breadth first from the car, each found by whom, till the car again.
+    let mut by: Vec<(EntityId, usize)> = vec![(car_id, 0)];
+    let mut k = 0;
+    while k < by.len() && by.len() < 64 {
+        for o in waits_on(by[k].0) {
+            if o == car_id {
+                let (mut i, mut least) = (k, car_id);
+                while i > 0 {
+                    least = least.min(by[i].0);
+                    i = by[i].1;
+                }
+                return least == car_id;
+            }
+            if !by.iter().any(|&(b, _)| b == o) {
+                by.push((o, k));
+            }
+        }
+        k += 1;
+    }
+    false
 }
 
 /// Drive on to now: over each node the car has passed since it last
@@ -1472,6 +1519,7 @@ fn settle(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, o
         t.route_index = ri;
         t.standing = trip.standing;
         t.joined = trip.joined;
+        (t.stood, t.ghost) = (trip.stood, trip.ghost);
         // What it slows or stops for, kept for a replay to read.
         t.why = cause.map(|c| (c, new_accel));
         if accel_changed {

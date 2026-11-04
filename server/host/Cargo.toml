@@ -1,6 +1,7 @@
 # The server: the game on a clock, over websockets, saved to SQLite.
 [package]
 name = "sprawl-server"
+default-run = "sprawl-server"
 version = "0.1.0"
 edition = "2024"
 

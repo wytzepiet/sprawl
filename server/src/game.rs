@@ -13,8 +13,8 @@ pub type ClientId = u64;
 /// Simulated milliseconds per step. Fixed: speed adds steps rather than making
 /// them longer, so running fast cannot change what the simulation does.
 pub const STEP_MS: GameTime = 10;
-/// How often the game settles with nothing built: sites call for timber,
-/// ferries look at the time.
+/// How often the game settles with nothing built: ferries look at the
+/// time.
 const SETTLE_MS: GameTime = 500;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
@@ -243,7 +243,8 @@ impl Game {
             handle_wake(&mut self.world, &mut self.events, id, self.now);
             wakes += 1;
         }
-        crate::market::hour(&mut self.world, &mut self.events, self.now);
+        crate::market::hour(&mut self.world, self.now);
+        crate::logistics::plan(&mut self.world, &mut self.events, self.now);
         wakes
     }
 
@@ -258,7 +259,7 @@ impl Game {
         if self.now >= to {
             return false;
         }
-        if !self.stirred && self.world.map.unsettled.is_empty() {
+        if !self.stirred && self.world.map.unsettled.is_empty() && !self.world.plan_due {
             let due = self.events.next_due().into_iter().chain([(self.world.market.hour + 1) * crate::market::HOUR]).min().unwrap_or(GameTime::MAX);
             let next = due.saturating_sub(STEP_MS).min(self.now.next_multiple_of(SETTLE_MS)).max(self.now).next_multiple_of(STEP_MS);
             if next >= to {
@@ -288,33 +289,29 @@ fn handle_wake(
 ) {
     match world.map.objects.get(id).map(|e| &e.object) {
         // A parked one's is the game's: what it does next.
-        Some(GameObject::Car(c)) if c.trip.is_none() => crate::calls::car_idle(world, events, id, now),
+        Some(GameObject::Car(c)) if c.trip.is_none() => crate::logistics::car_idle(world, events, id, now),
         Some(GameObject::Car(_)) => world.drive(events, |t, e| traffic::car::simulation::handle_car_wake_up(t, e, id, now)),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened,
         // or a wait late long enough to give up on.
         Some(GameObject::Building(_)) => {
             world.give_up(id, now);
-            crate::calls::turn(world, events, id, now);
+            crate::logistics::turn(world, events, id, now);
         }
         // A junction's is its lights looking again.
         Some(GameObject::RoadNode(_)) => world.drive(events, |t, e| traffic::car::simulation::lights(t, e, id, now)),
         // Midnight: every building takes its turn, and every line reads
         // the labour market again.
         None if id == MIDNIGHT => {
-            crate::calls::turns(world, events, now);
+            crate::logistics::turns(world, events, now);
             settle_and_wake(world, events);
         }
-        // A call nothing could answer, tried again.
-        None if id == CALLS_AGAIN => crate::calls::dispatch(world, events, now),
         _ => {}
     }
 }
 
-/// The wakes that are nobody's: the day turning, and the calls nothing
-/// could answer tried again (`calls::RETRY_MS`). No entity has these ids.
+/// The wake that is nobody's: the day turning. No entity has this id.
 const MIDNIGHT: EntityId = EntityId::MAX;
-pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 
 /// Population follows what changed, and whoever's situation changed gets to
 /// think about it. And the day is always due to turn.
@@ -337,12 +334,9 @@ pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for h in standing {
         world.commission(h, events.now());
     }
-    // A site reached, and not calling: it calls for its timber.
-    world.sites.retain(|&id| matches!(world.map.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()));
-    let waiting: Vec<EntityId> = world.sites.iter().copied().filter(|&id| world.map.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id)).collect();
-    for id in waiting {
-        crate::calls::turn(world, events, id, events.now());
-    }
+    // Something built, reached or cut off: what it wants, or can give,
+    // may have changed.
+    world.plan_due |= changed;
     // A harbour built, or its line changed: its ferries look
     // again. Not at every settle: a moored ferry woken rolls its next
     // settler off at once, not ROLL_MS after the last.

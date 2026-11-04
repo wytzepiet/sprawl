@@ -7,7 +7,6 @@ import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
 import type { Car, Good, Lift, Pose, RoadNode, Run, Sail, Trip } from "../../generated";
-import { GOODS } from "../../blueprints";
 import { getObjectsAt } from "../../state/gameObjects";
 
 /**
@@ -191,13 +190,8 @@ export function deckPlace(ship: Pose, i: number): Pose {
 const aside = (p: Pose, d: number): Pose => ({ at: [p.at[0] - Math.sin(p.heading) * d, p.at[1] + Math.cos(p.heading) * d], heading: p.heading });
 
 /** What stands on a vehicle's flatbed, a good a package, from the front:
- *  a lorry's cargo, a van's load in whole packages. None for anything
- *  else. */
-export function carried(car: Car): Good[] {
-  if (car.role === "Truck") return car.cargo.map((p) => p.good);
-  if (car.role === "Van" && car.load) return Array(Math.ceil(car.load[1] / GOODS[car.load[0]].per - 1e-9)).fill(car.load[0]);
-  return [];
-}
+ *  a lorry's or a van's cargo. */
+export const carried = (car: Car): Good[] => car.cargo.map((p) => p.good);
 
 /** Where the `k`th package from the front stands on a flatbed at `bed`,
  *  `l` long: in a row down its middle, from the headboard back; five on
