@@ -29,7 +29,7 @@ import { add, barn, box, chimney, fence, gablet, golf, ground, heap, hull, lamp,
 
 const WALL: RGB = [0.33, 0.52, 0.42];
 const TRIM: RGB = [0.93, 0.88, 0.76];
-const ROOF: Cover = { finish: "matte", rgb: [0.62, 0.37, 0.25], ribs: 34, rib: [0.52, 0.3, 0.2] };
+const ROOF: Cover = { finish: "ribs", rgb: [0.62, 0.37, 0.25], ribs: 34 };
 const DOOR: RGB = [0.6, 0.45, 0.3];
 const BRICK: RGB = [0.66, 0.32, 0.24];
 const CHIPS: RGB = [0.86, 0.66, 0.4];

@@ -27,7 +27,7 @@ import { barn, bench, box, cask, chimney, cone, crate, door, drum, fence, flower
 
 const RED: RGB = [0.68, 0.26, 0.22];
 const WHITE: RGB = [0.94, 0.92, 0.86];
-const GREEN: Cover = { finish: "matte", rgb: [0.34, 0.56, 0.36], ribs: 30, rib: [0.29, 0.49, 0.32] };
+const GREEN: Cover = { finish: "ribs", rgb: [0.34, 0.56, 0.36], ribs: 30 };
 const SHUTTER: RGB = [0.27, 0.46, 0.31];
 const TIMBER: RGB = [0.55, 0.4, 0.27];
 const DARK: RGB = [0.4, 0.29, 0.2];

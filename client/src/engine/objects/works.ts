@@ -31,7 +31,7 @@ const CREAM: RGB = [0.93, 0.89, 0.8];
 const ZINC: Cover = { finish: "zinc", rgb: [0.66, 0.7, 0.76] };
 const SLATE: Cover = { finish: "tiles", rgb: [0.36, 0.4, 0.5] };
 const TILES: Cover = { finish: "tiles", rgb: [0.7, 0.36, 0.26] };
-const RIBBED = (rgb: RGB): Cover => ({ finish: "matte", rgb, ribs: 30, rib: [rgb[0] * 0.85, rgb[1] * 0.85, rgb[2] * 0.85] });
+const RIBBED = (rgb: RGB): Cover => ({ finish: "ribs", rgb, ribs: 30 });
 
 /** Four legs tapering from `foot` apart at the ground to `top` apart at
  *  `h`, braced. */

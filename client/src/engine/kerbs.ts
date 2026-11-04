@@ -90,12 +90,21 @@ let kerbD = kerbAt.r;
 let kerbEdge = min(select(9., kerbD, kerbD >= 0.), ${n(CUT)} - kerbAt.a);
 let kerbBand = 1. - step(${n(BAND)}, kerbEdge);
 baseColor *= mix(1., ${n(BAND_LIGHT)}, kerbBand);
-let kerbDx = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).r;
-let kerbDy = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).r;
+// Within reach of an edge (its chamfer, the kerb's rim, the joint behind
+// the stones) the surface turns; further in, nothing here moves it, and
+// none of it is read.
+if (kerbEdge < ${n(BAND + JOINT)}) {
+// The texels either side, across and up: how both distances run.
+let kerbE = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.);
+let kerbW = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.);
+let kerbN = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.);
+let kerbS = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.);
+let kerbDx = kerbE.r - kerbW.r;
+let kerbDy = kerbN.r - kerbS.r;
 if (kerbD >= 0. && kerbD < ${n(CHAMFER)} && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
   N = normalize(N + normalize(vec3f(-kerbDx, -kerbDy, 0.)));
 }
-let kerbToRoad = vec2f(textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).a - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).a, textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).a - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).a);
+let kerbToRoad = vec2f(kerbE.a - kerbW.a, kerbN.a - kerbS.a);
 if (${n(CUT)} - kerbAt.a < ${n(CHAMFER)} && dot(kerbToRoad, kerbToRoad) > 0.) {
   N = normalize(N + vec3f(normalize(kerbToRoad), 0.));
 }
@@ -105,6 +114,7 @@ let kerbIn = select(vec2f(kerbDx, kerbDy), -kerbToRoad, ${n(CUT)} - kerbAt.a < s
 let kerbJoint = kerbEdge - ${n(BAND)};
 if (abs(kerbJoint) < ${n(JOINT)} && dot(kerbIn, kerbIn) > 0.) {
   N = normalize(N - vec3f(normalize(kerbIn) * sign(kerbJoint) * (1. - abs(kerbJoint) / ${n(JOINT)}) * ${n(JOINT_DEPTH)}, 0.));
+}
 }`,
           },
   };

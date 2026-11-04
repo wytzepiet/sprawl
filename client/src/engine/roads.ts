@@ -3,7 +3,7 @@ import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
 import { theme } from "./theme";
 import { Atlas } from "./atlas";
-import { grain } from "./ground";
+import { grain, grainSlope } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, LAYER_ORDER, PAVED_Z, RIM } from "./town/draw";
@@ -141,8 +141,9 @@ out.vRoadTilt = roadClimb.xy * (roadLift.y + roadU * (2. * roadLift.z + 3. * roa
           }
         : {
             CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = input.worldPos.xy / ${n(GRAIN_SPAN)};
-let roadGrainAt = textureSample(roadGrain, roadGrainSampler, roadGrainUv).r;
-let roadBump = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${n(1 / 256)}, 0.)).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(${n(1 / 256)}, 0.)).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(0., ${n(1 / 256)})).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(0., ${n(1 / 256)})).r);
+let roadGrainTexel = textureSample(roadGrain, roadGrainSampler, roadGrainUv);
+let roadGrainAt = roadGrainTexel.r;
+let roadBump = ${grainSlope("roadGrainTexel")};
 let roadGlintWay = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other1})).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other2})).r);
 let roadGlinting = step(${n(1 - GLINTS)}, roadGrainAt);
 let roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * textureSample(roadGrain, roadGrainSampler, roadGrainUv / ${n(CHIPS)}).r;
@@ -163,13 +164,16 @@ townShine = max(roadGlinting * (1. - roadWorn), ${n(POLISH)} * roadWorn);
 baseColor = baseColor * (1. - ${n(WEAR)} * roadWorn);
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
 N = normalize(N - vec3f(roadBump * ${n(BUMP)} * (1. - ${n(SMOOTHED)} * roadWorn) + input.vRoadTilt, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting * (1. - roadWorn), 0.));
-let roadTx = vec2f(roadTexel.x, 0.);
-let roadTy = vec2f(0., roadTexel.y);
-let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
-let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
-if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 0.) {
-  let roadOut = normalize(vec3f(-roadDx, -roadDy, 0.));
-  N = normalize(mix(N, normalize(N + roadOut), 1. - roadD.g / ${n(RIM)}));
+// Which way the rim runs, read only on the rim: most of a road is not.
+if (roadD.g >= 0. && roadD.g < ${n(RIM)}) {
+  let roadTx = vec2f(roadTexel.x, 0.);
+  let roadTy = vec2f(0., roadTexel.y);
+  let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
+  let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
+  if (roadDx * roadDx + roadDy * roadDy > 0.) {
+    let roadOut = normalize(vec3f(-roadDx, -roadDy, 0.));
+    N = normalize(mix(N, normalize(N + roadOut), 1. - roadD.g / ${n(RIM)}));
+  }
 }`,
           },
   };
