@@ -12,9 +12,7 @@ pub mod lots;
 pub mod network;
 pub mod pads;
 pub mod pathfinding;
-mod residents;
 pub mod roads;
-pub mod sea;
 pub mod segments;
 
 use std::collections::BTreeSet;

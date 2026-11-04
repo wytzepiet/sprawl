@@ -52,18 +52,15 @@ impl TerrainType {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
 #[ts(export)]
 pub enum Deposit {
-    Ore,
-    Coal,
-    Oil,
+    /// Ochre ground with clay under it, in patches of the grass.
+    Clay,
 }
 
 impl Deposit {
     /// Wire encoding in a chunk's `deposits`: none is 0.
     pub fn to_byte(self) -> u8 {
         match self {
-            Deposit::Ore => 1,
-            Deposit::Coal => 2,
-            Deposit::Oil => 3,
+            Deposit::Clay => 1,
         }
     }
 }

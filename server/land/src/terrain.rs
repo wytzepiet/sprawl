@@ -290,27 +290,19 @@ pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
     (CHUNKS_MIN..=CHUNKS_MAX).flat_map(|cy| (CHUNKS_MIN..=CHUNKS_MAX).map(move |cx| ChunkCoord { cx, cy })).flat_map(|c| chunk(seed, c)).collect()
 }
 
-/// What lies under the land of a seed (`Deposit`): ore and coal in
-/// patches of the mountains, a few tiles to a few dozen across, oil in
-/// rarer patches of the grass. Noise picks the patches, so some islands
-/// have each and some lack it, and two towns with different land have
-/// something to sell each other.
+/// What lies under the land of a seed (`Deposit`): clay, in patches of
+/// the grass a few tiles to a few dozen across.
 pub fn deposits(seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> HashMap<(i32, i32), crate::Deposit> {
     use crate::Deposit;
-    let ore = Simplex::new(seed.wrapping_add(40));
-    let coal = Simplex::new(seed.wrapping_add(41));
-    let oil = Simplex::new(seed.wrapping_add(42));
-    const PATCH: f64 = 0.035;
-    const FIELD: f64 = 0.02;
+    let clay = Simplex::new(seed.wrapping_add(40));
+    const PATCH: f64 = 0.06;
     let mut out = HashMap::default();
     let mut tiles: Vec<_> = terrain.iter().collect();
     tiles.sort_by_key(|(p, _)| **p);
     for (&(x, y), &t) in tiles {
         let (fx, fy) = (x as f64, y as f64);
         let d = match t {
-            TerrainType::Mountain if ore.get([fx * PATCH, fy * PATCH]) > 0.4 => Some(Deposit::Ore),
-            TerrainType::Mountain if coal.get([fx * PATCH, fy * PATCH]) > 0.4 => Some(Deposit::Coal),
-            TerrainType::Grass if oil.get([fx * FIELD, fy * FIELD]) > 0.82 => Some(Deposit::Oil),
+            TerrainType::Grass if clay.get([fx * PATCH, fy * PATCH]) > 0.55 => Some(Deposit::Clay),
             _ => None,
         };
         if let Some(d) = d {
@@ -331,14 +323,13 @@ mod tests {
     /// `--nocapture` prints how much of each lies within reach of home.
     #[test]
     #[ignore]
-    fn deposits_lie_in_some_places() {
+    fn clay_lies_near_every_home() {
         for seed in 0..8 {
             let land = generate(seed);
             let under = deposits(seed, &land);
-            let count = |d: crate::Deposit, near: bool| under.iter().filter(|&(&(x, y), &k)| k == d && (!near || x * x + y * y < 150 * 150)).count();
-            let (ore, coal, oil) = (count(crate::Deposit::Ore, false), count(crate::Deposit::Coal, false), count(crate::Deposit::Oil, false));
-            println!("seed {seed}: ore {ore} ({} near home), coal {coal} ({}), oil {oil} ({})", count(crate::Deposit::Ore, true), count(crate::Deposit::Coal, true), count(crate::Deposit::Oil, true));
-            assert!(ore > 0 && coal > 0 && oil > 0, "seed {seed} lacks a deposit");
+            let near = under.keys().filter(|&&(x, y)| x * x + y * y < 60 * 60).count();
+            println!("seed {seed}: clay {} ({near} near home)", under.len());
+            assert!(near > 0, "seed {seed} has no clay near home");
         }
     }
 

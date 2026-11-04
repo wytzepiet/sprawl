@@ -3,38 +3,25 @@ use model::{Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placi
 use land::TerrainType;
 use crate::Map;
 
-/// What lies behind a harbour's back, best first.
-#[derive(Clone, Copy)]
-enum Behind {
-    Berth,
-    Sea,
-    Lake,
-    Land,
-}
-
 impl Map {
-    /// A building saved before it had its shelves or its yard gets them the
-    /// way a standing one does; one whose row resized a shelf keeps what
-    /// was on it, as far as it fits. A site has neither until it stands.
+    /// A maker's yard and bins, as its row has them; what is on them kept
+    /// as far as it fits.
     pub fn open_shelves(&mut self, id: EntityId) {
         let Some(b) = self.building_mut(id) else { return };
-        if b.site.is_some() {
+        if b.kind == BuildingKind::House || b.kind == BuildingKind::Shop {
             return;
         }
-        let caps = model::blueprint::stocks(b.kind);
-        b.stocks.retain(|good, _| caps.contains_key(good));
+        let caps = model::blueprint::shelves(b.kind);
+        b.stocks.retain(|good, _| caps.iter().any(|(g, _)| g == good));
         for (good, cap) in caps {
             let s = b.stocks.entry(good).or_default();
-            *s = model::needs::Stock { level: s.level.min(cap), cap };
+            *s = model::Stock { level: s.level.min(cap), cap };
         }
     }
 
-    /// The last of a site's materials landed: it stands, its shelves empty and
-    /// calling; its vehicles stand in its yard, and a farm claims its land.
+    /// A building placed: its shelves open, and once a street reaches it,
+    /// its vehicles stand in its yard and a farm claims its land.
     pub fn stand(&mut self, id: EntityId) {
-        if let Some(b) = self.building_mut(id) {
-            b.site = None;
-        }
         self.open_shelves(id);
         self.unsettled.insert(id);
         if self.street_of(id).is_some() {
@@ -43,28 +30,15 @@ impl Map {
         }
     }
 
-    /// A facility's vehicles, standing in its yard from the day it is reached:
-    /// the ones its row lists, each in a dock.
+    /// A building's vehicles, standing in its yard from the day it is
+    /// reached: the ones its row lists, each in a dock.
     pub fn stable(&mut self, facility: EntityId) {
-        let kind = match self.objects.get(facility).map(|e| &e.object) {
-            Some(GameObject::Building(b)) if b.site.is_none() => b.kind,
-            _ => return,
-        };
-        let (lorries, vans) = match self.objects.get(facility).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => (b.lorries as usize, b.vans as usize),
-            _ => (0, 0),
-        };
-        let row = model::blueprint::blueprint(kind).vehicles;
+        let Some(kind) = self.building(facility).map(|b| b.kind) else { return };
+        let row = model::blueprint::blueprint(kind).vehicles();
         let tile = self.objects.get(facility).and_then(|e| e.position);
-        // Of each role, the row's and those bought, less what stands.
-        for role in [model::CarRole::Truck, model::CarRole::Van, model::CarRole::Tractor] {
-            let bought = match role {
-                model::CarRole::Truck => lorries,
-                model::CarRole::Van => vans,
-                _ => 0,
-            };
+        for role in [model::CarRole::Truck, model::CarRole::Tractor] {
             let have = self.objects.fleet(facility).filter(|&c| matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role)).count();
-            for _ in have..row.iter().filter(|&&r| r == role).count() + bought {
+            for _ in have..row.iter().filter(|&&r| r == role).count() {
                 let car = self.insert_at(GameObject::Car(model::Car::new(facility, role)), tile);
                 self.park_in_lot(facility, car, 0);
             }
@@ -182,7 +156,7 @@ impl Map {
     /// way first, which keeps its shape; a harbour stays with its back to
     /// the sea; anything else has no front, its door on any side.
     fn facings(kind: BuildingKind, facing: u8) -> Vec<u8> {
-        if model::blueprint::blueprint(kind).quay || model::blueprint::blueprint(kind).lot.1 == 0 {
+        if model::blueprint::lot(kind).1 .1 == 0 {
             return vec![facing];
         }
         [0, 2, 1, 3].iter().map(|k| (facing + k) % 4).collect()
@@ -359,32 +333,12 @@ impl Map {
     /// open land, road or no road: dormant till one comes.
     pub fn place_building(&mut self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<EntityId> {
         let tiles: Vec<GridCoord> = Self::footprint(pos, model::blueprint::plot(kind, facing).size).collect();
-        let quay = model::blueprint::blueprint(kind).quay;
-        (self.may_stand_on(&tiles, kind, facing) && (!quay || self.berth_at(&tiles, kind, facing).is_some())).then(|| self.raise(kind, tiles, facing))
+        self.may_stand_on(&tiles, kind, facing).then(|| self.raise(kind, tiles, facing))
     }
 
     /// The building on this tile, if any.
     pub(super) fn claimed_plot_at(&self, tile: GridCoord) -> Option<EntityId> {
         self.occupied.get(&(tile.x, tile.y)).copied()
-    }
-
-    /// A building placed by the mayor: the town's first depot, and anything
-    /// built of nothing, stands at once, and the rest are sites waiting for
-    /// their timber.
-    pub fn founded(&mut self, id: EntityId) {
-        let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return };
-        let kind = b.kind;
-        let first_depot = model::blueprint::depot(kind)
-            && !self.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == kind && o.site.is_none()));
-        if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-            if first_depot {
-                b.site = None;
-            }
-        }
-        let standing = matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_none());
-        if standing {
-            self.stand(id);
-        }
     }
 
     /// Every building placed, reached, cut off or taken away since last
@@ -420,11 +374,7 @@ impl Map {
             _ => false,
         };
         if !stands {
-            let quay = model::blueprint::blueprint(kind).quay;
             let found = Self::facings(kind, facing).into_iter().find_map(|f| {
-                if quay && self.berth_at(&tiles, kind, f).is_none() {
-                    return None;
-                }
                 let (street, tile) = self.driveway_for(&tiles, kind, f)?;
                 Some((f, model::Door { tile, street: self.objects.get(street)?.position? }))
             });
@@ -466,7 +416,6 @@ impl Map {
         (0..4).find(|&f| {
             let tiles: Vec<GridCoord> = Self::footprint(pos, model::blueprint::plot(kind, f).size).collect();
             self.may_stand_on(&tiles, kind, f)
-                && (!model::blueprint::blueprint(kind).quay || self.berth_at(&tiles, kind, f).is_some())
                 && self.driveway_for(&tiles, kind, f).is_some()
         })
     }
@@ -483,13 +432,10 @@ impl Map {
     /// A building as a town written by hand has it: standing, its timber
     /// in, its shelves full but for what its own land fills.
     pub fn finish(&mut self, id: EntityId) {
-        if matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()) {
-            self.stand(id);
-        }
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
             let kind = b.kind;
             for (good, stock) in b.stocks.iter_mut() {
-                if !model::blueprint::makes(kind, *good) {
+                if model::blueprint::blueprint(kind).makes != Some(*good) {
                     stock.level = stock.cap;
                 }
             }
@@ -512,7 +458,9 @@ impl Map {
     /// the kerb; and a harbour's quay on open sea, which brings its own
     /// street.
     pub fn fit(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
+        use model::blueprint::Ground;
         let tiles = Self::plot_at(kind, at, facing);
+        let ground = model::blueprint::blueprint(kind).ground;
         for &t in &tiles {
             if self.occupied.contains_key(&(t.x, t.y)) {
                 return Err("Something stands there");
@@ -521,33 +469,19 @@ impl Map {
                 return Err("A street runs through it");
             }
             match self.terrain.get(&(t.x, t.y)) {
-                Some(TerrainType::Grass | TerrainType::Forest) => {}
-                Some(TerrainType::Sea) if Self::pier(&tiles, kind, facing, t) => {}
-                Some(TerrainType::Water) if Self::pier(&tiles, kind, facing, t) => return Err("A lake: the ferry comes only by sea"),
-                Some(TerrainType::Sea | TerrainType::Water) => return Err("Its plot runs into the water"),
+                Some(TerrainType::Grass | TerrainType::Forest) if ground != Ground::Beach => {}
+                Some(TerrainType::Beach) if ground == Ground::Beach => {}
                 Some(TerrainType::Beach) => return Err("On the beach: it stands on grass or forest"),
+                Some(TerrainType::Sea | TerrainType::Water) => return Err("Its plot runs into the water"),
+                _ if ground == Ground::Beach => return Err("It digs sand: it stands on the beach"),
                 _ => return Err("Not on open land"),
             }
         }
-        if model::blueprint::blueprint(kind).quay {
-            return match self.behind(&tiles, kind, facing) {
-                Behind::Berth => Ok(tiles),
-                Behind::Sea => Err("The water behind is too narrow: the ferry needs 6 tiles of open sea straight out"),
-                Behind::Lake => Err("A lake: the ferry comes only by sea"),
-                Behind::Land => Err("No quay: it stands half on the sea, its back on the water"),
-            };
-        }
-        // A maker of what the land gives needs some of it in reach.
-        if let Some((_, under)) = model::blueprint::blueprint(kind).makes.and_then(model::blueprint::ground) {
-            if self.in_reach(kind, &tiles) == 0.0 {
-                return Err(match (kind, under) {
-                    (_, Some(land::Deposit::Ore)) => "No ore in the mountain beside it",
-                    (_, Some(land::Deposit::Coal)) => "No coal in the mountain beside it",
-                    (_, Some(land::Deposit::Oil)) => "No oil under the ground round it",
-                    (BuildingKind::Sawmill, None) => "No forest beside it to fell",
-                    _ => "No mountain beside it to break",
-                });
-            }
+        match ground {
+            Ground::Shore if !self.on_shore(&tiles, facing) => return Err("Its back to the water: its boat goes out from the shore"),
+            Ground::Forest if self.in_reach(kind, &tiles) == 0.0 => return Err("No forest beside it to fell"),
+            Ground::Clay if tiles.iter().filter(|t| self.deposits.get(&(t.x, t.y)) == Some(&land::Deposit::Clay)).count() * 2 < tiles.len() => return Err("It digs clay: put it on the ochre ground"),
+            _ => {}
         }
         // A building that parks at the kerb needs a street all along one
         // side, where its bays go (`kerb_bays`).
@@ -555,28 +489,38 @@ impl Map {
         match self.driveway_for(&tiles, kind, facing) {
             Some(_) if kerbed(kind) && !SIDES.iter().any(|&d| self.street_along(&side_of(&tiles, d), d)) => Err("No street along a whole side, for its parking"),
             Some(_) => Ok(tiles),
-            None if model::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
+            None if model::blueprint::lot(kind).1 .1 > 0 => Err("No street before its yard"),
             None => Err("No street beside it"),
         }
     }
 
-    /// How much of its ground is within reach of a maker standing on these
-    /// tiles (`blueprint::ground`): the tiles of it within five, not its
-    /// own, nothing standing on them, against thirty, at most one. A
-    /// sawmill at the forest's edge makes half what one in the woods does.
+    /// How much forest a woodcutter on these tiles has in reach: the
+    /// tiles of it within five, nothing standing on them, against thirty,
+    /// at most one. Anything else has all it needs.
     pub fn in_reach(&self, kind: BuildingKind, tiles: &[GridCoord]) -> f64 {
-        let Some((ground, under)) = model::blueprint::blueprint(kind).makes.and_then(model::blueprint::ground) else { return 0.0 };
+        if model::blueprint::blueprint(kind).ground != model::blueprint::Ground::Forest {
+            return 1.0;
+        }
         let (o, (w, h)) = Self::bounds(tiles);
         let mut n = 0;
         for y in o.y - 5..o.y + h as i32 + 5 {
             for x in o.x - 5..o.x + w as i32 + 5 {
                 let t = GridCoord { x, y };
-                if self.terrain.get(&(x, y)) == Some(&ground) && under.is_none_or(|d| self.deposits.get(&(x, y)) == Some(&d)) && !tiles.contains(&t) && !self.occupied.contains_key(&(x, y)) && self.road_node_at(t).is_none() {
+                if self.terrain.get(&(x, y)) == Some(&TerrainType::Forest) && !tiles.contains(&t) && !self.occupied.contains_key(&(x, y)) && self.road_node_at(t).is_none() {
                     n += 1;
                 }
             }
         }
         (n as f64 / 30.0).min(1.0)
+    }
+
+    /// Does a plot facing this way have its back to the water: most of the
+    /// row of tiles behind it sea or lake.
+    pub fn on_shore(&self, tiles: &[GridCoord], facing: u8) -> bool {
+        let (fx, fy) = model::blueprint::FACINGS[facing as usize % 4];
+        let back: Vec<GridCoord> = crate::lots::side_of(tiles, (-fx, -fy));
+        let wet = back.iter().filter(|t| matches!(self.terrain.get(&(t.x - fx, t.y - fy)), Some(TerrainType::Sea | TerrainType::Water))).count();
+        !back.is_empty() && wet * 2 >= back.len()
     }
 
     /// May a building stand on this tile: open land, or a road's dead end
@@ -586,21 +530,16 @@ impl Map {
     }
 
     /// May a kind's plot stand on these tiles this way round: each on
-    /// ground it may stand on, or a harbour's on the sea (`pier`).
-    pub fn may_stand_on(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> bool {
+    /// ground it may stand on, a sand pit's on the beach.
+    pub fn may_stand_on(&self, tiles: &[GridCoord], kind: BuildingKind, _facing: u8) -> bool {
+        let beach = model::blueprint::blueprint(kind).ground == model::blueprint::Ground::Beach;
         tiles.iter().all(|&t| {
-            self.may_stand(t)
-                || (Self::pier(tiles, kind, facing, t) && !self.occupied.contains_key(&(t.x, t.y)) && self.terrain.get(&(t.x, t.y)) == Some(&TerrainType::Sea))
+            if beach {
+                !self.occupied.contains_key(&(t.x, t.y)) && self.road_node_at(t).is_none() && self.terrain.get(&(t.x, t.y)) == Some(&TerrainType::Beach)
+            } else {
+                self.may_stand(t)
+            }
         })
-    }
-
-    /// May this tile of a plot be over the sea: a harbour's, all but its
-    /// gate. A harbour stands half on the water, its quay built out over
-    /// it, so it fits a coast however the coast runs: straight, its back
-    /// row on the sea, or on the diagonal, the shore across it
-    /// (`berth_at`).
-    fn pier(tiles: &[GridCoord], kind: BuildingKind, facing: u8, t: GridCoord) -> bool {
-        model::blueprint::blueprint(kind).quay && Self::gate_of(tiles, kind, facing) != Some(t)
     }
 
     /// The street a harbour placed on these tiles brings with it, from the
@@ -669,23 +608,6 @@ impl Map {
         steps(&inland)
     }
 
-    /// What lies behind a harbour's back on these tiles facing this way:
-    /// a berth (`berth_at`), else the best of what is there.
-    fn behind(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Behind {
-        if self.berth_at(tiles, kind, facing).is_some() {
-            return Behind::Berth;
-        }
-        let Some(gate) = Map::gate_of(tiles, kind, facing) else { return Behind::Land };
-        let (dx, dy) = model::blueprint::FACINGS[facing as usize % 4];
-        let (_, (w, h)) = Map::bounds(tiles);
-        let deep = if dx == 0 { h } else { w } as i32 - 1;
-        match self.terrain.get(&(gate.x - dx * deep, gate.y - dy * deep)) {
-            Some(TerrainType::Sea) => Behind::Sea,
-            Some(TerrainType::Water) => Behind::Lake,
-            _ => Behind::Land,
-        }
-    }
-
     /// How a kind held at a tile would be placed: turned the way the hand
     /// turned it, or, left to itself, the first way it fits, and where none
     /// does, toward the nearest street, a harbour toward the sea, so the
@@ -706,8 +628,7 @@ impl Map {
         if let Some(ok) = all.iter().find(|p| p.why.is_none()) {
             return ok.clone();
         }
-        let quay = model::blueprint::blueprint(kind).quay;
-        let rank = |p: &Placing| if quay { self.behind(&p.tiles, kind, p.facing) as u32 } else { self.nearest_street(Self::front(&p.tiles, p.facing)) };
+        let rank = |p: &Placing| self.nearest_street(Self::front(&p.tiles, p.facing));
         all.into_iter().min_by_key(rank).expect("four ways round")
     }
 
@@ -718,7 +639,7 @@ impl Map {
             Err(why) => (Self::plot_at(kind, at, facing), Some(why.to_string())),
         };
         let door = why.is_none().then(|| self.driveway_for(&tiles, kind, facing)).flatten().and_then(|(id, tile)| Some(Door { tile, street: self.objects.get(id)?.position? }));
-        let ground = model::blueprint::blueprint(kind).makes.and_then(model::blueprint::ground).map(|_| self.in_reach(kind, &tiles));
+        let ground = (model::blueprint::blueprint(kind).ground == model::blueprint::Ground::Forest).then(|| self.in_reach(kind, &tiles));
         Placing { kind, at, tiles, facing, door, why, ground }
     }
 
@@ -751,7 +672,7 @@ impl Map {
             self.take_stub(id, t);
             self.occupy(id, t);
         }
-        self.founded(id);
+        self.stand(id);
         self.orient(id);
         id
     }

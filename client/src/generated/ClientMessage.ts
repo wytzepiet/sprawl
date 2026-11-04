@@ -2,9 +2,8 @@
 import type { Ask } from "./Ask";
 import type { Build } from "./Build";
 import type { BuildingKind } from "./BuildingKind";
-import type { CarRole } from "./CarRole";
 import type { ChunkBounds } from "./ChunkBounds";
 import type { GridCoord } from "./GridCoord";
 import type { Stroke } from "./Stroke";
 
-export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Draw", "data": Stroke } | { "type": "Ask", "data": Ask } | { "type": "Place", "data": { kind: BuildingKind, at: GridCoord, facing: number | null, } } | { "type": "Raze", "data": { building: number, } } | { "type": "Undo" } | { "type": "DespawnAllCars" } | { "type": "Research", "data": { kind: BuildingKind, } } | { "type": "Buy", "data": { depot: number, role: CarRole, } } | { "type": "Card", "data": number } | { "type": "SetSpeed", "data": number } | { "type": "RunTo", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds };
+export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Draw", "data": Stroke } | { "type": "Ask", "data": Ask } | { "type": "Place", "data": { kind: BuildingKind, at: GridCoord, facing: number | null, } } | { "type": "Raze", "data": { building: number, } } | { "type": "Undo" } | { "type": "Pick", "data": number } | { "type": "SetSpeed", "data": number } | { "type": "RunTo", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds };

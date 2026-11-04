@@ -134,17 +134,10 @@ enum Way {
     /// backing straight to the street; the door is the lot's node on the
     /// door's tile.
     Driveway { door: EntityId, street: EntityId },
-    /// A yard (`park`): a two-way lane straight in from the door, its
-    /// gate, and docks either side of it, each a spot, entered by backing
-    /// in from where a lorry pulls up for it and left forward. `lane`
-    /// runs from the door inward; a bay is its mouth, an index on it, and
-    /// the node where a lorry pulls up for it. A harbour's lane runs down to its ramp, and on
-    /// from it onto the moored ferry's deck: `seats` are where a settler's
-    /// car stands aboard, two to a slot, each with the node at the land
-    /// end of its deck lane it drives off by.
-    Yard { lane: Vec<EntityId>, bays: Vec<(usize, EntityId)>, street: EntityId, seats: Vec<[EntityId; 2]> },
-    /// Bays at the kerb, a spot each; the door for a car with no bay.
-    Kerb { door: EntityId, street: EntityId, bays: Vec<KerbWay> },
+    /// Bays, a spot each: a yard's docks first, `docks` of them, which
+    /// only lorries take, then the bays at the kerb for cars; the door for
+    /// a car with no bay.
+    Kerb { door: EntityId, street: EntityId, bays: Vec<KerbWay>, docks: usize },
 }
 
 /// A kerb bay's ways in, from either end of the stretch it stands on.
@@ -328,14 +321,12 @@ impl Map {
         let door = node(self, [tile.x as f64 + 0.5, tile.y as f64 + 0.5]);
         edge(self, street, door);
         edge(self, door, street);
-        if self.berth_at(&tiles, kind, facing).is_some() {
-            let mut lot = self.build_harbour(gate, door, &tiles, kind, facing, node, edge)?;
-            lot.nodes = nodes;
-            lot.edges = edges;
-            return Some(lot);
-        }
         if is_yard(kind) || kerbed(kind) {
-            let found = if is_yard(kind) { self.yard_bays(gate, &tiles, kind, facing) } else { self.kerb_bays(&tiles, kind, self.door_way(gate)) };
+            let mut found = if is_yard(kind) { self.yard_bays(gate, &tiles, kind, facing) } else { Vec::new() };
+            let docks = found.len();
+            if kerbed(kind) {
+                found.extend(self.kerb_bays(&tiles, kind, self.door_way(gate)));
+            }
             let mut bays = Vec::new();
             for mut bay in found {
                 let id = node(self, bay.at);
@@ -357,7 +348,7 @@ impl Map {
                 spots.push(Spot { node: id, pose: Pose { at: bay.at, heading: bay.sides[0].heading }, windows: Vec::new() });
                 bays.push(KerbWay { sides: bay.sides });
             }
-            return Some(Lot { gate, shape: Default::default(), spots, way: Way::Kerb { door, street, bays }, nodes, edges, doorway: Vec::new(), refused: Vec::new(), stats: Stats::default() });
+            return Some(Lot { gate, shape: Default::default(), spots, way: Way::Kerb { door, street, bays, docks }, nodes, edges, doorway: Vec::new(), refused: Vec::new(), stats: Stats::default() });
         }
         // A driveway pair, driven into nose first and backed out of.
         // Spot 0 is on the lane a car leaves by.
@@ -398,9 +389,8 @@ impl Map {
     }
 
     pub fn kerb_bays(&self, tiles: &[GridCoord], kind: model::BuildingKind, door: Option<(i32, i32)>) -> Vec<KerbBay> {
-        let square = kind != model::BuildingKind::Apartment;
-        let (w, h) = model::blueprint::blueprint(kind).size;
-        let need = bays_along(w.max(h) as usize, square);
+        let square = true;
+        let need = model::blueprint::blueprint(kind).bays();
         let mut sides: Vec<(bool, bool, Vec<KerbBay>)> = SIDES
             .iter()
             .map(|&d| {
@@ -547,7 +537,7 @@ impl Map {
         let sides: Vec<f64> = [1.0, -1.0].into_iter().filter(|&s| (if s > 0.0 { w - u_gate } else { u_gate }) >= DOCK_REACH).collect();
         let (_, mut docks) = park(|s, side| [u_gate + side, d - s], &sides);
         // The docks nearest the building are the last.
-        docks.drain(..docks.len().saturating_sub(model::blueprint::blueprint(kind).docks));
+        docks.drain(..docks.len().saturating_sub(model::blueprint::blueprint(kind).docks()));
         let rig = park::LORRY;
         let axle = (rig.cab.ahead - rig.cab.behind) / 2.0;
         let docked: Vec<park::Pose> = docks.iter().map(|(p, ..)| park::Pose::new(p.at[0] - p.heading.cos() * axle, p.at[1] - p.heading.sin() * axle, p.heading)).collect();
@@ -602,71 +592,6 @@ impl Map {
             }
         }
         bays
-    }
-
-    /// A harbour's yard: a lane straight in from the gate to the ramp,
-    /// docks either side of it (`Berth::park`), each entered by backing in
-    /// from where a lorry pulls up for it and left forward; and the ferry
-    /// moored at the ramp, its seats aboard.
-    fn build_harbour(
-        &mut self,
-        gate: (GridCoord, EntityId),
-        door: EntityId,
-        tiles: &[GridCoord],
-        kind: model::BuildingKind,
-        facing: u8,
-        mut node: impl FnMut(&mut Map, [f64; 2]) -> EntityId,
-        mut edge: impl FnMut(&mut Map, EntityId, EntityId),
-    ) -> Option<Lot> {
-        let street = gate.1;
-        let berth = self.berth_at(tiles, kind, facing)?;
-        let (points, docks) = berth.park();
-        let mut lane = vec![door];
-        for &p in &points {
-            let id = node(self, p);
-            lane.push(id);
-        }
-        for pair in lane.windows(2) {
-            edge(self, pair[0], pair[1]);
-            edge(self, pair[1], pair[0]);
-        }
-        // Aboard: each seat, along its deck lane to the land end, and off
-        // over the ramp onto the lane's end.
-        let mut seats = Vec::new();
-        if let Some(berth) = self.berth_at(tiles, kind, facing) {
-            let ship = berth.moored();
-            let ends: Vec<EntityId> = (0..crate::sea::LANES)
-                .map(|l| {
-                    let p = crate::sea::deck_pose(ship, l);
-                    let id = node(self, [p.at[0] + p.heading.cos() * 0.35, p.at[1] + p.heading.sin() * 0.35]);
-                    edge(self, id, *lane.last().unwrap());
-                    id
-                })
-                .collect();
-            for k in 0..crate::sea::BAYS {
-                for at in crate::sea::seats(ship, k) {
-                    let id = node(self, at.at);
-                    edge(self, id, ends[k % crate::sea::LANES]);
-                    seats.push([id, ends[k % crate::sea::LANES]]);
-                }
-            }
-        }
-        let mut spots = Vec::new();
-        let mut bays = Vec::new();
-        for (pose, mouth, stop) in docks {
-            let mouth = mouth + 1;
-            let id = node(self, pose.at);
-            let stop = node(self, stop);
-            edge(self, lane[mouth], id);
-            edge(self, id, lane[mouth]);
-            for k in mouth - 1..=mouth + 1 {
-                edge(self, lane[k], stop);
-            }
-            edge(self, stop, id);
-            spots.push(Spot { node: id, pose, windows: Vec::new() });
-            bays.push((mouth, stop));
-        }
-        Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street, seats }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), refused: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world; whoever was parked in it is
@@ -806,9 +731,14 @@ impl Map {
         self.lot_mut(building)?;
         let lot = &self.lots[&building];
         let yard = self.has_yard(building);
-        // A yard has docks, not car spots: a lorry takes one, its own
-        // depot's included, and anything else stops at the door.
-        let door_only = yard && !self.is_lorry(car);
+        // A yard's docks are for lorries, and its kerb bays for cars.
+        let lorry = self.is_lorry(car);
+        let docks = match &lot.way {
+            Way::Kerb { docks, .. } => *docks,
+            _ => 0,
+        };
+        let usable = |i: usize| usable(i) && (i < docks) == lorry;
+        let door_only = false;
         let len = to.saturating_sub(from);
         // The spot in front of the door is the one wanted, but not by
         // everyone: each free spot's distance to the door is stretched by
@@ -830,7 +760,7 @@ impl Map {
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(i, _)| Claim::Spot(i))
             })
-            .or_else(|| (!yard).then_some(Claim::Door));
+            .or_else(|| (!yard || !lorry).then_some(Claim::Door));
         let Some(claim) = claim else {
             let lot = self.lots.get_mut(&building).unwrap();
             lot.stats.refused += 1;
@@ -956,38 +886,12 @@ impl Map {
         Some(match (&lot.way, claim) {
             (Way::Driveway { street, .. }, Claim::Spot(i)) => vec![lot.spots[i].node, *street],
             (Way::Driveway { door, street }, Claim::Door) => vec![*door, *street],
-            // Out of the dock forward, back along the lane to the door.
-            (Way::Yard { lane, bays, street, .. }, Claim::Spot(i)) => {
-                let mut v = vec![lot.spots[i].node];
-                v.extend(lane[..=bays[i].0].iter().rev());
-                v.push(*street);
-                v
-            }
-            (Way::Yard { lane, street, .. }, Claim::Door) => vec![lane[0], *street],
             (Way::Kerb { bays, .. }, Claim::Spot(i)) => {
                 let side = &bays[i].sides[lot.side(i, car)];
                 std::iter::once(lot.spots[i].node).chain(side.out_path.iter().copied()).chain([side.exit]).collect()
             }
             (Way::Kerb { door, street, .. }, Claim::Door) => vec![*door, *street],
         })
-    }
-
-    /// Every seat on a harbour's moored ferry's deck: where a settler's car
-    /// stands, and where its deck lane ends at the ramp.
-    pub fn seats(&self, harbour: EntityId) -> Vec<[EntityId; 2]> {
-        match self.lots.get(&harbour).map(|l| &l.way) {
-            Some(Way::Yard { seats, .. }) => seats.clone(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// The way off a harbour's moored ferry from a seat on its deck: along
-    /// its deck lane, over the ramp, up the lane to the gate, and the
-    /// street node last.
-    pub fn way_off(&mut self, harbour: EntityId, seat: usize) -> Option<Vec<EntityId>> {
-        let Lot { way: Way::Yard { lane, street, seats, .. }, .. } = self.lot_mut(harbour)? else { return None };
-        let [at, end] = *seats.get(seat)?;
-        Some([at, end].into_iter().chain(lane.iter().rev().copied()).chain([*street]).collect())
     }
 
     /// The ways from a node to a building, claiming nothing: the street
