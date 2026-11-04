@@ -18,7 +18,7 @@ pub mod segments;
 use std::collections::BTreeSet;
 use fixed::{HashMap, HashSet};
 
-use model::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, Resident, TerrainChunk};
+use model::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, TerrainChunk};
 use land::{CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, TILE_ABSENT, TerrainType};
 use crate::tracked::Tracked;
 use crate::network::RoadNetwork;
@@ -93,13 +93,6 @@ pub struct Map {
     /// Every other road node on a tile, above the ground or beside its
     /// middle (`decks.rs`).
     pub decks: HashMap<(i32, i32), Vec<EntityId>>,
-    /// Every harbour, and the street node it is reached by: a way out of
-    /// the town, so what reaches it is joined. Derived by `mark_harbours`,
-    /// never saved.
-    pub harbours: std::collections::BTreeMap<EntityId, Option<EntityId>>,
-    /// Who lives or works at each building. Derived from the residents at
-    /// startup (`resettle`), and kept by the only code that moves anyone.
-    pub people: HashMap<EntityId, BTreeSet<EntityId>>,
     /// Buildings placed, reached, cut off or taken away since the last
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
@@ -143,30 +136,11 @@ impl Map {
         }
     }
 
-    pub fn resident(&self, id: EntityId) -> Option<&Resident> {
-        match self.objects.get(id)?.object {
-            GameObject::Resident(ref r) => Some(r),
-            _ => None,
-        }
-    }
-
-    pub fn resident_mut(&mut self, id: EntityId) -> Option<&mut Resident> {
-        match self.objects.get_mut(id)?.object {
-            GameObject::Resident(ref mut r) => Some(r),
-            _ => None,
-        }
-    }
-
     /// The buildings of these kinds, by id.
     pub fn of_kinds(&self, keep: impl Fn(BuildingKind) -> bool) -> Vec<(EntityId, &Building)> {
         let mut ids: Vec<EntityId> = BuildingKind::ALL.into_iter().filter(|&k| keep(k)).flat_map(|k| self.objects.of_kind(k)).collect();
         ids.sort_unstable();
         ids.into_iter().filter_map(|id| Some((id, self.building(id)?))).collect()
-    }
-
-    /// The standing depots, by id.
-    pub fn depots(&self) -> Vec<(EntityId, &Building)> {
-        self.of_kinds(model::blueprint::depot).into_iter().filter(|(_, b)| b.site.is_none()).collect()
     }
 
     /// These, nearest a tile first, as the crow walks the grid: with how
@@ -211,8 +185,6 @@ impl Map {
             occupied: HashMap::default(),
             roads: HashMap::default(),
             decks: HashMap::default(),
-            harbours: Default::default(),
-            people: HashMap::default(),
             unsettled: BTreeSet::new(),
         }
     }
@@ -342,37 +314,11 @@ impl Map {
         ids
     }
 
-    /// Make a road a way out of the town, as a harbour's street is, so what
-    /// it reaches is joined. For towns written as fixtures, which have no
-    /// harbour and are only looked at.
+    /// Make a road a way into the town, its first street, so what reaches
+    /// it is joined and a road that reaches none is drawn cut off.
     pub fn open_exit(&mut self, node: EntityId) {
         let turning = self.network.set_exit(node, true);
         self.mark_joined(turning.into_iter().chain([node]));
-    }
-
-    /// Every harbour's street node is a way out of the town: a road that
-    /// reaches one is joined, and drawn so; one that reaches none is red.
-    /// Derived from the buildings rather than remembered: running this
-    /// twice changes nothing.
-    pub fn mark_harbours(&mut self) {
-        let standing: Vec<EntityId> = self.of_kinds(|k| model::blueprint::blueprint(k).quay).into_iter().filter(|(_, b)| b.site.is_none()).map(|(id, _)| id).collect();
-        let was = std::mem::take(&mut self.harbours);
-        for (h, node) in &was {
-            if let Some(node) = node
-                && (!standing.contains(h) || self.street_of(*h) != Some(*node))
-            {
-                let turning = self.network.set_exit(*node, false);
-                self.mark_joined(turning.into_iter().chain([*node]));
-            }
-        }
-        for h in standing {
-            let node = self.street_of(h);
-            if let Some(node) = node {
-                let turning = self.network.set_exit(node, true);
-                self.mark_joined(turning.into_iter().chain([node]));
-            }
-            self.harbours.insert(h, node);
-        }
     }
 
     /// Update the spatial position of an entity.

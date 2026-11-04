@@ -905,21 +905,13 @@ pub enum Operation {
     Delete(#[ts(type = "number")] EntityId),
 }
 
-/// Simulated time of one full day/night cycle.
-///
-/// This is the scale of the whole game rather than a cosmetic setting. A tile
-/// is about 12 m — a car is 0.35 tiles long and a car is 4.2 m, and a one-tile
-/// road is a 12 m two-way street — so CRUISE_SPEED works out at 65 km/h and a
-/// chunk is 384 m across. Against a twenty-minute day an hour is 900 m of
-/// driving, putting a town commute at half an hour and a crossing of a
-/// sprawling city at four, which is what earns a highway. At two minutes, the
-/// length this was, that same crossing took two days.
-pub const DAY_MS: u32 = 1_200_000;
+/// Simulated time of one full day and night: four minutes watched at
+/// speed 1. A tile is about 12 m and a car drives 1.5 tiles a second, so a
+/// day is a few crossings of a grown town: a family shops once or twice
+/// in it, a worker works a shift and rests.
+pub const DAY_MS: u32 = 240_000;
 /// An hour of the clock.
 pub const HOUR: u32 = DAY_MS / 24;
-/// How long a building waits late before it gives up (`Wait::late`): a
-/// quarter of a day, its pin's ring full. A home's household leaves.
-pub const LATE_MS: GameTime = DAY_MS as GameTime / 4;
 
 /// The simulation's clock, as the client needs to see it.
 ///
@@ -937,7 +929,7 @@ pub struct Clock {
 
 /// The town as its mayor sees it: who lives here, what there is to build
 /// with, and the pick on the table.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Town {
     /// Everyone who lives here.
@@ -991,8 +983,6 @@ pub enum Offer {
     Roads(u32),
     /// A road tool, for good.
     Tool(Unlock),
-    /// Another lorry for every building of a kind that runs one.
-    Lorry(BuildingKind),
 }
 
 /// A road tool to unlock (the street and the bulldozer come with the town).
@@ -1009,6 +999,10 @@ pub enum Unlock {
     Wide,
     /// Roads raised over others: bridges and the motorway's flyovers.
     Overpass,
+}
+
+impl Unlock {
+    pub const ALL: [Unlock; 5] = [Unlock::Priority, Unlock::Lights, Unlock::OneWay, Unlock::Wide, Unlock::Overpass];
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

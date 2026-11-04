@@ -5,4 +5,4 @@
  * in some mountains, oil under some grass. Only some places have each,
  * so a town that wants what its land lacks buys it (`terrain::deposits`).
  */
-export type Deposit = "Ore" | "Coal" | "Oil";
+export type Deposit = "Clay";

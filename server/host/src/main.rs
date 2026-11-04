@@ -4,7 +4,6 @@ mod network;
 mod perf;
 mod persistence;
 
-use model::{blueprint, needs};
 use map::fixtures;
 use axum::Router;
 use tokio::sync::mpsc;
@@ -16,8 +15,6 @@ use network::AppState;
 
 #[tokio::main]
 async fn main() {
-    needs::check();
-    blueprint::check();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(game_loop::run(command_rx));
@@ -30,7 +27,6 @@ async fn main() {
         .route("/health", axum::routing::get(health::health))
         .route("/debug/lot/{id}", axum::routing::get(health::inspect_lot))
         .route("/town", axum::routing::get(health::town))
-        .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
         .route("/perf", axum::routing::get(perf::get).post(perf::post))
         .route("/save", axum::routing::get(health::save))

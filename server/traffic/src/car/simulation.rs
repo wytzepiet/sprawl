@@ -14,12 +14,11 @@ use map::bezier::LANE_OFFSET;
 /// End a car's trip and leave it parked at a building: road bookkeeping
 /// cleaned up, trip gone, position at the building it now sits by.
 ///
-/// If the driver is still aboard they step out here and think again — which
+/// The game hears of it (`Traffic::arrived`) and decides what next — which
 /// on arrival is the plan, and on an interrupted trip is the recovery.
 ///
-/// A car whose building is gone parks at home instead, where its driver
-/// would think themselves anyway; one whose owner is gone — a household
-/// moved out, a facility demolished — is scrap.
+/// A car whose building is gone parks at home instead, its owner's; one
+/// whose owner is gone too is scrap.
 pub fn park_car(
     world: &mut Traffic,
     events: &mut EventQueue,
@@ -35,8 +34,7 @@ pub fn park_car(
             None
         }
     });
-    if let Some((route, route_index, driven)) = trip_info {
-        crate::car::drove(world.map, car_id, driven);
+    if let Some((route, route_index, _)) = trip_info {
         world.map.unregister_car_route(car_id, &route);
         if route_index >= 1 {
             let edge = (route[route_index - 1], route[route_index]);
@@ -53,37 +51,22 @@ pub fn park_car(
     let_go(world, events, car_id);
     world.map.remove_car_from_edges(car_id);
 
-    // Its building gone, it goes home: its owner's, or a fleet's own yard.
-    // Nobody's any more, it is scrap.
-    let owner = owner.filter(|&o| world.map.owns(o, car_id));
-    let at_building = match (world.map.objects.get(at_building), owner.and_then(|o| world.map.objects.get(o)).map(|e| &e.object)) {
-        (Some(_), _) => at_building,
-        (None, Some(GameObject::Resident(r))) => r.home,
-        (None, _) => owner.unwrap_or(at_building),
-    };
-    match world.map.objects.get(at_building).and_then(|e| e.position).filter(|_| owner.is_some()) {
+    // Its building gone, it goes home; its home gone too, or nobody's
+    // to begin with (traffic passing through), it is scrap.
+    let alive = |id: EntityId| world.map.objects.get(id).is_some();
+    let owner = owner.filter(|&o| alive(o));
+    let at_building = owner.and(if alive(at_building) { Some(at_building) } else { owner });
+    match at_building.and_then(|b| world.map.objects.get(b)).and_then(|e| e.position) {
         Some(tile) => {
+            let at_building = at_building.unwrap();
             world.map.update_position(car_id, tile);
-            if let Some(entry) = world.map.objects.get_mut(car_id)
-                && let GameObject::Car(ref mut c) = entry.object
-            {
+            if let Some(c) = world.map.car_mut(car_id) {
                 c.trip = None;
             }
             world.map.park_in_lot(at_building, car_id, events.now());
+            events.wake(0, car_id);
         }
         None => world.map.despawn_car(car_id),
-    }
-
-    // The driver steps out wherever the car stopped.
-    if let Some(owner) = owner {
-        let aboard = world.map.objects.get(owner).is_some_and(|e| match e.object {
-            GameObject::Resident(ref r) => r.at == Some(car_id),
-            _ => false,
-        });
-        if aboard {
-            world.arrived.push((owner, at_building));
-            events.wake(0, owner);
-        }
     }
 }
 
@@ -96,12 +79,6 @@ pub fn park_at_home(
     let home = world.map.objects.get(car_id).and_then(|e| match e.object {
         GameObject::Car(ref c) => Some(c.owner),
         _ => None,
-    });
-    let home = home.and_then(|owner| {
-        world.map.objects.get(owner).and_then(|e| match e.object {
-            GameObject::Resident(ref r) => Some(r.home),
-            _ => None,
-        })
     });
     match home {
         Some(home) => park_car(world, events, car_id, home),

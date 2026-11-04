@@ -21,7 +21,7 @@ use super::Map;
 /// A forklift lifts a package off a vehicle and sets it on the pad, or
 /// back: in to it, up, out and round, across the yard, set down, and back
 /// out, at a forklift's pace (`forklift.ts`): five minutes of the clock.
-pub const HANDLE_MS: GameTime = 4_000;
+pub const HANDLE_MS: GameTime = 1_200;
 /// How long a run is kept after it ends: its forklift is still seen
 /// driving home from it (`REST_MS`), and the next run starts from there.
 const KEPT_MS: GameTime = 10_000;

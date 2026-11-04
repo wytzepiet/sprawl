@@ -5,9 +5,9 @@ pub mod spawn;
 
 /// What a vehicle drives in a lot: a manoeuvring pace, under twenty
 /// kilometres an hour.
-pub const LOT_SPEED: f64 = 0.4;
+pub const LOT_SPEED: f64 = 0.7;
 /// Backing, about nine kilometres an hour: two and a half metres a second.
-pub const REVERSE_SPEED: f64 = 0.2;
+pub const REVERSE_SPEED: f64 = 0.45;
 /// Where the gear changes the vehicle stops, and stands this long before
 /// it pulls the other way, as a driver does.
 pub const CUSP_MS: u64 = 500;
@@ -18,9 +18,9 @@ pub const MIN_GAP: f64 = 0.5;
 /// long whatever it waits for, goes through whatever is in its way, cars
 /// and junctions, as if alone, over the node ahead and the next, and
 /// queues again as any car.
-pub const GHOST_MS: model::GameTime = model::DAY_MS as model::GameTime / 48;
-/// Pulling up at a door with nothing to lift: ten minutes.
-pub const SERVICE_MS: model::GameTime = model::DAY_MS as model::GameTime / 144;
+pub const GHOST_MS: model::GameTime = 25_000;
+/// Pulling up at a door with nothing to lift.
+pub const SERVICE_MS: model::GameTime = 8_333;
 /// How far behind the car ahead a driver likes to keep, in time, besides
 /// `MIN_GAP`: further the faster they go, so a slowing at the front
 /// reaches each one behind a little harder, and a jam spreads back. Not a
@@ -80,11 +80,3 @@ pub enum Obstacle {
 }
 
 
-/// A trip's end: what it burned comes off the tank.
-pub fn drove(map: &mut map::Map, car: model::EntityId, tiles: f64) {
-    if let Some(c) = map.car_mut(car) {
-        for (need, stock) in c.stocks.iter_mut() {
-            stock.take(tiles * need.per_tile());
-        }
-    }
-}

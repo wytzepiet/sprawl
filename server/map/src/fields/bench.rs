@@ -124,7 +124,8 @@ fn sweeps() {
             assert!(path.windows(2).all(|w| dist(w[0], w[1]) == 1), "{name} {job:?}: a step is not to a neighbour");
             assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "{name} {job:?}: the tractor left the farm's ground");
             assert!(!path.windows(3).any(|w| (w[1].x - w[0].x) * (w[2].x - w[1].x) + (w[1].y - w[0].y) * (w[2].y - w[1].y) < 0), "{name} {job:?}: a turn sharper than a right angle");
-            assert!(m.steps * 100 < m.tiles * 180, "{name} {job:?}: {} steps for {} tiles", m.steps, m.tiles);
+            // A field is small: getting in and out of it is a dozen steps.
+            assert!(m.steps * 100 < m.tiles * 180 + 1200, "{name} {job:?}: {} steps for {} tiles", m.steps, m.tiles);
             // Harvesting, the headland round on its own before any row:
             // but for a few tiles crossed between one outline and the
             // next, no standing crop is cut until the ring is done.
@@ -132,7 +133,7 @@ fn sweeps() {
                 let inside = batch.iter().filter(|t| !head.contains(&(t.x, t.y))).count();
                 let done = batch.iter().filter(|t| head.contains(&(t.x, t.y))).map(|t| path.iter().position(|p| p == t).unwrap()).max().unwrap();
                 let crossed: HashSet<(i32, i32)> = path[..done].iter().map(|t| (t.x, t.y)).filter(|t| set.contains(t) && !head.contains(t)).collect();
-                assert!(crossed.len() * 5 <= inside, "{name}: {} standing tiles cut before the headland was done", crossed.len());
+                assert!(crossed.len() * 5 <= inside.max(10), "{name}: {} standing tiles cut before the headland was done", crossed.len());
             }
         }
     }

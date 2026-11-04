@@ -1,6 +1,5 @@
 use fixed::{HashMap, HashSet};
 
-use crate::resident::handle_resident_wake;
 use traffic::event_queue::EventQueue;
 use model::GameTime;
 use model::{CarRole, ClientMessage, Clock, DAY_MS, EntityId, GameObject, Operation, OwnerId, ServerMessage};
@@ -13,8 +12,7 @@ pub type ClientId = u64;
 /// Simulated milliseconds per step. Fixed: speed adds steps rather than making
 /// them longer, so running fast cannot change what the simulation does.
 pub const STEP_MS: GameTime = 10;
-/// How often the game settles with nothing built: ferries look at the
-/// time.
+/// How often the game settles with nothing built.
 const SETTLE_MS: GameTime = 500;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
@@ -30,9 +28,6 @@ pub struct Game {
     pub speed: u32,
     /// Where a `RunTo` stops and speed goes back to 1.
     until: Option<GameTime>,
-    /// How many times a resident has thought, all told: what a day of
-    /// town costs (`a_town_thinks_within_budget`).
-    pub thoughts: u64,
     clients: HashMap<ClientId, ClientState>,
     outbox: Vec<(ClientId, ServerMessage)>,
     /// A command changed the world since the last step: it settles.
@@ -43,8 +38,8 @@ pub struct Game {
 }
 
 impl Game {
-    /// A world laid out, brought to life: whatever is standing gets its
-    /// people, the day is due to turn, and everyone thinks once.
+    /// A world laid out, brought to life: a new one founded, and every
+    /// building and vehicle takes its turn.
     pub fn new(world: World, now: GameTime, speed: u32, fresh: Box<dyn FnMut() -> World + Send>) -> Self {
         let mut game = Game {
             world,
@@ -52,7 +47,6 @@ impl Game {
             now,
             speed,
             until: None,
-            thoughts: 0,
             clients: HashMap::default(),
             outbox: Vec::new(),
             stirred: false,
@@ -63,26 +57,32 @@ impl Game {
         game
     }
 
-    /// Trips do not survive a save, so a loaded world is entirely people
-    /// standing still until they think, and working vehicles waiting on a
-    /// wake that was not saved: one standing at a door it delivered to would
-    /// stand there for good, holding its place and never free for a call.
+    /// Trips do not survive a save: a loaded world's cars are all parked,
+    /// and every one of them, and every building, takes its turn. A world
+    /// with nothing on it is a new town, founded.
     fn wake_all(&mut self) {
-        self.world.resettle();
-        settle_and_wake(&mut self.world, &mut self.events);
-        for id in self.world.map.resident_ids() {
-            wake_resident(&self.world, &mut self.events, id);
+        if self.world.town.start.is_none() && self.world.map.objects.is_empty() {
+            crate::town::found(&mut self.world, self.now);
         }
-        let standing: Vec<EntityId> = self
-            .world.map
-            .objects
-            .iter()
-            .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none()))
-            .map(|e| e.id)
-            .collect();
+        settle_and_wake(&mut self.world, &mut self.events);
+        // A world with no town (a puzzle's roads) keeps no town's clocks.
+        if self.world.town.start.is_some() {
+            crate::town::begin(&mut self.world, &mut self.events, self.now);
+        }
+        let standing: Vec<EntityId> = self.world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.is_none())).map(|e| e.id).collect();
         for id in standing {
             self.events.wake(0, id);
         }
+    }
+
+    /// Whether anyone is playing: the clock runs only while someone is.
+    pub fn watched(&self) -> bool {
+        !self.clients.is_empty()
+    }
+
+    /// Waiting on the mayor's pick: the clock stands still.
+    pub fn picking(&self) -> bool {
+        !self.world.town.offer.is_empty()
     }
 
     fn clock(&self) -> Clock {
@@ -101,9 +101,8 @@ impl Game {
     pub fn connect(&mut self, id: ClientId, owner: OwnerId) {
         self.send(id, ServerMessage::Welcome(owner));
         // Objects come with the first SetChunks.
-        let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
+        let update = Shared::new(&self.world, self.clock()).update(vec![]);
         self.send(id, update);
-        self.send(id, ServerMessage::Market(self.world.market.prices()));
         self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default() });
     }
 
@@ -123,10 +122,6 @@ impl Game {
             ClientMessage::ResetWorld => {
                 let world = (self.fresh)();
                 self.replace(world);
-            }
-            ClientMessage::Card(id) => {
-                let card = crate::card::card(&self.world, id, self.now);
-                self.send(client_id, ServerMessage::Card(card));
             }
             ClientMessage::Ask(ask) => {
                 let Some(owner) = self.clients.get(&client_id).map(|cs| cs.owner) else { return };
@@ -154,7 +149,7 @@ impl Game {
         // Paused, nothing goes dirty and no update would ever be sent — so
         // clients would keep extrapolating cars against a stopped world.
         // Push the new clock instead of waiting.
-        let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
+        let update = Shared::new(&self.world, self.clock()).update(vec![]);
         let ids: Vec<ClientId> = self.clients.keys().copied().collect();
         for id in ids {
             self.send(id, update.clone());
@@ -173,7 +168,7 @@ impl Game {
             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
             let chunks: Vec<ChunkCoord> = cs.known_chunks.drain().collect();
             if !ops.is_empty() {
-                self.outbox.push((*id, shared.update(ops, vec![])));
+                self.outbox.push((*id, shared.update(ops)));
             }
             for coord in chunks {
                 self.outbox.push((*id, ServerMessage::UnloadChunk(coord)));
@@ -213,12 +208,6 @@ impl Game {
         }
         let clk = self.clock();
         flush_dirty(&mut self.world, &mut self.clients, &mut self.outbox, clk);
-        if std::mem::take(&mut self.world.market.changed) {
-            let prices = self.world.market.prices();
-            for &id in self.clients.keys() {
-                self.outbox.push((id, ServerMessage::Market(prices.clone())));
-            }
-        }
         wakes
     }
 
@@ -233,34 +222,35 @@ impl Game {
         if std::mem::take(&mut self.stirred) || !self.world.map.unsettled.is_empty() || self.now % SETTLE_MS == 0 {
             settle_and_wake(&mut self.world, &mut self.events);
         }
+        if self.picking() {
+            return 0;
+        }
         self.now += STEP_MS;
         self.events.set_now(self.now);
         let mut wakes = 0;
         while let Some(id) = self.events.pop_due() {
-            if self.world.map.resident(id).is_some() {
-                self.thoughts += 1;
-            }
             handle_wake(&mut self.world, &mut self.events, id, self.now);
             wakes += 1;
+            if self.picking() {
+                break;
+            }
         }
-        crate::market::hour(&mut self.world, self.now);
-        crate::logistics::plan(&mut self.world, &mut self.events, self.now);
         wakes
     }
 
     /// On to the next step anything happens at, before `to`, and that step
-    /// taken; or, nothing before it, on to `to`. False once there. The
-    /// steps between, where nothing settles, nothing is due and the
-    /// market's hour has not come, are skipped rather than stepped: they
+    /// taken; or, nothing before it, on to `to`. False once there, or
+    /// while a pick waits. The steps between, where nothing settles and
+    /// nothing is due, are skipped rather than stepped: they
     /// would change nothing, so what the world does is what `step` does,
     /// in a fraction of the time, and a test that looks at it after each
     /// sees all there is to see.
     pub fn step_to(&mut self, to: GameTime) -> bool {
-        if self.now >= to {
+        if self.now >= to || self.picking() {
             return false;
         }
-        if !self.stirred && self.world.map.unsettled.is_empty() && !self.world.plan_due {
-            let due = self.events.next_due().into_iter().chain([(self.world.market.hour + 1) * crate::market::HOUR]).min().unwrap_or(GameTime::MAX);
+        if !self.stirred && self.world.map.unsettled.is_empty() {
+            let due = self.events.next_due().unwrap_or(GameTime::MAX);
             let next = due.saturating_sub(STEP_MS).min(self.now.next_multiple_of(SETTLE_MS)).max(self.now).next_multiple_of(STEP_MS);
             if next >= to {
                 self.now = to.next_multiple_of(STEP_MS);
@@ -279,96 +269,29 @@ impl Game {
     }
 }
 
-/// One wake-up, dispatched on what the entity is. A car's decision is
-/// physics; a resident's is where to be.
-fn handle_wake(
-    world: &mut World,
-    events: &mut EventQueue,
-    id: EntityId,
-    now: GameTime,
-) {
+/// One wake-up, dispatched on what the entity is: a car's driving is
+/// traffic's, what it does parked the town's; a building's turn, a
+/// junction's lights, the town's own clocks.
+fn handle_wake(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime) {
     match world.map.objects.get(id).map(|e| &e.object) {
-        // A parked one's is the game's: what it does next.
-        Some(GameObject::Car(c)) if c.trip.is_none() => crate::logistics::car_idle(world, events, id, now),
+        Some(GameObject::Car(c)) if c.role == CarRole::Tractor && c.run.is_some() => world.tractor_step(events, id, now),
+        Some(GameObject::Car(c)) if c.trip.is_none() => crate::town::car_idle(world, events, id, now),
         Some(GameObject::Car(_)) => world.drive(events, |t, e| traffic::car::simulation::handle_car_wake_up(t, e, id, now)),
-        Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
-        // A building's wake is its turn: a farm whose crop has ripened,
-        // or a wait late long enough to give up on.
-        Some(GameObject::Building(_)) => {
-            world.give_up(id, now);
-            crate::logistics::turn(world, events, id, now);
-        }
-        // A junction's is its lights looking again.
+        Some(GameObject::Building(_)) => crate::town::building_wake(world, events, id, now),
         Some(GameObject::RoadNode(_)) => world.drive(events, |t, e| traffic::car::simulation::lights(t, e, id, now)),
-        // Midnight: every building takes its turn, and every line reads
-        // the labour market again.
-        None if id == MIDNIGHT => {
-            crate::logistics::turns(world, events, now);
-            settle_and_wake(world, events);
-        }
-        _ => {}
+        None => crate::town::wake(world, events, id, now),
     }
 }
 
-/// The wake that is nobody's: the day turning. No entity has this id.
-const MIDNIGHT: EntityId = EntityId::MAX;
-
-/// Population follows what changed, and whoever's situation changed gets to
-/// think about it. And the day is always due to turn.
+/// Whatever was built, reached, cut off or taken away takes its turn,
+/// and its vehicles.
 pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
-    let changed = !world.map.unsettled.is_empty();
-    for id in world.settle() {
-        wake_resident(world, events, id);
-    }
-    // The quays change with every ferry and lorry, and are few.
-    world.waiting.extend(world.map.harbours.keys().copied());
-    crate::waits::look(world, events, events.now());
-    // A harbour reached, or cut off: the town's way out, and its ferry.
-    world.map.mark_harbours();
-    let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();
-    let port = standing.iter().any(|&h| world.map.building(h).is_some_and(|b| b.kind == model::BuildingKind::Port));
-    if port != world.market.port {
-        world.market.port = port;
-        world.market.changed = true;
-    }
-    for h in standing {
-        world.commission(h, events.now());
-    }
-    // Something built, reached or cut off: what it wants, or can give,
-    // may have changed.
-    world.plan_due |= changed;
-    // A harbour built, or its line changed: its ferries look
-    // again. Not at every settle: a moored ferry woken rolls its next
-    // settler off at once, not ROLL_MS after the last.
-    let harbours: Vec<EntityId> = if changed { world.map.harbours.keys().copied().collect() } else { Vec::new() };
-    for h in harbours {
-        for id in world.ferries_of(h) {
-            events.wake(0, id);
+    for id in world.map.changed() {
+        events.wake(0, id);
+        for car in world.map.objects.fleet(id).collect::<Vec<_>>() {
+            events.wake(0, car);
         }
     }
-    let day = DAY_MS as u64;
-    events.wake(day - events.now() % day, MIDNIGHT);
-}
-
-/// Someone already here thinks immediately; someone still off-map gets a
-/// staggered start, so a freshly zoned block fills in over the next hours
-/// rather than arriving as a convoy. The delay is a hash of who they are,
-/// not a roll of the dice — settling again cannot reshuffle it, and the
-/// earliest pending wake always wins in the queue anyway.
-fn wake_resident(world: &World, events: &mut EventQueue, id: EntityId) {
-    const TRICKLE_MS: u64 = 3 * (DAY_MS as u64) / 24;
-    let off_map = matches!(
-        world.map.objects.get(id).map(|e| &e.object),
-        Some(GameObject::Resident(r)) if r.at.is_none()
-    );
-    let delay = if off_map {
-        let mut h = id.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        h ^= h >> 33;
-        h % TRICKLE_MS
-    } else {
-        0
-    };
-    events.wake(delay, id);
 }
 
 #[cfg(test)]

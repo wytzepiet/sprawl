@@ -13,8 +13,8 @@
 =H.....H=H...H=H...H~~H..H=H.....S#........H=H..........TTTTTTTT.=
 =HHHHHHH=HHHHH=HHHHH~~HHHH=HHHHHHS#.......H=H...........TTTTTTTT.=
 ==================================#......H=H.....................=
-=HHHHHHH=HHHHH=HHHHHHHHHHH=AAAHHHS#.....H=H......................=
-=H.....H=H...H=H.........H=AAA...S#....H=H.......................=
+=HHHHHHH=HHHHH=HHHHHHHHHHH=...HHHS#.....H=H......................=
+=H.....H=H...H=H.........H=......S#....H=H.......................=
 =H.....H=H...H=H.:::::::.H=H.....S#...H=H........................=
 =H.....H=H...H=H.:::::::.H=H.....S#..H=H.........................=
 =H.....H=H...H=H.:::::::.H=H.....S#.LLL..........................=
@@ -22,7 +22,7 @@
 =H.....H=H...H=H.........H=H.....S#=LLL.LLLL.....................=
 =SSSSSSS=SSSSS=HHHHHHHHHHH=SSSSSSS#.LLL.LLLL.....................=
 =#################################################################
-=AAAAAAAAAAAAAAA=AAAAAAAAAAAAAAAAA#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
+=...............=.................#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
 =...............=...........MMMM..#:DDDDDDFFFFFF::=DDDDDDDFFFFFFF=
 =...............=...........MMMM..#:DDDDDDFFFF::::=DDDDDDDFFFF:::=
 =...............=...........MMMM..#:DDDDDD::::GG::=DDDDDDDFFFF:::=

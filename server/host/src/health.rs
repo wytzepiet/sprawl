@@ -49,11 +49,6 @@ pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>
     ask(&state, Debug::Lot(id)).await
 }
 
-/// Every shipment, every timetable and every harbour's park: `/sea`.
-pub async fn sea(State(state): State<AppState>) -> String {
-    ask(&state, Debug::Sea).await
-}
-
 /// The town's page: `/town`.
 pub async fn town(State(state): State<AppState>) -> String {
     ask(&state, Debug::Town).await

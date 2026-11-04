@@ -164,15 +164,6 @@ pub(crate) fn set_off(world: &mut Traffic, events: &mut EventQueue, car_id: Enti
     }
     let Some(GameObject::Car(c)) = world.map.objects.get_mut(car_id).map(|e| &mut e.object) else { return };
     c.trip = Some(trip);
-    let owner = c.owner;
-
-    // The driver's `at` points at the car for the whole ride; arrival points
-    // it at the destination.
-    if let Some(entry) = world.map.objects.get_mut(owner)
-        && let GameObject::Resident(ref mut r) = entry.object
-    {
-        r.at = Some(car_id);
-    }
 
     world.map.register_car_route(car_id, &route);
     if let Some(seg) = world.map.edges.get_mut(&first_edge)
@@ -271,9 +262,9 @@ mod tests {
     fn a_car_backs_out_of_its_driveway() {
         let mut map = Map::meadow(-4..40, -4..8).street(-4..40);
         let mut streets = crate::intersection::IntersectionRegistry::new();
-        let mut world = Traffic { map: &mut map, streets: &mut streets, arrived: Vec::new() };
+        let mut world = Traffic { map: &mut map, streets: &mut streets };
         let house = world.map.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
-        let depot = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Depot).unwrap();
+        let depot = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Sawmill).unwrap();
         let car = world.map.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let ways = world.map.ways_to(house, world.map.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
         let (way, _) = world.map.way_in(house, car, &ways, 0, GameTime::MAX).unwrap();

@@ -26,21 +26,25 @@ use std::collections::{BinaryHeap, VecDeque};
 use fixed::HashSet;
 
 use model::GameTime;
-use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
+use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile};
 use crate::Map;
 
-/// How long the tractor takes to cross a tile, working it: two and a
-/// half minutes of the game's clock, two seconds watched at full speed,
-/// so a shift's ploughing is a couple of hundred tiles.
-pub const PACE: GameTime = DAY_MS as GameTime / 600;
-/// A crop sown by the end of a shift stands a day and is ripe the
-/// morning after: a day and a half.
-pub const RIPEN: GameTime = DAY_MS as GameTime * 3 / 2;
-/// The tiles a shift's ploughing makes a farm of, on open ground: the
-/// shift over the pace, less the ground driven between rows. What a
-/// farm's land comes to at capacity, and what its yard is divided by.
-pub fn capacity(kind: model::BuildingKind) -> f64 {
-    (model::blueprint::shift_hours(kind) * model::HOUR as f64 / PACE as f64 * 0.9).round()
+/// How long the tractor takes to cross a tile, working it.
+pub const PACE: GameTime = 500;
+/// A crop sown stands this long before it is ripe: about what a maker
+/// takes to fill its yard, so a farm keeps pace with the rest.
+pub const RIPEN: GameTime = 45_000;
+/// The tiles of land a farm claims, at most: a field the tractor works
+/// round in half a minute.
+pub fn capacity(_kind: model::BuildingKind) -> f64 {
+    24.0
+}
+
+/// What one tile of a farm's land grows in a harvest: its yard over its
+/// tiles, so a harvest fills the yard whatever ground the farm got.
+pub fn crop(kind: model::BuildingKind, tiles: usize) -> f64 {
+    let b = model::blueprint::blueprint(kind);
+    b.yard as f64 / tiles.max(1) as f64
 }
 
 /// The eight ways off a tile: straight first, then the diagonals.
@@ -72,7 +76,7 @@ impl Map {
         let GameObject::Building(b) = &e.object else { return };
         let (kind, facing) = (b.kind, b.facing);
         let wanted = capacity(kind) as usize;
-        if !model::blueprint::farm(kind) || !b.land.is_empty() {
+        if !model::blueprint::blueprint(kind).farm || !b.land.is_empty() {
             return;
         }
         let _ = facing;
@@ -188,7 +192,7 @@ impl Map {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= model::blueprint::crop(b.kind, b.land.len()));
+            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -661,8 +665,10 @@ mod tests {
         let (_, tiles) = farm_at(&mut world, 10);
         let wanted = capacity(BuildingKind::Farm) as usize;
         let (x0, y0, x1, y1, _) = rect(&tiles);
-        assert_eq!(((x1 - x0 + 1) * (y1 - y0 + 1)) as usize, tiles.len() + 9, "the land is not the rectangle less the plot");
-        assert!(tiles.len() <= wanted && tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the farm claimed {} tiles of {wanted}", tiles.len());
+        let (w, h) = model::blueprint::plot(BuildingKind::Farm, 0).size;
+        let area = ((x1 - x0 + 1) * (y1 - y0 + 1)) as usize;
+        assert!(area >= tiles.len() + (w * h) as usize && area <= tiles.len() + (w * h) as usize + h as usize, "the land is not the rectangle less the plot and a sliver beside it");
+        assert!(tiles.len() <= wanted && tiles.len() * 4 >= wanted * 3, "the farm claimed {} tiles of {wanted}", tiles.len());
         assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
         assert!(y0 == 1 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not round the plot");
         assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
@@ -673,13 +679,12 @@ mod tests {
         walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 6 }).collect::<Vec<_>>());
         let (_, tiles) = farm_at(&mut walled, 10);
         let (_, y0, _, y1, _) = rect(&tiles);
-        assert!(y0 == 1 && y1 == 5 && tiles.len() + 5 > wanted, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
+        assert!(y0 == 1 && y1 <= 5 && tiles.len() * 4 >= wanted * 3, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
         // A house in the field is cut out, and the field made up for it.
         let mut cramped = land();
         cramped.place_building(GridCoord { x: 4, y: 6 }, BuildingKind::House, 2);
         let (_, tiles) = farm_at(&mut cramped, 10);
-        let (x0, y0, x1, y1, _) = rect(&tiles);
-        assert!(tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the house was not made up for: {} tiles", tiles.len());
+        assert!(tiles.len() * 4 >= wanted * 3, "the house was not made up for: {} tiles", tiles.len());
         assert!(!tiles.iter().any(|t| t.at == GridCoord { x: 4, y: 6 }), "the house is land");
         // Nothing to claim in a wood.
         let mut woods = land();
@@ -773,7 +778,8 @@ mod tests {
         assert!(world.place_building(lost, BuildingKind::House, 2).is_some(), "a tile could not be built on");
         world.tend(farm);
         let kept = self::tiles(&world, farm);
-        assert_eq!(kept.len(), tiles.len() - 1);
+        // That tile, and any sliver it left that no tractor turns in.
+        assert!(kept.len() < tiles.len() && kept.len() + 3 >= tiles.len());
         assert!(kept.iter().all(|t| t.at != lost));
     }
 

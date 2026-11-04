@@ -665,6 +665,6 @@ pub(super) mod tests {
         world.terrain = land::terrain::generate(7);
         world.restore();
         assert!(world.objects.roads().next().is_none(), "a road was born with the map");
-        assert!(world.all_buildings().is_empty() && world.resident_ids().is_empty(), "something stood on the island");
+        assert!(world.all_buildings().is_empty(), "something stood on the island");
     }
 }
