@@ -43,6 +43,7 @@ export default function Meter() {
       <Box w={6} />
       <Icon d={ROAD} size={14} ink="ink/0.6" />
       <Text serif size={17}>{town().roads}</Text>
+      <Text size={11} soft>road</Text>
     </Ink>
   );
 }

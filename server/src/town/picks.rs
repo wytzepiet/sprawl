@@ -46,7 +46,9 @@ pub fn pick(world: &mut World, n: u8) {
         }
     }
     town.offer.clear();
-    town.picked += PICK_STEP;
+    // The next pick is ten more people from now: growth while one was on
+    // the table does not stack a second behind it.
+    town.picked = town.arrived.max(town.picked + PICK_STEP);
     town.left_since = 0;
     offer(world);
 }

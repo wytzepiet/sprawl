@@ -1,11 +1,11 @@
 import { Box, Ink, Icon, Text } from "~ui";
 import { For, Show } from "solid-js";
-import { useGame } from "../state/gameObjects";
+import { eachEntity, useGame } from "../state/gameObjects";
 import { town } from "../state/town";
-import { BLUEPRINTS } from "../blueprints";
+import { BLUEPRINTS, GOODS } from "../blueprints";
 import { ROAD_KINDS } from "./Roads";
 import { Pop, Press, view, ROUND } from "./kit";
-import type { Offer, Unlock } from "../generated";
+import type { Building, Good, Offer, Unlock } from "../generated";
 
 /** The road tool each unlock opens, for its card's look. */
 const TOOL: Record<Unlock, { id: string; label: string; about: string }> = {
@@ -16,6 +16,28 @@ const TOOL: Record<Unlock, { id: string; label: string; about: string }> = {
   Overpass: { id: "Street", label: "Bridges", about: "Roads over roads and water" },
 };
 const road = (id: string) => ROAD_KINDS.find((r) => r.id === id) ?? ROAD_KINDS[0];
+
+/** The houses waiting on a good now, or growing with it. */
+function waiting(good: Good): number {
+  let n = 0;
+  eachEntity((e) => {
+    const h = e.object.kind === "Building" ? (e.object.data as Building).home : null;
+    if (h && (h.wants.some((w) => w.good === good) || (h.growing?.[good] && h.growing[good]!.level < h.growing[good]!.cap))) n++;
+  });
+  return n;
+}
+
+/** What a card answers in the town as it stands, if anything: the
+ *  houses it would feed. */
+function need(o: Offer): string | null {
+  if (o.kind === "Building") {
+    const makes = BLUEPRINTS[o.data[0]].makes;
+    const n = makes ? waiting(makes) : 0;
+    return n ? `${n} ${n === 1 ? "house wants" : "houses want"} ${GOODS[makes!].label.toLowerCase()}` : null;
+  }
+  if (o.kind === "Roads") return town().roads < 10 ? `${town().roads} left` : null;
+  return null;
+}
 
 /** A card's look: its colour, glyph, name and what it does. */
 function look(o: Offer): { color: string; glyph: string; label: string; about: string } {
@@ -45,7 +67,7 @@ export default function Picks() {
   const narrow = () => view().w < 560;
   return (
     <Show when={town().offer.length > 0}>
-      <Box at={{ left: 0, right: 0, top: 0, bottom: 0 }} fill="#00000059" align="center" justify="center">
+      <Box at={{ left: 0, right: 0, top: 0, bottom: 0 }} fill="#00000033" align="center" justify="end" pad={{ bottom: 96 }}>
         <Pop>
           <Ink layer="pick" round={ROUND} pad={{ x: 18, top: 18, bottom: 18 }} gap={14} w={narrow() ? view().w - 32 : undefined}>
             <Box gap={3}>
@@ -64,6 +86,7 @@ export default function Picks() {
                       <Box gap={3} grow={narrow() ? 1 : undefined}>
                         <Text size={15} weight={700}>{l.label}</Text>
                         <Text size={12.5} soft lead={1.35}>{l.about}</Text>
+                        <Show when={need(o)}>{(w) => <Text size={12.5} weight={600} ink="#FF453A">{w()}</Text>}</Show>
                       </Box>
                     </Press>
                   );
