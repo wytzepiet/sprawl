@@ -23,7 +23,7 @@ import { forgetCar, mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
 import { aim, placed, setPlaced } from "../ui/buildMode";
-import { news } from "../state/sea";
+import { news } from "../state/town";
 
 interface MountedEntry {
   kind: string;

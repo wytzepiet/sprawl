@@ -35,6 +35,8 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Sawmill: { family: "industry", yard: { fill: "docks" } },
   // A quarry's yard is its heaps of broken stone, a lorry backed to them.
   Quarry: { family: "industry", yard: { fill: "docks" } },
+  // A fishery's yard is its crates by the water, the shop's lorry backed to them.
+  Fishery: { family: "industry", yard: { fill: "docks" } },
   // A supermarket is a big box, its customers parked at the kerb.
   Supermarket: { family: "box" },
   GasStation: { family: "box" },
@@ -96,5 +98,5 @@ export const kin = (a: Tile, b: Tile) =>
 /** A kind placed whole, one building: it joins only itself, and never on
  *  the diagonal. */
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
-const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm"]);
+const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm", "Fishery"]);
 

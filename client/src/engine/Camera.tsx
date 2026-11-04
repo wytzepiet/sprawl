@@ -1,7 +1,8 @@
-import { onCleanup } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
 import { attachFreeControl, createFreeCamera } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
+import { town } from "../state/town";
 import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { groundCover, screenToWorld } from "./view";
@@ -169,6 +170,16 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
     target = { ...target, x, y };
   };
 
+  // A town the camera has not seen begun, a new one or the first, is
+  // flown to where it began.
+  let began: string | undefined = kept.began;
+  createEffect(() => {
+    const s = town().start;
+    if (props.bounds || !s || began === `${s.x},${s.y}`) return;
+    began = `${s.x},${s.y}`;
+    eye.go(s.x + 0.5, s.y + 0.5);
+  });
+
   // The fixture shots point the camera from outside: straight to a place and
   // a zoom, no travel. Dev only.
   if (import.meta.env.DEV) {
@@ -300,7 +311,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   };
 
   const keep = () => {
-    if (!props.bounds) localStorage.setItem(KEPT, JSON.stringify({ ...at, half }));
+    if (!props.bounds) localStorage.setItem(KEPT, JSON.stringify({ ...at, half, began }));
   };
   const onHide = () => document.visibilityState === "hidden" && keep();
 

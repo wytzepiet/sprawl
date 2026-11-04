@@ -174,9 +174,19 @@ const LOOKS: Record<BuildingKind, Look> = {
     heights: [0.85, 1.15, 1.5],
     tab: "homes",
   },
+  Fishery: {
+    label: "Fishery",
+    about: "Lands fish on the shore, a crate at a time. Built with the water beside it; the shops' lorries fetch from it.",
+    color: "#3E8FA8",
+    material: "#5F7F88",
+    glyph: "M2 12c2.5-4 6-6 10-6 3.5 0 6.5 2 8 4.5L23 7v10l-3-3.5C18.5 16 15.5 18 12 18c-4 0-7.5-2-10-6zm5.5-1.5a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z",
+    shape: "gabled",
+    heights: [0.4],
+    tab: "work",
+  },
   Shop: {
     label: "Shop",
-    about: "Serves meals from its crates, nine to six. Two jobs.",
+    about: "Sells fish to the families within reach. Its lorry fetches more from the nearest fishery when the shelf runs low.",
     color: "#3B78B8",
     material: "#56708A",
     // A storefront: scalloped awning, window and door beneath.
@@ -286,10 +296,10 @@ const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> 
     glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
   },
   Fish: {
-    label: "crates",
-    color: "#5E9E52",
-    // A crate: its lid and two slats.
-    glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
+    label: "fish",
+    color: "#3E8FA8",
+    // A fish, its eye cut out, its tail fanned.
+    glyph: "M2 12c2.5-4 6-6 10-6 3.5 0 6.5 2 8 4.5L23 7v10l-3-3.5C18.5 16 15.5 18 12 18c-4 0-7.5-2-10-6zm5.5-1.5a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z",
   },
   Stone: {
     label: "stone",

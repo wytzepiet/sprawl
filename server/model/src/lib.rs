@@ -1117,7 +1117,6 @@ pub struct Town {
     /// Road tiles left to lay.
     pub roads: u32,
     /// Buildings in hand, by kind.
-    #[ts(type = "Partial<Record<BuildingKind, number>>")]
     pub tokens: std::collections::BTreeMap<BuildingKind, u32>,
     pub people: u32,
     /// People who moved in since the last pick, and how many bring the next.

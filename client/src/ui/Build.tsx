@@ -1,6 +1,7 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createRoot, createSignal, For, Index, Show } from "solid-js";
-import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
+import { BLUEPRINTS, KINDS, plot } from "../blueprints";
+import { town } from "../state/town";
 import { LETTERS } from "../engine/town/grid";
 import { shapes, type Shape } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
@@ -8,7 +9,7 @@ import { BAD, Fade, Info, Press, Tabs } from "./kit";
 import { PageHead, push } from "./pages";
 import { inHand, road, RoadsHead, take as takeRoad, type RoadKind } from "./Roads";
 import { open, setOpen, sheetWidth } from "./sheet";
-import type { BuildingKind, Good } from "../generated";
+import type { BuildingKind } from "../generated";
 
 /** A picture's side, a cell's least width and the room between cells. */
 const PIC = 76;
@@ -41,12 +42,12 @@ function picture(kind: BuildingKind) {
   return pic;
 }
 
-const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materials) as [Good, number][];
+/** How many of a kind are in hand. */
+const tokens = (kind: BuildingKind) => town().tokens[kind] ?? 0;
 
-/** The kinds of building opened, by the menu's own groups. */
-const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
-/** The group shown: the roads, or a group of buildings. */
-const [group, setGroup] = createSignal<Tab | "roads">("roads");
+/** The group shown: the roads, or the buildings in hand. */
+type Group = "roads" | "buildings";
+const [group, setGroup] = createSignal<Group>("roads");
 // A road taken up, by a key or the head's row, shows the roads.
 createRoot(() => createEffect(() => inHand() && setGroup("roads")));
 
@@ -62,7 +63,7 @@ export function BuildHead() {
       when={held()}
       fallback={
         <Show when={!inHand()} fallback={<RoadsHead />}>
-          <Tabs tabs={["roads" as const, ...groups.map((g) => g.tab)]} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
+          <Tabs tabs={["roads", "buildings"] as const} on={group()} lit={open()} pick={(t) => (setGroup(t), setOpen(true))} />
         </Show>
       }
     >
@@ -85,13 +86,18 @@ export function BuildHead() {
 export function BuildBody() {
   const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
   const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
-  const kinds = () => groups.find((g) => g.tab === group())?.kinds ?? [];
+  const kinds = () => KINDS.filter((k) => tokens(k) > 0);
   const info = (p: About) => push({ key: "kind" in p ? p.kind : p.road, view: () => <Page {...p} /> });
   return (
     <Show when={group()} keyed>
       {(g) => (
         <Fade>
           <Show when={g !== "roads"} fallback={<RoadsHead info={(k) => info({ road: k })} />}>
+            <Show when={!kinds().length}>
+              <box pad={{ x: 16, bottom: 14 }}>
+                <text size={13} soft>Nothing in hand. Each pick brings more, as people move in.</text>
+              </box>
+            </Show>
             <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
               <For each={kinds()}>
                 {(kind) => (
@@ -113,22 +119,9 @@ export function BuildBody() {
   );
 }
 
-/** What a kind is built of, a glyph and a number each; or "at once". */
+/** How many of a kind are in hand. */
 function Materials(props: { kind: BuildingKind }) {
-  return (
-    <box dir="row" align="center" gap={6}>
-      <Show when={materials(props.kind).length} fallback={<text serif size={12} soft>at once</text>}>
-        <For each={materials(props.kind)}>
-          {([g, n]) => (
-            <box dir="row" align="center" gap={2}>
-              <icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
-              <text serif size={12} soft>{n}</text>
-            </box>
-          )}
-        </For>
-      </Show>
-    </box>
-  );
+  return <text serif size={12} soft>{`${tokens(props.kind)} in hand`}</text>;
 }
 
 type About = { kind: BuildingKind } | { road: RoadKind };

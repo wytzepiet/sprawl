@@ -1,32 +1,24 @@
 import {
   createContext,
   useContext,
-  createEffect,
   createSignal,
-  on,
   onCleanup,
   type ParentProps,
 } from "solid-js";
 import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncFromClock } from "../network/clock";
-import { hearSea, tell } from "./sea";
-import { hearMarket, hearStocks } from "./market";
-import { hearMissions } from "./missions";
-import { selected } from "./selection";
+import { setTown, tell } from "./town";
 import type { Place } from "../engine/pen";
 import type { Side } from "../engine/tiles";
 import type { Building,
-  Card,
   GameObjectEntry,
   GridCoord,
   Hint,
   ClientMessage,
   ChunkBounds,
-  Growth,
   ChunkCoord,
   Operation,
-  Lump,
   TerrainChunk,
   ServerMessage,
 } from "../generated";
@@ -53,24 +45,6 @@ export function signed(): GameObjectEntry[] {
   signsVersion();
   return [...signedEntries.values()];
 }
-/**
- * Coins, GDP and goods that landed on buildings in view, for a moment:
- * each lump floats up over its building and is gone. Kept for a couple of seconds of wall time
- * and read by the lump layer; nothing else wants it.
- */
-const LUMP_MS = 3200;
-const [lumps, setLumps] = createSignal<(Lump & { key: number; since: number })[]>([]);
-let lumpKey = 0;
-export function recentLumps() {
-  return lumps();
-}
-function land(lumps: Lump[]) {
-  if (lumps.length === 0) return;
-  const since = performance.now();
-  setLumps((l) => [...l.filter((s) => since - s.since < LUMP_MS), ...lumps.map((s) => ({ ...s, key: lumpKey++, since }))]);
-  setTimeout(() => setLumps((l) => l.filter((s) => performance.now() - s.since < LUMP_MS)), LUMP_MS + 50);
-}
-
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
 function trackSign(entry: GameObjectEntry | undefined, id: number) {
@@ -141,11 +115,6 @@ export function listenHints(fn: HintListener): () => void {
   hintListeners.add(fn);
   return () => void hintListeners.delete(fn);
 }
-
-// --- The card of whatever is selected (`card.rs`) ---
-
-const [card, setCard] = createSignal<Card | null>(null);
-export { card };
 
 // --- Ops listener for ECS ---
 
@@ -246,14 +215,13 @@ function applyOps(ops: Operation[]) {
   opsListener?.(ops);
 }
 
-/** A message's ops, so many at a time, then its lumps. */
+/** A message's ops, so many at a time. */
 const OPS_A_PART = 64;
-function* applying(ops: Operation[], lumps: Lump[]) {
+function* applying(ops: Operation[]) {
   for (let i = 0; i < ops.length; i += OPS_A_PART) {
     applyOps(ops.slice(i, i + OPS_A_PART));
     yield;
   }
-  land(lumps);
 }
 
 // --- Context (thin — just what UI needs) ---
@@ -263,8 +231,6 @@ interface GameContext {
   welcomed(): number;
   /** The island's map, in chunks: the camera stays over it. */
   island(): ChunkBounds;
-  /** The two dials: the city's level, and what the mayor has to spend. */
-  growth(): Growth;
   send(msg: ClientMessage): boolean;
 }
 
@@ -274,13 +240,11 @@ const Ctx = createContext<GameContext>();
  *  a level in the browser. Told where to send what the game says. */
 export type Connect = (onMessage: (msg: ServerMessage) => void) => Connection;
 
-/** What the dials and the camera have before the game first says. */
-const NO_GROWTH: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, held: {} };
+/** What the camera has before the game first says. */
 const NO_ISLAND: ChunkBounds = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
 
 export function GameProvider(props: ParentProps & { connect: Connect }) {
   const [welcomed, setWelcomed] = createSignal(0);
-  const [growth, setGrowth] = createSignal<Growth>(NO_GROWTH);
   const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
   const { send, close } = props.connect((msg) => {
@@ -288,12 +252,9 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
       case "Update":
         syncFromClock(msg.data.clock);
         setIsland(msg.data.island);
-        setGrowth(msg.data.growth);
-        hearStocks(msg.data.growth.held);
-        hearSea(msg.data.sea);
-        hearMissions(msg.data.missions, msg.data.neighbours);
+        setTown(msg.data.town);
         // Many at once when the view travels: spread over frames, in order.
-        void spread(applying(msg.data.ops, msg.data.lumps));
+        void spread(applying(msg.data.ops));
         break;
       case "TerrainChunk":
         ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
@@ -315,37 +276,18 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         setWelcomed((n) => n + 1);
         break;
       case "News":
-        for (const n of msg.data) tell(n.text, n.sub, n.at, true);
+        for (const n of msg.data) tell(n.text, n.sub, n.at);
         break;
       case "Hint":
         for (const f of hintListeners) f(msg.data);
         break;
-      case "Market":
-        hearMarket(msg.data);
-        break;
-      case "Card":
-        // An answer still on its way for what was selected before is not
-        // this one's.
-        if (msg.data.id === selected()) setCard(msg.data);
-        break;
     }
   });
-
-  // The selected thing's card, asked for now and every second after. The
-  // card before stays until the next comes, so the sheet does not sink and
-  // rise again between them.
-  createEffect(on(selected, (id) => {
-    if (id === null) return setCard(null);
-    const ask = () => send({ type: "Card", data: id });
-    ask();
-    const timer = setInterval(ask, 1000);
-    onCleanup(() => clearInterval(timer));
-  }));
 
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ welcomed, island, growth, send }}>
+    <Ctx.Provider value={{ welcomed, island, send }}>
       {props.children}
     </Ctx.Provider>
   );

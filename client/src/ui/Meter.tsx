@@ -1,8 +1,7 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, on, Show } from "solid-js";
-import { useGame } from "../state/gameObjects";
+import { town } from "../state/town";
 import { follow } from "../engine/spring";
-import { setBoardOpen } from "./Board";
 import { BAD, elapsed, GDP, GOOD, keys, wide } from "./kit";
 
 /** The level's ring, in its own 56-unit box, and how finely its arc is
@@ -21,41 +20,27 @@ function arc(share: number) {
 const RING = `M28 ${28 - R}A${R} ${R} 0 1 1 28 ${28 + R}A${R} ${R} 0 1 1 28 ${28 - R}`;
 
 /**
- * The city's two dials, run together into one shape at the top: the
- * level, a ring closing on the next, and the purse.
- *
- * The level is the town's GDP to date: the value it adds, landing as
- * each meal is served, each tank filled, each crop cut and each shift at
- * a desk worked. The purse is the town's coins, stepped at the border: a
- * box sold to the world as the ferry casts off, a box bought from it as
- * it lands; a tap opens the town's books. The coins are on the map first,
- * so what comes into the purse drips out of it as it lands: an event
- * you could have watched, never a rate.
+ * The town's two dials, run together into one shape at the top: who
+ * lives here, a ring closing on the next pick as they move in, and the
+ * road the mayor has left to lay. Road laid drips out of it.
  */
 export default function Meter() {
-  const { growth } = useGame();
-  const treasury = () => growth().treasury;
-  /** Days the treasury covers at today's imports; nothing crosses the door at zero. */
-  const cover = () => (growth().imports > 0 ? treasury() / growth().imports : Infinity);
-  const low = () => cover() < 3;
-  const [fill] = follow(() => (growth().needed > 0 ? Math.min(1, Math.max(0, growth().toward / growth().needed)) : 0), { rest: 0.001 });
+  const roads = () => town().roads;
+  const [fill] = follow(() => (town().step > 0 ? Math.min(1, town().toward / town().step) : 0), { rest: 0.001 });
   const cut = () => Math.round(fill() * CUTS) / CUTS;
 
   const [drips, setDrips] = createSignal<{ id: number; n: number }[]>([]);
   let next = 0;
-  createEffect(on(treasury, (now, before) => {
-    if (before === undefined || now - before < 1) return;
-    const drip = { id: next++, n: Math.floor(now - before) };
+  createEffect(on(roads, (now, before) => {
+    if (before === undefined || now <= before) return;
+    const drip = { id: next++, n: now - before };
     setDrips((d) => [...d, drip]);
     setTimeout(() => setDrips((d) => d.filter((x) => x !== drip)), DRIP_MS);
   }));
 
-  /** The purse's width: as wide as its coins. The ring sits at its left. */
+  /** The purse's width: as wide as its roads. The ring sits at its left. */
   const [purse, setPurse] = createSignal(166);
-  const day = () =>
-    low() && Number.isFinite(cover())
-      ? `${cover().toFixed(1)} days of imports · GDP today ${Math.floor(growth().gdp)}`
-      : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today · GDP today ${Math.floor(growth().gdp)}`;
+  const day = () => (town().left ? `${town().people} people · ${town().left} left` : `${town().people} people · ${town().step - town().toward} more for the next pick`);
 
   return (
     <box w={purse() + 64} h={52}>
@@ -69,22 +54,22 @@ export default function Meter() {
         <Show when={cut() > 0}>
           <icon at={{ left: 0, top: 0 }} d={arc(cut())} view={56} size={56} stroke={3} ink={GDP} />
         </Show>
-        <text serif size={21}>{growth().level}</text>
+        <text serif size={21}>{town().people}</text>
       </box>
-      <box at={{ right: 0, top: 0 }} minW={166} h={52} dir="row" align="center" justify="end" gap={6} pad={{ left: 12, right: 20 }} onSize={(w) => setPurse(w)} onTap={() => setBoardOpen((o) => !o)}>
-        <text serif size={28} ink={low() ? BAD : undefined}>{Math.floor(treasury()).toLocaleString()}</text>
-        <text size={12} weight={600} soft>coins</text>
+      <box at={{ right: 0, top: 0 }} minW={166} h={52} dir="row" align="center" justify="end" gap={6} pad={{ left: 12, right: 20 }} onSize={(w) => setPurse(w)}>
+        <text serif size={28} ink={roads() < 5 ? BAD : undefined}>{roads().toLocaleString()}</text>
+        <text size={12} weight={600} soft>{roads() === 1 ? "road" : "roads"}</text>
       </box>
       <For each={drips()}>{(d) => <Drip n={d.n} />}</For>
-      {/* What the day has done, under it. */}
+      {/* Who lives here and who left, under it. */}
       <Show when={wide()}>
-        <text at={{ right: 20, top: 60 }} size={12.5} weight={600} soft>{day()}</text>
+        <text at={{ right: 20, top: 60 }} size={12.5} weight={600} soft ink={town().left ? BAD : undefined}>{day()}</text>
       </Show>
     </box>
   );
 }
 
-/** A lump into the purse, dripping out under it: its glass, or, given
+/** Road into the purse, dripping out under it: its glass, or, given
  *  how many, its coins on it. */
 function Drip(props: { n?: number }) {
   const t = elapsed(DRIP_MS);

@@ -42,6 +42,8 @@ const HOUSE_ROADS: u32 = 4;
 const PICK_ROADS: u32 = 30;
 /// People who move in to bring a pick.
 pub const PICK_STEP: u32 = 10;
+/// The street a new town's fishery comes with, in tiles.
+const LANE: i32 = 7;
 
 /// What the mayor has to build with, who has come and gone, and the pick
 /// on the table. Saved.
@@ -133,9 +135,10 @@ pub fn found(world: &mut World, now: GameTime) {
     town.tokens = BTreeMap::from([(BuildingKind::Shop, 1)]);
     town.roll = map.terrain_seed as u64;
     town.next_spawn = now + 90_000;
-    let Some((fishery, at)) = shore(map) else { return };
+    let Some((fishery, at, end)) = shore(map) else { return };
     town.start = Some(at);
     map.finish(fishery);
+    let at = end;
     // Two cottages a little inland: dry land all round, apart.
     let mut homes: Vec<GridCoord> = Vec::new();
     'out: for r in 5..12 {
@@ -153,9 +156,33 @@ pub fn found(world: &mut World, now: GameTime) {
     }
 }
 
+/// A short street from the fishery's yard straight inland, laid free, so
+/// the first shop has somewhere to stand: its far end.
+fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
+    let b = map.building(fishery)?;
+    let (dx, dy) = model::blueprint::FACINGS[b.facing as usize % 4];
+    let front: Vec<GridCoord> = b.tiles.iter().copied().filter(|t| !b.tiles.contains(&GridCoord { x: t.x + dx, y: t.y + dy })).collect();
+    let m = *front.get(front.len() / 2)?;
+    let mut path = Vec::new();
+    for k in 1..=LANE {
+        let p = GridCoord { x: m.x + k * dx, y: m.y + k * dy };
+        let dry = matches!(map.terrain.get(&(p.x, p.y)), Some(land::TerrainType::Grass | land::TerrainType::Forest));
+        if !dry || path.last().is_some_and(|&q| !map.may_lay(q, p, false)) {
+            break;
+        }
+        path.push(p);
+    }
+    if path.len() < 3 {
+        return None;
+    }
+    map.place_road_path(&path);
+    path.last().copied()
+}
+
 /// The first place on a shore, out from the island's middle, a fishery
-/// stands: it, standing, and its tile.
-fn shore(map: &mut Map) -> Option<(EntityId, GridCoord)> {
+/// stands with its yard to the land: it, standing, its tile, and the far
+/// end of the lane it comes with.
+fn shore(map: &mut Map) -> Option<(EntityId, GridCoord, GridCoord)> {
     for r in 0..80 {
         for i in 0..(8 * r).max(1) {
             let (x, y) = ring(r, i);
@@ -164,9 +191,11 @@ fn shore(map: &mut Map) -> Option<(EntityId, GridCoord)> {
                 continue;
             }
             for facing in 0..4 {
-                if let Some(id) = map.place_building(GridCoord { x, y }, BuildingKind::Fishery, facing) {
-                    return Some((id, GridCoord { x, y }));
+                let Some(id) = map.place_building(GridCoord { x, y }, BuildingKind::Fishery, facing) else { continue };
+                if let Some(end) = lane(map, id) {
+                    return Some((id, GridCoord { x, y }, end));
                 }
+                map.remove_building(id);
             }
         }
     }
@@ -195,7 +224,7 @@ fn house(map: &mut Map, at: GridCoord, now: GameTime, town: &mut Town) -> Option
     // Their car, parked on the drive.
     let car = map.insert_at(GameObject::Car(model::Car::new(id, CarRole::Private)), Some(at));
     map.park_in_lot(id, car, now);
-    let first = now + 9_000 + (town.roll() * 30_000.0) as GameTime;
+    let first = now + 30_000 + (town.roll() * 30_000.0) as GameTime;
     if let Some(b) = map.building_mut(id) {
         b.home = Some(Home { level: 1, wants: Vec::new(), due: BTreeMap::from([(Good::Fish, first)]), happy: 0 });
     }
@@ -406,6 +435,7 @@ fn home(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime)
 /// A family gone: their house stands empty and comes down.
 fn leave(world: &mut World, id: EntityId) {
     world.map.remove_building(id);
+    world.news.push(model::News { text: "A family left".into(), sub: "They waited too long for fish".into(), at: id });
     world.town.left += PEOPLE;
     world.town.left_since += 1;
     world.town.changed = true;

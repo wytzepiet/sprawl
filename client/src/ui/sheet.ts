@@ -8,10 +8,10 @@ import { clear } from "./pages";
  * The dock's tabs, and the sheet over them, as the Find My app has it:
  * each tab has a sheet, peeking over the bar as its head alone, drawn up
  * to show the rest. What a tab is for is what it holds: the bare hand
- * a card of what it tapped, the build menu its roads and buildings,
- * the market its goods, what the town holds and its orders.
+ * a card of what it tapped, the build menu its roads and the buildings
+ * in hand.
  */
-export const TABS = ["select", "build", "market"] as const;
+export const TABS = ["select", "build"] as const;
 export type Tab = (typeof TABS)[number];
 
 const [tab, setTab] = createSignal<Tab>("select");

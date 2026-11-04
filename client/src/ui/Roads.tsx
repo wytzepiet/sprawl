@@ -5,9 +5,9 @@ import { BAD, Info, Press } from "./kit";
 
 /** The road tools, first in the build menu: a road is a street with priority. */
 export const ROAD_KINDS = [
-  { id: "Street", label: "Street", about: "Two ways, a lane each. Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price.", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
-  { id: "OneWay", label: "One-way", about: "One lane, the way you drag it. A stone a tile.", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
-  { id: "Road", label: "Road", about: "A street with priority: whoever joins or crosses it gives way. A stone a tile.", color: "#E0B443", glyph: "M2 2h2v20H2zM20 2h2v20h-2zM7.5 2h2.2v4.5H7.5zM7.5 9.75h2.2v4.5H7.5zM7.5 17.5h2.2V22H7.5zM14.3 2h2.2v4.5h-2.2zM14.3 9.75h2.2v4.5h-2.2zM14.3 17.5h2.2V22h-2.2z" },
+  { id: "Street", label: "Street", about: "Two ways, a lane each. A road a tile, from what the town has left to lay.", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
+  { id: "OneWay", label: "One-way", about: "One lane, the way you drag it. A road a tile.", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
+  { id: "Road", label: "Road", about: "A street with priority: whoever joins or crosses it gives way. A road a tile.", color: "#E0B443", glyph: "M2 2h2v20H2zM20 2h2v20h-2zM7.5 2h2.2v4.5H7.5zM7.5 9.75h2.2v4.5H7.5zM7.5 17.5h2.2V22H7.5zM14.3 2h2.2v4.5h-2.2zM14.3 9.75h2.2v4.5h-2.2zM14.3 17.5h2.2V22h-2.2z" },
   {
     id: "Demolish",
     label: "Demolish",

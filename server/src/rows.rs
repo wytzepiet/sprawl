@@ -33,7 +33,7 @@ mod tests {
         ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
         let names: Vec<_> = model::Good::ALL.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
         ts += &format!("\n/** What a package of each good is called, one and several (`Good::package`). */\nexport const PACKAGE: Record<Good, [string, string]> = {{ {} }};\n", names.join(", "));
-        ts += &format!("\n/** Packages a shop's lorry carries (`town::LOAD`), and a forklift's lift (`map::HANDLE_MS`). */\nexport const LOAD = {};\nexport const HANDLE_MS = {};\n", crate::town::LOAD, map::HANDLE_MS);
+        ts += &format!("\n/** Packages a shop's lorry carries (`town::LOAD`), and a forklift's lift (`map::HANDLE_MS`). */\nexport const LOAD = {};\nexport const HANDLE_MS = {};\n\n/** How long a family waits for what it wants before it leaves (`town::PATIENCE_MS`). */\nexport const PATIENCE_MS = {};\n", crate::town::LOAD, map::HANDLE_MS, crate::town::PATIENCE_MS);
         std::fs::write(std::path::Path::new(&dir).join("rows.ts"), ts).unwrap();
     }
 }

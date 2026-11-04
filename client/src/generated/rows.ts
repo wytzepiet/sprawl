@@ -28,3 +28,6 @@ export const PACKAGE: Record<Good, [string, string]> = { Fish: ["crate of fish",
 /** Packages a shop's lorry carries (`town::LOAD`), and a forklift's lift (`map::HANDLE_MS`). */
 export const LOAD = 10;
 export const HANDLE_MS = 1500;
+
+/** How long a family waits for what it wants before it leaves (`town::PATIENCE_MS`). */
+export const PATIENCE_MS = 180000;
