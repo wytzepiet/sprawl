@@ -93,11 +93,12 @@ jobs:
           set -euo pipefail
           echo "TAB=gpu-$GITHUB_RUN_ID" >> $GITHUB_ENV
           q() { curl -sf https://api.runpod.io/graphql -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$(jq -n --arg q "$1" '{query: $q}')"; }
-          script=$(sed -e "s#BENCH_URL#$URL/?bench=$WHERE#" -e "s#TAB#gpu-$GITHUB_RUN_ID#" bench/gpu.sh | base64 -w0)
+          script=$(base64 -w0 bench/gpu.sh)
+          page=$(jq -n --arg p "$URL/?bench=$WHERE&tab=gpu-$GITHUB_RUN_ID" '$p')
           args="bash -c 'echo $script | base64 -d > /b.sh && bash /b.sh'"
           # The cheapest card that is free, of those that draw like a player's.
           for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation"; do
-            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
+            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
             [ -n "$id" ] && { echo "$gpu: $id"; break; }
           done
           [ -n "${id:-}" ] || { echo "no GPU free"; exit 1; }

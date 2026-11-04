@@ -1,6 +1,6 @@
 #!/bin/bash
-# What the GPU machine does when it starts (bench.yml fills in BENCH_URL and
-# TAB): Chrome on its NVIDIA GPU through Vulkan, on the game's `?bench`,
+# What the GPU machine does when it starts (bench.yml hands it the page as
+# PAGE): Chrome on its NVIDIA GPU through Vulkan, on the game's `?bench`,
 # drawing to a screen of its own (headless Chrome's GPU path is not the one
 # players get). The run deletes the machine once the reports are in.
 export DEBIAN_FRONTEND=noninteractive
@@ -13,5 +13,5 @@ nvidia-smi -L
 vulkaninfo --summary 2>&1 | grep -i devicename
 xvfb-run -s "-screen 0 1600x1000x24" google-chrome --no-sandbox --no-first-run --user-data-dir=/tmp/c \
   --enable-unsafe-webgpu --enable-features=Vulkan,VulkanFromANGLE --use-angle=vulkan --ignore-gpu-blocklist \
-  --window-size=1600,1000 "BENCH_URL&tab=TAB"
+  --window-size=1600,1000 "$PAGE"
 sleep infinity
