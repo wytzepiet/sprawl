@@ -3,9 +3,10 @@ import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, deckPose, hull } from "../engine/objects/sea";
-import { carried, colourOf, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
+import { carried, colourOf, liftSlot, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
 import { ITEM } from "../engine/objects/goods";
-import { packagesOf, padOf, placeIn } from "../engine/objects/pads";
+import { atPad, ends, packagesOf, padOf, placeIn } from "../engine/objects/pads";
+import { forkliftAt, yardsOf } from "../engine/objects/forklift";
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Pose as Stand, Compass, Neighbour } from "../generated";
 import { crest } from "./crest";
@@ -224,7 +225,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     // Its pad: each package in its slot, a stack drawn once.
     const bays = padOf(b).bays;
     for (const bay of bays) {
-      const n = packagesOf(b, bay.good);
+      const n = packagesOf(b, bay.good) + b.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, world.now), 0);
       for (let i = 0; i < n; i += bay.stack) item(g, placeIn(bay, i)[0], bay.good);
     }
     const seen = new Map<Good, number>();
@@ -255,6 +256,22 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       continue;
     }
     vehicle(g, e.id, car, m);
+  }
+
+  // Forklifts where their runs have them, yellow, and what is in their
+  // forks.
+  for (const [e, b] of buildings) {
+    const pad = padOf(b);
+    if (!b.tiles.some((t) => on(t.x, t.y)) || (!pad.yard && !b.lifts.some((l) => ends(l) > world.now))) continue;
+    for (const { yard, mine } of yardsOf(e.id, b, pad, 0, b.lifts, (l, j) => {
+      const car = cars.find(([c]) => c.id === l.car)?.[1];
+      return car ? liftSlot(l, car, j) : null;
+    })) {
+      const at = forkliftAt(yard, mine, world.now);
+      body(g, at.truck, 0.1, 0.07, "#f0c23b");
+      const good = mine.find((l) => l.start <= world.now && ends(l) > world.now)?.good;
+      if (at.load && good) item(g, at.load.at, good);
+    }
   }
 
   // Upright, in pixels: the crests on marked boxes; and, over everything,

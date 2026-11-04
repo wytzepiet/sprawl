@@ -19,8 +19,12 @@ use model::{CarRole, EntityId, Good, Lift};
 use super::Map;
 
 /// A forklift lifts a package off a vehicle and sets it on the pad, or
-/// back: a couple of minutes of the clock.
-pub const HANDLE_MS: GameTime = 1_500;
+/// back: in to it, up, out and round, across the yard, set down, and back
+/// out, at a forklift's pace (`forklift.ts`): five minutes of the clock.
+pub const HANDLE_MS: GameTime = 4_000;
+/// How long a run is kept after it ends: its forklift is still seen
+/// driving home from it (`REST_MS`), and the next run starts from there.
+const KEPT_MS: GameTime = 10_000;
 
 impl Map {
     /// A forklift of the building's lifts `n` packages of a good between
@@ -37,7 +41,7 @@ impl Map {
         }
         let Some(b) = self.building_mut(building) else { return waits };
         let forklifts = blueprint(b.kind).forklifts.max(1);
-        b.lifts.retain(|l| l.ends() > now);
+        b.lifts.retain(|l| l.ends() + KEPT_MS > now);
         let free = |k: u8| b.lifts.iter().filter(|l| l.k == k).map(Lift::ends).max().unwrap_or(now);
         let k = (0..forklifts).min_by_key(|&k| (free(k), k)).unwrap_or(0);
         let start = free(k).max(waits);

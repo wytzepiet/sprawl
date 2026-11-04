@@ -9,10 +9,10 @@ test("a run's packages leave one end as they are taken up and reach the other as
   expect(progress(l, 1000)).toEqual({ off: 0, on: 0, carry: null });
   expect([onVehicle(l, 1000), atPad(l, 1000)]).toEqual([3, -3]);
   // The first in the forks: off the bed, not yet on the pad.
-  const carrying = 1000 + 1500 * 0.4;
-  expect(progress(l, carrying).carry).toBeCloseTo((0.4 - 0.2) / 0.45);
+  const carrying = 1000 + 1500 * 0.6;
+  expect(progress(l, carrying).carry).toBeCloseTo((0.6 - 0.45) / 0.45);
   expect([onVehicle(l, carrying), atPad(l, carrying)]).toEqual([2, -3]);
   // Set down, and by the end all three where the server has them.
-  expect([onVehicle(l, 1000 + 1500 * 0.7), atPad(l, 1000 + 1500 * 0.7)]).toEqual([2, -2]);
+  expect([onVehicle(l, 1000 + 1500 * 0.95), atPad(l, 1000 + 1500 * 0.95)]).toEqual([2, -2]);
   expect([onVehicle(l, 5500), atPad(l, 5500)].map(Math.abs)).toEqual([0, 0]);
 });

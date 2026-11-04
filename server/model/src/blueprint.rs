@@ -280,11 +280,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // of it the docks lorries back into, on the other the quay's pad,
         // the pallets standing on it; in the corner on the quay the
         // terminal (`map/sea.rs`). Two hands a shift work the ramp and its
-        // three forklifts, six till ten. Built from nothing: it is where timber
-        // first comes in.
+        // five forklifts, six till ten: enough to empty a full deck while
+        // the ferry stands. Built from nothing: it is where timber first
+        // comes in.
         (Harbour, Blueprint {
             quay: true,
-            forklifts: 3,
+            forklifts: 5,
             ..row((3, 0), (3, 2), &[], two(2))
         }),
         // Four hands a shift, day and evening, felling and sawing the
@@ -383,7 +384,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // till ten.
         (Port, Blueprint {
             quay: true,
-            forklifts: 4,
+            forklifts: 6,
             ..row((3, 0), (3, 2), &[(Cement, 40), (Steel, 20), (Machinery, 6)], two(6))
         }),
         // Lawns and paths, benches and a few trees, open from seven till

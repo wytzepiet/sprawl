@@ -1,7 +1,7 @@
 /**
- * Jolts: every vehicle round a tile sampled as the client places it
- * (`motion.ts`), fifty times a second of wall time, and every jump, snap
- * and instant change of direction counted.
+ * Jolts: every vehicle and forklift round a tile sampled as the client
+ * places it (`motion.ts`, `forklift.ts`), fifty times a second of wall
+ * time, and every jump, snap and instant change of direction counted.
  *
  *   bun run jolt 6,80,12 20     twenty seconds round (6, 80), twelve tiles each way
  *
@@ -14,16 +14,19 @@
  */
 import { connect } from "./game";
 import "./tsx";
+import type { Lift, Pose } from "../src/generated";
 
-const { moment } = await import("../src/engine/objects/motion");
+const { liftSlot, moment } = await import("../src/engine/objects/motion");
+const { padOf } = await import("../src/engine/objects/pads");
+const { forkliftAt, yardsOf } = await import("../src/engine/objects/forklift");
 const [x, y, r = 12] = (process.argv[2] ?? "0,0").split(",").map(Number);
 const seconds = Number(process.argv[3] ?? 20);
 const { entities, now, close } = await connect({ tiles: [[x - r, y - r], [x + r, y + r]] });
 await Bun.sleep(500);
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-const last = new Map<number, { t: number; x: number; y: number; h: number; v: number }>();
-const tally = new Map<number, { role: string; jump: number; snap: number; flip: number; lurch: number; said: string[] }>();
+const last = new Map<number | string, { t: number; x: number; y: number; h: number; v: number }>();
+const tally = new Map<number | string, { role: string; jump: number; snap: number; flip: number; lurch: number; said: string[] }>();
 // Polled every 20 ms of wall time, each poll sampled every 10 ms of the
 // game's since the last, so the sleep's jitter is no jolt.
 let polled = now();
@@ -31,17 +34,31 @@ for (const end = Date.now() + seconds * 1000; Date.now() < end; await Bun.sleep(
   const until = now();
   for (let t = polled + 10; t <= until; t += 10, polled = t) sample(t);
 }
-function sample(t: number) {
+/** Every vehicle round the place, and every forklift, by a key of its
+ *  own: a building's id and the forklift's. */
+function* poses(t: number): Generator<[number | string, string, Pose]> {
+  const slotOf = (l: Lift, j: number) => {
+    const e = entities.get(l.car);
+    return e?.object.kind === "Car" ? liftSlot(l, e.object.data, j) : null;
+  };
   for (const [id, e] of entities) {
-    if (e.object.kind !== "Car") continue;
-    const car = e.object.data;
-    if (car.role === "Ferry") continue;
-    const m = moment(id, car, t);
-    if (!m) continue;
+    if (e.object.kind === "Building") {
+      const b = e.object.data;
+      const pad = padOf(b);
+      if (pad.bays.length) for (const [k, { yard, mine }] of yardsOf(id, b, pad, 0, b.lifts, slotOf).entries()) yield [`${id}.${k}`, `${b.kind} forklift`, forkliftAt(yard, mine, t).truck];
+    }
+    if (e.object.kind !== "Car" || e.object.data.role === "Ferry") continue;
+    const m = moment(id, e.object.data, t);
+    if (m) yield [id, e.object.data.role, m.body];
+  }
+}
+function sample(t: number) {
+  for (const [id, role, body] of poses(t)) {
+    const m = { body };
     const [px, py] = m.body.at;
     if (Math.abs(px - x) > r || Math.abs(py - y) > r) continue;
     const p = last.get(id);
-    const k = tally.get(id) ?? { role: car.role, jump: 0, snap: 0, flip: 0, lurch: 0, said: [] };
+    const k = tally.get(id) ?? { role, jump: 0, snap: 0, flip: 0, lurch: 0, said: [] };
     tally.set(id, k);
     if (!p || t <= p.t) {
       last.set(id, { t, x: px, y: py, h: m.body.heading, v: 0 });
