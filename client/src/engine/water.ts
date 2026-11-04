@@ -6,7 +6,7 @@ import { CALM, slate } from "./peaks";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { LACE_SIDE, LACE_TILES } from "./lace";
 import laceRecipe from "./lace.ts?raw";
-import { WAVES_SIDE } from "./waves";
+import { halves, WAVES_SIDE } from "./waves";
 import wavesRecipe from "./waves.ts?raw";
 import { bakedTexture } from "./bakeCache";
 
@@ -164,7 +164,7 @@ const REPEAT = { mipmaps: true, minFilter: "linear", magFilter: "linear", addres
 /** The water's ripple (`waves.ts`), an engine's: still until the worker
  *  has baked it, or read back from the last bake (`bakeCache.ts`). */
 export const ripples = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "waves", wavesRecipe, [WAVES_SIDE, WAVES_SIDE, () => new Uint8Array(new Float16Array(WAVES_SIDE * WAVES_SIDE * 4).map((_, k) => (k % 4 === 3 ? 1 : 0)).buffer)], { format: "rgba16float", ...REPEAT });
+  bakedTexture(engine, "waves", wavesRecipe, [WAVES_SIDE, WAVES_SIDE, () => new Uint8Array(halves(new Array(WAVES_SIDE * WAVES_SIDE * 4).fill(0).map((_, k) => (k % 4 === 3 ? 1 : 0))).buffer)], { format: "rgba16float", ...REPEAT });
 
 /** The foam's lace, an engine's: clear until the worker has baked it, or
  *  read back from the last bake. */
