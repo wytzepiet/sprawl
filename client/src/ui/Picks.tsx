@@ -1,6 +1,6 @@
 import { Box, Ink, Icon, Text } from "~ui";
 import { For, Show } from "solid-js";
-import { eachEntity, useGame } from "../state/gameObjects";
+import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { town } from "../state/town";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { ROAD_KINDS } from "./Roads";
@@ -19,6 +19,8 @@ const road = (id: string) => ROAD_KINDS.find((r) => r.id === id) ?? ROAD_KINDS[0
 
 /** The houses waiting on a good now, or growing with it. */
 function waiting(good: Good): number {
+  // Read again as the buildings change: the entities are not a signal.
+  builtVersion();
   let n = 0;
   eachEntity((e) => {
     const h = e.object.kind === "Building" ? (e.object.data as Building).home : null;
