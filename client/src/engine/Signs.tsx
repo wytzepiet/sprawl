@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { groundCover } from "./view";
 import { storeysOf } from "./town/grid";
-import { seat } from "./town/mass";
+import { seat, WHOLE } from "./town/mass";
 import { INSET } from "./town/footprint";
 import { WHITE } from "./rgb";
 import { slab, type P } from "./geometry";
@@ -24,7 +24,8 @@ import type { Building, BuildingKind } from "../generated";
  *
  * A building no road reaches asks for one, so it has a marker instead,
  * floating over the roof and the same size on the screen at every zoom,
- * ringed red. So does the one whose card is open.
+ * ringed red. So does the one whose card is open. What a building waits
+ * on is the pins' to say (`ui/Pins.tsx`).
  *
  * Both faces are SVG (the kind's colour, its glyph from the blueprints)
  * drawn into a texture, so the icons stay one source.
@@ -164,8 +165,9 @@ export default function Signs() {
       const kind = b.kind;
       const where = seat({ kind, storeys: storeysOf(kind) });
       // Homes say nothing, nor a site, nor a harbour, whose ground is all
-      // yard and no roof.
-      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay ? null : where.painted ? "paint" : "plate";
+      // yard and no roof, nor a depot, a sawmill, a quarry, a farm or a
+      // shop, each a model of its own that says what it is (`objects/`).
+      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || kind === "Depot" || WHOLE.has(kind) ? null : where.painted ? "paint" : "plate";
       if (!look) continue;
       keep.add(e.id);
       const bucket = `${look}_${kind}`;

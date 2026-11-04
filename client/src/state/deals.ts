@@ -1,7 +1,6 @@
 import { createMemo, createRoot, createSignal } from "solid-js";
 import { now, sea } from "./sea";
-import { missions } from "./missions";
-import type { Good, Letter, Shipment, Mayor } from "../generated";
+import type { Good, Shipment, Mayor } from "../generated";
 import { GOODS } from "../blueprints";
 
 /** The steps a package takes, in from the world and out to it: what a
@@ -24,8 +23,7 @@ export interface Piece {
 
 /**
  * A deal (docs/trade.md §The deck): every package of one good from or for one
- * partner, the market or a mayor, wherever they are on the way; and the
- * letter it fills, with the packages it still wants. The deals stack shows
+ * partner, the market or a mayor, wherever they are on the way. The deals stack shows
  * them, newest on top, and a deal whose last package is in, or gone, shows
  * its coins and goes.
  */
@@ -36,11 +34,6 @@ export interface Deal {
   out: boolean;
   /** Furthest along first. */
   pieces: Piece[];
-  /** The letter it fills, the packages it still wants not yet booked, and
-   *  when it is due. */
-  letter: number | null;
-  wanted: number;
-  due: number | null;
   /** Coins it pays, or costs, all told. */
   coins: number;
   /** Finished: its last package in, or gone. */
@@ -86,7 +79,7 @@ function live(): Deal[] {
   const deals = new Map<string, Deal>();
   const deal = (out: boolean, partner: Mayor | null, good: Good, key = keyOf(out, partner, good)) => {
     let d = deals.get(key);
-    if (!d) deals.set(key, (d = { key, good, partner, out, pieces: [], letter: null, wanted: 0, due: null, coins: 0, done: false }));
+    if (!d) deals.set(key, (d = { key, good, partner, out, pieces: [], coins: 0, done: false }));
     return d;
   };
   for (const s of sea.shipments) {
@@ -102,12 +95,6 @@ function live(): Deal[] {
       d.pieces.push({ package: t.id, step: 0, words: OUT_STEPS[0], eta: null, seen: false });
       d.coins += t.price * GOODS[t.good].per;
     }
-  }
-  for (const o of sea.letters) {
-    const d = deal(true, o.partner, o.good);
-    d.letter = o.letter;
-    d.wanted = o.packages;
-    d.due = missions().find((m) => typeof m.key === "object" && m.key.Order === o.letter)?.due ?? null;
   }
   for (const d of deals.values()) d.pieces.sort((a, b) => b.step - a.step || (a.eta ?? Infinity) - (b.eta ?? Infinity));
   return [...deals.values()];
@@ -151,6 +138,3 @@ export { spread, setSpread };
 /** The harbour the town trades through: the game picks the way, the
  *  mayor never names a port. */
 export const home = () => sea.sailings[0]?.harbour ?? null;
-
-/** What a letter from a mayor still wants of a good, if one does. */
-export const letterOf = (good: Good, partner: Mayor | null): Letter | undefined => sea.letters.find((o) => o.good === good && o.partner === partner);

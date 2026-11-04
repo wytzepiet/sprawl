@@ -16,11 +16,10 @@ pub(crate) fn handle_player_action(
     message: ClientMessage,
     now: GameTime,
 ) -> Option<News> {
-    // Anything the mayor does may do a mission's step.
-    world.missions.stir();
     match message {
-        ClientMessage::Build(step) => return build(world, events, owner, step, now),
-        ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, owner, stroke, now),
+        ClientMessage::Build(step) if world.research.may(step.tool) => return build(world, events, owner, step, now),
+        ClientMessage::Draw(stroke) if world.research.may(stroke.tool) => return crate::draw::draw(world, events, owner, stroke, now),
+        ClientMessage::Build(_) | ClientMessage::Draw(_) => return None,
         ClientMessage::Place { kind, at, facing } => return place(world, events, kind, at, facing, now),
         ClientMessage::Raze { building } => return crate::undo::raze(world, events, building, now),
         ClientMessage::Undo => return Some(crate::undo::undo(world, events, owner, now)),
@@ -33,17 +32,8 @@ pub(crate) fn handle_player_action(
                 world.drive(events, |t, e| traffic::car::simulation::park_at_home(t, e, car_id));
             }
         }
-        ClientMessage::Trade { good, packages, out } => {
-            crate::market::trade(world, good, out, packages);
-            crate::haul::call_lorries(world, events);
-        }
-        ClientMessage::Send { letter, packages } => {
-            crate::orders::send(world, letter, packages);
-            crate::haul::call_lorries(world, events);
-        }
-        ClientMessage::Order { good, out, packages, price } => crate::market::order(world, good, out, packages, price),
-        ClientMessage::Cancel { order } => crate::market::cancel(world, order),
-        ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
+        ClientMessage::Research { kind } => crate::research::choose(world, kind),
+        ClientMessage::Buy { depot, role } => crate::haul::buy(world, events, depot, role, now),
         ClientMessage::SetSpeed(_) | ClientMessage::RunTo(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) | ClientMessage::Card(_) => {
             unreachable!("handled by Game::command")
         }
@@ -85,6 +75,9 @@ fn build(world: &mut World, events: &mut EventQueue, owner: OwnerId, step: Build
 /// the hand that asked.
 fn place(world: &mut World, events: &mut EventQueue, kind: BuildingKind, at: GridCoord, facing: Option<u8>, now: GameTime) -> Option<News> {
     let refuse = |why: &str| Some(News { text: format!("No room for the {}", format!("{kind:?}").to_lowercase()), sub: why.to_string(), at: 0 });
+    if !world.research.open.contains(&kind) {
+        return Some(News { text: format!("The {} is not learned yet", format!("{kind:?}").to_lowercase()), sub: "a lab has to learn it first".into(), at: 0 });
+    }
     let facing = facing.or_else(|| world.map.facing_for(kind, at)).unwrap_or(2);
     let tiles = match world.map.fit(kind, at, facing) {
         Ok(tiles) => tiles,

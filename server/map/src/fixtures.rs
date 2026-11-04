@@ -11,10 +11,13 @@
 //!
 //! ```text
 //! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
+//! %  mountain with ore in it   &  mountain with coal   $  grass over oil
 //! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
-//! H house  A apartment  S shop  O office  F factory  G gas station
-//! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm
+//! H house  A apartment  S shop  F factory  G gas station
+//! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm  L lab
+//! K bakery  C cement works  I mine  J colliery  X steelworks  U oil well
+//! R refinery  N port  V park
 //! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
@@ -58,7 +61,6 @@ fn building(c: char) -> Option<BuildingKind> {
         'H' => House,
         'A' => Apartment,
         'S' => Shop,
-        'O' => Office,
         'F' => Factory,
         'G' => GasStation,
         'M' => Supermarket,
@@ -67,12 +69,22 @@ fn building(c: char) -> Option<BuildingKind> {
         'W' => Sawmill,
         'Q' => Quarry,
         'B' => Farm,
+        'L' => Lab,
+        'K' => Bakery,
+        'C' => CementWorks,
+        'I' => Mine,
+        'J' => Colliery,
+        'X' => Steelworks,
+        'U' => OilWell,
+        'R' => Refinery,
+        'N' => Port,
+        'V' => Park,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDPWQB".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASFGMDPWQBLKCIJXURNV".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -81,7 +93,7 @@ fn ground(c: char) -> TerrainType {
         '≈' => TerrainType::Sea,
         'T' => TerrainType::Forest,
         '_' => TerrainType::Beach,
-        '^' => TerrainType::Mountain,
+        '^' | '%' | '&' => TerrainType::Mountain,
         _ => TerrainType::Grass,
     }
 }
@@ -133,6 +145,15 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
             let c = char_at(col, row);
             let g = if building(c) == Some(BuildingKind::Harbour) && sea(col, row) { TerrainType::Sea } else { ground(c) };
             world.terrain.insert((p.x, p.y), g);
+            let d = match c {
+                '%' => Some(land::Deposit::Ore),
+                '&' => Some(land::Deposit::Coal),
+                '$' => Some(land::Deposit::Oil),
+                _ => None,
+            };
+            if let Some(d) = d {
+                world.deposits.insert((p.x, p.y), d);
+            }
         }
     }
 
@@ -271,7 +292,7 @@ fn stock_yards(world: &mut Map) {
         }
         // A harbour's quay, a ferry's worth landed on it.
         if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
-            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
+            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Bread, 3), (Good::Fuel, 4)] {
                 for _ in 0..n {
                     let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: model::GIFT, partner: None, price: 0.0 };
                     world.building_mut(id).unwrap().pad.push(p);
@@ -307,13 +328,18 @@ pub fn draw(world: &Map, x: i32, y: i32, r: i32) -> String {
                     _ => letter(b.kind),
                 },
                 (Some(GameObject::RoadNode(n)), _) => if n.road.is_empty() { '=' } else { '#' },
-                _ => match world.terrain.get(&(tx, ty)) {
+                _ => match (world.deposits.get(&(tx, ty)), world.terrain.get(&(tx, ty))) {
+                    (Some(land::Deposit::Ore), _) => '%',
+                    (Some(land::Deposit::Coal), _) => '&',
+                    (Some(land::Deposit::Oil), _) => '$',
+                    (_, t) => match t {
                     Some(TerrainType::Water) => '~',
                     Some(TerrainType::Sea) => '≈',
                     Some(TerrainType::Forest) => 'T',
                     Some(TerrainType::Beach) => '_',
                     Some(TerrainType::Mountain) => '^',
                     _ => '.',
+                    },
                 },
             });
         }

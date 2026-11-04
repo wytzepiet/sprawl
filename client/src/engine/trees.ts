@@ -5,6 +5,7 @@ import type { Casters } from "./DayNightCycle";
 import { drop, meshOf } from "./geometry";
 import type { Area } from "./cull";
 import { lacquer } from "./bevel";
+import type { Theme } from "./theme";
 import { BROAD_LAYERS, COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS, SIDES } from "./crowns";
 import recipe from "./crowns.ts?raw";
 import { bakedTexture, whenBaked } from "./bakeCache";
@@ -313,4 +314,30 @@ export function uproot({ scene, cull }: EngineContext, g: Grove, casters: Caster
     drop(scene, mesh);
   }
   g.meshes = [];
+}
+
+/** A tree a model plants (`objects/model.ts`): where it stands on the
+ *  map, how big, of a forest tree's, and which of the theme's crowns, 0
+ *  dark to 2 light. */
+export interface Planted {
+  at: [number, number];
+  scale: number;
+  shade: number;
+}
+
+/** Trees of the town's own standing where a model puts them, planted as
+ *  a grove of their own; what takes them away again. */
+export function stand(ctx: EngineContext, name: string, trees: Planted[], theme: Theme, casters: Casters | undefined): () => void {
+  const g = grove(name, [0, 0]);
+  const matrices = new Float32Array(trees.length * 16), colors = new Float32Array(trees.length * 4);
+  trees.forEach(({ at: [x, y], scale, shade }, i) => {
+    const w = 0.35 * scale, rgb = theme.crowns[shade];
+    // Turned about, as the town's are (`town/draw.ts`), so their light
+    // falls the same way.
+    matrices.set([-w, 0, 0, 0, 0, -w, 0, 0, 0, 0, w, 0, x, y, 0, 1], i * 16);
+    colors.set([rgb.r, rgb.g, rgb.b, 1], i * 4);
+  });
+  const xs = trees.map((t) => t.at[0]), ys = trees.map((t) => t.at[1]);
+  plant(ctx, g, matrices, colors, casters, [Math.min(...xs) - 1, Math.min(...ys) - 1, Math.max(...xs) + 1, Math.max(...ys) + 1]);
+  return () => uproot(ctx, g, casters);
 }

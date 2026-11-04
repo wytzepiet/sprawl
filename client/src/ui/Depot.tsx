@@ -1,10 +1,11 @@
-/** @jsxImportSource ~ui */
+import { Box, Text } from "~ui";
 import { createMemo, createSignal, Index, Show } from "solid-js";
+import { BLUEPRINTS } from "../blueprints";
 import { buildingAt, getEntity, useGame } from "../state/gameObjects";
 import { load, now, until } from "../state/sea";
 import { Btn, coins, Follow, Section } from "./kit";
 import { LORRY_PRICE, MORE_LORRIES } from "../generated/rows";
-import type { Building, Car } from "../generated";
+import type { Building, Car, CarRole } from "../generated";
 
 /** A building of the client's, read again four times a second. */
 const building = (id: number) =>
@@ -18,11 +19,12 @@ const building = (id: number) =>
 const atHarbour = (car: { x: number; y: number } | null) => {
   if (!car) return false;
   const b = buildingAt(car.x, car.y);
-  return b?.object.kind === "Building" && (b.object.data as Building).kind === "Harbour";
+  return b?.object.kind === "Building" && BLUEPRINTS[(b.object.data as Building).kind].quay;
 };
 
 /**
- * A depot's card: its lorries and what each is doing, another bought.
+ * A depot's card: its lorries and what each is doing, another lorry or
+ * van bought.
  * The lorries go about their work of their own accord: what comes in
  * and goes out is the feed's deals, and what the depots hold is the
  * market's (docs/plan-market.md: a building never gets a panel of its own).
@@ -37,32 +39,33 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
       return { id, car: e?.object.kind === "Car" ? (e.object.data as Car) : null, at: e?.position ?? null };
     });
   });
-  const [bought, setBought] = createSignal(false);
-  const buy = () => {
-    send({ type: "BuyLorry", data: { depot: props.id } });
-    setBought(true);
-    setTimeout(() => setBought(false), 1800);
+  const [bought, setBought] = createSignal<CarRole | null>(null);
+  const buy = (role: CarRole) => {
+    send({ type: "Buy", data: { depot: props.id, role } });
+    setBought(role);
+    setTimeout(() => setBought(null), 1800);
   };
-  const can = () => (b()?.lorries ?? 0) < MORE_LORRIES && growth().treasury >= LORRY_PRICE;
+  const can = () => (b()?.lorries ?? 0) + (b()?.vans ?? 0) < MORE_LORRIES && growth().treasury >= LORRY_PRICE;
 
   return (
-    <Show when={b()} fallback={<Section title="Depot"><text size={13.5} soft>Out of sight.</text></Section>}>
+    <Show when={b()} fallback={<Section title="Depot"><Text size={13.5} soft>Out of sight.</Text></Section>}>
       <Section title={props.lorries.length > 1 ? `Lorries · ${props.lorries.length}` : "The lorry"}>
         <Index each={cars()}>
           {(l) => {
             const w = () => doing(props.id, l().car, l().at);
             return (
-              <box dir="row" align="center" gap={8} minH={26}>
-                <text grow={1} size={14.5} weight={600} lines={2}>{w().words[0].toUpperCase() + w().words.slice(1)}</text>
-                <Show when={w().eta}>{(eta) => <text serif size={18}>{until(eta())}</text>}</Show>
+              <Box dir="row" align="center" gap={8} minH={26}>
+                <Text grow={1} size={14.5} weight={600} lines={2}>{w().words[0].toUpperCase() + w().words.slice(1)}</Text>
+                <Show when={w().eta}>{(eta) => <Text serif size={18}>{until(eta())}</Text>}</Show>
                 <Follow id={l().id} />
-              </box>
+              </Box>
             );
           }}
         </Index>
-        <box dir="row" justify="end" pad={{ top: 6 }}>
-          <Btn onTap={buy} disabled={!can()}>{bought() ? "Bought ✓" : `+ lorry ${coins(-LORRY_PRICE)}`}</Btn>
-        </box>
+        <Box dir="row" justify="end" gap={8} pad={{ top: 6 }}>
+          <Btn onTap={() => buy("Van")} disabled={!can()}>{bought() === "Van" ? "Bought ✓" : `+ van ${coins(-LORRY_PRICE)}`}</Btn>
+          <Btn onTap={() => buy("Truck")} disabled={!can()}>{bought() === "Truck" ? "Bought ✓" : `+ lorry ${coins(-LORRY_PRICE)}`}</Btn>
+        </Box>
       </Section>
     </Show>
   );

@@ -21,6 +21,7 @@ import type { Building, RoadNode } from "../generated";
 import { mountBuilding } from "./objects/BuildingObject";
 import { forgetCar, mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
+import { BLUEPRINTS } from "../blueprints";
 import { Brush } from "./Brush";
 import { aim, placed, setPlaced } from "../ui/buildMode";
 import { news } from "../state/sea";
@@ -78,7 +79,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
     const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
-      if (b.kind === "Harbour") quays.add(key);
+      if (BLUEPRINTS[b.kind].quay) quays.add(key);
       terrain.markTile(t.x, t.y);
       return key;
     });

@@ -23,12 +23,11 @@ import { mkdirSync } from "node:fs";
 import { args, flag, ROOT, word } from "./lib";
 import { connect } from "./game";
 import "./tsx";
-import type { Lane, Mission, Neighbour } from "../src/generated";
+import type { Lane, Neighbour } from "../src/generated";
 
 const t0 = performance.now();
 const { drawFlat } = await import("../src/flat/draw");
 const { moment } = await import("../src/engine/objects/motion");
-const { markedFor } = await import("../src/state/missions");
 
 const OUT = `${ROOT}/.dev/flat`;
 const px = flag("--px", 32);
@@ -41,7 +40,6 @@ const [x, y, r = 12] = (args[0] ?? "0,0").split(",").map(Number);
 // What the server has said beyond the things, as the client keeps it.
 const chunks = new Map<string, Uint8Array>();
 let lanes: Lane[] = [];
-let missions: Mission[] = [];
 let neighbours: Neighbour[] = [];
 let updates = 0;
 // Everything a view of the place sees, and a chunk round it: what a vehicle
@@ -53,7 +51,6 @@ const { entities, clock, now, close } = await connect({
     if (msg.type === "TerrainChunk") chunks.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
     if (msg.type !== "Update") return;
     lanes = msg.data.sea?.lanes ?? lanes;
-    missions = msg.data.missions ?? missions;
     neighbours = msg.data.neighbours ?? neighbours;
     if (msg.data.ops.length) updates++;
   },
@@ -74,7 +71,7 @@ for (let n = 0; n < frames; n++) {
   const [vx, vy] = m ? m.body.at : [x + 0.5, y + 0.5];
   const canvas = createCanvas(side, side);
   const t = performance.now();
-  drawFlat(canvas.getContext("2d") as unknown as CanvasRenderingContext2D, { entities: (each) => entities.forEach(each), ground: (cx, cy) => chunks.get(`${cx},${cy}`), lanes, neighbours, marked: (o) => markedFor(missions, neighbours, o), now: at, dayMs: clock.day_ms }, { x: vx, y: vy, px, w: side, h: side }, sheet);
+  drawFlat(canvas.getContext("2d") as unknown as CanvasRenderingContext2D, { entities: (each) => entities.forEach(each), ground: (cx, cy) => chunks.get(`${cx},${cy}`), lanes, neighbours, now: at, dayMs: clock.day_ms }, { x: vx, y: vy, px, w: side, h: side }, sheet);
   const file = `${OUT}/${name}${frames > 1 ? `-${n}` : ""}.png`;
   await Bun.write(file, await canvas.encode("png"));
   console.log(`${file}  ${entities.size} things, drawn in ${Math.round(performance.now() - t)} ms${n ? "" : `, ${Math.round(performance.now() - t0)} ms in all`}`);

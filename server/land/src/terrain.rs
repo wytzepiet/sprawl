@@ -290,11 +290,57 @@ pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
     (CHUNKS_MIN..=CHUNKS_MAX).flat_map(|cy| (CHUNKS_MIN..=CHUNKS_MAX).map(move |cx| ChunkCoord { cx, cy })).flat_map(|c| chunk(seed, c)).collect()
 }
 
+/// What lies under the land of a seed (`Deposit`): ore and coal in
+/// patches of the mountains, a few tiles to a few dozen across, oil in
+/// rarer patches of the grass. Noise picks the patches, so some islands
+/// have each and some lack it, and two towns with different land have
+/// something to sell each other.
+pub fn deposits(seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> HashMap<(i32, i32), crate::Deposit> {
+    use crate::Deposit;
+    let ore = Simplex::new(seed.wrapping_add(40));
+    let coal = Simplex::new(seed.wrapping_add(41));
+    let oil = Simplex::new(seed.wrapping_add(42));
+    const PATCH: f64 = 0.035;
+    const FIELD: f64 = 0.02;
+    let mut out = HashMap::default();
+    let mut tiles: Vec<_> = terrain.iter().collect();
+    tiles.sort_by_key(|(p, _)| **p);
+    for (&(x, y), &t) in tiles {
+        let (fx, fy) = (x as f64, y as f64);
+        let d = match t {
+            TerrainType::Mountain if ore.get([fx * PATCH, fy * PATCH]) > 0.4 => Some(Deposit::Ore),
+            TerrainType::Mountain if coal.get([fx * PATCH, fy * PATCH]) > 0.4 => Some(Deposit::Coal),
+            TerrainType::Grass if oil.get([fx * FIELD, fy * FIELD]) > 0.82 => Some(Deposit::Oil),
+            _ => None,
+        };
+        if let Some(d) = d {
+            out.insert((x, y), d);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use fixed::HashSet;
 
     use super::*;
+
+    /// Every seed's map has ore, coal and oil somewhere, and not
+    /// everywhere: a few hundred tiles of each at most a share of the land.
+    /// `--nocapture` prints how much of each lies within reach of home.
+    #[test]
+    #[ignore]
+    fn deposits_lie_in_some_places() {
+        for seed in 0..8 {
+            let land = generate(seed);
+            let under = deposits(seed, &land);
+            let count = |d: crate::Deposit, near: bool| under.iter().filter(|&(&(x, y), &k)| k == d && (!near || x * x + y * y < 150 * 150)).count();
+            let (ore, coal, oil) = (count(crate::Deposit::Ore, false), count(crate::Deposit::Coal, false), count(crate::Deposit::Oil, false));
+            println!("seed {seed}: ore {ore} ({} near home), coal {coal} ({}), oil {oil} ({})", count(crate::Deposit::Ore, true), count(crate::Deposit::Coal, true), count(crate::Deposit::Oil, true));
+            assert!(ore > 0 && coal > 0 && oil > 0, "seed {seed} lacks a deposit");
+        }
+    }
 
     /// Not an assertion: a picture, for whoever runs this with --ignored
     /// --nocapture. The whole map of `SPRAWL_SEED` (or 7), sixteen tiles

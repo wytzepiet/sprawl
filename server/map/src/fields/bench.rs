@@ -114,7 +114,7 @@ fn sweeps() {
         let set: HashSet<(i32, i32)> = batch.iter().map(|t| (t.x, t.y)).collect();
         let head: HashSet<(i32, i32)> = outlines(&set).into_iter().flatten().map(|t| (t.x, t.y)).collect();
         let ground = world.drivable(farm);
-        let gate = world.yard_gate(farm, &batch).unwrap();
+        let gate = world.gate(farm).unwrap();
         for job in [Job::Plough, Job::Harvest] {
             let (path, left) = world.sweep(farm, gate, &batch, job).expect("a sweep");
             let m = measure(&batch, &path);

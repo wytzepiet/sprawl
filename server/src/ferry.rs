@@ -11,7 +11,7 @@ use traffic::sea::lines::Line;
 use traffic::sea::DWELL;
 use traffic::sea::voyage::Voyage;
 use traffic::sea::water::{End, Water};
-use map::sea::{seats, BAYS, DECK, PER_BAY, QUAY};
+use map::sea::{seats, BAYS, DECK, PER_BAY};
 use crate::world::World;
 
 /// The first call at a new harbour: half an hour after it is built.
@@ -21,7 +21,7 @@ pub const ROLL_MS: GameTime = 4_000;
 /// The starter pack, the first harbour's first sailing: timber for the
 /// first houses, stone for the first streets, crates for the first shop,
 /// fuel; so many packages of each.
-pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 15), (Good::Stone, 5), (Good::Crates, 4), (Good::Fuel, 5)];
+pub const STARTER: [(Good, u32); 4] = [(Good::Timber, 24), (Good::Stone, 8), (Good::Bread, 8), (Good::Fuel, 6)];
 
 impl World {
     /// A harbour's line to the world: out from its berth to the map's
@@ -259,20 +259,12 @@ impl World {
         let j = c.passengers.len() - 1;
         let free = empty_bays(&c.deck);
         let seat = free.get(j >> 1).map(|&k| (k, seats(berth.moored(), k)[j & 1]));
-        let home = match self.map.objects.get(car).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => self.map.objects.get(c.owner).and_then(|e| match e.object {
-                GameObject::Resident(ref r) => Some(r.home),
-                _ => None,
-            }),
-            _ => None,
-        };
+        let owner = self.map.car(car).map_or(car, |c| c.owner);
+        let home = self.map.resident(owner).map(|r| r.home);
         // Off the deck once it is away, or at once if home is gone; one the
         // street does not let out yet tries again with the next. Whoever is
         // still aboard when the ferry sails waits for the next sailing.
         let off = seat.and_then(|(k, at)| Some((self.map.way_off(harbour, 2 * k + (j & 1))?, at)));
-        // A settler off the ferry, the first time they are anywhere: a
-        // mission may have waited for them.
-        let settler = self.map.car(car).and_then(|c| self.map.resident(c.owner)).is_some_and(|r| r.at.is_none());
         let drove = home.is_some_and(|home| match off {
             Some((out, at)) => {
                 self.map.update_position(car, GridCoord { x: at.at[0].floor() as i32, y: at.at[1].floor() as i32 });
@@ -280,8 +272,10 @@ impl World {
             }
             None => self.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, street, home, now, GameTime::MAX)),
         });
-        if drove && settler {
-            self.missions.stir();
+        // Their needs start as they land, full: the days they waited
+        // beyond the sea are not owed.
+        if drove && let Some(r) = self.map.resident_mut(owner) {
+            r.last_update = now;
         }
         if drove || home.is_none() {
             if let Some(c) = self.map.car_mut(ferry) {
@@ -324,13 +318,10 @@ impl World {
         }
         let Some(c) = self.map.car_mut(ferry) else { return };
         c.sail = None;
-        let harbour = c.owner;
         if !sail.astern {
             c.spot = Some(traffic::sea::pose(&sail, sail.ends));
             c.due = now + DWELL;
             self.map.update_position(ferry, tile(sail.ends));
-            // The post comes with it.
-            crate::orders::post(self, harbour, now);
             events.wake(0, ferry);
         } else {
             if let Some(at) = self.map.objects.get(ferry).and_then(|e| e.position) {
@@ -358,11 +349,10 @@ impl World {
         c.passengers.clear();
         c.spot = None;
         c.due = now + turn;
-        // Each package is paid for at its slot's price, by its partner;
-        // one for a letter counts to it.
+        // Each package is paid for at its slot's price, by its partner.
         for t in sold {
-            crate::orders::sailed(self, &t);
             crate::economy::exported(self, harbour, t.good, t.value(), now);
+            self.market.crossed(&t, now);
         }
         self.set_out(events, ferry, way, true, now);
     }
@@ -382,17 +372,17 @@ impl World {
 
     /// The harbour's forklifts work the deck of the ferry at its ramp:
     /// what came for the town is lifted off onto the quay, the land end
-    /// first, as far as the quay has room, each paid for as it lands; then
+    /// first, as far as the quay has room
+    /// that no lorry of exports holds, each paid for as it lands; then
     /// what waits on the quay to go out is lifted onto the deck's empty
     /// places from the sea end, each only if it is aboard before the ferry
     /// sails. A run is a lorry's worth of one good, so the forklifts share
     /// the work, and the lorries wait their turn among it.
     fn work_deck(&mut self, events: &mut EventQueue, ferry: EntityId, harbour: EntityId, now: GameTime) {
         let Some(due) = self.map.car(ferry).map(|c| c.due) else { return };
-        let quay = self.map.building(harbour).map_or(0, |b| b.pad.len());
         let deck = self.map.car(ferry).map_or(Vec::new(), |c| c.deck.clone());
         let mut off: Vec<(usize, Package)> = deck.iter().enumerate().filter_map(|(k, t)| t.filter(|t| !t.outbound).map(|t| (k, t))).collect();
-        off.truncate(QUAY.saturating_sub(quay));
+        off.truncate(crate::haul::quay_room(self, harbour));
         let mut landed = false;
         for run in runs(&off) {
             let good = run[0].1.good;
@@ -408,6 +398,7 @@ impl World {
                 // it is the world's gift.
                 if t.order != model::GIFT {
                     crate::economy::landed(self, harbour, t.good, t.value(), now);
+                    self.market.crossed(&t, now);
                 }
             }
             landed = true;

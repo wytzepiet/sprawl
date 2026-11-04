@@ -1,43 +1,53 @@
-/** @jsxImportSource ~ui */
-import { createMemo, createRoot, createSignal, For, Index, Match, Show, Switch } from "solid-js";
-import { useGame } from "../state/gameObjects";
-import { sea } from "../state/sea";
-import { change, market, quoteOf, stocks, total } from "../state/market";
-import { home } from "../state/deals";
+import { Box, Text, Icon } from "~ui";
+import { createMemo, createRoot, createSignal, For, Show } from "solid-js";
+import { now, sea } from "../state/sea";
+import { change, flowOf, market, quoteOf, stocks } from "../state/market";
+import { neighbours } from "../state/neighbours";
+import { dayLengthMs } from "../network/clock";
 import { GOODS } from "../blueprints";
-import { LOAD } from "../generated/rows";
-import { BAD, Fade, GoodDot, Line, Press, Tabs } from "./kit";
-import { open, setOpen, show } from "./sheet";
-import { Holdings, Orders } from "./Stock";
+import { FREIGHT } from "../generated/rows";
+import { BAD, GOOD, Press } from "./kit";
+import { show } from "./sheet";
 import { PageHead, push } from "./pages";
-import type { Good, Quote, When } from "../generated";
+import type { Deal, Good } from "../generated";
 
 /**
- * The market tab (docs/plan-market.md §The first version): every good,
- * what the town holds of it, its price and how it moved; a tap opens a
- * good's page: its week on a graph inside the world's band, what the
- * town pays and gets for a package at its harbour, its depots' room, Buy
- * and Sell so many packages, and orders that wait for a price.
+ * The market tab (docs/plan-market.md §The first version): what the town
+ * holds is worth, then every good, what the town holds of it, its day
+ * and its price; a tap opens a good's page: its week on a line, the
+ * world's band, and its depots' room. The town trades by itself.
  *
- * Prices are a package's, the unit a deck and an order trade in.
+ * Prices are a package's, the unit a deck trades in; amounts are units,
+ * as the town makes and uses them.
  */
 
-/** How frosted the glass under a chart is: its red and green read over any town. */
-export const FROSTED = 1;
-const UP = "#2E9D6A";
-/** The most packages a ferry's deck takes: the most bought or sold at once. */
-const DECK = 60;
-
-/** A package's worth, to the coin from a hundred and to the tenth below. */
-export const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1));
-export const each = (g: Good, unit: number) => unit * GOODS[g].per;
-export const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].label.slice(1);
+const money = (v: number) => (v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1));
+const each = (g: Good, unit: number) => unit * GOODS[g].per;
+const named = (g: Good) => GOODS[g].label[0].toUpperCase() + GOODS[g].label.slice(1);
 /** A move's colour: up, down, or too small to call. */
-export const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? UP : BAD);
-export const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
+const tint = (c: number) => (Math.abs(c) < 0.005 ? "ink/0.5" : c > 0 ? GOOD : BAD);
+const percent = (c: number) => `${c > 0 ? "+" : c < 0 ? "−" : ""}${Math.abs(c * 100).toFixed(Math.abs(c) < 0.1 ? 1 : 0)}%`;
+
+/**
+ * A good's colour as it glows on the black: brighter and fuller than on
+ * the map, where it is a box in the sun. The accent of its page and line.
+ */
+const glow = (g: Good) => {
+  const [r, gr, b] = [1, 3, 5].map((i) => parseInt(GOODS[g].color.slice(i, i + 2), 16) / 255);
+  const [hi, lo] = [Math.max(r, gr, b), Math.min(r, gr, b)];
+  const d = hi - lo;
+  const h = d === 0 ? 0 : hi === r ? ((gr - b) / d + 6) % 6 : hi === gr ? (b - r) / d + 2 : (r - gr) / d + 4;
+  const l = Math.max((hi + lo) / 2, 0.62);
+  const sat = Math.min(1, (d / (1 - Math.abs(hi + lo - 1) || 1)) * 1.3 + 0.1);
+  const c = (1 - Math.abs(2 * l - 1)) * sat;
+  const x = c * (1 - Math.abs((h % 2) - 1));
+  const [p, q, t] = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(h) % 6];
+  const hex = (v: number) => Math.round((v + l - c / 2) * 255).toString(16).padStart(2, "0");
+  return `#${hex(p)}${hex(q)}${hex(t)}`;
+};
 
 /** Every good held, with what is on its way in. */
-export const held = createRoot(() =>
+const held = createRoot(() =>
   createMemo(() => {
     const sum = new Map<Good, { level: number; cap: number; incoming: number }>();
     for (const [g, s] of Object.entries(stocks()) as [Good, { level: number; cap: number }][])
@@ -46,266 +56,267 @@ export const held = createRoot(() =>
   }),
 );
 
-/**
- * A price over time, drawn in packages: a column from each hour's price to
- * the next, a line where they meet, and the ground under it faint; lines
- * across it where asked. `lo` and `hi` are the bottom and the top.
- */
-function Chart(props: { history: number[]; lo: number; hi: number; w: number; h: number; color: string; marks?: { at: number; color: string; dashed?: boolean; label?: string }[] }) {
-  const y = (v: number) => props.h * (1 - (v - props.lo) / Math.max(1e-9, props.hi - props.lo));
-  const step = () => props.w / Math.max(1, props.history.length - 1);
-  const t = () => Math.max(1.5, props.h / 60);
-  return (
-    <box w={props.w} h={props.h} clip>
-      <Index each={props.marks ?? []}>
-        {(m) => (
-          <>
-            <Show when={m().dashed} fallback={<box at={{ left: 0, top: y(m().at) - 0.5 }} w={props.w} h={1} fill={m().color} />}>
-              <Index each={Array.from({ length: Math.ceil(props.w / 9) })}>{(_, i) => <box at={{ left: i * 9, top: y(m().at) - 0.75 }} w={5} h={1.5} fill={m().color} />}</Index>
-            </Show>
-            <Show when={m().label}>
-              <box at={{ right: 2, top: Math.min(props.h - 14, Math.max(0, y(m().at) - 15)) }}>
-                <text size={10.5} weight={600} ink={m().color}>{m().label}</text>
-              </box>
-            </Show>
-          </>
-        )}
-      </Index>
-      <Index each={props.history}>
-        {(v, i) => {
-          const next = () => props.history[Math.min(i + 1, props.history.length - 1)];
-          const top = () => Math.min(y(v()), y(next()));
-          return (
-            <>
-              <box at={{ left: i * step(), top: y(v()) }} w={Math.max(1, step())} h={props.h - y(v())} fill={`${props.color}1c`} />
-              <Show when={i < props.history.length - 1 || props.history.length === 1}>
-                <box at={{ left: i * step() - t() / 2, top: top() - t() / 2 }} w={Math.max(step(), 0) + t()} h={Math.abs(y(v()) - y(next())) + t()} round={t() / 2} fill={props.color} />
-              </Show>
-            </>
-          );
-        }}
-      </Index>
-    </box>
-  );
+/** A gradient's name, unique to its chart. */
+let charts = 0;
+
+/** A smooth line through points: each bend a curve whose handles run
+ *  along the line from the point before to the point after, a sixth of
+ *  the way (Catmull–Rom), so it passes through every hour's price. */
+function smooth(pts: [number, number][]) {
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 1; i < pts.length; i++) {
+    const [p0, p1, p2, p3] = [pts[i - 2] ?? pts[i - 1], pts[i - 1], pts[i], pts[i + 1] ?? pts[i]];
+    d += `C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+  }
+  return d;
 }
 
-/** The day's line, small, for the list: on one scale for every good, a
- *  half either side of the world's price, so a steady good looks steady. */
-function Spark(props: { q: Quote }) {
-  const day = () => props.q.history.slice(-25);
-  const mid = () => (props.q.floor + props.q.ceiling) / 2;
-  return <Chart history={day().length ? day() : [props.q.price]} lo={mid() * 0.6} hi={mid() * 1.4} w={64} h={26} color={tint(change(props.q)) === "ink/0.5" ? "#8A8F8C" : tint(change(props.q))} />;
+/**
+ * A price over time: a smooth line through each hour's price in the
+ * good's colour, the ground under it fading down from it, and the price
+ * now a white dot at its end. `lo` and `hi` are the bottom and the top.
+ */
+function Chart(props: { history: number[]; lo: number; hi: number; w: number; h: number; color: string; thick: number }) {
+  const id = `chart${charts++}`;
+  const pts = () => {
+    const step = props.w / Math.max(1, props.history.length - 1);
+    return props.history.map((v, i): [number, number] => [i * step, props.h * (1 - (v - props.lo) / Math.max(1e-9, props.hi - props.lo))]);
+  };
+  const line = () => smooth(pts());
+  const end = () => pts()[pts().length - 1];
+  return (
+    <svg width={Math.max(0, props.w)} height={props.h} style={{ overflow: "visible", display: "block", "flex-shrink": 0 }}>
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color={props.color} stop-opacity="0.45" />
+          <stop offset="1" stop-color={props.color} stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${line()}L${props.w},${props.h}L0,${props.h}Z`} fill={`url(#${id})`} />
+      <path d={line()} fill="none" stroke={props.color} stroke-width={props.thick} stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx={end()[0]} cy={end()[1]} r={props.thick * 1.3} fill="white" />
+    </svg>
+  );
 }
 
 /** A good's tile: its glyph on a square of its colour. */
-export const Tile = (props: { good: Good; size?: number }) => (
-  <box w={props.size ?? 32} h={props.size ?? 32} round={(props.size ?? 32) * 0.3} fill={GOODS[props.good].color} align="center" justify="center">
-    <icon d={GOODS[props.good].glyph} size={(props.size ?? 32) * 0.58} ink="white" />
-  </box>
-);
-
-/** What the market tab shows: every good's price, what the town holds, or its orders. */
-const VIEWS = ["market", "stock", "orders"] as const;
-const [view, setView] = createSignal<(typeof VIEWS)[number]>("market");
-export { setView };
-
-/** The market's head: its tab bar. */
-export const MarketHead = () => <Tabs tabs={VIEWS} on={view()} lit={open()} pick={(v) => (setView(v), setOpen(true))} />;
-
-export const MarketBody = () => (
-  <Switch>
-    <Match when={view() === "market"}><Fade><List /></Fade></Match>
-    <Match when={view() === "stock"}><Fade><Holdings /></Fade></Match>
-    <Match when={view() === "orders"}><Fade><Orders /></Fade></Match>
-  </Switch>
+const Tile = (props: { good: Good }) => (
+  <Box w={32} h={32} round={10} fill={GOODS[props.good].color} align="center" justify="center">
+    <Icon d={GOODS[props.good].glyph} size={18.5} ink="white" />
+  </Box>
 );
 
 /** A good's page, as the page stack shows it. */
-export const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} />, frost: FROSTED });
-/** The market, and a good's page over it: a mission's step. */
-export const toMarket = (g: Good | null) => (setView("market"), show("market", true), g && push(goodPage(g)));
+const goodPage = (g: Good) => ({ key: `good:${g}`, view: () => <Page good={g} /> });
+/** The goods tab, and a good's page over it. */
+export const toMarket = (g: Good | null) => (show("market", true), g && push(goodPage(g)));
 
-/** Every good: what the town holds, the day's line, the price and its move. */
-function List() {
+/** A widget's ground on the black: the page is a stack of them. */
+const TILE = "#1C1C1E";
+/** The gap between widgets, and their corners. */
+const GAP = 10;
+const CORNER = 26;
+
+/** The last day across the border, every good's: coins in, coins out. */
+const day = () => market.flows.reduce((a, f) => ({ earned: a.earned + f.earned, spent: a.spent + f.spent }), { earned: 0, spent: 0 });
+const signed = (v: number) => `${v > 0.05 ? "+" : v < -0.05 ? "−" : ""}${money(Math.abs(v))}`;
+
+/** The tab's head: what the town came out with across the border the
+ *  last day: earned less spent. */
+export function MarketHead() {
+  const net = () => day().earned - day().spent;
   return (
-    <box pad={{ x: 12, bottom: 12 }} gap={6}>
-      <For each={market.goods}>
-        {(q) => (
-          <Press dir="row" align="center" gap={10} pad={{ x: 10, y: 8 }} round={16} fill="ink/0.05" onTap={() => push(goodPage(q.good))}>
-            <Tile good={q.good} />
-            <box grow={1} gap={1}>
-              <text size={14.5} weight={600}>{named(q.good)}</text>
-              <text size={12} soft>{held().has(q.good) ? `${Math.floor(held().get(q.good)!.level)} held` : "none held"}</text>
-            </box>
-            <Spark q={q} />
-            <box w={64} align="end">
-              <text serif size={16}>{money(each(q.good, q.price))}</text>
-              <text size={11.5} weight={600} ink={tint(change(q))}>{percent(change(q))}</text>
-            </box>
-          </Press>
-        )}
-      </For>
-    </box>
+    <Box dir="row" align="end" gap={8} pad={{ x: 16, top: 16, bottom: 8 }}>
+      <Show when={day().earned + day().spent >= 0.05} fallback={<Text size={14} weight={600} soft>Nothing crossed the border today</Text>}>
+        <Text serif size={30} ink={net() >= 0 ? GOOD : BAD}>{signed(net())}</Text>
+        <Box grow={1} pad={{ bottom: 5 }}>
+          <Text size={12.5} soft>a day, across the border</Text>
+        </Box>
+      </Show>
+    </Box>
   );
 }
 
-/** An order waiting on a price, as a sentence, and the cross that takes
- *  it back; `named`, with its good's name, where goods are mixed. */
-export function Order(props: { o: When; named?: boolean }) {
-  const { send } = useGame();
+/** Every good the town deals in, and its deals. */
+export function MarketBody() {
+  const goods = createMemo(() => market.goods.filter((q) => flowOf(q.good) || held().has(q.good)));
   return (
-    <box dir="row" align="center" gap={10} pad={{ left: 10, right: 4, y: 4 }} round={14} fill="ink/0.05">
-      <box w={6} h={26} round={3} fill="#7A5BC0" />
-      <text size={13.5} grow={1}>
-        {props.o.out ? "Sell" : "Buy"} {props.o.packages}{props.named ? ` ${GOODS[props.o.good].label}` : ""} when it {props.o.out ? "rises to" : "falls to"} <text serif>{money(each(props.o.good, props.o.price))}</text>
-      </text>
-      <Press w={32} h={32} round={16} align="center" justify="center" onTap={() => send({ type: "Cancel", data: { order: props.o.id } })}>
-        <Line d="M7 7l10 10M17 7L7 17" size={14} width={2.4} ink="ink/0.6" />
-      </Press>
-    </box>
+    <Box pad={{ x: 12, bottom: 12 }} gap={GAP}>
+      <Box dir="row" gap={GAP}>
+        <Box grow={1} pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={2}>
+          <Text size={12} weight={600} ink="ink/0.45">Sold the last day</Text>
+          <Text serif size={26} ink={GOOD}>{money(day().earned)}</Text>
+        </Box>
+        <Box grow={1} pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={2}>
+          <Text size={12} weight={600} ink="ink/0.45">Bought the last day</Text>
+          <Text serif size={26} ink={BAD}>{money(day().spent)}</Text>
+        </Box>
+      </Box>
+      <Box gap={2}>
+        <For each={goods()}>
+          {(q) => (
+            <Press dir="row" align="center" gap={12} pad={{ x: 4, y: 8 }} round={16} onTap={() => push(goodPage(q.good))}>
+              <Tile good={q.good} />
+              <Box grow={1} gap={1}>
+                <Text size={14.5} weight={600}>{named(q.good)}</Text>
+                <Text size={12} soft>{madeUsed(q.good)}</Text>
+              </Box>
+              <Trade good={q.good} />
+            </Press>
+          )}
+        </For>
+      </Box>
+      <Deals deals={market.deals} />
+    </Box>
   );
 }
 
-/** A number to set with a tap either side. */
-function Stepper(props: { value: string; less: () => void; more: () => void }) {
-  const Side = (p: { d: string; onTap: () => void }) => (
-    <Press w={30} h={30} round={15} align="center" justify="center" onTap={p.onTap}>
-      <Line d={p.d} size={14} width={2.6} />
-    </Press>
-  );
+/** Made and used a day, as a line under a good's name. */
+const madeUsed = (g: Good) => {
+  const f = flowOf(g);
+  const [m, u] = [Math.round(f?.made ?? 0), Math.round(f?.used ?? 0)];
+  return m || u ? `made ${m} · used ${u} a day` : `${Math.floor(held().get(g)?.level ?? 0)} held`;
+};
+
+/** What the border made up of a good the last day: bought, red; sold,
+ *  green; neither, the town keeps itself. */
+function Trade(props: { good: Good }) {
+  const f = () => flowOf(props.good);
+  const net = () => (f()?.earned ?? 0) - (f()?.spent ?? 0);
   return (
-    <box dir="row" align="center" gap={2} pad={2} round={17} fill="ink/0.07">
-      <Side d="M5 12h14" onTap={props.less} />
-      <box minW={34} align="center"><text serif size={15}>{props.value}</text></box>
-      <Side d="M5 12h14M12 5v14" onTap={props.more} />
-    </box>
+    <Box w={92} align="end">
+      <Show when={f() && (f()!.imported || f()!.exported)} fallback={<Text size={12} weight={600} soft>its own</Text>}>
+        <Text serif size={18} ink={net() >= 0 ? GOOD : BAD}>{signed(net())}</Text>
+        <Text size={11.5} weight={600} ink="ink/0.5">
+          {[f()!.imported ? `bought ${each(props.good, f()!.imported)}` : "", f()!.exported ? `sold ${each(props.good, f()!.exported)}` : ""].filter(Boolean).join(" · ")}
+        </Text>
+      </Show>
+    </Box>
   );
 }
 
-/** A good's page. */
+/** How long ago a moment of the town's day was, in its hours. */
+const ago = (at: number) => {
+  const h = (now() - at) / (dayLengthMs() / 24);
+  return h < 1 ? "this hour" : h < 24 ? `${Math.floor(h)}h ago` : `${Math.floor(h / 24)}d ago`;
+};
+
+/** The deals, newest first: who with, what, and the coins. */
+function Deals(props: { deals: Deal[]; most?: number }) {
+  const shown = () => [...props.deals].reverse().slice(0, props.most ?? 12);
+  const who = (d: Deal) => neighbours().find((n) => n.mayor === d.partner);
+  return (
+    <Show when={props.deals.length > 0}>
+      <Box pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={8}>
+        <Text size={13} weight={600} ink="ink/0.5">Deals</Text>
+        <For each={shown()}>
+          {(d) => (
+            <Box dir="row" align="center" gap={10}>
+              <Box w={10} h={10} round={5} fill={who(d)?.colour ?? "#888"} />
+              <Box grow={1} gap={0}>
+                <Text size={13.5} weight={600} lines={1}>{who(d) ? `${who(d)!.name} of ${who(d)!.town}` : d.partner}</Text>
+                <Text size={12} soft lines={1}>{`you ${d.out ? "sold" : "bought"} ${each(d.good, d.packages)} ${GOODS[d.good].label} · ${ago(d.at)}`}</Text>
+              </Box>
+              <Text serif size={16} ink={d.out ? GOOD : BAD}>{`${d.out ? "+" : "−"}${money(d.packages * each(d.good, d.price))}`}</Text>
+            </Box>
+          )}
+        </For>
+      </Box>
+    </Show>
+  );
+}
+
+/**
+ * A good's page, as a stack of widgets, each one thing: its price and its
+ * line over the week; what the depots hold of it; what the town made and
+ * used of it, and bought and sold, the last day; and its deals.
+ */
 function Page(props: { good: Good }) {
-  const { send, growth } = useGame();
   const q = () => quoteOf(props.good)!;
   const [w, setW] = createSignal(0);
   const [week, setWeek] = createSignal(true);
-  const [n, setN] = createSignal(1);
   const shown = () => (week() ? q().history : q().history.slice(-25));
-  const orders = () => market.orders.filter((o) => o.good === props.good);
-  const trade = (out: boolean) => send({ type: "Trade", data: { good: props.good, packages: n(), out } });
-  const cost = () => total(q(), n(), false);
-  const harbour = () => home() !== null;
-
-  // The "when" order being written: buying or selling, at what price a
-  // unit, set a twentieth of the band at a tap, from just past today's.
-  const tick = () => (q().ceiling - q().floor) / 20;
-  const [out, setOut] = createSignal(false);
-  const [at, setAt] = createSignal<number | null>(null);
-  const price = () => at() ?? q().price + (out() ? tick() : -tick());
-  const nudge = (by: number) => setAt(Math.max(q().floor, Math.min(q().ceiling, price() + by * tick())));
-  const place = () => (send({ type: "Order", data: { good: props.good, out: out(), packages: n(), price: price() } }), setAt(null));
-
-  const range = () => {
-    const pad = (q().ceiling - q().floor) * 0.08;
-    return [q().floor - pad, q().ceiling + pad];
-  };
+  const accent = () => glow(props.good);
   const stock = () => held().get(props.good);
+  const shelf = (v: number) => Math.max(0, Math.min(1, v / Math.max(1, stock()?.cap ?? 1)));
+  const [shelfW, setShelfW] = createSignal(0);
+  const flow = () => flowOf(props.good);
   return (
-    <box pad={{ bottom: 14 }} gap={10}>
+    <Box pad={{ x: 12, bottom: 14 }} gap={GAP}>
       <PageHead>
-        <Tile good={props.good} />
-        <text size={17} weight={700} grow={1}>{named(props.good)}</text>
-        <box align="end">
-          <text serif size={22}>{money(each(props.good, q().price))}</text>
-          <text size={11.5} weight={600} ink={tint(change(q()))}>{percent(change(q()))} today</text>
-        </box>
-      </PageHead>
-      <box pad={{ x: 12 }} gap={10}>
-      <box pad={{ x: 10, top: 10, bottom: 8 }} round={18} fill="ink/0.05" gap={8} onSize={(x) => setW(x - 20)}>
-        <Show when={w() > 0}>
-          <Chart
-            history={shown().length ? shown() : [q().price]}
-            lo={range()[0]}
-            hi={range()[1]}
-            w={w()}
-            h={150}
-            color={GOODS[props.good].color}
-            marks={[
-              { at: q().ceiling, color: "ink/0.3", label: `world sells ${money(each(props.good, q().ceiling))}` },
-              { at: q().floor, color: "ink/0.3", label: `world buys ${money(each(props.good, q().floor))}` },
-              ...orders().map((o) => ({ at: o.price, color: "#7A5BC0", dashed: true, label: `${o.out ? "sell" : "buy"} ${o.packages} at ${money(each(o.good, o.price))}` })),
-            ]}
-          />
-        </Show>
-        <box dir="row" gap={6}>
+        <Text size={17} weight={700} grow={1}>{named(props.good)}</Text>
+        <Box dir="row" pad={3} round={16} fill={TILE}>
           <For each={[false, true]}>
             {(wk) => (
-              <Press h={24} pad={{ x: 10 }} round={12} justify="center" fill={week() === wk ? "ink/0.85" : "ink/0.07"} onTap={() => setWeek(wk)}>
-                <text size={12} weight={600} ink={week() === wk ? "glass" : "ink/0.6"}>{wk ? "Week" : "Day"}</text>
+              <Press h={26} pad={{ x: 12 }} round={13} justify="center" fill={week() === wk ? "ink/0.2" : undefined} onTap={() => setWeek(wk)}>
+                <Text size={12.5} weight={600} ink={week() === wk ? "ink" : "ink/0.55"}>{wk ? "Week" : "Day"}</Text>
               </Press>
             )}
           </For>
-        </box>
-      </box>
+        </Box>
+      </PageHead>
 
-      <Show when={stock()}>{(s) => <box pad={{ x: 4 }}><Shelf good={props.good} level={s().level} cap={s().cap} incoming={s().incoming} /></box>}</Show>
+      {/* The price: a big number and its line. */}
+      <Box pad={{ x: 18, top: 16, bottom: 12 }} round={CORNER} fill={TILE} gap={6}>
+        <Box dir="row" align="end" gap={8}>
+          <Text serif size={44} ink={accent()}>{money(each(props.good, q().price))}</Text>
+          <Box grow={1} pad={{ bottom: 8 }}><Text size={14} weight={700} ink={`${accent()}bb`}>coins</Text></Box>
+          <Box pad={{ bottom: 8 }}><Text size={14} weight={700} ink={tint(change(q()))}>{percent(change(q()))}</Text></Box>
+        </Box>
+        <Box onSize={(x) => setW(x)}>
+          <Show when={w() > 0}>
+            <Chart history={shown().length > 1 ? shown() : [q().price, q().price]} lo={Math.min(...shown(), q().price) - 0.02} hi={Math.max(...shown(), q().price) + 0.02} w={w() - 6} h={96} thick={3} color={accent()} />
+          </Show>
+        </Box>
+        <Box dir="row">
+          <Text size={11.5} weight={600} ink="ink/0.35" grow={1}>{week() ? "a week ago" : "a day ago"}</Text>
+          <Text size={11.5} weight={600} ink="ink/0.35">now</Text>
+        </Box>
+        <Text size={12} weight={600} ink="ink/0.5">{`Shipped, you buy at ${money(each(props.good, q().price) * (1 + FREIGHT))} and sell at ${money(each(props.good, q().price) * (1 - FREIGHT))}`}</Text>
+      </Box>
 
-      <box dir="row" align="center" gap={8}>
-        <Stepper value={`${n()}`} less={() => setN(n() > LOAD ? n() - LOAD : Math.max(1, n() - 1))} more={() => setN(Math.min(DECK, n() < LOAD ? n() + 1 : n() + LOAD))} />
-        <text size={13} soft grow={1}>{GOODS[props.good].names[n() === 1 ? 0 : 1]}, {n() * GOODS[props.good].per}</text>
-      </box>
-      <box dir="row" gap={8}>
-        <Press grow={1} dir="row" align="center" justify="center" gap={8} h={44} round={16} fill={UP} opacity={harbour() && growth().treasury >= cost() ? 1 : 0.4} onTap={() => harbour() && growth().treasury >= cost() && trade(false)}>
-          <text size={15} weight={700} ink="white">Buy</text>
-          <text serif size={15} ink="white">{money(cost())}</text>
-        </Press>
-        <Press grow={1} dir="row" align="center" justify="center" gap={8} h={44} round={16} stroke={[1.5, "ink/0.18"]} opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && trade(true)}>
-          <text size={15} weight={700}>Sell</text>
-          <text serif size={15}>{money(total(q(), n(), true))}</text>
-        </Press>
-      </box>
+      {/* What the depots hold. */}
+      <Box pad={16} round={CORNER} fill={TILE} gap={6}>
+        <Box dir="row" align="end" gap={8}>
+          <Text size={13} weight={600} ink="ink/0.5" grow={1}>In your depots</Text>
+          <Text serif size={26}>{Math.floor(stock()?.level ?? 0).toLocaleString()}</Text>
+        </Box>
+        <Box h={14} round={7} fill="ink/0.12" onSize={(x) => setShelfW(x)}>
+          <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf((stock()?.level ?? 0) + (stock()?.incoming ?? 0))} h={14} round={7} fill={`${accent()}59`} />
+          <Box at={{ left: 0, top: 0 }} w={shelfW() * shelf(stock()?.level ?? 0)} h={14} round={7} fill={accent()} />
+        </Box>
+        <Box dir="row">
+          <Text size={12} weight={600} ink="ink/0.45" grow={1}>{stock() ? `of ${stock()!.cap.toLocaleString()}` : "no depot yet"}</Text>
+          <Show when={(stock()?.incoming ?? 0) > 0}>
+            <Text size={12} weight={600} ink={accent()}>+{Math.round(stock()!.incoming)} coming</Text>
+          </Show>
+        </Box>
+      </Box>
 
-      <box gap={6}>
-        <For each={orders()}>{(o) => <Order o={o} />}</For>
-        {/* An order, as a sentence: each part a tap to change. */}
-        <box dir="row" align="center" gap={6} wrap>
-          <Press h={30} pad={{ x: 12 }} round={15} justify="center" fill="ink/0.07" onTap={() => (setOut(!out()), setAt(null))}>
-            <text size={13.5} weight={600}>{out() ? "Sell" : "Buy"} {n()}</text>
-          </Press>
-          <text size={13.5} soft>when it {out() ? "rises to" : "falls to"}</text>
-          <Stepper value={money(each(props.good, price()))} less={() => nudge(-1)} more={() => nudge(1)} />
-          <box grow={1} />
-          <Press h={30} pad={{ x: 14 }} round={15} justify="center" fill="#7A5BC0" opacity={harbour() ? 1 : 0.4} onTap={() => harbour() && place()}>
-            <text size={13.5} weight={600} ink="white">Place</text>
-          </Press>
-        </box>
-      </box>
-      </box>
-    </box>
-  );
-}
+      {/* Its day: made and used, bought and sold. */}
+      <Box dir="row" gap={GAP}>
+        <For each={[["Made", flow()?.made ?? 0, accent()], ["Used", flow()?.used ?? 0, undefined]] as const}>
+          {([label, v, ink]) => (
+            <Box grow={1} pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={2}>
+              <Text size={12} weight={600} ink="ink/0.45">{label} the last day</Text>
+              <Text serif size={26} ink={ink}>{Math.round(v).toLocaleString()}</Text>
+            </Box>
+          )}
+        </For>
+      </Box>
+      <Box dir="row" gap={GAP}>
+        <For each={[["Bought", flow()?.imported ?? 0, flow()?.spent ?? 0, BAD], ["Sold", flow()?.exported ?? 0, flow()?.earned ?? 0, GOOD]] as const}>
+          {([label, n, coins, ink]) => (
+            <Box grow={1} pad={{ x: 16, y: 12 }} round={CORNER} fill={TILE} gap={2}>
+              <Text size={12} weight={600} ink="ink/0.45">{label} the last day</Text>
+              <Text serif size={26} ink={n ? ink : undefined}>{each(props.good, n).toLocaleString()}</Text>
+              <Text size={12} weight={600} ink="ink/0.45">{n ? `${money(coins)} coins` : "none"}</Text>
+            </Box>
+          )}
+        </For>
+      </Box>
 
-/** A good's shelf: how full, and what is on its way drawn faint beyond it. */
-function Shelf(props: { good: Good; level: number; cap: number; incoming: number }) {
-  const share = (v: number) => Math.max(0, Math.min(1, v / props.cap));
-  const [w, setW] = createSignal(0);
-  const color = () => GOODS[props.good].color;
-  return (
-    <box pad={{ y: 6 }} gap={8}>
-      <box dir="row" align="center" gap={8}>
-        <GoodDot good={props.good} size={20} />
-        <text size={13.5} weight={600}>{named(props.good)}</text>
-        <box dir="row" align="end" gap={2}>
-          <text serif size={13.5}>{Math.floor(props.level)}</text>
-          <text serif size={12} soft>/ {props.cap}</text>
-        </box>
-        <Show when={props.incoming > 0}>
-          <text size={11} soft>+{Math.round(props.incoming)} coming</text>
-        </Show>
-      </box>
-      <box h={14} round={7} fill="ink/0.09" onSize={(x) => setW(x)}>
-        <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
-        <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
-      </box>
-    </box>
+      <Deals deals={market.deals.filter((d) => d.good === props.good)} most={20} />
+    </Box>
   );
 }

@@ -8,45 +8,59 @@
 //! pushes the price up, what it sells pushes it down. How lively a good
 //! is is how wide its band is: stone narrow, fuel wide.
 //!
-//! One price, the same to buy and to sell. Each package moves it a step,
+//! One price, the same to buy and to sell, but for freight. Each package moves it a step,
 //! a two-hundredth of the way from the world's price to the band's edge, and is
 //! paid at the price it moved to: a package bought pushes the price up and
 //! costs the new price, a package sold pushes it down and gets the new one.
-//! So a quick flip always loses a step a package, and a town that buys a
+//! So a quick flip always loses a step a package and both freights, and a town that buys a
 //! whole ferry of a good pays more for the last package than the first. Past
 //! the band there is no more room: the world sells at its ceiling and
-//! buys at its floor. Freight leaves the price for now; real distances
-//! later.
+//! buys at its floor.
 //!
 //! The price steps once an hour of the town's day, from the world's seed
 //! and the hour alone, so the same seed and the same trades give the same
 //! graph on every machine. A week of hours is kept, and saved.
 //!
-//! A "when" order waits for a price: buy so many packages when it falls to
-//! it, sell when it rises to it. It is read each hour, and booked as far
-//! as the deck and the treasury go.
+//! The town trades by itself (docs/core.md §Trade): whatever it lacks
+//! the ship brings, and it pays; whatever is left over sails, and it is
+//! paid. Each hour, each good: bought up to what the town will want
+//! before the ferry after next can bring more (`want`), sold over twice
+//! that, or over that and what its depots hold, whichever is more.
+//! Between the two it waits, so nothing is bought one hour to be sold
+//! the next, and what its makers make more of than it wants sails
+//! before their yards fill and stop them.
+//!
+//! Every crossing costs freight (`FREIGHT`): a package bought costs the
+//! price it moved to and that share more, one sold gets that share less.
+//! What the town makes for itself it never pays the freight on.
+//!
+//! Every package is a mayor's (`orders::partner`), and what crossed is
+//! kept as deals: a few days of them, and a day of each good's tally.
 
-use model::market::{When, Quote, Prices};
+use model::market::{Deal, Flow, Quote, Prices};
 use std::collections::{BTreeMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::economy::world_price;
+use crate::economy::{world_price, FREIGHT};
+use model::blueprint::depot;
 use model::GameTime;
-use model::{Good, DAY_MS};
+use model::{EntityId, GameObject, Good, Package, DAY_MS};
 use crate::world::World;
 
-/// The goods on the market, in the order the list shows them.
-pub const GOODS: [Good; 4] = [Good::Timber, Good::Stone, Good::Crates, Good::Fuel];
+/// The goods on the market, in the order the list shows them. Bread
+/// too: a town with no bakery yet eats bought bread, and pays for it.
+pub const GOODS: [Good; 11] = [Good::Bread, Good::Timber, Good::Stone, Good::Grain, Good::Fuel, Good::Cement, Good::Ore, Good::Coal, Good::Steel, Good::Machinery, Good::Crude];
 
 /// How far a good's price may stray from the world's, each way, as a
-/// share of it: the band. Never under freight, so the world's two prices
-/// are always at least as far apart as the market's buy and sell.
+/// share of it: the band.
 fn band(good: Good) -> f64 {
     match good {
-        Good::Stone => 0.15,
-        Good::Timber | Good::Crates => 0.2,
-        Good::Fuel => 0.5,
+        Good::Stone | Good::Cement => 0.15,
+        Good::Timber | Good::Bread | Good::Grain | Good::Coal => 0.2,
+        Good::Ore | Good::Steel => 0.3,
+        Good::Machinery => 0.35,
+        Good::Fuel | Good::Crude => 0.5,
     }
 }
 
@@ -54,12 +68,17 @@ fn band(good: Good) -> f64 {
 pub const HOUR: GameTime = DAY_MS as GameTime / 24;
 /// Hours of price kept: a week.
 const KEPT: usize = 7 * 24;
+/// Deals kept: a few days' worth.
+const DEALS: usize = 200;
 /// Packages the town trades to move a price from the world's to its
 /// ceiling or floor. A town that buys a lorry of fuel a sailing barely
 /// moves it, the drift back taking each step away again within the day;
-/// a whole deck of sixty bought at once moves it most of a third of its
+/// a whole deck of sixty bought at once moves it most of a sixth of its
 /// band.
-const DEPTH: f64 = 200.0;
+const DEPTH: f64 = 400.0;
+/// How much deeper the market is to a town with a container port
+/// standing: bulk, its trades moving the price a third as far.
+const PORT_DEPTH: f64 = 3.0;
 /// How much of an hour's push from the mayors lasts into the next: a
 /// glut or a shortage lasts most of a day.
 const LASTS: f64 = 0.85;
@@ -67,6 +86,18 @@ const LASTS: f64 = 0.85;
 /// of the way back to the world's it drifts each hour.
 const PUSH: f64 = 0.12;
 const BACK: f64 = 0.03;
+
+/// An hour of a good: units made and used in town, packages in and out
+/// over the border, and their coins.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+struct Tally {
+    made: f64,
+    used: f64,
+    imported: u32,
+    exported: u32,
+    spent: f64,
+    earned: f64,
+}
 
 /// The market as the world keeps it, and saves it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -79,7 +110,17 @@ pub struct Market {
     push: BTreeMap<Good, f64>,
     /// Each good's price at the end of each hour kept, oldest first.
     history: BTreeMap<Good, VecDeque<f64>>,
-    pub orders: Vec<When>,
+    /// Each good, an hour a row, the last day's; the last row the hour
+    /// going.
+    #[serde(default)]
+    tallies: VecDeque<BTreeMap<Good, Tally>>,
+    /// What crossed the border, oldest first.
+    #[serde(default)]
+    deals: VecDeque<Deal>,
+    /// A container port stands, as last settled: the market is deeper to
+    /// the town (`PORT_DEPTH`). Derived.
+    #[serde(skip)]
+    pub port: bool,
     /// Something a client would draw changed since it was last sent.
     #[serde(skip)]
     pub changed: bool,
@@ -89,28 +130,84 @@ impl Market {
     pub fn price(&self, good: Good) -> f64 {
         world_price(good) * (1.0 + band(good) * self.at.get(&good).copied().unwrap_or(0.0))
     }
-    /// What the world sells at: the most the town ever pays.
+    /// What the world sells at: the most the market ever asks.
     pub fn ceiling(good: Good) -> f64 {
         world_price(good) * (1.0 + band(good))
     }
-    /// What the world buys at: the least the town ever gets.
+    /// What the world buys at: the least the market ever offers.
     pub fn floor(good: Good) -> f64 {
         world_price(good) * (1.0 - band(good))
     }
     /// How far a package moves a good's price, a unit's.
-    pub fn nudge(good: Good) -> f64 {
-        world_price(good) * band(good) / DEPTH
+    pub fn nudge(&self, good: Good) -> f64 {
+        world_price(good) * band(good) / self.depth()
     }
-    /// What a unit of the next package costs bought, or gets sold: the price
-    /// it moves to, never past the band.
+    /// Packages that move a price from the world's to its band's edge.
+    fn depth(&self) -> f64 {
+        if self.port { DEPTH * PORT_DEPTH } else { DEPTH }
+    }
+    /// What a unit of the next package costs the town bought, or gets it
+    /// sold: the price it moves to, never past the band, and the freight.
     pub fn next(&self, good: Good, out: bool) -> f64 {
-        (self.price(good) + if out { -1.0 } else { 1.0 } * Self::nudge(good)).clamp(Self::floor(good), Self::ceiling(good))
+        let moved = (self.price(good) + if out { -1.0 } else { 1.0 } * self.nudge(good)).clamp(Self::floor(good), Self::ceiling(good));
+        moved * if out { 1.0 - FREIGHT } else { 1.0 + FREIGHT }
+    }
+
+    /// So many units of a good made in town, or used.
+    pub fn made(&mut self, good: Good, units: f64) {
+        self.tally(good).made += units;
+    }
+    pub fn used(&mut self, good: Good, units: f64) {
+        self.tally(good).used += units;
+    }
+    fn tally(&mut self, good: Good) -> &mut Tally {
+        if self.tallies.is_empty() {
+            self.tallies.push_back(BTreeMap::new());
+        }
+        self.tallies.back_mut().unwrap().entry(good).or_default()
+    }
+
+    /// A package crossed the border, landed or sailed: on the hour's
+    /// tally, and a deal, or one more of the last deal if that is the same
+    /// good with the same partner the same way this hour.
+    pub fn crossed(&mut self, t: &Package, now: GameTime) {
+        let Some(partner) = t.partner else { return };
+        let tally = self.tally(t.good);
+        if t.outbound {
+            tally.exported += 1;
+            tally.earned += t.value();
+        } else {
+            tally.imported += 1;
+            tally.spent += t.value();
+        }
+        match self.deals.back_mut().filter(|d| (d.good, d.out, d.partner) == (t.good, t.outbound, partner) && d.at / HOUR == now / HOUR) {
+            Some(d) => {
+                d.price = (d.price * d.packages as f64 + t.price) / (d.packages + 1) as f64;
+                d.packages += 1;
+            }
+            None => {
+                self.deals.push_back(Deal { at: now, good: t.good, packages: 1, out: t.outbound, partner, price: t.price });
+                if self.deals.len() > DEALS {
+                    self.deals.pop_front();
+                }
+            }
+        }
+        self.changed = true;
+    }
+
+    /// Units of a good the town used an hour over what it made, over the
+    /// hours kept but the one going.
+    fn rate(&self, good: Good) -> f64 {
+        let done = self.tallies.len().saturating_sub(1);
+        let net: f64 = self.tallies.iter().take(done).filter_map(|h| h.get(&good)).map(|t| t.used - t.made).sum();
+        net / done.max(1) as f64
     }
 
     /// The town traded so many packages: the price moves its way.
     fn traded(&mut self, good: Good, packages: f64, out: bool) {
+        let depth = self.depth();
         let at = self.at.entry(good).or_default();
-        *at = (*at + if out { -1.0 } else { 1.0 } * packages / DEPTH).clamp(-1.0, 1.0);
+        *at = (*at + if out { -1.0 } else { 1.0 } * packages / depth).clamp(-1.0, 1.0);
         self.changed = true;
     }
 
@@ -138,6 +235,10 @@ impl Market {
                 h.pop_front();
             }
         }
+        self.tallies.push_back(BTreeMap::new());
+        while self.tallies.len() > 24 {
+            self.tallies.pop_front();
+        }
         self.hour += 1;
         self.changed = true;
     }
@@ -150,11 +251,25 @@ impl Market {
                 price: self.price(good),
                 floor: Self::floor(good),
                 ceiling: Self::ceiling(good),
-                step: Self::nudge(good),
+                step: self.nudge(good),
                 history: self.history.get(&good).map_or(Vec::new(), |h| h.iter().copied().collect()),
             })
             .collect();
-        Prices { goods, orders: self.orders.clone(), hour: self.hour }
+        let mut day = BTreeMap::<Good, Tally>::new();
+        for (&good, t) in self.tallies.iter().flatten() {
+            let d = day.entry(good).or_default();
+            d.made += t.made;
+            d.used += t.used;
+            d.imported += t.imported;
+            d.exported += t.exported;
+            d.spent += t.spent;
+            d.earned += t.earned;
+        }
+        let flows = day
+            .into_iter()
+            .map(|(good, t)| Flow { good, made: t.made, used: t.used, imported: t.imported, exported: t.exported, spent: t.spent, earned: t.earned })
+            .collect();
+        Prices { goods, flows, deals: self.deals.iter().copied().collect(), hour: self.hour }
     }
 }
 
@@ -168,61 +283,133 @@ fn noise(seed: u32, hour: u64, mayor: u64, good: u64) -> f64 {
 }
 
 /// Every hour gone by since the market last stepped, stepped, and the
-/// orders whose price came read. Read each step of the game: no wake of
-/// its own, so a level or a replay with no market plays as it did.
+/// town's goods kept. Read each step of the game: no wake of its own, so
+/// a level or a replay with no market plays as it did.
 pub fn hour(world: &mut World, events: &mut traffic::event_queue::EventQueue, now: GameTime) {
     let mut traded = false;
     while (world.market.hour + 1) * HOUR <= now {
         world.market.step(world.map.terrain_seed);
-        // An order is read at the hour's price, and booked as far as it goes.
-        for i in (0..world.market.orders.len()).rev() {
-            let o = world.market.orders[i];
-            let price = world.market.price(o.good);
-            if if o.out { price < o.price } else { price > o.price } {
-                continue;
-            }
-            let left = o.packages - trade(world, o.good, o.out, o.packages);
-            traded |= left < o.packages;
-            if left == 0 {
-                world.market.orders.remove(i);
-            } else {
-                world.market.orders[i].packages = left;
-            }
-        }
+        crate::research::hour(world);
+        traded |= keep(world, now);
     }
     if traded {
         crate::haul::call_lorries(world, events);
     }
 }
 
+/// What the town has of a good: on its depots' shelves, in the yards of
+/// the makers that make it, in its vans, and on its way in, less what
+/// waits at a harbour to go out.
+fn position(world: &World, good: Good) -> f64 {
+    let kept: f64 = world
+        .map
+        .objects
+        .iter()
+        .filter_map(|e| match e.object {
+            GameObject::Building(ref b) if depot(b.kind) || model::blueprint::makes(b.kind, good) => b.stocks.get(&good).map(|s| s.level),
+            GameObject::Car(ref c) => c.load.filter(|l| l.0 == good).map(|l| l.1),
+            _ => None,
+        })
+        .sum();
+    let coming = crate::haul::packages(world).iter().filter(|(t, ..)| t.good == good && !t.outbound).count() as f64;
+    let going: usize = world.map.harbours.keys().filter_map(|&h| world.map.building(h)).map(|b| b.outgoing.iter().filter(|t| t.good == good).count()).sum();
+    kept + (coming - going as f64) * good.per_package()
+}
+
+/// What the town will want of a good before the ferry after next can
+/// bring more, `ahead` from now, and `KEEP` over: what it uses over what it makes, at the
+/// last day's rate, and what its sites still wait for and its counters'
+/// and works' bins have room for; a pantry's only once it is bare: a
+/// town's homes are never all full at once, and what they eat is the
+/// rate.
+fn want(world: &World, good: Good, ahead: GameTime) -> f64 {
+    let owed: f64 = world
+        .map
+        .objects
+        .iter()
+        .filter_map(|e| match e.object {
+            GameObject::Building(ref b) => match b.site {
+                Some(ref site) => site.get(&good).map(|s| s.short()),
+                None if !depot(b.kind) && crate::economy::buys(b.kind, good) => b.stocks.get(&good).filter(|s| model::blueprint::blueprint(b.kind).homes == 0 || s.level <= 0.0).map(|s| s.short()),
+                None => None,
+            },
+            _ => None,
+        })
+        .sum();
+    (world.market.rate(good) * (ahead + KEEP) as f64 / HOUR as f64).max(0.0) + owed
+}
+
+/// What the town keeps over what it will use before the next ferry: half
+/// a day's use, for the land leg, harbour to depot to door, and for a
+/// depot that runs out while another still has some.
+const KEEP: GameTime = DAY_MS as GameTime / 2;
+
+/// What the depots hold of a good at most.
+fn room(world: &World, good: Good) -> f64 {
+    world.map.depots().into_iter().filter_map(|(_, b)| b.stocks.get(&good)).map(|s| s.cap).sum()
+}
+
+/// Packages of a good the depots have room for beyond what is on its way
+/// to them: as much as the town can take off the quay. Bought past that,
+/// it stands on the quay, and the ferry has nowhere to land the rest.
+fn intake(world: &World, good: Good) -> u32 {
+    let free: u32 = world.map.depots().into_iter().filter_map(|(_, b)| b.stocks.get(&good)).map(|s| crate::economy::whole(s.short(), good)).sum();
+    let coming = crate::haul::packages(world).iter().filter(|(t, ..)| t.good == good && !t.outbound).count() as u32;
+    free.saturating_sub(coming)
+}
+
+/// An hour's trade: each good bought up to what the town will want, as
+/// far as its depots have room, and
+/// sold over twice that or over that and a full depot's, whichever is
+/// more. Whether anything was booked.
+fn keep(world: &mut World, now: GameTime) -> bool {
+    let Some(&harbour) = world.map.harbours.keys().next() else { return false };
+    let (Some(lands), Some(line)) = (world.next_ferry(harbour).and_then(|f| world.next_call(f)), world.lines.get(&harbour)) else { return false };
+    let ahead = lands.saturating_sub(now) + line.cycle() / line.every_call() as GameTime;
+    let mut traded = false;
+    let mut buys = Vec::new();
+    for good in GOODS {
+        let (have, want, per) = (position(world, good), want(world, good, ahead), good.per_package());
+        let sell = (2.0 * want).max(want + room(world, good));
+        if have < want {
+            buys.push((good, (((want - have) / per).ceil() as u32).min(intake(world, good))));
+        } else {
+            traded |= trade(world, harbour, good, true, ((have - sell) / per).floor().max(0.0) as u32) > 0;
+        }
+    }
+    // The deck is shared: a package of each good wanted in turn, so one
+    // empty bin's want never takes the whole of it from the pumps' fuel.
+    while buys.iter().any(|&(_, n)| n > 0) {
+        let mut booked = false;
+        for (good, n) in buys.iter_mut().filter(|(_, n)| *n > 0) {
+            if trade(world, harbour, *good, false, 1) == 0 {
+                *n = 0;
+                continue;
+            }
+            *n -= 1;
+            booked = true;
+        }
+        traded |= booked;
+        if !booked {
+            break;
+        }
+    }
+    traded
+}
+
 /// Buy so many packages of a good from the market, on the next ferry in, or
 /// sell them, to wait at the harbour for a lorry: each at the price it
-/// moves to. How many were booked.
-pub fn trade(world: &mut World, good: Good, out: bool, packages: u32) -> u32 {
-    let Some(&harbour) = world.map.harbours.keys().next() else { return 0 };
+/// moves to, a mayor's. How many were booked.
+fn trade(world: &mut World, harbour: EntityId, good: Good, out: bool, packages: u32) -> u32 {
+    let partner = crate::orders::partner(good, out, world.market.hour);
     for n in 0..packages {
         let price = world.market.next(good, out);
-        if !crate::orders::book(world, harbour, good, out, None, price, None) {
+        if !crate::orders::book(world, harbour, good, out, Some(partner), price) {
             return n;
         }
         world.market.traded(good, 1.0, out);
     }
     packages
-}
-
-/// A "when" order placed.
-pub fn order(world: &mut World, good: Good, out: bool, packages: u32, price: f64) {
-    if packages == 0 || !price.is_finite() {
-        return;
-    }
-    let id = world.map.objects.reserve_id();
-    world.market.orders.push(When { id, good, out, packages, price });
-    world.market.changed = true;
-}
-
-pub fn cancel(world: &mut World, order: u64) {
-    world.market.orders.retain(|o| o.id != order);
-    world.market.changed = true;
 }
 
 #[cfg(test)]
@@ -256,8 +443,87 @@ mod tests {
         assert_eq!(m.history[&Good::Fuel].len(), KEPT, "a week is kept");
     }
 
+    /// What crossed the border of a good, in and out, in packages, and
+    /// who with: the deals kept.
+    fn traded(world: &World, good: Good) -> ([u32; 2], Vec<Deal>) {
+        let deals: Vec<Deal> = world.market.prices().deals.into_iter().filter(|d| d.good == good).collect();
+        let sum = |out: bool| deals.iter().filter(|d| d.out == out).map(|d| d.packages).sum();
+        ([sum(false), sum(true)], deals)
+    }
+
+    /// A sawmill in the woods and nothing in town built of timber: what
+    /// the depot has no room for sails, to mayors whose towns want it,
+    /// and none is bought.
+    #[test]
+    fn a_town_sells_what_it_makes_and_does_not_use() {
+        use crate::game::tests::*;
+        use land::TerrainType;
+        use model::BuildingKind;
+        let mut world = street();
+        for x in SAWMILL_X - 5..SAWMILL_X + 7 {
+            for y in 5..14 {
+                world.map.terrain.insert((x, y), TerrainType::Forest);
+            }
+        }
+        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
+        build(&mut world, SAWMILL_X, BuildingKind::Sawmill);
+        build(&mut world, SAWMILL_X - 6, BuildingKind::Apartment);
+        let mut game = game(world);
+        game.run_to(3 * DAY_MS as GameTime);
+        let ([bought, sold], deals) = traded(&game.world, Good::Timber);
+        println!("timber: bought {bought}, sold {sold}: {deals:?}");
+        assert_eq!(bought, 0, "timber bought by a town that makes it");
+        assert!(sold > 0, "the sawmill's timber never sailed");
+        let earned: f64 = game.world.town.season().map(|p| p.sold.get(&Good::Timber).copied().unwrap_or(0.0)).sum();
+        assert!(earned > 0.0, "nobody paid for the timber");
+        let wants = |m: model::orders::Mayor| crate::orders::trades().nth(m as usize).unwrap().0.contains(&Good::Timber);
+        assert!(deals.iter().all(|d| d.out && wants(d.partner) && d.price <= Market::ceiling(Good::Timber) * (1.0 - FREIGHT)), "{deals:?}");
+    }
+
+    /// A town that bakes and drives and grows no grain and pumps no oil:
+    /// grain and fuel come over the sea ahead of need, so neither the
+    /// bakery's bin nor the pumps' tanks, with the depot's shelf behind
+    /// them, ever stand empty once the first has come; and none is sold
+    /// again.
+    #[test]
+    fn a_town_buys_ahead_what_it_uses_and_does_not_make() {
+        use crate::game::tests::*;
+        use model::BuildingKind;
+        let mut world = street();
+        let depot = build(&mut world, HARBOUR_X - 12, BuildingKind::Depot);
+        // Bare, as a depot is built.
+        world.map.building_mut(depot).unwrap().stocks.values_mut().for_each(|s| s.level = 0.0);
+        let bakery = build(&mut world, 40, BuildingKind::Bakery);
+        let pump = build(&mut world, 30, BuildingKind::GasStation);
+        for x in [0, 3, 6, 9, 12] {
+            build(&mut world, x, BuildingKind::Apartment);
+        }
+        build(&mut world, 20, BuildingKind::Shop);
+        build(&mut world, 46, BuildingKind::Supermarket);
+        let mut game = game(world);
+        let level = |w: &World, at: EntityId, good: Good| w.map.building(at).and_then(|b| b.stocks.get(&good)).map_or(0.0, |s| s.level);
+        let mut dry = Vec::new();
+        for hour in 1..=4 * 24 {
+            game.run_to(hour * HOUR);
+            let w = &game.world;
+            for (at, good) in [(bakery, Good::Grain), (pump, Good::Fuel)] {
+                if hour > 24 && level(w, at, good) + level(w, depot, good) <= 0.0 {
+                    dry.push((hour, good));
+                }
+            }
+        }
+        for good in [Good::Grain, Good::Fuel] {
+            let ([bought, sold], _) = traded(&game.world, good);
+            println!("{good:?}: bought {bought}, sold {sold}");
+            assert!(bought > 0, "no {good:?} was bought");
+            assert_eq!(sold, 0, "{good:?} bought was sold again");
+        }
+        assert!(dry.is_empty(), "ran dry, at hours: {dry:?}");
+    }
+
     /// The same seed, the same graph; buying moves the price up, and the
-    /// town never pays over the ceiling nor gets under the floor.
+    /// town never pays over the ceiling nor gets under the floor, but
+    /// for the freight.
     #[test]
     fn the_same_seed_gives_the_same_market() {
         let run = || {
@@ -272,8 +538,8 @@ mod tests {
         m.traded(Good::Fuel, 50.0, false);
         assert!(m.price(Good::Fuel) > before, "buying did not push the price");
         m.traded(Good::Fuel, 1e6, false);
-        assert!(m.next(Good::Fuel, false) <= Market::ceiling(Good::Fuel) + 1e-9);
+        assert!(m.next(Good::Fuel, false) <= Market::ceiling(Good::Fuel) * (1.0 + FREIGHT) + 1e-9);
         m.traded(Good::Fuel, 1e6, true);
-        assert!(m.next(Good::Fuel, true) >= Market::floor(Good::Fuel) - 1e-9);
+        assert!(m.next(Good::Fuel, true) >= Market::floor(Good::Fuel) * (1.0 - FREIGHT) - 1e-9);
     }
 }

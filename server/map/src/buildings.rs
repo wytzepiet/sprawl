@@ -14,17 +14,18 @@ enum Behind {
 
 impl Map {
     /// A building saved before it had its shelves or its yard gets them the
-    /// way a standing one does; one whose row changed a shelf gets the new
-    /// one. A site has neither until it stands.
+    /// way a standing one does; one whose row resized a shelf keeps what
+    /// was on it, as far as it fits. A site has neither until it stands.
     pub fn open_shelves(&mut self, id: EntityId) {
         let Some(b) = self.building_mut(id) else { return };
         if b.site.is_some() {
             return;
         }
         let caps = model::blueprint::stocks(b.kind);
-        b.stocks.retain(|good, stock| caps.get(good) == Some(&stock.cap));
+        b.stocks.retain(|good, _| caps.contains_key(good));
         for (good, cap) in caps {
-            b.stocks.entry(good).or_insert(model::needs::Stock { level: 0.0, cap });
+            let s = b.stocks.entry(good).or_default();
+            *s = model::needs::Stock { level: s.level.min(cap), cap };
         }
     }
 
@@ -49,19 +50,24 @@ impl Map {
             Some(GameObject::Building(b)) if b.site.is_none() => b.kind,
             _ => return,
         };
-        let bought = match self.objects.get(facility).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.lorries as usize,
-            _ => 0,
+        let (lorries, vans) = match self.objects.get(facility).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => (b.lorries as usize, b.vans as usize),
+            _ => (0, 0),
         };
-        let vehicles: Vec<model::CarRole> = model::blueprint::blueprint(kind).vehicles.iter().copied().chain(std::iter::repeat_n(model::CarRole::Truck, bought)).collect();
-        if vehicles.is_empty() {
-            return;
-        }
+        let row = model::blueprint::blueprint(kind).vehicles;
         let tile = self.objects.get(facility).and_then(|e| e.position);
-        let have = self.objects.fleet(facility).filter(|&c| !matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == model::CarRole::Ferry)).count();
-        for role in vehicles.into_iter().skip(have) {
-            let car = self.insert_at(GameObject::Car(model::Car::new(facility, role)), tile);
-            self.park_in_lot(facility, car, 0);
+        // Of each role, the row's and those bought, less what stands.
+        for role in [model::CarRole::Truck, model::CarRole::Van, model::CarRole::Tractor] {
+            let bought = match role {
+                model::CarRole::Truck => lorries,
+                model::CarRole::Van => vans,
+                _ => 0,
+            };
+            let have = self.objects.fleet(facility).filter(|&c| matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role)).count();
+            for _ in have..row.iter().filter(|&&r| r == role).count() + bought {
+                let car = self.insert_at(GameObject::Car(model::Car::new(facility, role)), tile);
+                self.park_in_lot(facility, car, 0);
+            }
         }
     }
 
@@ -531,6 +537,18 @@ impl Map {
                 Behind::Land => Err("No quay: it stands half on the sea, its back on the water"),
             };
         }
+        // A maker of what the land gives needs some of it in reach.
+        if let Some((_, under)) = model::blueprint::blueprint(kind).makes.and_then(model::blueprint::ground) {
+            if self.in_reach(kind, &tiles) == 0.0 {
+                return Err(match (kind, under) {
+                    (_, Some(land::Deposit::Ore)) => "No ore in the mountain beside it",
+                    (_, Some(land::Deposit::Coal)) => "No coal in the mountain beside it",
+                    (_, Some(land::Deposit::Oil)) => "No oil under the ground round it",
+                    (BuildingKind::Sawmill, None) => "No forest beside it to fell",
+                    _ => "No mountain beside it to break",
+                });
+            }
+        }
         // A building that parks at the kerb needs a street all along one
         // side, where its bays go (`kerb_bays`).
         use crate::lots::{kerbed, side_of, SIDES};
@@ -540,6 +558,25 @@ impl Map {
             None if model::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
             None => Err("No street beside it"),
         }
+    }
+
+    /// How much of its ground is within reach of a maker standing on these
+    /// tiles (`blueprint::ground`): the tiles of it within five, not its
+    /// own, nothing standing on them, against thirty, at most one. A
+    /// sawmill at the forest's edge makes half what one in the woods does.
+    pub fn in_reach(&self, kind: BuildingKind, tiles: &[GridCoord]) -> f64 {
+        let Some((ground, under)) = model::blueprint::blueprint(kind).makes.and_then(model::blueprint::ground) else { return 0.0 };
+        let (o, (w, h)) = Self::bounds(tiles);
+        let mut n = 0;
+        for y in o.y - 5..o.y + h as i32 + 5 {
+            for x in o.x - 5..o.x + w as i32 + 5 {
+                let t = GridCoord { x, y };
+                if self.terrain.get(&(x, y)) == Some(&ground) && under.is_none_or(|d| self.deposits.get(&(x, y)) == Some(&d)) && !tiles.contains(&t) && !self.occupied.contains_key(&(x, y)) && self.road_node_at(t).is_none() {
+                    n += 1;
+                }
+            }
+        }
+        (n as f64 / 30.0).min(1.0)
     }
 
     /// May a building stand on this tile: open land, or a road's dead end
@@ -681,7 +718,8 @@ impl Map {
             Err(why) => (Self::plot_at(kind, at, facing), Some(why.to_string())),
         };
         let door = why.is_none().then(|| self.driveway_for(&tiles, kind, facing)).flatten().and_then(|(id, tile)| Some(Door { tile, street: self.objects.get(id)?.position? }));
-        Placing { kind, at, tiles, facing, door, why }
+        let ground = model::blueprint::blueprint(kind).makes.and_then(model::blueprint::ground).map(|_| self.in_reach(kind, &tiles));
+        Placing { kind, at, tiles, facing, door, why, ground }
     }
 
     /// The tile one out from the middle of a plot's front.

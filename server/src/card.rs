@@ -160,10 +160,6 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Buildin
         staff,
         fleet: world.map.objects.fleet(id).filter(|&c| world.map.car(c).is_some_and(|c| c.role != CarRole::Private)).map(|c| link(world, c)).collect(),
         calls: world.calls.iter().filter(|call| call.at == id).map(|call| call_line(world, call)).collect(),
-        served: blueprint(b.kind)
-            .taps
-            .iter()
-            .map(|t| Served { need: t.need, hours_today: world.books.get(&id).and_then(|k| k.on(now).served.get(&t.need).copied()).unwrap_or(0.0) })
-            .collect(),
+        served: world.books.get(&id).map_or(vec![], |k| k.on(now).served.iter().map(|(&need, &hours_today)| Served { need, hours_today }).collect()),
     }
 }

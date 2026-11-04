@@ -65,9 +65,6 @@ pub fn handle_resident_wake(
     let buckets = buckets(world, &r);
     let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     store(world, id, r.car, &buckets);
-    if buckets.iter().zip(&verdicts).any(|(b, v)| b.need == Need::Fuel && matches!(v, Verdict::Nothing) && b.stock.level < b.stock.cap / 4.0) {
-        crate::missions::sense(world, crate::missions::When::Dry, now);
-    }
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that
@@ -166,9 +163,11 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
             Need::Work => r
                 .work
                 .filter(|&w| economy::hiring(world, w))
-                .map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, now, crowd, routes, true)),
-            Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, now, crowd, routes, true),
-            Need::Eat | Need::Fuel => search(world, r, at, b, now, crowd, routes),
+                .map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, tap_for(world, r, w, Need::Work).map_or(&[], std::slice::from_ref), now, crowd, routes, true)),
+            Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, taps_of(world, r.home), now, crowd, routes, true),
+            // Nobody leaves a shift for the park.
+            Need::Outing if r.work.and_then(|w| tap_for(world, r, w, Need::Work)).is_some_and(|t| t.curve.next_zero(now) > now) => Verdict::Nothing,
+            Need::Eat | Need::Fuel | Need::Outing => search(world, r, at, b, now, crowd, routes),
         })
         .collect()
 }
@@ -177,7 +176,7 @@ fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: 
 /// whose food, sleep or tank stands at zero cannot work until it does
 /// not. A week of night shifts ends in a lie-in.
 fn fit(buckets: &[Bucket]) -> bool {
-    buckets.iter().all(|b| b.need.constant() || b.stock.level > 0.0)
+    buckets.iter().all(|b| b.need.constant() || b.need == Need::Outing || b.stock.level > 0.0)
 }
 
 /// The ways out from where a resident stands, searched once for the whole
@@ -193,6 +192,7 @@ fn verdict_at(
     at: EntityId,
     b: &Bucket,
     building: EntityId,
+    taps: &[Tap],
     now: GameTime,
     crowd: &Crowd,
     routes: &mut Option<Routes>,
@@ -212,8 +212,7 @@ fn verdict_at(
     } else {
         crow_flies_ms(world, at, building)
     };
-    taps_of(world, building)
-        .iter()
+    taps.iter()
         .filter(|t| t.need == b.need)
         .map(|t| evaluate(world, building, t, b, now, company, tau, exact))
         .fold(Verdict::Nothing, Verdict::better)
@@ -245,13 +244,13 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         // the drive is refused, and the search picks it again every retry.
         .filter(|&id| world.map.street_of(id).is_some())
         .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
-        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, at, b, id, now, crowd, routes, false)))
+        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, at, b, id, taps_of(world, id), now, crowd, routes, false)))
         .collect();
     while let Some(top) = heap.pop() {
         if top.exact {
             return top.verdict;
         }
-        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, at, b, top.id, now, crowd, routes, true)));
+        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, at, b, top.id, taps_of(world, top.id), now, crowd, routes, true)));
     }
     Verdict::Nothing
 }
@@ -440,10 +439,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     let elapsed = (now - last) as f64;
     let serving: Option<(f64, f64)> = selected.and_then(|need| {
         let company = crowd.get(&(at, need)).copied().unwrap_or(0).max(1);
-        taps_of(world, at)
-            .iter()
-            .find(|t| t.need == need)
-            .map(|t| (t.serving(seats_at(world, at, t), company), t.curve.integral(last, now)))
+        tap_for(world, r, at, need).map(|t| (t.serving(seats_at(world, at, t), company), t.curve.integral(last, now)))
     });
     // What the building put out is what it put out, whether or not the
     // stock had room for it: a shift worked is labour received.
@@ -458,6 +454,8 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     }
     let Some(r) = world.map.resident(id).cloned() else { return };
     let mut buckets = buckets(world, &r);
+    let starving = |buckets: &[Bucket]| buckets.iter().filter(|b| b.stock.level <= 0.0).map(|b| b.need).filter(|&n| n == Need::Eat || n == Need::Outing).fold(0, |m, n| m | 1 << n as u8);
+    let was = starving(&buckets);
     for b in &mut buckets {
         if b.need.constant() {
             continue;
@@ -469,6 +467,11 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         let idle = elapsed - served;
         b.stock.add(rate * served);
         b.stock.take(b.need.drain() * idle);
+    }
+    // Too hungry to work, or with no outing in days, or out of it again:
+    // what the home waits on changed.
+    if starving(&buckets) != was {
+        world.waiting.insert(r.home);
     }
     store(world, id, r.car, &buckets);
     if let Some(r) = world.map.resident_mut(id) {
@@ -592,6 +595,20 @@ fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: Entit
 
 fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
     world.map.building(building).map(|b| b.kind).map_or(&[], |k| &blueprint(k).taps)
+}
+
+/// The tap a resident is served a need by at a building: at their own
+/// line, the shift they were hired to (`Resident::shift`), one of its
+/// row's work taps in order; anywhere else, the first for the need.
+fn tap_for(world: &World, r: &Resident, at: EntityId, need: Need) -> Option<&'static Tap> {
+    let mut taps = taps_of(world, at).iter().filter(|t| t.need == need);
+    match need {
+        Need::Work if r.work == Some(at) => {
+            let all: Vec<&'static Tap> = taps.collect();
+            all.get(r.shift as usize).or(all.last()).copied()
+        }
+        _ => taps.next(),
+    }
 }
 
 /// Travel time between two buildings in game milliseconds: the quickest

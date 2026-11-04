@@ -24,6 +24,53 @@ type Migration = Option<fn(&mut [Value], &mut Value)>;
 const MIGRATIONS: &[Migration] = &[
     // Saves from before the stamp are version 0, and already today's.
     Some(|_, _| {}),
+    // The core (docs/core.md): the missions gone and the lab's ladder in;
+    // an old town has built what it may no longer, so it starts over.
+    None,
+    // The chains: crates of food became bread baked of grain, and every
+    // depot keeps eleven goods; the ladder's rungs moved under what was
+    // built. It starts over.
+    None,
+    // The town trades by itself: the market's lines and their desks go,
+    // and every office becomes a lab, on the same plot; its hands over a
+    // lab's four are laid off as the town settles.
+    Some(|objects, meta| {
+        for o in objects {
+            if o["object"]["kind"] == "Building" && o["object"]["data"]["kind"] == "Office" {
+                o["object"]["data"]["kind"] = "Lab".into();
+            }
+        }
+        if let Some(market) = meta["market"].as_object_mut() {
+            for gone in ["lines", "desk", "flows", "orders"] {
+                market.remove(gone);
+            }
+        }
+    }),
+    // A home's kitchen cooks off a pantry of bread: every home standing
+    // is issued one full, as its household was eating before.
+    Some(|objects, _| {
+        for o in objects.iter_mut().filter(|o| o["object"]["kind"] == "Building") {
+            let b = &mut o["object"]["data"];
+            let Ok(kind) = serde_json::from_value::<model::BuildingKind>(b["kind"].clone()) else { continue };
+            if model::blueprint::blueprint(kind).homes == 0 || !b["site"].is_null() {
+                continue;
+            }
+            for (good, cap) in model::blueprint::stocks(kind) {
+                b["stocks"][format!("{good:?}")] = serde_json::json!({ "level": cap, "cap": cap });
+            }
+        }
+    }),
+    // The pumps and the park open from the start: a town saved before
+    // has them learned, or its ladder would stand on a rung it is past.
+    Some(|_, meta| {
+        if let Some(open) = meta["research"]["open"].as_array_mut() {
+            for kind in ["GasStation", "Park"] {
+                if !open.iter().any(|k| k == kind) {
+                    open.push(kind.into());
+                }
+            }
+        }
+    }),
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -40,15 +87,15 @@ pub struct Meta {
     pub gdp: f64,
     /// The mayor's coins.
     pub treasury: f64,
-    /// The town's missions, open and finished, in order.
-    pub missions: Vec<model::missions::Mission>,
     /// The market's prices, their week and the orders waiting.
     pub market: sprawl::market::Market,
+    /// What the town may build, and what its labs are learning.
+    pub research: sprawl::research::Research,
 }
 
 impl Default for Meta {
     fn default() -> Self {
-        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, missions: Vec::new(), market: Default::default() }
+        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, market: Default::default(), research: Default::default() }
     }
 }
 
@@ -170,6 +217,18 @@ mod tests {
         }
     }
 
+    /// A house saved before its kitchen kept a pantry comes back with
+    /// one, full.
+    #[test]
+    fn a_home_is_issued_its_pantry_full() {
+        let house: model::Building = serde_json::from_value(serde_json::json!({ "kind": "House", "facing": 0 })).unwrap();
+        let mut objects = vec![serde_json::to_value(GameObjectEntry { id: 1, object: GameObject::Building(house), position: None }).unwrap()];
+        MIGRATIONS[4].unwrap()(&mut objects, &mut Value::Null);
+        let e: GameObjectEntry = serde_json::from_value(objects.remove(0)).unwrap();
+        let GameObject::Building(b) = e.object else { panic!("not a building") };
+        assert_eq!(b.stocks[&model::Good::Bread].level, b.stocks[&model::Good::Bread].cap);
+    }
+
     /// A ship saved mid-voyage comes back as it was last seen at the quay:
     /// the wakes that time a voyage die with the process, so a saved one
     /// would stand at sea with no clock to bring it home.
@@ -192,17 +251,14 @@ mod tests {
         assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
-    /// The rest of the world outlives a restart as it stood, the town's
-    /// missions with their steps and the market's week among it, whether or not an object
+    /// The rest of the world outlives a restart as it stood, the
+    /// market's week among it, whether or not an object
     /// changed with it; and a reset leaves nothing to load.
     #[test]
     fn the_world_beside_its_objects_is_saved() {
         let scratch = Scratch::new("meta");
-        let mut missions = sprawl::missions::Missions::default().list;
-        missions[0].steps[1].done = true;
-        missions[0].finished = Some(7);
         let market = serde_json::from_str(r#"{"hour":3,"at":{"Timber":0.5},"push":{"Timber":0.1},"history":{"Timber":[1.0,1.5,2.0]},"orders":[]}"#).unwrap();
-        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, missions, market };
+        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, market, research: Default::default() };
         let mut db = Db::open(&scratch.0);
         db.save(&[], &[], &meta);
         let (_, loaded) = Db::open(&scratch.0).load();
@@ -225,8 +281,12 @@ mod tests {
         db.save(&[], &[], &meta);
         db.conn.pragma_update(None, "user_version", 0).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
-        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
-        assert_eq!(version(&db), SAVE_VERSION);
+        // Kept, if every step from it keeps; else started over.
+        let kept = MIGRATIONS.iter().all(Option::is_some);
+        assert_eq!(loaded.next_id, if kept { 40 } else { 1 }, "a save from before the stamp was {}", if kept { "not kept" } else { "kept past a step that starts over" });
+        if kept {
+            assert_eq!(version(&db), SAVE_VERSION);
+        }
         assert!(backup(0).exists());
         db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
@@ -240,5 +300,16 @@ mod tests {
         for v in [0, SAVE_VERSION, SAVE_VERSION + 1] {
             let _ = std::fs::remove_file(backup(v));
         }
+    }
+
+    /// A town from before it traded by itself keeps its offices as labs,
+    /// and its market without the lines.
+    #[test]
+    fn offices_become_labs_and_the_lines_go() {
+        let mut objects = vec![serde_json::json!({"id": 5, "object": {"kind": "Building", "data": {"kind": "Office"}}, "position": null})];
+        let mut meta = serde_json::json!({"market": {"hour": 3, "lines": {"Timber": 20.0}, "desk": 1.5}});
+        MIGRATIONS[3].unwrap()(&mut objects, &mut meta);
+        assert_eq!(objects[0]["object"]["data"]["kind"], "Lab");
+        assert_eq!(meta["market"], serde_json::json!({"hour": 3}));
     }
 }

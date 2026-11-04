@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Ink, Melt, Text, Icon } from "~ui";
 import { createSignal, onCleanup, Show } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { screenToWorld } from "../engine/view";
@@ -57,25 +57,27 @@ export default function Ring() {
   });
 
   return (
-    <Show when={ring()} keyed>
-      {(r) => (
-        <>
+    <Melt layer="ring" at={{ left: 0, top: 0, right: 0, bottom: 0 }}>
+      <Show when={ring()} keyed>
+        {(r) => (
+          <>
           <Pop at={{ left: r.x - 64, top: r.y - 80 }} w={52} h={52}>
-            <glass layer="ring" w={52} h={52} round={26} align="center" justify="center">
+            <Ink layer="ring" w={52} h={52} round={26} align="center" justify="center">
               <Press w={52} h={52} round={26} align="center" justify="center" onTap={() => (setRing(null), select(r.id))}>
-                <text serif size={24}>i</text>
+                <Text serif size={24}>i</Text>
               </Press>
-            </glass>
+            </Ink>
           </Pop>
           <Pop at={{ left: r.x + 12, top: r.y - 80 }} w={52} h={52}>
-            <glass layer="ring" dye={BAD} w={52} h={52} round={26} align="center" justify="center">
+            <Ink layer="ring" dye={BAD} w={52} h={52} round={26} align="center" justify="center">
               <Press w={52} h={52} round={26} align="center" justify="center" onTap={() => (setRing(null), send({ type: "Raze", data: { building: r.id } }))}>
-                <icon d={DEMOLISH} size={22} ink="white" />
+                <Icon d={DEMOLISH} size={22} ink="white" />
               </Press>
-            </glass>
+            </Ink>
           </Pop>
-        </>
-      )}
-    </Show>
+          </>
+        )}
+      </Show>
+    </Melt>
   );
 }

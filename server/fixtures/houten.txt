@@ -16,11 +16,11 @@
 ...H.#.H.H.=.HHH.=....T..HH....=.H..T.
 .HHH.#.HH.H=.HHH==....T.S.H..==.H..=T.
 .HHH..#HHHH.=.==.=...TTHHH.==..H..A.=.
-.O.H..#..=====HHH.=..HHH.==..H....A.=.
+.L.H..#..=====HHH.=..HHH.==..H....A.=.
 .HHHH.#==..HHHHHHH=T..H.=...H...AAA...
 .HH.H.#.HHHHHHHHHH=....=.H.H..H.A..A..
-.H.HH.#.HHOOO..H..H=.==..HH.H...AAAA..
-..HHH.#.HHO.H.....H#=...H...H..H.AAAA.
+.H.HH.#.HHLLL..H..H=.==..HH.H...AAAA..
+..HHH.#.HHL.H.....H#=...H...H..H.AAAA.
 ..HHHH#.HHH..H.HH..#..H..H.HHH.=.AAA..
 .=HHH..#HHH..HHH.##H...HH.HHHHH=..AA..
 .=...==#HHH.HH..#.HH.....H...==...AA..

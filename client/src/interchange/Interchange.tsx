@@ -1,13 +1,11 @@
 import { createSignal, Show, onCleanup } from "solid-js";
 import Canvas, { Registered, useEngine } from "../engine/Canvas";
-import Gpu from "../engine/Hud";
-import { underGlass } from "../engine/glass";
+import { Root } from "~ui";
 import { Camera, type Bounds } from "../engine/Camera";
 import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNightCycle";
 import { InstancePoolProvider } from "../engine/InstancePool";
 import World from "../engine/World";
 import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
-import Glass from "../ui/Glass";
 import { projector, screenToWorld } from "../engine/view";
 import { priority, setPriority, setTool, tool } from "../ui/buildMode";
 import type { LevelState } from "../generated";
@@ -99,9 +97,10 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
             </Registered>
           </DayNightLights>
           <Frame state={state} />
-          <Gpu ui={() => <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />} />
+          <Root>
+            <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />
+          </Root>
         </Canvas>
-        <Glass />
       </DayNightProvider>
     </GameProvider>
   );
@@ -132,7 +131,7 @@ function Flagger(props: { line: () => LevelConnection | null }) {
 /**
  * Drawn over the map: the way the one-ways run, where the held sign's
  * cars go, each junction's lights, and where a test jammed. The fog past
- * its edge and the gates' signs are the GPU's (`ui/interchange/Signs.tsx`).
+ * its edge and the gates' signs are the UI's (`ui/interchange/Signs.tsx`).
  */
 function Frame(props: { state: () => LevelState | null }) {
   const { scene, canvas, afterRender } = useEngine();
@@ -188,7 +187,6 @@ function Frame(props: { state: () => LevelState | null }) {
       g.arc(at.sx, at.sy, 22 + 6 * Math.sin(t * 5), 0, Math.PI * 2);
       g.stroke();
     }
-    underGlass(g);
   });
   onCleanup(() => (stop(), el.remove()));
   return null;

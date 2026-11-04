@@ -13,7 +13,7 @@ import type { Building, BuildingKind, Good, GridCoord } from "./generated";
  * silhouettes on a 24-unit grid — one shape, windows and doors cut out — so a
  * pin reads at a glance and still reads shrunk to a dot's neighbour.
  */
-export const TABS = ["trade", "homes", "shops", "work", "services"] as const;
+export const TABS = ["trade", "homes", "shops", "work", "industry", "services"] as const;
 export type Tab = (typeof TABS)[number];
 
 interface Look {
@@ -176,7 +176,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Shop: {
     label: "Shop",
-    about: "Serves meals from its crates, nine to six. Two jobs.",
+    about: "Serves meals of bread, nine to six. Two jobs.",
     color: "#3B78B8",
     material: "#56708A",
     // A storefront: scalloped awning, window and door beneath.
@@ -186,34 +186,20 @@ const LOOKS: Record<BuildingKind, Look> = {
     heights: [0.45, 0.55],
     tab: "shops",
   },
-  Office: {
-    label: "Office",
-    about: "Twelve jobs, eight to five.",
-    color: "#2D4E7E",
-    material: "#3F4D5E",
-    // A briefcase, the handle cut out.
-    glyph:
-      "M9 3h6a1.5 1.5 0 0 1 1.5 1.5V7H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5V4.5A1.5 1.5 0 0 1 9 3zm.5 2v2h5V5zM2 12h20v1.5H2z",
-    shape: "box",
-    // Tall, and worth varying: a few towers among them is what gives a
-    // business district a skyline instead of a plateau.
-    heights: [1.0, 1.45, 2.3],
-    tab: "work",
-  },
   Factory: {
-    label: "Factory",
-    about: "Twelve jobs, six to three.",
+    label: "Machine works",
+    about: "Builds machines of steel, for the oil wells, the refinery and the port. Twelve jobs a shift, six to two and two to ten.",
     color: "#5C6470",
     material: "#7A7F86",
     // Sawtooth roofs and a chimney.
     glyph: "M17 2h4v8.5l-4 0zM2 22V10.5l6 3v-3l6 3v-3l6 3V22zM5 16h3v3H5zM10 16h3v3h-3zM15 16h3v3h-3z",
     shape: "sawtooth",
     heights: [0],
-    tab: "work",
+    tab: "industry",
   },
   GasStation: {
     label: "Gas station",
-    about: "Fills the town's tanks from its fuel, round the clock. One job at the kiosk, six to ten.",
+    about: "Fills the town's tanks from its fuel, round the clock. A job at the kiosk a shift, six to two and two to ten.",
     color: "#F2C230",
     material: "#C7A24E",
     // A pump: the body with its display, and the hose hooked to the side.
@@ -224,7 +210,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Supermarket: {
     label: "Supermarket",
-    about: "Meals for a whole district, eight to nine, from big shelves of crates. Six jobs.",
+    about: "Meals for a whole district, eight to nine, from big shelves of bread. Six jobs.",
     color: "#6EC1E4",
     material: "#8FA7B3",
     // A basket: handle arcs over, three slats cut out.
@@ -235,7 +221,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Farm: {
     label: "Farm",
-    about: "Grows crates on the grass behind it, which its tractor ploughs, sows and harvests. Four jobs, six to three.",
+    about: "Grows grain on the grass behind it, which its tractor ploughs, sows and harvests. Four jobs, six to three.",
     color: "#D9A23B",
     material: "#B79A62",
     // A barn: the gambrel roof, the big door, and a hayloft window.
@@ -246,7 +232,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Sawmill: {
     label: "Sawmill",
-    about: "Fells and saws the forest round it into timber. Built beside the woods. Four jobs, seven to four.",
+    about: "Fells and saws the forest round it into timber. Built beside the woods. Four jobs a shift, six to two and two to ten.",
     color: "#8A5A2B",
     material: "#7A5A3A",
     // A saw blade over a log: the teeth round, the log's rings below.
@@ -257,7 +243,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Quarry: {
     label: "Quarry",
-    about: "Breaks stone from the mountain beside it. Built at the mountain's foot. Four jobs, seven to four.",
+    about: "Breaks stone from the mountain beside it. Built at the mountain's foot. Four jobs a shift, six to two and two to ten.",
     color: "#7D7F86",
     material: "#8C8A84",
     // A rock face, benched, a pick across the heap below.
@@ -266,11 +252,137 @@ const LOOKS: Record<BuildingKind, Look> = {
     heights: [0.3],
     tab: "work",
   },
+  Lab: {
+    label: "Lab",
+    about: "Learns to build what the town cannot yet: tap a kind still to learn in the menu, and every lab works at it. Four at desks, eight to five.",
+    color: "#4E8F8B",
+    material: "#6F8C8A",
+    // A flask: the neck, the round body, the liquid's line.
+    glyph: "M9 2h6v2h-1v5.2l5.6 8.4A2.8 2.8 0 0 1 17.3 22H6.7a2.8 2.8 0 0 1-2.3-4.4L10 9.2V4H9zM7.4 16l-1.3 2a.9.9 0 0 0 .7 1.4h10.4a.9.9 0 0 0 .7-1.4l-1.3-2z",
+    shape: "box",
+    heights: [0.5],
+    tab: "work",
+  },
+  Bakery: {
+    label: "Bakery",
+    about: "Bakes the farms' grain into bread for the shops, when the depot runs low. Four jobs, five to two.",
+    color: "#C9772E",
+    material: "#B07650",
+    // A loaf, three cuts across its crust.
+    glyph: "M2 19v-5C2 8.5 6.5 5 12 5s10 3.5 10 9v5zM6.6 8.6l2.6 4.2 1.3-.8-2.6-4.2zM10.8 7.4l2.6 4.2 1.3-.8-2.6-4.2zM15 8.2l2.6 4.2 1.3-.8-2.6-4.2z",
+    shape: "box",
+    heights: [0.4],
+    tab: "work",
+  },
+  CementWorks: {
+    label: "Cement works",
+    about: "Burns stone into cement, for flats, big shops and everything heavier. Six jobs a shift, six to two and two to ten.",
+    color: "#8C969E",
+    material: "#A3A6A3",
+    // A kiln's silo and its stack, the shed beneath.
+    glyph: "M4 22V12h5V4h5v8h2V2h3v10h1v10zM6.5 15h3v3h-3zM12 15h3v3h-3z",
+    shape: "box",
+    heights: [0.5],
+    tab: "industry",
+  },
+  Mine: {
+    label: "Ore mine",
+    about: "Digs ore from the vein in the mountain beside it, rust in the rock. Six jobs a shift, six to two and two to ten.",
+    color: "#A24B2A",
+    material: "#8A6A58",
+    // A headframe over the shaft: its legs, the wheel on top.
+    glyph: "M12 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM10.5 8h3l5 14h-3l-1.2-3.5H9.7L8.5 22h-3zm.2 7.5h2.6L12 11.8z",
+    shape: "box",
+    heights: [0.35],
+    tab: "industry",
+  },
+  Colliery: {
+    label: "Coal mine",
+    about: "Digs coal from the seam in the mountain beside it. Six jobs a shift, six to two and two to ten.",
+    color: "#3A3A40",
+    material: "#5A5A5E",
+    // A mine cart heaped with coal, on its wheels.
+    glyph: "M4 5l3 1.5L10 4l3 2 3-1.5 4 2.5H4zM2 9h20l-2 8H4zM7 18a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm10 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4z",
+    shape: "box",
+    heights: [0.35],
+    tab: "industry",
+  },
+  Steelworks: {
+    label: "Steelworks",
+    about: "Smelts ore with coal into steel. Built of cement. Sixteen jobs a shift, six to two and two to ten.",
+    color: "#5A7FA6",
+    material: "#6E7A86",
+    // A blast furnace: its tapering stack, the hall, its glow.
+    glyph: "M8 2h4l1 9h9v11H2V11h5zM5 15h4v4H5zM11 15h4v4h-4zM17 15h3v4h-3z",
+    shape: "sawtooth",
+    heights: [0],
+    tab: "industry",
+  },
+  OilWell: {
+    label: "Oil well",
+    about: "Pumps crude from the oil under the grass. Two jobs a shift, six to two and two to ten.",
+    color: "#4B3A5A",
+    material: "#6A5E70",
+    // A pumpjack: the walking beam on its post, the horse's head nodding.
+    glyph: "M2 6l14-3 .5 2.5-3.2.7L10 22H7l2.6-15.3L2.5 8.4zM17 2h3.5l1 7h-3zM4 20h16v2H4zM18.5 9h1.5v11h-1.5z",
+    shape: "box",
+    heights: [0.2],
+    tab: "industry",
+  },
+  Refinery: {
+    label: "Refinery",
+    about: "Refines crude into fuel for the pumps and the market. Eight jobs a shift, six to two and two to ten.",
+    color: "#7A4E8C",
+    material: "#8A8288",
+    // A column and a tank, piped together.
+    glyph: "M5 2h4v20H5zM11 12h2v2h-2zM14 9a4 2 0 0 1 8 0v13h-8zM2 20h20v2H2z",
+    shape: "box",
+    heights: [0.9],
+    tab: "industry",
+  },
+  Port: {
+    label: "Container port",
+    about: "The harbour grown: ships of its own, and the market deeper to the town, a big trade moving the price a third as far. The town becomes a hub. Built of cement, steel and machines.",
+    color: "#1F4E79",
+    material: "#41566B",
+    // A gantry crane over a stack of boxes.
+    glyph: "M3 2h3v20H3zM18 2h3v20h-3zM3 2h18v3H3zM11 5h2v4h-2zM8 9h8v3H8zM7 16h5v6H7zM12.5 16h4.5v6h-4.5zM9 13h6v3H9z",
+    shape: "box",
+    heights: [0.5],
+    tab: "trade",
+  },
+  Park: {
+    label: "Park",
+    about: "Lawns, paths and benches, open seven till ten: where people drive to for an hour or two out. A home whose people have nowhere to go for days empties. Nobody works it.",
+    color: "#3F8F4E",
+    material: "#6E9A5A",
+    // A round tree on its trunk, a bench beside it.
+    glyph: "M10 2a6 6 0 0 1 3.9 10.6V18h-2v-4.5a6 6 0 0 1-3.8 0V18h-2v-5.4A6 6 0 0 1 10 2zM14 16h8v2h-1v4h-1.5v-4h-3v4H15v-4h-1zM2 20h20v2H2z",
+    shape: "box",
+    heights: [0.05],
+    tab: "services",
+  },
 };
 
 export const BLUEPRINTS = Object.fromEntries(Object.entries(LOOKS).map(([k, look]) => [k, { ...look, ...ROWS[k as BuildingKind] }])) as Record<BuildingKind, Blueprint>;
 
-/** Every kind the mayor may put down, the opening's first: the harbour, the depot. */
+/** What a maker comes to at its best, every hand at work: so much of its
+ *  good a day; for each good it works, how many of the kind that makes
+ *  that it takes the work of; and how many of each kind that works its
+ *  good it keeps going. One mine to a steelworks, near enough. */
+export function chain(kind: BuildingKind) {
+  const bp = BLUEPRINTS[kind];
+  if (!bp.makes || !bp.day) return null;
+  const maker = (g: Good) => KINDS.find((k) => BLUEPRINTS[k].makes === g && BLUEPRINTS[k].day > 0);
+  const takes = (Object.entries(bp.opens) as [Good, number][]).flatMap(([g, per]) => {
+    const k = maker(g);
+    return k ? [{ good: g, kind: k, n: (bp.day * per) / BLUEPRINTS[k].day }] : [];
+  });
+  const feeds = KINDS.filter((k) => BLUEPRINTS[k].opens[bp.makes!] && BLUEPRINTS[k].day > 0).map((k) => ({ kind: k, n: bp.day / (BLUEPRINTS[k].day * BLUEPRINTS[k].opens[bp.makes!]!) }));
+  return { good: bp.makes, day: bp.day, takes, feeds };
+}
+
+/** Every kind the mayor may put down. */
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
 
 /**
@@ -285,11 +397,11 @@ const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> 
     // Three logs stacked, their ends ringed.
     glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
   },
-  Crates: {
-    label: "crates",
-    color: "#5E9E52",
-    // A crate: its lid and two slats.
-    glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
+  Bread: {
+    label: "bread",
+    color: "#E08A3C",
+    // A loaf, three cuts across its crust.
+    glyph: "M2 19v-5C2 8.5 6.5 5 12 5s10 3.5 10 9v5zM6.6 8.6l2.6 4.2 1.3-.8-2.6-4.2zM10.8 7.4l2.6 4.2 1.3-.8-2.6-4.2zM15 8.2l2.6 4.2 1.3-.8-2.6-4.2z",
   },
   Stone: {
     label: "stone",
@@ -302,6 +414,48 @@ const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> 
     color: "#D4513B",
     // A jerrycan: its handle and spout.
     glyph: "M8 2h6v3h-6zM5 6h11l3 3v13H5zm3 5v8h8v-8zM17 2.5l3 3-1.5 1.5-3-3z",
+  },
+  Grain: {
+    label: "grain",
+    color: "#D9BE4E",
+    // An ear of wheat: its kernels up the stalk.
+    glyph: "M11.25 12h1.5v10h-1.5zM12 2c1.2 1 1.6 2.4 0 4.2C10.4 4.4 10.8 3 12 2zM8 6c2 .2 3.4 1.4 3.4 3.6C9.4 9.4 8 8.2 8 6zm8 0c0 2.2-1.4 3.4-3.4 3.6 0-2.2 1.4-3.4 3.4-3.6zM8 10.4c2 .2 3.4 1.4 3.4 3.6C9.4 13.8 8 12.6 8 10.4zm8 0c0 2.2-1.4 3.4-3.4 3.6 0-2.2 1.4-3.4 3.4-3.6z",
+  },
+  Cement: {
+    label: "cement",
+    color: "#9AA7B0",
+    // A sack, tied at its neck.
+    glyph: "M9 2h6l-1 3h-4zM8 6h8c2.5 2 4 6 4 10 0 4-2.5 6-8 6s-8-2-8-6c0-4 1.5-8 4-10z",
+  },
+  Ore: {
+    label: "ore",
+    color: "#A24B2A",
+    // A lump of ore, a vein through it.
+    glyph: "M7 3l8-1 6 6-1 9-7 5-9-3-2-8zM9 9l2 3 4-1 1 3-5 1-3-3z",
+  },
+  Coal: {
+    label: "coal",
+    color: "#3A3A40",
+    // Three lumps in a heap.
+    glyph: "M2 21l2-6 5-1 2 3 1-5 6-1 4 4 0 6zM8 6l5-2 3 3-2 3-5 1z",
+  },
+  Steel: {
+    label: "steel",
+    color: "#5A7FA6",
+    // An I-beam, end on.
+    glyph: "M3 3h18v4h-7v10h7v4H3v-4h7V7H3z",
+  },
+  Machinery: {
+    label: "machines",
+    color: "#3E9C8C",
+    // A gear.
+    glyph: "M10.5 2h3l.5 2.6 1.9.8 2.2-1.5 2.1 2.1-1.5 2.2.8 1.9 2.5.4v3l-2.6.5-.8 1.9 1.5 2.2-2.1 2.1-2.2-1.5-1.9.8-.4 2.5h-3l-.5-2.6-1.9-.8-2.2 1.5-2.1-2.1 1.5-2.2-.8-1.9L2 13.5v-3l2.6-.5.8-1.9-1.5-2.2 2.1-2.1 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z",
+  },
+  Crude: {
+    label: "crude",
+    color: "#4B3A5A",
+    // A drop of oil.
+    glyph: "M12 2c3 4.5 7 8.5 7 13a7 7 0 0 1-14 0c0-4.5 4-8.5 7-13z",
   },
 };
 /** Each good's look, with the units a package of it holds and what one

@@ -104,6 +104,39 @@ ${fragment}`,
         },
 });
 
+/** A works' smoke: puffs from its stack's top, each rising, drifting off
+ *  on the wind, growing and gone, one after another; only through the
+ *  shift, seven to four, easing in and out. Each puff a card, shaded as a
+ *  ball, its place in the stream its matrix's height (`placeProps`). */
+const PUFFS = 5;
+const smoke = { t: 0, on: 0 };
+const shift = (t: number) => smooth(0.28, 0.3, t) * (1 - smooth(0.66, 0.68, t));
+const RISE: MaterialPlugin = {
+  name: "SmokeRise",
+  priority: 210,
+  getUniforms: () => ({ ubo: [{ name: "smokeT", type: "f32", visibility: "vertex" }, { name: "smokeOn", type: "f32", visibility: "vertex" }] }),
+  writeUbo: (data, offsets) => {
+    data[offsets.get("smokeT")! / 4] = smoke.t;
+    data[offsets.get("smokeOn")! / 4] = smoke.on;
+  },
+  getCustomCode: (stage) =>
+    stage === "vertex"
+      ? {
+          CUSTOM_VERTEX_UPDATE_WORLDPOS: `let puffK = length(finalWorld[2].xyz);
+let puffSeed = fract(sin(dot(floor(finalWorld[3].xy * 50.), vec2f(12.9898, 78.233))) * 43758.5453);
+let puffP = fract(material.smokeT * 0.22 + puffK / ${PUFFS}. + puffSeed);
+let puffS = sin(puffP * 3.14159) * (0.5 + puffP) * material.smokeOn + 1e-4;
+finalWorld = mat4x4f(finalWorld[0] * puffS, finalWorld[1] * puffS, finalWorld[2] / puffK, finalWorld[3] + vec4f(0.2 * puffP, 0.07 * puffP, 0.45 * puffP, 0.));`,
+        }
+      : null,
+};
+const PUFF = card(
+  "PropPuff",
+  `let puffRise = sqrt(max(1. - propR * propR, 0.));
+N = normalize(vec3f(propAt * 0.9, puffRise + 0.1));
+baseColor = vec3f(0.9);`,
+);
+
 /** A vent's cap: a low dome, lit as round, a shade darker at its lip. */
 const VENT_CAP = card(
   "PropVent",
@@ -178,6 +211,7 @@ interface Kit {
   dome: TownMaterial;
   pole: TownMaterial;
   head: TownMaterial;
+  puff: TownMaterial;
 }
 const KITS = new WeakMap<object, Kit>();
 
@@ -204,16 +238,20 @@ function kitOf(ctx: EngineContext): Kit {
     // A lamp's pole painted a dark green-grey, its head pale.
     pole: shade(townMaterial([], PAINTED), { r: 0.22, g: 0.25, b: 0.24 }),
     head: grey(townMaterial([HEAD], PAINTED), 0.9),
+    puff: townMaterial([RISE, PUFF], 1),
   };
   KITS.set(ctx.engine, kit);
-  const { fan, head } = kit;
+  const { fan, head, puff } = kit;
   let last = performance.now();
   let glow = -1;
   ctx.beforeRender(() => {
     const now = performance.now();
     fans.turn = (fans.turn + ((now - last) / 1000) * TURNS * running(shownTimeOfDay())) % 3600;
+    smoke.t = (smoke.t + (now - last) / 1000) % 3600;
     last = now;
     markMaterialUboDirty(fan);
+    smoke.on = shift(shownTimeOfDay());
+    markMaterialUboDirty(puff);
     if (night.on !== glow) markMaterialUboDirty(head), (glow = night.on);
   });
   return kit;
@@ -239,6 +277,7 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
     pole: part(box(ROUND), kit.pole, true),
     arm: part(box(SQUARE), kit.pole, true),
     head: part(box(SQUARE), kit.head, true),
+    puff: part(CARD, kit.puff, false),
   };
   /** Each lamp's light: its head's place on the map, and a rank. */
   const heads: number[] = [];
@@ -273,6 +312,9 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
         put(parts.dish.m, x, y, z + high, (dx / l) * size, (dy / l) * size, (-dy / l) * size, (dx / l) * size, 1);
         break;
       }
+      case "smoke":
+        for (let k = 1; k <= PUFFS; k++) upright(parts.puff.m, x, y, z, size, k);
+        break;
       case "rooflight":
         upright(parts.frame.m, x, y, z, size, high * 0.5);
         upright(parts.dome.m, x, y, z + high * 0.5, size * 0.86, 1);

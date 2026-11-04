@@ -6,7 +6,7 @@ use fixed::HashSet;
 
 use land::{ChunkCoord, CHUNK_SIZE};
 use model::blueprint::blueprint;
-use model::{Car, EntityId, GameObject, GridCoord, Resident, DAY_MS};
+use model::{Building, Car, EntityId, GameObject, GameTime, GridCoord, Resident, Wanted, DAY_MS, LATE_MS};
 
 use crate::world::World;
 
@@ -49,6 +49,8 @@ impl World {
         }
         let buildings: Vec<EntityId> = self.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
         for id in buildings {
+            self.map.staffed(id);
+            self.waiting.insert(id);
             self.map.open_shelves(id);
             self.map.unsettled.insert(id);
         }
@@ -96,8 +98,16 @@ impl World {
             // New residents are not here yet: `at: None` is off-map, and
             // their first wake drives them in from beyond the frontier.
             // Nobody materialises out of thin air — they arrive the way
-            // everyone arrives, by road.
-            for _ in self.map.household(b).len()..bp.homes as usize {
+            // everyone arrives, by road. Nor into a home late with its
+            // bread or an outing, which the last household left (`give_up`).
+            // A park standing is somewhere to go for every home that had
+            // nowhere.
+            if kind == model::BuildingKind::Park {
+                let homes = self.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref h) if h.waits.iter().any(|w| w.what == Wanted::Outing))).map(|e| e.id);
+                self.waiting.extend(homes.collect::<Vec<_>>());
+            }
+            let rooms = if self.map.building(b).and_then(late).is_some() { 0 } else { bp.homes as usize };
+            for _ in self.map.household(b).len()..rooms {
                 touched.push(self.move_in(b));
             }
             if bp.jobs > 0 {
@@ -228,7 +238,7 @@ impl World {
 
     /// A household, carless until the settle ends (`issue_car`).
     fn move_in(&mut self, home: EntityId) -> EntityId {
-        let id = self.map.objects.insert(GameObject::Resident(Resident { home, work: None, at: None, car: 0, buckets: model::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
+        let id = self.map.objects.insert(GameObject::Resident(Resident { home, work: None, shift: 0, at: None, car: 0, buckets: model::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
         self.map.tie(id, home);
         id
     }
@@ -250,6 +260,22 @@ impl World {
         }
     }
 
+    /// A home late `LATE_MS` with its bread or an outing, its pin's ring full: its
+    /// household moves out, and their desks are free for whoever else
+    /// lives nearest. Settlers come again once it is filled (`settle`).
+    pub fn give_up(&mut self, home: EntityId, now: GameTime) {
+        if self.map.building(home).and_then(late).is_none_or(|t| now < t + LATE_MS) {
+            return;
+        }
+        for id in self.map.household(home) {
+            if let Some(w) = self.map.resident(id).and_then(|r| r.work) {
+                self.map.unsettled.insert(w);
+            }
+            self.move_out(id);
+        }
+        self.waiting.insert(home);
+    }
+
     /// Nobody commutes from a hole in the ground, and nothing else holds a
     /// reference to them. Their car goes with them: now if it is parked,
     /// when it does if it is out (`park_car`).
@@ -262,6 +288,10 @@ impl World {
             self.vacancies.insert(w);
         }
         self.map.objects.remove(id);
+        if let Some(w) = work {
+            self.map.staffed(w);
+            self.waiting.insert(w);
+        }
         if matches!(self.map.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none()) {
             self.map.despawn_car(car);
         }
@@ -278,12 +308,30 @@ impl World {
         let was = std::mem::replace(&mut r.work, work);
         if let Some(w) = was {
             self.map.untie(id, w);
+            self.map.staffed(w);
+            self.waiting.insert(w);
             self.vacancies.insert(w);
         }
         if let Some(w) = work {
+            // The shift fewest work, the first of them at a tie.
+            let kind = self.map.building(w).map(|b| b.kind);
+            let shifts = kind.map_or(0, |k| blueprint(k).taps.iter().filter(|t| t.need == model::needs::Need::Work).count()).max(1);
+            let held: Vec<u8> = self.map.staff(w).into_iter().filter_map(|s| self.map.resident(s).map(|r| r.shift)).collect();
+            let shift = (0..shifts as u8).min_by_key(|&k| held.iter().filter(|&&h| h == k).count()).unwrap_or(0);
+            if let Some(r) = self.map.resident_mut(id) {
+                r.shift = shift;
+            }
             self.map.tie(id, w);
+            self.map.staffed(w);
+            self.waiting.insert(w);
         }
     }
+}
+
+/// Since when a home has waited late on what its people live on: its
+/// pantry, or an outing. Not a site's materials, which it stood without.
+fn late(b: &Building) -> Option<GameTime> {
+    b.waits.iter().filter(|w| matches!(w.what, Wanted::Good(g) if b.stocks.contains_key(&g)) || w.what == Wanted::Outing).filter_map(|w| w.late).min()
 }
 
 /// The drive between two buildings in hours, as the road roughly runs:
@@ -346,12 +394,12 @@ mod tests {
         let mut world = town();
         build(&mut world, 0, BuildingKind::Apartment); // 7 residents
         let near = build(&mut world, 4, BuildingKind::Shop); // 2 jobs
-        let far = build(&mut world, 30, BuildingKind::Office); // 12 jobs
+        let far = build(&mut world, 30, BuildingKind::Lab); // 4 jobs
 
         world.settle();
         let jobs = residents(&world);
         assert_eq!(jobs.iter().filter(|r| r.work == Some(near)).count(), 2);
-        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 5);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 4);
     }
 
     #[test]
@@ -436,19 +484,19 @@ mod tests {
     }
 
     /// A desk nobody in town can take stays empty: nobody comes from
-    /// beyond the town for a job. Two people and twelve desks are two
-    /// at desks and ten free, whatever road leaves the map; and when
-    /// the office goes, its two are out of work at home, and take the
+    /// beyond the town for a job. Two people and four desks are two
+    /// at desks and two free, whatever road leaves the map; and when
+    /// the lab goes, its two are out of work at home, and take the
     /// next job that opens.
     #[test]
     fn a_desk_nobody_in_town_takes_stays_empty() {
         let mut world = town();
         build(&mut world, 0, BuildingKind::House); // two people
-        let office = build(&mut world, 20, BuildingKind::Office);
+        let lab = build(&mut world, 20, BuildingKind::Lab);
         world.settle();
         assert_eq!(residents(&world).len(), 2, "somebody moved in for the job");
-        assert!(residents(&world).iter().all(|r| r.work == Some(office)), "the town's two did not take it");
-        world.map.remove_building(office);
+        assert!(residents(&world).iter().all(|r| r.work == Some(lab)), "the town's two did not take it");
+        world.map.remove_building(lab);
         world.settle();
         assert_eq!(residents(&world).len(), 2, "losing a job is not leaving");
         assert!(residents(&world).iter().all(|r| r.work.is_none()));

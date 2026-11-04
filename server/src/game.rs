@@ -244,8 +244,6 @@ impl Game {
             wakes += 1;
         }
         crate::market::hour(&mut self.world, &mut self.events, self.now);
-        // Before the flush, which takes the lumps a mission reads.
-        crate::missions::check(&mut self.world, self.now);
         wakes
     }
 
@@ -293,8 +291,12 @@ fn handle_wake(
         Some(GameObject::Car(c)) if c.trip.is_none() => crate::calls::car_idle(world, events, id, now),
         Some(GameObject::Car(_)) => world.drive(events, |t, e| traffic::car::simulation::handle_car_wake_up(t, e, id, now)),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
-        // A building's wake is its turn: a farm whose crop has ripened.
-        Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
+        // A building's wake is its turn: a farm whose crop has ripened,
+        // or a wait late long enough to give up on.
+        Some(GameObject::Building(_)) => {
+            world.give_up(id, now);
+            crate::calls::turn(world, events, id, now);
+        }
         // A junction's is its lights looking again.
         Some(GameObject::RoadNode(_)) => world.drive(events, |t, e| traffic::car::simulation::lights(t, e, id, now)),
         // Midnight: every building takes its turn, and every line reads
@@ -318,15 +320,20 @@ pub(crate) const CALLS_AGAIN: EntityId = EntityId::MAX - 1;
 /// think about it. And the day is always due to turn.
 pub(crate) fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     let changed = !world.map.unsettled.is_empty();
-    if changed {
-        world.missions.stir();
-    }
     for id in world.settle() {
         wake_resident(world, events, id);
     }
+    // The quays change with every ferry and lorry, and are few.
+    world.waiting.extend(world.map.harbours.keys().copied());
+    crate::waits::look(world, events, events.now());
     // A harbour reached, or cut off: the town's way out, and its ferry.
     world.map.mark_harbours();
     let standing: Vec<EntityId> = world.map.harbours.keys().copied().collect();
+    let port = standing.iter().any(|&h| world.map.building(h).is_some_and(|b| b.kind == model::BuildingKind::Port));
+    if port != world.market.port {
+        world.market.port = port;
+        world.market.changed = true;
+    }
     for h in standing {
         world.commission(h, events.now());
     }

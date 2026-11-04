@@ -1,13 +1,14 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text, Icon, type BoxProps } from "~ui";
 import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
 import { BLUEPRINTS } from "../blueprints";
+import { says, target, wanted } from "./Pins";
 import { select, setFollowing, setSubject } from "../state/selection";
 import { card, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
 import { SitePanel } from "./Site";
-import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
-import type { JSX } from "~ui/jsx-runtime";
+import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link, ROUND } from "./kit";
+import type { JSX } from "solid-js";
 import type { Building, BuildingCard, CarCard, CarRole, ResidentCard } from "../generated";
 
 const CLOSE = "M6 6l12 12M18 6L6 18";
@@ -60,14 +61,16 @@ export function InspectHead() {
             }
             case "building": {
               const bp = BLUEPRINTS[k.building_kind];
-              const site = buildingOf(k.id)?.site;
+              const b = buildingOf(k.id);
+              const site = b?.site;
+              const idle = !site && b && bp.jobs > 0 && b.hands === 0;
               return {
                 title: site ? `${bp.label} · a site` : bp.label,
-                sub: k.reached ? (site ? "going up as its materials land" : undefined) : "no road reaches it",
+                sub: !k.reached ? "no road reaches it" : site ? "going up as its materials land" : idle ? "nobody works here" : undefined,
                 icon: (
-                  <box w={36} h={36} round={18} fill={bp.color} opacity={site ? 0.65 : 1} align="center" justify="center">
-                    <icon d={bp.glyph} size={19} ink="white" />
-                  </box>
+                  <Box w={36} h={36} round={18} fill={bp.color} opacity={site ? 0.65 : 1} align="center" justify="center">
+                    <Icon d={bp.glyph} size={19} ink="white" />
+                  </Box>
                 ),
               };
             }
@@ -105,34 +108,34 @@ export function InspectBody() {
 
 /** A pane of glass where it lies, at most as tall as its room; what is
  *  taller scrolls under the wheel or a finger. */
-export function Pane(props: { children: JSX.Element; layer: string; at: JSX.Box["at"]; w?: number; room: number }) {
+export function Pane(props: { children: JSX.Element; layer: string; at: BoxProps["at"]; w?: number; room: number }) {
   const [tall, setTall] = createSignal(0);
   const [scroll, setScroll] = createSignal(0);
   const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - props.room, scroll() + by)));
   createEffect(() => tall() <= props.room && setScroll(0));
   return (
-    <glass layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={22} clip onScroll={roll}>
-      <box y={-scroll()} pad={{ bottom: 6 }} onSize={(_, h) => setTall(h)}>
+    <Ink layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={ROUND} clip onScroll={roll}>
+      <Box y={-scroll()} pad={{ bottom: 6 }} onSize={(_, h) => setTall(h)}>
         {props.children}
-      </box>
-    </glass>
+      </Box>
+    </Ink>
   );
 }
 
 export function Header(props: { title: string; sub?: string; icon?: JSX.Element; onClose?: () => void }) {
   return (
-    <box dir="row" align="center" gap={10} pad={{ x: 16, top: 14, bottom: 10 }}>
+    <Box dir="row" align="center" gap={10} pad={{ x: 16, top: 14, bottom: 10 }}>
       {props.icon}
-      <box grow={1} gap={2}>
-        <text size={16} weight={600} lines={1}>{props.title}</text>
+      <Box grow={1} gap={2}>
+        <Text size={16} weight={600} lines={1}>{props.title}</Text>
         <Show when={props.sub}>
-          <text size={12} soft lines={1}>{props.sub}</text>
+          <Text size={12} soft lines={1}>{props.sub}</Text>
         </Show>
-      </box>
+      </Box>
       <Press w={28} h={28} round={14} align="center" justify="center" onTap={props.onClose ?? (() => select(null))}>
-        <icon d={CLOSE} size={14} stroke={2.4} ink="ink/0.6" />
+        <Icon d={CLOSE} size={14} stroke={2.4} ink="ink/0.6" />
       </Press>
-    </box>
+    </Box>
   );
 }
 
@@ -148,14 +151,14 @@ function ResidentLines(c: ResidentCard) {
       <Section title={`Needs, since ${c.since}`}>
         <For each={c.needs}>
           {(b) => (
-            <box dir="row" align="center" gap={8} minH={22}>
-              <text w={64} size={13.5} weight={c.selected === b.need ? 600 : undefined} soft={c.selected !== b.need}>{b.need}</text>
-              <Bar value={b.full} color={c.selected === b.need ? GDP : "#A8A29E"} />
-              <box grow={1} />
-              <Show when={b.option} fallback={<text size={12} soft>nothing found</text>}>
+            <Box dir="row" align="center" gap={8} minH={22}>
+              <Text w={64} size={13.5} weight={c.selected === b.need ? 600 : undefined} soft={c.selected !== b.need}>{b.need}</Text>
+              <Bar value={b.full} color={c.selected === b.need ? GDP : "#8E8E93"} />
+              <Box grow={1} />
+              <Show when={b.option} fallback={<Text size={12} soft>nothing found</Text>}>
                 {(id) => <To link={{ id: id(), label: "→ option", kind: "building" }} />}
               </Show>
-            </box>
+            </Box>
           )}
         </For>
       </Section>
@@ -177,9 +180,9 @@ function CarLines(c: CarCard) {
         {(t) => (
           <Section title="Trip">
             <Row label="To"><To link={t().to} /></Row>
-            <Row label="Due"><text size={13.5}>{t().due}</text></Row>
+            <Row label="Due"><Text size={13.5}>{t().due}</Text></Row>
             <Show when={t().late_s > 0}>
-              <Row label="Lost to traffic"><text size={13.5}>{Math.round(t().late_s)} s</text></Row>
+              <Row label="Lost to traffic"><Text size={13.5}>{Math.round(t().late_s)} s</Text></Row>
             </Show>
           </Section>
         )}
@@ -190,7 +193,7 @@ function CarLines(c: CarCard) {
             {(a) => (
               <Row label={a.what}>
                 <To link={a.at} />
-                <text size={12} soft>since {a.since}</text>
+                <Text size={12} soft>since {a.since}</Text>
               </Row>
             )}
           </For>
@@ -201,7 +204,7 @@ function CarLines(c: CarCard) {
 }
 
 /** Links, one a line. */
-const Links = (props: { each: Link[] }) => <For each={props.each}>{(l) => <box minH={22} justify="center"><To link={l} /></box>}</For>;
+const Links = (props: { each: Link[] }) => <For each={props.each}>{(l) => <Box minH={22} justify="center"><To link={l} /></Box>}</For>;
 
 /**
  * A building's card: made once for the building, its lines read from the
@@ -214,11 +217,36 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
   /** Still going up: the client's own record of the site. */
   const site = createMemo(() => buildingOf(props.id)?.site ?? null);
   const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
+  /** Its late trips, alike ones together: what, how many, why, and where. */
+  const late = createMemo(() => {
+    const by = new Map<string, { what: string; n: number; says: string; to: number | null }>();
+    for (const w of buildingOf(props.id)?.waits ?? []) {
+      if (!w.why) continue;
+      const label = wanted(w.what);
+      const what = label[0].toUpperCase() + label.slice(1);
+      const k = `${what} ${JSON.stringify(w.why)}`;
+      by.set(k, { what, n: (by.get(k)?.n ?? 0) + 1, says: says(w.what, w.why), to: target(w.why) });
+    }
+    return [...by.values()];
+  });
   return (
     <>
       <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
       <Show when={!site() && kind() === "Depot"}>
         <DepotPanel id={props.id} lorries={lorries()} />
+      </Show>
+      <Show when={!site() && late().length > 0}>
+        <Section title="Waiting on">
+          <For each={late()}>
+            {(l) => (
+              <Row label={l.n > 1 ? `${l.what} ×${l.n}` : l.what}>
+                <Show when={l.to} fallback={<Text size={13.5} soft>{l.says}</Text>}>
+                  {(to) => <To link={{ id: to(), label: l.says, kind: "building" }} />}
+                </Show>
+              </Row>
+            )}
+          </For>
+        </Section>
       </Show>
       <Show when={kind() !== "Depot" && c().stocks.length > 0}>
         <Section title="Stocks">
@@ -237,10 +265,10 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
       </Show>
       <Show when={c().staff.length > 0}>
         <Section title={`Works here · ${c().staff.filter((s) => s.present).length} of ${c().staff.length} in`}>
-          <For each={c().staff}>{(s) => <box minH={22} justify="center" opacity={s.present ? 1 : 0.5}><To link={s.who} /></box>}</For>
+          <For each={c().staff}>{(s) => <Box minH={22} justify="center" opacity={s.present ? 1 : 0.5}><To link={s.who} /></Box>}</For>
         </Section>
       </Show>
-      <Show when={c().fleet.length > 0 && kind() !== "Harbour"}>
+      <Show when={c().fleet.length > 0 && !BLUEPRINTS[kind()].quay}>
         <Section title="Fleet">
           <Links each={c().fleet} />
         </Section>
@@ -252,7 +280,7 @@ function BuildingLines(props: { id: number; card: () => BuildingCard }) {
       </Show>
       <Show when={c().served.some((s) => s.hours_today > 0)}>
         <Section title="Served today">
-          <For each={c().served.filter((s) => s.hours_today > 0)}>{(s) => <Row label={s.need}><text size={13.5}>{s.hours_today.toFixed(1)} h</text></Row>}</For>
+          <For each={c().served.filter((s) => s.hours_today > 0)}>{(s) => <Row label={s.need}><Text size={13.5}>{s.hours_today.toFixed(1)} h</Text></Row>}</For>
         </Section>
       </Show>
     </>

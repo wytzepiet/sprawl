@@ -7,6 +7,7 @@ import type { Lift } from "./Lift";
 import type { Package } from "./Package";
 import type { Stock } from "./Stock";
 import type { Tile } from "./Tile";
+import type { Wait } from "./Wait";
 
 export type Building = { kind: BuildingKind, 
 /**
@@ -57,6 +58,15 @@ lifts: Array<Lift>,
  */
 lorries: number, 
 /**
+ * Vans bought for it beyond the two its row comes with.
+ */
+vans: number, 
+/**
+ * How many of its jobs are held (`Map::staffed`): a works far from
+ * the town's homes may stand with none.
+ */
+hands: number, 
+/**
  * A farm's land: the grass it claimed when a street reached it, each
  * tile at a stage of the cycle the tractor drives it through
  * (`map/fields.rs`). A tile built over is dropped.
@@ -74,4 +84,9 @@ ruts: Array<GridCoord>,
  * road: drawn as one, driven by the cars of its lot, and gone with it.
  * Kept when the street goes, and good again if it comes back.
  */
-door: Door | null, };
+door: Door | null, 
+/**
+ * The trips it waits on (`sprawl::waits`): read by the client as
+ * pins, and by the game for who gives up (`LATE_MS`).
+ */
+waits: Array<Wait>, };

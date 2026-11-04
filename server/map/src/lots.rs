@@ -543,7 +543,10 @@ impl Map {
             Some(berth) => berth.park(),
             None => {
                 let sides: Vec<f64> = [1.0, -1.0].into_iter().filter(|&s| (if s > 0.0 { w - u_gate } else { u_gate }) >= DOCK_REACH).collect();
-                park(|s, side| grid_at(u_gate + side, d - s), &sides)
+                let (lane, mut docks) = park(|s, side| grid_at(u_gate + side, d - s), &sides);
+                // The docks nearest the building are the last.
+                docks.drain(..docks.len().saturating_sub(model::blueprint::blueprint(kind).docks));
+                (lane, docks)
             }
         };
         let mut lane = vec![door];
@@ -1232,13 +1235,13 @@ mod tests {
     }
 
     /// Anything that parks at the kerb is placed only where a street runs
-    /// all along one of its sides, for its bays: an office whose street
+    /// all along one of its sides, for its bays: a lab whose street
     /// ends half way along it is refused, one a tile on is placed.
     #[test]
     fn a_kerb_parker_needs_a_street_along_a_whole_side() {
         let world = Map::meadow(-4..12, -4..8).street(-4..3);
-        assert_eq!(world.fit(BuildingKind::Office, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
-        assert!(world.fit(BuildingKind::Office, GridCoord { x: 2, y: 1 }, 0).is_ok());
+        assert_eq!(world.fit(BuildingKind::Lab, GridCoord { x: 3, y: 1 }, 0).err(), Some("No street along a whole side, for its parking"));
+        assert!(world.fit(BuildingKind::Lab, GridCoord { x: 2, y: 1 }, 0).is_ok());
     }
 
     /// A depot's lot is a yard, laid as a harbour's park: a gate in the

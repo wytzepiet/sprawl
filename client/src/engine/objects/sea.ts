@@ -14,12 +14,13 @@ export type Shape = MeshGeometry & { colors: number[] };
 export type Part = [MeshGeometry, [number, number, number], RGB];
 
 /** Parts as one shape, each a geometry moved to `at` and painted a shade
- *  of what the bucket's colour is multiplied by. */
+ *  of what the bucket's colour is multiplied by, mapped as it was. */
 export function shape(parts: Part[]): Shape {
-  const out: Shape = { positions: [], normals: [], indices: [], colors: [] };
+  const out: Shape = { positions: [], normals: [], indices: [], colors: [], uvs: [] };
   for (const [g, [x, y, z], [r, gr, b]] of parts) {
     const base = out.positions.length / 3;
     for (let i = 0; i < g.positions.length; i += 3) out.positions.push(g.positions[i] + x, g.positions[i + 1] + y, g.positions[i + 2] + z), out.colors.push(r, gr, b, 1);
+    out.uvs!.push(...(g.uvs ?? Array<number>((g.positions.length / 3) * 2).fill(0)));
     out.normals.push(...g.normals);
     out.indices.push(...g.indices.map((k) => k + base));
   }

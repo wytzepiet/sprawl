@@ -1,3 +1,4 @@
+import { bakeBark } from "./bark";
 import { bakeCrowns } from "./crowns";
 import { bakeLace } from "./lace";
 import { bakeLawn } from "./lawn";
@@ -9,6 +10,7 @@ import { bakeWheat } from "./wheat";
 /** Bakes a texture off the main thread, the one it is sent the name of
  *  (`bakeCache.ts`), and hands its texels back. */
 const RECIPES = {
+  bark: bakeBark,
   crowns: bakeCrowns,
   lace: bakeLace,
   lawn: bakeLawn,
