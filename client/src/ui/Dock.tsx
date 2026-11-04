@@ -1,4 +1,5 @@
-import { Box, Ink, Icon } from "~ui";
+import { Box, Ink, Icon, Text } from "~ui";
+import { town } from "../state/town";
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { follow, thrown } from "../engine/spring";
 import { useEngine } from "../engine/Canvas";
@@ -13,6 +14,9 @@ import { open, setOpen, sheetWidth, show, tab, TABS, type Tab } from "./sheet";
 import { bezel, DROP, Fade, Press, view, wide, ROUND } from "./kit";
 import { behind, clear, front, pages, Pages, pop } from "./pages";
 import type { JSX } from "solid-js";
+
+/** Buildings in hand, all told. */
+const inHandAll = () => town().hand.reduce((n, [, k]) => n + k, 0);
 
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** A hammer. */
@@ -149,6 +153,12 @@ export default function Dock() {
                 return (
                   <Press at={{ left: cx(j()) - 22, bottom: 8 }} w={44} h={44} round={22} align="center" justify="center" onTap={() => press(t)}>
                     <Icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
+                    {/* What is in hand and not yet placed, counted on the hammer. */}
+                    <Show when={t === "build" && !held() && inHandAll() > 0}>
+                      <Box at={{ right: 2, top: 2 }} minW={18} h={18} round={9} pad={{ x: 5 }} fill="#FF453A" align="center" justify="center">
+                        <Text size={11} weight={700} ink="white">{inHandAll()}</Text>
+                      </Box>
+                    </Show>
                   </Press>
                 );
               }}
