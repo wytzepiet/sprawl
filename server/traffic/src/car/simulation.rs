@@ -53,7 +53,9 @@ pub fn park_car(
 
     // Its building gone, it goes home; its home gone too, or nobody's
     // to begin with (traffic passing through), it is scrap.
-    let alive = |id: EntityId| world.map.objects.get(id).is_some();
+    // Only a building owns a car or takes one in: a puzzle's cars are
+    // nobody's, and go at the edge.
+    let alive = |id: EntityId| matches!(world.map.objects.get(id).map(|e| &e.object), Some(GameObject::Building(_)));
     let owner = owner.filter(|&o| alive(o));
     let at_building = owner.and(if alive(at_building) { Some(at_building) } else { owner });
     match at_building.and_then(|b| world.map.objects.get(b)).and_then(|e| e.position) {
