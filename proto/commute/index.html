@@ -165,7 +165,7 @@ const { GOODS, KINDS, LEVELS, STATUSES, REACH, SHELF, xy, at, W, H } = S;
 const C = {
   land: '#ebe5d3', landDeep: '#e2dbc6', meadow: '#e6dca4', meadowLine: '#d6ca86', clay: '#e6c79c', clayDot: '#cfa676',
   water: '#a7cfe3', shore: '#c8e2ee', tree: '#9ebd7e', treeDark: '#86a868', treeLight: '#b3cf93',
-  road: '#5b616c', bridge: '#f7f2e6', shadow: 'rgba(70, 55, 30, .2)',
+  road: '#5b616c', motorway: '#8a919c', motorwayEdge: '#f4f1e8', bridge: '#f7f2e6', shadow: 'rgba(70, 55, 30, .2)',
   wall: '#fbf7ee', roof: '#de7a63', worker: '#3b78e0', roofShade: '#c4614c', flat: '#efe8da', flatEdge: '#d9d0bd',
   fog: 'rgba(205, 200, 186, .72)', ink: '#141416',
 };
@@ -390,7 +390,9 @@ function frame() {
   drawHighlights(now);
   drawRoads(now);
   drawBuildings(now);
-  drawTrucks();
+  drawTrucks(false);
+  drawMotorways();
+  drawTrucks(true);
   drawQueues();
   drawFog();
   drawNight();
@@ -464,7 +466,7 @@ function drawHighlights(now) {
 
 function drawRoads(now) {
   const edges = [];
-  for (const [a, set] of sim.adj) for (const b of set) if (a < b) edges.push([a, b]);
+  for (const [a, set] of sim.adj) if (a < S.N) for (const b of set) if (a < b && b < S.N) edges.push([a, b]);
   // bridges get a pale deck under the asphalt
   g.lineCap = 'round'; g.lineJoin = 'round';
   g.strokeStyle = C.bridge; g.lineWidth = 0.66;
@@ -483,7 +485,7 @@ function drawRoads(now) {
   for (const [a, b] of edges) line(a, b);
   g.stroke();
   g.fillStyle = C.road;
-  for (const n of sim.adj.keys()) { const [x, y] = xy(n); g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.22, 0, 7); g.fill(); }
+  for (const n of sim.adj.keys()) { if (n >= S.N) continue; const [x, y] = xy(n); g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.22, 0, 7); g.fill(); }
   // centre dashes on long straights read as roads, not pipes
   g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 0.035; g.setLineDash([0.12, 0.16]);
   g.beginPath();
@@ -494,6 +496,22 @@ function drawRoads(now) {
     g.fillStyle = C.road; g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.46, 0, 7); g.fill();
     g.fillStyle = C.tree; g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.17, 0, 7); g.fill();
   }
+}
+// The motorway: a pale deck with white edges, over whatever it crosses, with
+// its shadow on the ground; a ramp is where it comes down onto a road.
+function drawMotorways() {
+  const edges = [], ramps = [];
+  for (const [a, set] of sim.adj) if (a >= S.N) for (const b of set) { if (b >= S.N && a < b) edges.push([a, b]); else if (b < S.N) ramps.push([a, b]); }
+  if (!edges.length) return;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.save(); g.translate(0.12, 0.16); g.strokeStyle = C.shadow; g.lineWidth = 0.7; g.beginPath(); for (const [a, b] of edges) line(a, b); g.stroke(); g.restore();
+  g.strokeStyle = C.motorwayEdge; g.lineWidth = 0.7; g.beginPath(); for (const [a, b] of edges) line(a, b); g.stroke();
+  g.strokeStyle = C.motorway; g.lineWidth = 0.56; g.beginPath(); for (const [a, b] of edges) line(a, b); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 0.035; g.setLineDash([0.16, 0.14]);
+  g.beginPath(); for (const [a, b] of edges) line(a, b); g.stroke(); g.setLineDash([]);
+  // ramps: a chevron where it meets the road
+  g.fillStyle = C.motorwayEdge;
+  for (const [m] of ramps) { const [x, y] = xy(m); g.beginPath(); g.arc(x + 0.5, y + 0.5, 0.2, 0, 7); g.fill(); }
 }
 function line(a, b) { const [ax, ay] = xy(a), [bx, by] = xy(b); g.moveTo(ax + 0.5, ay + 0.5); g.lineTo(bx + 0.5, by + 0.5); }
 
@@ -616,8 +634,10 @@ function drawProducer(b, now) {
   if (selected === b.id) { g.strokeStyle = C.ink; g.lineWidth = 0.05; g.beginPath(); g.roundRect(-s / 2 - 0.08, -s / 2 - 0.08, s + 0.16, s + 0.16, 0.24); g.stroke(); }
 }
 
-function drawTrucks() {
+const onMotorway = v => v.state === 'drive' && v.route && v.route[v.seg] >= S.N && v.route[v.seg + 1] >= S.N;
+function drawTrucks(up) {
   for (const v of sim.vehicles) {
+    if (onMotorway(v) !== up) continue;
     const p = sim.vehiclePose(v);
     if (!p) continue;
     const home = sim.B(v.home);
@@ -693,7 +713,7 @@ function drawGhost(now) {
     g.fillStyle = col; g.beginPath(); g.roundRect(-0.4, -0.4, 0.8, 0.8, 0.18); g.fill();
     icon(g, kindIcon(tool), 0, -0.04, 0.5, '#fff');
     g.restore();
-  } else if (tool === 'road' || tool === 'erase' || tool === 'roundabout') {
+  } else if (tool === 'road' || tool === 'motorway' || tool === 'erase' || tool === 'roundabout') {
     g.strokeStyle = tool === 'erase' ? 'rgba(229,83,61,.8)' : 'rgba(20,20,22,.35)'; g.lineWidth = 0.05;
     g.beginPath(); g.roundRect(x + 0.06, y + 0.06, 0.88, 0.88, 0.2); g.stroke();
   }
@@ -923,11 +943,13 @@ function roadFlash() { const el = document.getElementById('roads'); el.classList
 function offerIcon(o) {
   if (o.type === 'kind') return cardIcon(o.kind);
   if (o.type === 'roundabout') return cardIcon('roundabout');
+  if (o.type === 'motorway') return cardIcon('motorway');
   return cardIcon('road');
 }
 function offerText(o) {
   if (o.type === 'kind') return [KINDS[o.kind].name, 'One more to place'];
   if (o.type === 'roundabout') return ['2 roundabouts', 'Three through at once'];
+  if (o.type === 'motorway') return [o.n + ' motorway', 'Twice as fast; joins roads only at its ends'];
   return [o.n + ' road', 'Tiles to draw with'];
 }
 function showOffer() {
@@ -959,7 +981,8 @@ function pickOffer(k) {
   sim.pick(k);
   document.getElementById('offer').hidden = true;
   sfx.place();
-  buildBar(o.type === 'kind' ? o.kind : o.type === 'roundabout' ? 'roundabout' : null);
+  buildBar(o.type === 'kind' ? o.kind : o.type === 'roundabout' ? 'roundabout' : o.type === 'motorway' ? 'motorway' : null);
+  if (o.type === 'motorway') hint('motorway', 'Draw a motorway like a road. It flies over the roads it crosses and joins them only at its two ends: those are its ramps. Twice as fast, so somewhere far gets close.', 10);
 }
 
 // ---- HUD -----------------------------------------------------------------------
@@ -976,7 +999,8 @@ function hud() {
   document.getElementById('stBar').style.width = (nxt ? Math.min(100, (pop - cur.at) / (nxt.at - cur.at) * 100) : 100) + '%';
   // the bar shows what's in hand: rebuild it when that changes
   const hand = JSON.stringify(sim.tokens);
-  if (hand !== lastHand) { lastHand = hand; buildBar(); if (tool !== 'view' && tool !== 'road' && tool !== 'erase' && !sim.tokens[tool]) setTool('view'); }
+  if (hand !== lastHand) { lastHand = hand; buildBar(); if (tool !== 'view' && tool !== 'road' && tool !== 'erase' && !sim.tokens[tool]) setTool('view');
+  for (const c of document.querySelectorAll('#bar [data-count="motorway"] .count')) c.textContent = sim.tokens.motorway || 0; }
   // the card whose good is waiting longest calls for attention
   const late = new Set(sim.pins.filter(p => p.kind === 'want' && sim.time - p.born > S.PATIENCE * 0.55 && p.by < 0).map(p => S.MAKER[p.good]));
   for (const btn of document.querySelectorAll('#bar button[data-kind]')) btn.classList.toggle('call', late.has(btn.dataset.kind) && tool !== btn.dataset.kind);
@@ -998,6 +1022,11 @@ function cardIcon(kind) {
   } else if (kind === 'road') {
     t.strokeStyle = '#9aa0aa'; t.lineCap = 'round'; t.lineWidth = 0.16;
     t.beginPath(); t.moveTo(0.18, 0.78); t.lineTo(0.45, 0.5); t.lineTo(0.82, 0.5); t.stroke();
+  } else if (kind === 'motorway') {
+    t.lineCap = 'round';
+    t.strokeStyle = '#f4f1e8'; t.lineWidth = 0.3; t.beginPath(); t.moveTo(0.14, 0.78); t.lineTo(0.86, 0.22); t.stroke();
+    t.strokeStyle = '#8a919c'; t.lineWidth = 0.22; t.stroke();
+    t.strokeStyle = 'rgba(255,255,255,.7)'; t.lineWidth = 0.03; t.setLineDash([0.06, 0.05]); t.stroke(); t.setLineDash([]);
   } else if (kind === 'erase') {
     t.strokeStyle = '#e5533d'; t.lineCap = 'round'; t.lineWidth = 0.11;
     t.beginPath(); t.moveTo(0.28, 0.28); t.lineTo(0.72, 0.72); t.moveTo(0.72, 0.28); t.lineTo(0.28, 0.72); t.stroke();
@@ -1041,6 +1070,7 @@ function buildBar(fresh) {
   add('view', 'View');
   add('road', 'Road');
   add('erase', 'Erase');
+  if (sim.tokens.motorway) add('motorway', 'Motorway', true);
   if (sim.tokens.roundabout) add('roundabout', 'Roundabout', true);
   const kinds = ORDER.filter(k => sim.tokens[k] > 0);
   if (kinds.length) { const sep = document.createElement('div'); sep.className = 'sep'; bar.appendChild(sep); }
@@ -1070,6 +1100,8 @@ function panel() {
     const f = document.createElement('div'); f.className = 'flow';
     f.append('Wants');
     for (const gd in L.wants) f.appendChild(goodIcon(gd));
+    const put = Object.entries(b.pantry || {}).filter(([, n]) => n > 0);
+    if (put.length) { f.append(' · put by'); for (const [gd, n] of put) f.append(goodIcon(gd), String(n)); }
     el.appendChild(f);
     const say = document.createElement('div'); say.className = 'say';
     if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road. Nothing can reach it.'; }
@@ -1190,6 +1222,15 @@ cv.addEventListener('pointermove', e => {
   // a finger waits a moment before it draws, in case a second one is coming to pinch
   if (e.pointerType === 'touch' && performance.now() - drag.t0 < 140) return;
   if (drag.erase) { for (const j of line8(drag.last, i)) eraseAt(j, false); drag.last = i; return; }
+  if (tool === 'motorway') {
+    for (const j of line8(drag.last, i)) {
+      const prev = drag.last; drag.last = j;
+      const c = sim.addMotorway(prev, j);
+      if (c > 0) { const t = performance.now(); if (t - lastRoadSfx > 40) { sfx.road(); lastRoadSfx = t; } }
+      if (c < 0 && !sim.tokens.motorway) { sfx.no(); drag = null; return; }
+    }
+    return;
+  }
   if (tool !== 'road') return;
   for (const j of line8(drag.last, i)) {
     const prev = drag.last;
@@ -1248,6 +1289,7 @@ function tap(i) {
 }
 function eraseAt(i, tapped) {
   if (i < 0) return;
+  if (sim.adj.has(i + S.N)) { sim.removeMotorwayTile(i); sfx.road(); return; }
   if (sim.adj.has(i)) { sim.removeRoadTile(i); sfx.road(); return; }
   const id = sim.tileB.get(i);
   if (tapped && id !== undefined) { sim.removeBuilding(id); sfx.leave(); if (selected === id) { selected = null; panel(); } }
@@ -1262,6 +1304,7 @@ addEventListener('keydown', e => {
   else if (e.key === 'Escape') { setTool('view'); selected = null; panel(); }
   else if (e.key === 'v') setTool('view');
   else if (e.key === 'r') setTool('road');
+  else if (e.key === 'm' && sim.tokens.motorway) setTool('motorway');
   else if (e.key === 'x' || e.key === 'e') setTool('erase');
 });
 let lastSpeed = 1;

@@ -85,6 +85,8 @@ const STATUSES = [
 
 // No money. Growth hands you the picks: every PICK_STEP people moving in or up, one. And
 // every new house brings a little road, so supply keeps pace with the town.
+const MOTORWAY_SPEED = 2;
+const PANTRY_TILES = 4;   // a family keeps one of each thing for every this many tiles to its shop   // times as fast as a road
 const ROAD_COST = 1, BRIDGE_COST = 3, PICK_STEP = 10, HOUSE_ROADS = 2, START_ROADS = 24;
 
 function rng(seed) {
@@ -96,10 +98,11 @@ function rng(seed) {
   };
 }
 
-const xy = i => [i % W, (i / W) | 0];
+const N = W * H;          // a motorway's nodes are its tiles + N: a layer of its own over the roads
+const xy = i => [i % W, ((i % N) / W) | 0];
 const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? -1 : y * W + x;
 const cheb = (a, b) => { const [ax, ay] = xy(a), [bx, by] = xy(b); return Math.max(Math.abs(ax - bx), Math.abs(ay - by)); };
-const edgeLen = (a, b) => (a % W !== b % W && ((a / W) | 0) !== ((b / W) | 0)) ? Math.SQRT2 : 1;
+const edgeLen = (a, b) => a % N === b % N ? 0.3 : (a % W !== b % W && (((a % N) / W) | 0) !== (((b % N) / W) | 0)) ? Math.SQRT2 : 1;
 const ekey = (a, b) => a * 4096 + b;
 
 function distToPolyline(x, y, pts) {
@@ -239,8 +242,53 @@ P.addRoad = function (a, b) {
     if (this.terrain[i] === FOREST) { this.terrain[i] = GRASS; this.wood.delete(i); }
   }
   this.adj.get(a).add(b); this.adj.get(b).add(a);
+  this.ramps();
   this.graphChanged();
   return cost;
+};
+// A motorway flies over roads and water: it joins the roads only where it ends
+// on one, and those are its ramps. No building stands on it or beside it.
+P.motorwayable = function (i) { return i >= 0 && i < N && this.inBounds(i) && !this.tileB.has(i); };
+P.addMotorway = function (a, b) {
+  if (a === b || !this.motorwayable(a) || !this.motorwayable(b) || cheb(a, b) !== 1) return -1;
+  const A = a + N, B = b + N;
+  if (this.adj.get(A)?.has(B)) return 0;
+  const [ax, ay] = xy(a), [bx, by] = xy(b);
+  if (ax !== bx && ay !== by && this.adj.get(at(ax, by) + N)?.has(at(bx, ay) + N)) return -1;
+  const cost = (this.adj.has(A) ? 0 : 1) + (this.adj.has(B) ? 0 : 1);
+  if (cost > (this.tokens.motorway || 0)) return -1;
+  this.tokens.motorway -= cost;
+  for (const i of [a, b]) { if (!this.adj.has(i + N)) this.adj.set(i + N, new Set()); if (this.terrain[i] === FOREST) { this.terrain[i] = GRASS; this.wood.delete(i); } }
+  this.adj.get(A).add(B); this.adj.get(B).add(A);
+  this.ramps();
+  this.graphChanged();
+  return cost;
+};
+P.motorwayDegree = function (m) { let n = 0; for (const j of this.adj.get(m) || []) if (j >= N) n++; return n; };
+// a motorway's end on a road is a ramp onto it; anywhere else it passes over
+P.ramps = function () {
+  for (const m of [...this.adj.keys()]) {
+    if (m < N) continue;
+    const t = m - N, want = this.motorwayDegree(m) === 1 && this.adj.has(t) && [...this.adj.get(t)].some(j => j < N);
+    const has = this.adj.get(m).has(t);
+    if (want && !has) { this.adj.get(m).add(t); this.adj.get(t).add(m); }
+    if (!want && has) { this.adj.get(m).delete(t); this.adj.get(t).delete(m); this.dropLane(m, t); this.dropLane(t, m); }
+  }
+};
+P.removeMotorwayTile = function (i) {
+  const m = i + N, a = this.adj.get(m);
+  if (!a) return false;
+  for (const j of a) {
+    const o = this.adj.get(j);
+    o.delete(m);
+    this.dropLane(m, j); this.dropLane(j, m);
+    if (j >= N && !o.size) { this.adj.delete(j); this.tokens.motorway++; }
+  }
+  this.adj.delete(m);
+  this.tokens.motorway++;
+  this.ramps();
+  this.graphChanged();
+  return true;
 };
 P.removeRoadTile = function (i) {
   const a = this.adj.get(i);
@@ -249,11 +297,12 @@ P.removeRoadTile = function (i) {
     const o = this.adj.get(j);
     o.delete(i);
     this.dropLane(i, j); this.dropLane(j, i);
-    if (!o.size) { this.adj.delete(j); this.roads += this.terrain[j] === WATER ? BRIDGE_COST : ROAD_COST; this.dropRoundabout(j); }
+    if (j < N && !o.size) { this.adj.delete(j); this.roads += this.terrain[j] === WATER ? BRIDGE_COST : ROAD_COST; this.dropRoundabout(j); }
   }
   this.adj.delete(i);
   this.dropRoundabout(i);
   this.roads += this.terrain[i] === WATER ? BRIDGE_COST : ROAD_COST;
+  this.ramps();
   this.graphChanged();
   return true;
 };
@@ -314,7 +363,7 @@ P.dist = function (from) {
     open[bi] = open[open.length - 1]; open.pop();
     if (dd > d.get(n)) continue;
     for (const m of this.adj.get(n) || []) {
-      const nd = dd + edgeLen(n, m) + (this.isJunction(m) ? 0.3 : 0);
+      const nd = dd + edgeLen(n, m) / (n >= N && m >= N ? MOTORWAY_SPEED : 1) + (this.isJunction(m) ? 0.3 : 0);
       if (nd < (d.get(m) ?? Infinity)) { d.set(m, nd); prev.set(m, n); open.push([nd, m]); }
     }
   }
@@ -335,7 +384,7 @@ P.route = function (from, to) {
 // ---- buildings ----------------------------------------------------------------
 
 P.canPlace = function (kind, i) {
-  if (i < 0 || !this.inBounds(i) || this.tileB.has(i) || this.adj.has(i)) return false;
+  if (i < 0 || !this.inBounds(i) || this.tileB.has(i) || this.adj.has(i) || this.adj.has(i + N)) return false;
   const k = KINDS[kind], t = this.terrain[i];
   if (t === WATER) return false;
   if (k.on !== undefined) return t === k.on;
@@ -403,7 +452,7 @@ P.addHouse = function (i, first) {
   return h;
 };
 P.homeOk = function (i) {
-  return i >= 0 && this.inBounds(i) && this.terrain[i] === GRASS && !this.tileB.has(i) && !this.adj.has(i) && !this.loudNear(i);
+  return i >= 0 && this.inBounds(i) && this.terrain[i] === GRASS && !this.tileB.has(i) && !this.adj.has(i) && !this.adj.has(i + N) && !this.loudNear(i);
 };
 P.spawnSpot = function () {
   const houses = [...this.buildings.values()].filter(b => b.house);
@@ -497,6 +546,7 @@ P.tickHouse = function (h, dt) {
   for (const g in L.wants) {
     if (this.pins.some(p => p.at === h.id && p.good === g)) continue;
     h.timers[g] -= dt * busy;
+    if (h.timers[g] <= 0 && h.pantry?.[g] > 0) { h.pantry[g]--; h.happy++; h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); continue; }
     if (h.timers[g] <= 0) { this.addPin(h.id, g, 'want'); this.stats.wanted[g] = (this.stats.wanted[g] || 0) + 1; h.timers[g] = L.wants[g] * (0.85 + this.r() * 0.3); }
   }
   for (const p of this.pins) {
@@ -744,7 +794,23 @@ P.load = function (v, dt) {
   const done = v.claims.every(q => v.bag.includes(q.id));
   // home once it has it all; with what it has once it's slow; empty-handed
   // once it's clear nothing is coming
-  if (done || (v.bag.length && v.waited > 6) || v.waited > 25 || !v.claims.length) this.goHome(v, src.door);
+  if (done || (v.bag.length && v.waited > 6) || v.waited > 25 || !v.claims.length) {
+    if (v.car) this.stockPantry(v, src);
+    this.goHome(v, src.door);
+  }
+};
+// The further the shop, the more a family brings home to put by.
+P.stockPantry = function (v, src) {
+  const home = this.B(v.home);
+  if (!home || home.door < 0) return;
+  const keep = Math.floor((this.dist(src.door).get(home.door) ?? 0) / PANTRY_TILES);
+  if (!keep) return;
+  home.pantry ||= {};
+  v.extra = {};
+  for (const g in LEVELS[home.level].wants) {
+    let n = Math.min(keep - (home.pantry[g] || 0), this.avail(src, g));
+    while (n-- > 0) { this.take(src, g); v.extra[g] = (v.extra[g] || 0) + 1; }
+  }
 };
 P.goHome = function (v, node) {
   for (const q of v.claims) if (!v.bag.includes(q.id)) q.by = -1;
@@ -755,6 +821,8 @@ P.goHome = function (v, node) {
 // Home with the load: every need it answers is met.
 P.unpack = function (v) {
   const b = this.B(v.home);
+  if (v.extra && b) { b.pantry ||= {}; for (const g in v.extra) b.pantry[g] = (b.pantry[g] || 0) + v.extra[g]; }
+  v.extra = null;
   for (const q of v.claims) {
     if (q.dead || !v.bag.includes(q.id)) continue;
     this.killPin(q);
@@ -931,7 +999,7 @@ P.reroute = function (v, node) {
 
 P.moveTraffic = function (dt) {
   const s = this;
-  const step = SPEED * dt;
+  const slow = SPEED * dt, fast = slow * MOTORWAY_SPEED;
   for (const [key, lane] of [...s.lanes]) {
     for (let i = 0; i < lane.length; i++) {
       const v = lane[i];
@@ -940,6 +1008,7 @@ P.moveTraffic = function (dt) {
       if (v.hop > 0) v.hop = Math.max(0, v.hop - dt);
       const a = v.route[v.seg], b = v.route[v.seg + 1];
       const len = edgeLen(a, b);
+      const step = a >= N && b >= N ? fast : slow;
       const last = v.seg + 1 === v.route.length - 1;
       if (v.ghost > 0) v.ghost = Math.max(0, v.ghost - dt);
       let limit = len;
@@ -1023,6 +1092,7 @@ P.makeOffer = function () {
   for (const k of s.unlocked) cands.push({ type: 'kind', kind: k, n: 1, w: 1 + (weight['kind:' + k] || 0) * 2 });
   cands.push({ type: 'roads', n: 15, w: s.roads < 10 ? 6 : 2 });
   if (s.tools.has('roundabout')) cands.push({ type: 'roundabout', n: 2, w: 2 });
+  if (s.status >= 1) cands.push({ type: 'motorway', n: 12, w: s.tokens.motorway ? 1 : 3 });
   const want = s.leftThisWeek === 0 ? 3 : 2;   // a week nobody left earns a wider choice
   const out = [];
   // the most needed thing is always on the table; the rest is luck, weighted
@@ -1042,6 +1112,7 @@ P.pick = function (n) {
   if (o.type === 'kind') this.tokens[o.kind] = (this.tokens[o.kind] || 0) + o.n;
   else if (o.type === 'roads') this.roads += o.n;
   else if (o.type === 'roundabout') this.tokens.roundabout += o.n;
+  else if (o.type === 'motorway') this.tokens.motorway = (this.tokens.motorway || 0) + o.n;
   this.offer = null;
   this.leftThisWeek = 0;
   return true;
@@ -1086,5 +1157,5 @@ P.vehiclePose = function (v) {
 };
 
 root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, DAY, CLEAN_DAY_ROADS, SEATS, JOBS, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS,
-  OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
+  OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8, N, MOTORWAY_SPEED, PANTRY_TILES };
 })(typeof window !== 'undefined' ? window : globalThis);
