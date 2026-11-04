@@ -6,7 +6,7 @@ import { useEngine } from "../engine/Canvas";
 import { projector } from "../engine/view";
 import { select, setFollowing } from "../state/selection";
 import { GOODS } from "../blueprints";
-import type { Good, Neighbour } from "../generated";
+import type { Good } from "../generated";
 import type { JSX } from "solid-js";
 
 /**
@@ -155,18 +155,6 @@ export function GoodDot(props: { good: Good; size?: number }) {
   return (
     <Box w={s()} h={s()} round={s() / 2} fill={GOODS[props.good].color} align="center" justify="center">
       <Icon d={GOODS[props.good].glyph} size={s() * 0.62} ink="white" />
-    </Box>
-  );
-}
-
-/** A town's crest: its initials on a disc of its colour, rimmed in glass white (`flat/crest.ts`). */
-export function Crest(props: { n: Pick<Neighbour, "town" | "colour">; size: number }) {
-  const initials = () => props.n.town.split(" ").map((w) => w[0]).join("");
-  return (
-    <Box w={props.size} h={props.size} round={props.size / 2} fill={props.n.colour} stroke={[Math.max(1, props.size / 12), "#ffffffeb"]} align="center" justify="center">
-      <Text serif size={props.size * (initials().length > 1 ? 0.42 : 0.55)} ink="white" lead={1}>
-        {initials()}
-      </Text>
     </Box>
   );
 }

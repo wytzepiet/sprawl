@@ -231,10 +231,9 @@ export class TownLayer {
         const b = e.object.data as Building;
         g.byId.set(e.id, e);
         if (b.door) g.doors.push([b.door.tile.x, b.door.tile.y, b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
-        // A site is its ground, paved, until it stands (`BuildingObject`).
         const yard = yardTiles(b.tiles, b.kind, b.facing);
         for (const t of b.tiles) {
-          g.buildings.push([t.x, t.y, e.id, b.site ? "paved" : b.kind, yard.has(`${t.x},${t.y}`)]);
+          g.buildings.push([t.x, t.y, e.id, b.kind, yard.has(`${t.x},${t.y}`)]);
           grow(g.built, t.x, t.y);
         }
       }

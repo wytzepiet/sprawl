@@ -124,7 +124,7 @@ interface Bay {
  * street runs straight past: nose in, or along the kerb before flats.
  */
 export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number]): Bay[] {
-  const square = kind !== "Apartment";
+  const square = true;
   const need = baysAlong(Math.max(...BLUEPRINTS[kind].size), square);
   const pitch = square ? SQUARE_PITCH : ALONG_PITCH;
   const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);

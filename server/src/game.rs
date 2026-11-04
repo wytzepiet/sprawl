@@ -65,8 +65,8 @@ impl Game {
             crate::town::found(&mut self.world, self.now);
         }
         settle_and_wake(&mut self.world, &mut self.events);
-        // A world with no town (a puzzle's roads) keeps no town's clocks.
-        if self.world.town.start.is_some() {
+        // A world with no building (a puzzle's roads) keeps no town's clocks.
+        if self.world.map.objects.iter().any(|e| matches!(e.object, GameObject::Building(_))) {
             crate::town::begin(&mut self.world, &mut self.events, self.now);
         }
         let standing: Vec<EntityId> = self.world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.is_none())).map(|e| e.id).collect();

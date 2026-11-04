@@ -16,7 +16,7 @@
 //! doesn't.
 
 mod errands;
-mod homes;
+pub(crate) mod homes;
 mod makers;
 mod picks;
 mod start;

@@ -26,43 +26,27 @@ interface Form {
 }
 const STREET: Form = { family: "street" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  Lab: { family: "office" },
-  Factory: { family: "industry" },
-  // A depot is an open yard, its goods on the ground in bays, no roof
-  // over them; its lorries come and go at its docks in front.
-  Depot: { family: "industry", yard: { fill: "docks" }, open: "pad" },
-  // A sawmill's yard is its log and plank stacks, a lorry backed to them.
+  // A maker's yard is its stacks, a lorry backed to them.
+  Shop: { family: "street", yard: { fill: "docks" } },
+  Fishery: { family: "industry", yard: { fill: "docks" } },
+  Woodcutter: { family: "industry", yard: { fill: "docks" } },
   Sawmill: { family: "industry", yard: { fill: "docks" } },
-  // A quarry's yard is its heaps of broken stone, a lorry backed to them.
-  Quarry: { family: "industry", yard: { fill: "docks" } },
+  ClayPit: { family: "industry", yard: { fill: "docks" } },
+  SandPit: { family: "industry", yard: { fill: "docks" } },
+  Brickworks: { family: "industry", yard: { fill: "docks" } },
+  Glassworks: { family: "industry", yard: { fill: "docks" } },
+  Workshop: { family: "industry", yard: { fill: "docks" } },
   // A farm is a farmyard, a model of its own (`objects/farm.ts`), its
   // fence its own: no hedge round it.
   Farm: { family: "farm", yard: { fill: "docks" } },
-  // A supermarket is a big box, its customers parked at the kerb.
-  Supermarket: { family: "box" },
-  GasStation: { family: "box" },
-  // A harbour is open ground all through: the lane from its gate to the
-  // ramp, the docks one side of it and the quay's pad the other. Its
-  // terminal stands on the quay (`BuildingObject.tsx`).
-  Harbour: { family: "port", yard: { fill: "park" }, open: "park" },
-  Port: { family: "port", yard: { fill: "park" }, open: "park" },
-  // The works: sheds, each its yard of docks where its lorry backs to
-  // what it made.
+  SheepFarm: { family: "farm", yard: { fill: "docks" } },
   Bakery: { family: "street", yard: { fill: "docks" } },
-  CementWorks: { family: "industry", yard: { fill: "docks" } },
-  Mine: { family: "industry", yard: { fill: "docks" } },
-  Colliery: { family: "industry", yard: { fill: "docks" } },
-  Steelworks: { family: "industry", yard: { fill: "docks" } },
-  OilWell: { family: "industry", yard: { fill: "docks" } },
-  Refinery: { family: "industry", yard: { fill: "docks" } },
-  // A park is lawn and paths, its own hedge round it (`objects/park.ts`):
-  // no hedge of a home's, no street tree in it.
-  Park: { family: "park" },
+  Tailor: { family: "street", yard: { fill: "docks" } },
 };
 /** Kinds drawn whole from the kit (`objects/BuildingObject.tsx`): the
  *  town grid lays their ground and yard and raises no walls of its own,
  *  and no sign lies on them, the model saying what it is. */
-export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Sawmill", "Quarry", "Farm", "Mine", "Colliery", "CementWorks", "Steelworks", "Factory", "OilWell", "Refinery", "Bakery", "Park"]);
+export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor"]);
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 /** What stands in a tile of yard, if it is one: where the server lays a
  *  building's lot (`Tile.yard`), docks unless its kind says; or anywhere
@@ -93,12 +77,11 @@ export const OPENING = { wide: 0.06, high: 0.065, pitch: 0.15, end: 0.06, frame:
  *  ridges across it, each a slope up from the back to a glazed face
  *  toward its door, TOOTH high and about SPAN deep (`roof.ts`). */
 export const sawtooth = (t: Tile) => SAWTOOTH.has(t.kind as BuildingKind);
-const SAWTOOTH = new Set<BuildingKind>(["Factory", "Steelworks"]);
+const SAWTOOTH = new Set<BuildingKind>(["Workshop", "Glassworks"]);
 export const TOOTH = 0.14, SPAN = 0.55;
 
-/** A lab's flat roof carries its plant, as a real one does: a lift room
- *  at one end, AC units at the other, vents along a side (`roof.ts`). */
-export const planted = (t: Tile) => t.kind === "Lab";
+/** A flat roof that carries plant, as a real one does (`roof.ts`): none yet. */
+export const planted = (_t: Tile) => false;
 /** A flat roof's parapet: how thick its wall, and how high above the roof. */
 export const PARAPET_W = 0.045, PARAPET_H = 0.05;
 
@@ -119,5 +102,5 @@ export const kin = (a: Tile, b: Tile) =>
 /** A kind placed whole, one building: it joins only itself, and never on
  *  the diagonal. */
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
-const ALONE = new Set<BuildingKind>(["House", "Apartment", "Supermarket", "Depot", "Sawmill", "Quarry", "Harbour", "Farm", "Bakery", "CementWorks", "Mine", "Colliery", "Steelworks", "OilWell", "Refinery", "Port", "Park"]);
+const ALONE = new Set<BuildingKind>(["House", "Shop", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor"]);
 

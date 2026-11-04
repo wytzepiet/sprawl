@@ -39,7 +39,7 @@ mod tests {
                 b.loud
             );
         }
-        ts += &format!("}};\n\n/** A forklift's lift of one crate (`map::HANDLE_MS`). */\nexport const HANDLE_MS = {};\n", map::HANDLE_MS);
+        ts += &format!("}};\n\n/** A forklift's lift of one crate (`map::HANDLE_MS`). */\nexport const HANDLE_MS = {};\n\n/** How long a family waits for what it wants before it leaves (`town::homes::PATIENCE_MS`). */\nexport const PATIENCE_MS = {};\n", map::HANDLE_MS, crate::town::homes::PATIENCE_MS);
         std::fs::write(std::path::Path::new(&dir).join("rows.ts"), ts).unwrap();
     }
 }

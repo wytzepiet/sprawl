@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { forkliftAt, REST_MS, type End, type Yard } from "./forklift";
 import { DROP, ends, PICK } from "./pads";
 import type { Lift } from "../../generated";
-import { HANDLE_MS } from "../../generated/rows";
 
 // A depot's aisle along y = 0, its bay on the aisle's side at y = 0.4
 // facing it, and the aisle's mouth at x = 1.4; a lorry beyond and off to
@@ -18,14 +17,16 @@ const yard: Yard = {
   aisle: [[0, 0], [1.4, 0]],
   ends: (l, j) => (l.onto ? { from: bay(j), to: bed(j) } : { from: bed(l.n - 1 - j), to: bay(j) }),
 };
-const every = HANDLE_MS;
+// The scenario's own pace, a lift every four seconds: the gaps below are
+// laid against it. (`bun run jolt` counts snaps at the game's own pace.)
+const every = 4000;
 // Three on, two off straight after, one more on, and one more as it
 // leaves the lorry for home.
 const lifts: Lift[] = [
-  { car: 2, good: "Timber", n: 3, onto: true, start: 0, every, k: 0 },
-  { car: 2, good: "Timber", n: 2, onto: false, start: 3 * every, every, k: 0 },
-  { car: 2, good: "Timber", n: 1, onto: true, start: 5 * every + 1500, every, k: 0 },
-  { car: 2, good: "Timber", n: 1, onto: true, start: 6 * every + 1800, every, k: 0 },
+  { car: 2, good: "Logs", n: 3, onto: true, start: 0, every, k: 0 },
+  { car: 2, good: "Logs", n: 2, onto: false, start: 3 * every, every, k: 0 },
+  { car: 2, good: "Logs", n: 1, onto: true, start: 5 * every + 1500, every, k: 0 },
+  { car: 2, good: "Logs", n: 1, onto: true, start: 6 * every + 1800, every, k: 0 },
 ];
 
 test("a forklift drives its runs: never a jump, a snap, or faster than anything drives", () => {

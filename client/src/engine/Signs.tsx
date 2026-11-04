@@ -164,10 +164,9 @@ export default function Signs() {
       const b = e.object.data as Building;
       const kind = b.kind;
       const where = seat({ kind, storeys: storeysOf(kind) });
-      // Homes say nothing, nor a site, nor a harbour, whose ground is all
-      // yard and no roof, nor a depot, a sawmill, a quarry, a farm or a
-      // shop, each a model of its own that says what it is (`objects/`).
-      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay || kind === "Depot" || WHOLE.has(kind) ? null : where.painted ? "paint" : "plate";
+      // A kind drawn whole says nothing, its model saying what it is
+      // (`objects/`).
+      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : WHOLE.has(kind) ? null : where.painted ? "paint" : "plate";
       if (!look) continue;
       keep.add(e.id);
       const bucket = `${look}_${kind}`;

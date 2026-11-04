@@ -11,7 +11,7 @@ import { clear } from "./pages";
  * a card of what it tapped, the roads their tools, the build menu its buildings,
  * the goods: what crossed the border, every good's day, the deals.
  */
-export const TABS = ["select", "roads", "build", "market"] as const;
+export const TABS = ["select", "roads", "build"] as const;
 export type Tab = (typeof TABS)[number];
 
 const [tab, setTab] = createSignal<Tab>("select");

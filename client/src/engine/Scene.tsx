@@ -8,7 +8,6 @@ import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import PerfReport, { run } from "./PerfReport";
 import Signs from "./Signs";
-import Shipments from "../ui/Shipments";
 import { Root } from "~ui";
 import Hud from "../ui/Hud";
 
@@ -32,7 +31,6 @@ function SceneInner() {
           <Hud />
         </Root>
       </Canvas>
-      <Shipments />
     </DayNightProvider>
   );
 }

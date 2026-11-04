@@ -22,3 +22,6 @@ export const ROWS: Record<BuildingKind, { size: [number, number]; lot: [number, 
 
 /** A forklift's lift of one crate (`map::HANDLE_MS`). */
 export const HANDLE_MS = 1200;
+
+/** How long a family waits for what it wants before it leaves (`town::homes::PATIENCE_MS`). */
+export const PATIENCE_MS = 150000;

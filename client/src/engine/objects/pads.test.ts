@@ -5,7 +5,7 @@ import type { Lift } from "../../generated";
 test("a run's packages leave one end as they are taken up and reach the other as they are set down", () => {
   // Three off a lorry onto the pad, a second and a half each: the server
   // has already counted them on the pad.
-  const l: Lift = { car: 1, good: "Timber", n: 3, onto: false, start: 1000, every: 1500, k: 0 };
+  const l: Lift = { car: 1, good: "Logs", n: 3, onto: false, start: 1000, every: 1500, k: 0 };
   expect(progress(l, 1000)).toEqual({ off: 0, on: 0, carry: null });
   expect([onVehicle(l, 1000), atPad(l, 1000)]).toEqual([3, -3]);
   // The first in the forks: off the bed, not yet on the pad.

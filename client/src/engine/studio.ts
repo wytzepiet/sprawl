@@ -16,7 +16,7 @@ import { GroundTiles } from "./ground";
 import { theme } from "./theme";
 import { LAYERS, shapeKey } from "./objects/terrainGeometry";
 import { SOLID } from "./objects/look";
-import { BLUEPRINTS, KINDS, plot } from "../blueprints";
+import { KINDS, plot } from "../blueprints";
 import type { EngineContext } from "./Canvas";
 import type { Culler } from "./cull";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode } from "../generated";
@@ -82,9 +82,8 @@ export function createStudio(main: Engine) {
   let stopped = false;
 
   const shoot = async () => {
-    // A harbour is its piers on the sea, which the town grid does not
-    // draw: it keeps its icon. A kind taken once, on a page before, is kept.
-    const kinds = KINDS.filter((kind) => !BLUEPRINTS[kind].quay && !taken()[kind]);
+    // A kind taken once, on a page before, is kept.
+    const kinds = KINDS.filter((kind) => !taken()[kind]);
     if (!kinds.length) return;
     await registerSceneWithShadowSupport(scene);
     town = new TownLayer(ctx, lit.casters, (f) => entries.forEach(f), () => "Grass", () => SOLID);
@@ -142,7 +141,7 @@ export function createStudio(main: Engine) {
     const tiles = Array.from({ length: w * h }, (_, k) => ({ x: x0 + (k % w), y: 1 + Math.floor(k / w) }));
     const front = { x: 0, y: 1 };
     const building: Building = {
-      kind, tiles, facing: 0, stocks: {}, site: null, pad: [], outgoing: [], lifts: [], lorries: 0, vans: 0, hands: 0, waits: [], land: [], ruts: [],
+      kind, tiles, facing: 0, stocks: {}, lifts: [], home: null, crew: [], present: 0, work: 0, land: [], ruts: [],
       door: { tile: front, street: { x: 0, y: 0 } },
     };
     entries = [{ id: 1, position: tiles[0], object: { kind: "Building", data: building } }, ...road];

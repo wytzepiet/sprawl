@@ -8,8 +8,6 @@ import { pavement } from "./surface";
 import { facts } from "./facts";
 import { area, type Polygon } from "./footprint";
 import type { Town } from "./grid";
-import { BLUEPRINTS } from "../../blueprints";
-import type { BuildingKind } from "../../generated";
 import { townMesh, type Paint, type Prop } from "./roof";
 
 /** A piece of the town to draw: one mesh, one material. */
@@ -115,7 +113,7 @@ function hedgeMesh(hedges: Hedge[]): MeshGeometry {
 }
 
 /**
- * A quay: wherever a harbour's paving meets the water, its edge is a wall
+ * A quay: wherever a fishery's paving meets the water, its edge is a wall
  * straight down into it, and along the top a capping of lighter stone.
  * The terrain's coast steps back under it (`TerrainChunks`), so no beach,
  * cliff or foam is left at its foot; anything else paved by the water
@@ -126,7 +124,8 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
   const wall: MeshGeometry = { positions: [], normals: [], indices: [] };
   const cap: MeshGeometry = { positions: [], normals: [], indices: [] };
   const kind = ([x, y]: number[]) => town.tile(Math.floor(x), Math.floor(y)).kind;
-  const quayed = (k: string) => !!BLUEPRINTS[k as BuildingKind]?.quay;
+  // A fishery stands on the water: its yard's edge there is a quay.
+  const quayed = (k: string) => k === "Fishery";
   for (const ring of paved.flat()) {
     ring.forEach((a, i) => {
       const b = ring[(i + 1) % ring.length];

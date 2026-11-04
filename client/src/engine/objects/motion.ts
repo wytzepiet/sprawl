@@ -156,7 +156,7 @@ function aboard(id: number, car: Car, ship: Pose, now: number): { at: Pose; good
   const empty = [...Array(BAYS).keys()].filter((k) => goods.slice(k * PER_BAY, (k + 1) * PER_BAY).every((g) => !g)).reverse();
   return [
     ...goods.flatMap((good, i) => (good ? [{ at: deckPlace(ship, i), good }] : [])),
-    ...[...car.passengers].reverse().flatMap((settler, j) => (empty[j >> 1] === undefined ? [] : [{ at: ahead(deckPose(ship, empty[j >> 1]), j & 1 ? 0.15 : -0.15), settler }])),
+    ...([] as number[]).reverse().flatMap((settler, j) => (empty[j >> 1] === undefined ? [] : [{ at: ahead(deckPose(ship, empty[j >> 1]), j & 1 ? 0.15 : -0.15), settler }])),
   ];
 }
 /** A ferry's deck as it is seen at `now`, place by place: the server's,
@@ -166,8 +166,8 @@ function aboard(id: number, car: Car, ship: Pose, now: number): { at: Pose; good
  *  lifts, not which places: off from the land end's places it emptied,
  *  on to the sea end's it filled, as `work_deck` does. */
 export function deckSeen(id: number, car: Car, now: number): { goods: (Good | null)[]; at: Map<Lift, number> } {
-  const goods = Array.from({ length: BAYS * PER_BAY }, (_, i) => car.deck[i]?.good ?? null);
-  const out = goods.map((_, i) => !!car.deck[i]?.outbound);
+  const goods: (Good | null)[] = Array.from({ length: BAYS * PER_BAY }, () => null);
+  const out = goods.map(() => false);
   const at = new Map<Lift, number>();
   const taken = new Set<number>();
   for (const l of liftsOf(id).sort((a, b) => a.start - b.start)) {

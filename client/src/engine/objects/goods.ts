@@ -1,7 +1,6 @@
 import { boxGeometry as box } from "./buildings";
 import { prism, shape, type Part, type Shape } from "./sea";
 import type { RGB } from "../rgb";
-import type { P } from "../geometry";
 import type { Good } from "../../generated";
 
 /**
@@ -24,26 +23,19 @@ const WOOD: RGB = [0.79, 0.6, 0.36];
 const PRODUCE: RGB = [0.8, 0.54, 0.27];
 const PALLET: RGB = [0.7, 0.54, 0.35];
 const BLOCK: RGB = [0.84, 0.82, 0.76];
-const DRUM: RGB = [0.8, 0.31, 0.23];
 const BAG: RGB = [0.92, 0.84, 0.6];
 const SACK: RGB = [0.78, 0.79, 0.78];
 const SKIP: RGB = [0.27, 0.42, 0.62];
 const ORE: RGB = [0.62, 0.3, 0.18];
-const TRAY: RGB = [0.86, 0.68, 0.2];
-const COAL: RGB = [0.16, 0.16, 0.18];
 const STEEL: RGB = [0.47, 0.55, 0.64];
 const CASE: RGB = [0.72, 0.58, 0.4];
 const BATTEN: RGB = [0.5, 0.38, 0.24];
-const TANK: RGB = [0.2, 0.17, 0.2];
-const CAGE: RGB = [0.75, 0.76, 0.78];
 
 /** A block `w` across, `l` deep and `h` high, its base on z = 0: its top
  *  and four sides, 12 triangles. A package is a few pixels on screen, so
  *  each is a block or two in its colours, its shape what tells it: what
  *  the eye cannot pick out at that size is not drawn. */
 const block = (w: number, l: number, h: number) => prism([[w / 2, -l / 2], [w / 2, l / 2], [-w / 2, l / 2], [-w / 2, -l / 2]], h);
-/** A round thing standing, `r` across and `h` high: a hexagon, upright. */
-const upright = (r: number, h: number) => prism(Array.from({ length: 6 }, (_, k): P => [r * Math.cos((k + 0.5) * Math.PI / 3), r * Math.sin((k + 0.5) * Math.PI / 3)]), h);
 const BOARD = 0.01;
 const pallet: Part = [block(ITEM, ITEM, BOARD), [0, 0, 0], PALLET];
 
@@ -60,8 +52,6 @@ const crate = (): Shape => shape([
 ]);
 /** A pallet of cut stone, two layers of blocks as one. */
 const stone = (): Shape => shape([pallet, [block(ITEM - 0.004, ITEM - 0.004, ITEM - 0.006), [0, 0, BOARD], BLOCK]]);
-/** A pallet of fuel: four drums. */
-const drums = (): Shape => shape([pallet, ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, y]): Part => [upright(ITEM / 4 - 0.002, 0.052), [x * ITEM / 4, y * ITEM / 4, BOARD], DRUM])]);
 /** A big bag of grain on a pallet. */
 const bigBag = (): Shape => shape([pallet, [block(ITEM - 0.008, ITEM - 0.008, 0.06), [0, 0, BOARD], BAG]]);
 /** A pallet of cement: three layers of paper sacks, each across the one below. */
@@ -82,23 +72,22 @@ const crated = (): Shape => shape([
   [block(ITEM - 0.004, ITEM - 0.004, 0.07), [0, 0, 0], CASE],
   [block(ITEM - 0.004, 0.008, 0.072), [0, 0, 0], BATTEN],
 ]);
-/** Crude in a caged tank on a pallet, its cap on top. */
-const tank = (): Shape => shape([pallet, [block(ITEM - 0.006, ITEM - 0.006, 0.056), [0, 0, BOARD], CAGE], [block(ITEM - 0.012, ITEM - 0.012, 0.058), [0, 0, BOARD], TANK], [upright(0.008, 0.064), [0, 0, BOARD], CAGE]]);
 
 /** Each good's package, and how high it stands: a stack of them is as
  *  high as so many. */
 export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
-  Timber: { key: "item_Timber", geo: timber(), h: ITEM },
+  Fish: { key: "item_Fish", geo: crate(), h: 0.058 },
+  Logs: { key: "item_Logs", geo: timber(), h: ITEM },
+  Planks: { key: "item_Planks", geo: beams(), h: 0.008 + 2 * 0.023 },
+  Wheat: { key: "item_Wheat", geo: bigBag(), h: BOARD + 0.06 },
   Bread: { key: "item_Bread", geo: crate(), h: 0.058 },
-  Stone: { key: "item_Stone", geo: stone(), h: BOARD + 2 * (ITEM / 2 - 0.003) + 0.001 },
-  Fuel: { key: "item_Fuel", geo: drums(), h: BOARD + 0.055 },
-  Grain: { key: "item_Grain", geo: bigBag(), h: BOARD + 0.06 },
-  Cement: { key: "item_Cement", geo: sacks(), h: BOARD + 3 * 0.017 },
-  Ore: { key: "item_Ore", geo: heaped(SKIP, ORE, 0.05), h: 0.05 },
-  Coal: { key: "item_Coal", geo: heaped(TRAY, COAL, 0.03), h: 0.03 },
-  Steel: { key: "item_Steel", geo: beams(), h: 0.008 + 2 * 0.023 },
-  Machinery: { key: "item_Machinery", geo: crated(), h: 0.07 },
-  Crude: { key: "item_Crude", geo: tank(), h: BOARD + 0.06 },
+  Clay: { key: "item_Clay", geo: heaped(SKIP, ORE, 0.05), h: 0.05 },
+  Bricks: { key: "item_Bricks", geo: stone(), h: BOARD + 2 * (ITEM / 2 - 0.003) + 0.001 },
+  Furniture: { key: "item_Furniture", geo: crated(), h: 0.07 },
+  Sand: { key: "item_Sand", geo: sacks(), h: BOARD + 3 * 0.017 },
+  Glass: { key: "item_Glass", geo: crated(), h: 0.07 },
+  Wool: { key: "item_Wool", geo: bigBag(), h: BOARD + 0.06 },
+  Clothes: { key: "item_Clothes", geo: crate(), h: 0.058 },
 };
 
 /** A good's package to place: in a bucket of its own where it stands

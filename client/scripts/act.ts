@@ -15,10 +15,8 @@
  *                                       cuts
  *   bun run act raze 12,5               the building on that tile taken down
  *                                       whole
- *   bun run act lorry 79                another lorry for depot #79
- *   bun run act van 79                  another van for depot #79
- *   bun run act research Farm           the labs set to learning the farm;
- *                                       alone, what is open and being learned
+ *   bun run act town                    people, roads, hand, tools, the pick on the table
+ *   bun run act pick 0                  take the first card of the pick
  *   bun run act undo                    the hand's last road laid or taken up,
  *                                       taken back (the interchange's Z)
  *   bun run act speed 0                 sim steps per tick; 0 pauses
@@ -46,7 +44,7 @@ import { PORT, ROOT } from "./lib";
 import { connect } from "./game";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
 import type { P } from "../src/engine/geometry";
-import type { BuildingKind, GameObjectEntry, Operation, Research, Tool } from "../src/generated";
+import type { BuildingKind, GameObjectEntry, Operation, Tool, Town } from "../src/generated";
 
 /** Quiet this long and the server has said all it will about a command;
  *  silent this long, and it will say nothing. */
@@ -74,7 +72,7 @@ const PLAYER = process.env.PLAYER ?? "4242";
 /** News heard since the last command said what it saw. */
 const told: string[] = [];
 /** What the town may build and is learning, as the last update had it. */
-let learned: Research = { open: [], next: [], at: null, done: 0, of: 0, cost: 0, roads: false };
+let town: Town | null = null;
 // The chunks every tile named lies in, a chunk round, so the server tells
 // us of what is built there.
 const named = lines.flat().filter((a) => /^-?\d+,-?\d+$/.test(a)).map(tile);
@@ -85,7 +83,7 @@ const game = await connect({
     // The town spending of its own accord, as the news tells a player.
     if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
     if (msg.type !== "Update") return;
-    learned = msg.data.research ?? learned;
+    town = msg.data.town;
     if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
     for (const op of msg.data.ops) {
       if (op.op !== "Upsert" || op.data.object.kind !== "Car" || !op.data.object.data.trip) continue;
@@ -122,7 +120,7 @@ function changes(batch: Operation[]): string[] {
     const at = e.position ? ` at ${e.position.x},${e.position.y}` : "";
     return e.object.kind === "Building" ? `${e.object.data.kind} #${e.id}${at}` : `${e.object.kind}${at}`;
   };
-  const quiet = (e: GameObjectEntry) => e.object.kind === "Car" || e.object.kind === "Resident";
+  const quiet = (e: GameObjectEntry) => e.object.kind === "Car";
   const roads = (es: GameObjectEntry[]) => es.filter((e) => e.object.kind === "RoadNode").length;
   const rest = (es: GameObjectEntry[]) => es.filter((e) => !quiet(e) && e.object.kind !== "RoadNode").map(say);
   return [
@@ -202,16 +200,14 @@ for (const line of lines) {
       else report.push(`nothing stands at ${x},${y}`);
       break;
     }
-    case "research":
-      if (args[0]) send({ type: "Research", data: { kind: args[0] as BuildingKind } });
-      else report = [`open: ${learned.open.join(", ")}`, `next: ${learned.next.join(", ")}, ${learned.cost} researcher-hours each`, learned.at ? `learning ${learned.at}: ${learned.done} of ${learned.of}` : "learning nothing"];
+    case "pick":
+      send({ type: "Pick", data: Number(args[0] ?? 0) });
       break;
-    case "lorry":
-      send({ type: "Buy", data: { depot: Number(args[0]), role: "Truck" } });
+    case "town": {
+      const t = town as Town | null;
+      report = t ? [`day ${t.day}, ${t.people} people (${t.toward}/${t.step} to the next pick), ${t.left} left`, `roads ${t.roads}, hand ${t.hand.map(([k, n]) => `${k}×${n}`).join(" ") || "empty"}`, `tools ${t.tools.join(" ") || "street"}`, t.offer.length ? `pick: ${t.offer.map((o, i) => `${i}) ${JSON.stringify(o)}`).join("  ")}` : "no pick"] : ["no town heard"];
       break;
-    case "van":
-      send({ type: "Buy", data: { depot: Number(args[0]), role: "Van" } });
-      break;
+    }
     case "undo":
       send({ type: "Undo" });
       break;
@@ -247,6 +243,6 @@ for (const line of lines) {
   const said = [...changes(await settled()), ...told.splice(0), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "line", "research"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "buy", "sell", "line", "town"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 game.close();

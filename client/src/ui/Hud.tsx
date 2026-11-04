@@ -1,13 +1,11 @@
 import { Box, Ink, Melt } from "~ui";
 import Feed from "./Feed";
-import Cargo from "./Cargo";
-import Lumps from "./Lumps";
 import Pins from "./Pins";
 import Held from "./Held";
 import Clock from "./Clock";
 import Meter from "./Meter";
 import Dock from "./Dock";
-import Board from "./Board";
+import Picks from "./Picks";
 import Ring from "./Ring";
 import Newer from "./Newer";
 import { bezel, CORNER, view, wide, WINDOW } from "./kit";
@@ -20,9 +18,7 @@ import { bezel, CORNER, view, wide, WINDOW } from "./kit";
 export default function Hud() {
   return (
     <>
-      <Cargo />
       <Pins />
-      <Lumps />
       <Held />
       <Melt layer="bezel" at={{ left: 0, top: 0, right: 0, bottom: 0 }}>
         <Ink layer="bezel" hole at={{ left: bezel(), right: bezel(), top: bezel() }} h={view().h - 2 * bezel()} round={wide() ? WINDOW : 0} />
@@ -32,7 +28,7 @@ export default function Hud() {
           <Newer />
         </Box>
         <Dock />
-        <Board />
+        <Picks />
         <Feed />
         <Ring />
       </Melt>

@@ -1,4 +1,4 @@
-import { BLUEPRINTS, FACINGS, GOODS, standing, yardOf } from "../../blueprints";
+import { BLUEPRINTS, FACINGS, standing, yardOf } from "../../blueprints";
 import { INSET } from "../town/footprint";
 import { ITEM } from "./goods";
 import type { Building, Good, Lift, Pose } from "../../generated";
@@ -34,7 +34,7 @@ export interface Bay {
 }
 
 /** The goods, the heaviest first: what stands at the back of a yard. */
-const HEAVY: Good[] = ["Steel", "Ore", "Coal", "Stone", "Cement", "Timber", "Machinery", "Crude", "Fuel", "Grain", "Bread"];
+const HEAVY: Good[] = ["Bricks", "Clay", "Logs", "Planks", "Sand", "Glass", "Furniture", "Wheat", "Wool", "Clothes", "Fish", "Bread"];
 
 /** How far apart packages stand on a pad. */
 const PITCH = ITEM + 0.02;
@@ -68,14 +68,13 @@ function bay(good: Good, at: [number, number], face: number, wide: number, deep:
  *  part-made one not yet a package; anything else's, a package opened
  *  still standing. */
 export function packagesOf(b: Building, good: Good): number {
-  if (BLUEPRINTS[b.kind].quay) return b.pad.filter((p) => p.good === good).length;
-  const s = (b.site ?? b.stocks)[good];
+  const s = b.stocks[good];
   if (!s) return 0;
-  const n = s.level / GOODS[good].per;
+  const n = s.level;
   return Math.max(0, BLUEPRINTS[b.kind].makes ? Math.floor(n + 1e-9) : Math.ceil(n - 1e-9));
 }
 /** The most a stock is seen as. */
-const most = (b: Building, good: Good) => Math.ceil((b.site ?? b.stocks)[good]!.cap / GOODS[good].per - 1e-9);
+const most = (b: Building, good: Good) => Math.ceil(b.stocks[good]!.cap - 1e-9);
 
 /** A building's pad: its bays, where its forklifts stand when they are
  *  not lifting and whether that is in its aisle, the aisle's mouths and
@@ -94,36 +93,12 @@ export function padOf(b: Building): Pad {
   const kind = BLUEPRINTS[b.kind];
   const forklifts = (at: (k: number) => Pose) => Array.from({ length: kind.forklifts }, (_, k) => at(k));
   const front = { face: f.heading, inside: false };
-  if (b.site) {
-    // Along the front of the slab, each material after the last.
-    const goods = (Object.keys(b.site) as Good[]).filter((good) => most(b, good) > 0);
-    let a = -f.w / 2 + 0.15;
-    const bays = goods.map((good) => {
-      const n = most(b, good);
-      const slots = Array.from({ length: n }, (_, k) => f.pose(f.at, a + k * PITCH, f.d / 2 - 0.13));
-      a += n * PITCH + 0.04;
-      return { good, slots, stack: 1, ...front };
-    });
-    return { bays, homes: forklifts(() => f.pose(f.at, 0, f.d / 2 + 0.05)), homeInside: false, exits: [], aisle: null, yard: false };
-  }
-  if (kind.quay) {
-    // Out from the ramp, a bay of each good that lands, in two rows
-    // along the lane, each two along and four deep and four high, facing
-    // the lane: the near row on it, the far across an aisle behind it,
-    // reached by the aisle's ends; its forklifts between them and the lane.
-    const back = -f.d / 2;
-    const [near, far] = [-0.42, -0.42 - 0.42 - 0.45];
-    const out = (k: number) => back + 0.36 + Math.floor(k / 2) * 0.26;
-    const bays = HEAVY.map((good, k) => bay(good, f.pose(f.at, k % 2 ? far : near, out(k)).at, f.heading + Math.PI / 2, 2, 4, f.heading, k % 2 === 1, 4));
-    const aisle = (near + far) / 2;
-    const exits = [out(0) - 0.3, out(HEAVY.length - 1) + 0.3].map((o) => f.pose(f.at, aisle, o).at);
-    return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.3)), homeInside: false, exits, aisle: [exits[0], exits[1]], yard: true };
-  }
   const goods = Object.keys(b.stocks) as Good[];
-  if (b.kind === "Depot" && b.door) {
-    // A bay of each good on the open ground, in two rows facing each
-    // other across an aisle that runs out to its yard, the heavy goods at
-    // the back; its forklifts at the aisle's back, and out by its mouth.
+  if (b.door && kind.lot[1] > 0 && goods.length > 1) {
+    // A yard of several goods: a bay of each on the open ground, in two
+    // rows facing each other across an aisle that runs out to its gate,
+    // the heavy goods at the back; its forklifts at the aisle's back, and
+    // out by its mouth.
     const kept = HEAVY.filter((g) => goods.includes(g));
     const row = Math.ceil(kept.length / 2);
     const [vx, vy] = [b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y];

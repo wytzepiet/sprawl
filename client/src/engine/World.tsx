@@ -21,10 +21,9 @@ import type { Building, RoadNode } from "../generated";
 import { mountBuilding } from "./objects/BuildingObject";
 import { forgetCar, mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
-import { BLUEPRINTS } from "../blueprints";
 import { Brush } from "./Brush";
 import { aim, placed, setPlaced } from "../ui/buildMode";
-import { news } from "../state/sea";
+import { news } from "../state/town";
 
 interface MountedEntry {
   kind: string;
@@ -79,7 +78,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
     const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
-      if (BLUEPRINTS[b.kind].quay) quays.add(key);
+      if (b.kind === "Fishery") quays.add(key);
       terrain.markTile(t.x, t.y);
       return key;
     });
@@ -199,7 +198,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
     }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
-    return JSON.stringify([b.kind, b.tiles, b.facing, b.door, !b.site]);
+    return JSON.stringify([b.kind, b.tiles, b.facing, b.door]);
   }
 
   setOpsListener(processOps);
