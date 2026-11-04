@@ -1180,15 +1180,15 @@ mod tests {
         assert_eq!(world.backs_out(a), 0);
     }
 
-    /// Anything but a home parks nose in, square to the kerb: two bays a
-    /// tile within its walls, close to the road. A car swings out to
-    /// the road's middle and turns in round the tightest a car turns, from
-    /// either way along the street, and backs out round into the lane and
-    /// drives on.
+    /// Anything but a home without a yard parks nose in, square to the
+    /// kerb: two bays a tile within its walls, close to the road. A car
+    /// swings out to the road's middle and turns in round the tightest a
+    /// car turns, from either way along the street, and backs out round
+    /// into the lane and drives on.
     #[test]
-    fn a_shop_parks_square_to_the_kerb() {
+    fn a_kiosk_parks_square_to_the_kerb() {
         let mut world = street();
-        let shop = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
+        let shop = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::GasStation).unwrap();
         let mut at: Vec<[f64; 2]> = world.lot_mut(shop).unwrap().spots.iter().map(|s| s.pose.at).collect();
         at.sort_by(|a, b| a[0].total_cmp(&b[0]));
         assert_eq!(at.len(), 2, "two bays to a tile, within its walls: {at:?}");
@@ -1218,14 +1218,14 @@ mod tests {
         }
     }
 
-    /// A shop on a corner parks on one side, the one its door opens onto:
-    /// it needs no more than its long side holds.
+    /// A kiosk on a corner parks on one side, the one its door opens
+    /// onto: it needs no more than its long side holds.
     #[test]
-    fn a_shop_on_a_corner_parks_on_one_side() {
+    fn a_kiosk_on_a_corner_parks_on_one_side() {
         let mut world = street();
         let cross: Vec<GridCoord> = (0..8).map(|y| GridCoord { x: 5, y }).collect();
         world.place_road_path(&cross);
-        let shop = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Shop).unwrap();
+        let shop = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::GasStation).unwrap();
         let at: Vec<[f64; 2]> = world.lot_mut(shop).unwrap().spots.iter().map(|s| s.pose.at).collect();
         assert_eq!(at.len(), 2, "one side's bays: {at:?}");
         assert!(at.iter().all(|p| (p[1] - at[0][1]).abs() < 1e-9) || at.iter().all(|p| (p[0] - at[0][0]).abs() < 1e-9), "all on one side: {at:?}");

@@ -23,8 +23,8 @@
 
 use traffic::event_queue::EventQueue;
 use model::GameTime;
-use model::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
-use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
+use model::{Build, EntityId, GridCoord, OwnerId, Spot, Stand, Stroke, Tool};
+use crate::undo::{Act, Done, Laid, Link, WINDOW};
 use map::decks::{across, other, toward, Side, MIDDLE};
 use map::clear::End;
 use crate::world::World;
@@ -83,10 +83,10 @@ pub fn may_start(world: &World, tool: Tool, road: bool, want: u8, at: GridCoord)
 }
 
 /// A drag drawn on, or a new one: laid as planned, what stands of it as
-/// it was kept. Says so the first time the drag buys stone express.
-pub fn draw(world: &mut World, events: &mut EventQueue, owner: OwnerId, stroke: Stroke, now: GameTime) -> Option<News> {
+/// it was kept, as far as the town's road allowance goes.
+pub fn draw(world: &mut World, events: &mut EventQueue, owner: OwnerId, stroke: Stroke, now: GameTime) {
     if !matches!(stroke.tool, Tool::Street | Tool::OneWay | Tool::Wide) || stroke.tiles.is_empty() {
-        return None;
+        return;
     }
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
@@ -96,22 +96,18 @@ pub fn draw(world: &mut World, events: &mut EventQueue, owner: OwnerId, stroke: 
         Some(Done { act: Act::Drawn { stroke: was, steps }, after, .. }) => (Some(was), steps, after),
         _ => (None, Vec::new(), world.map.objects.next_id()),
     };
-    let express = |steps: &[Laid]| steps.iter().map(|s| s.paid.coins).sum::<f64>();
-    let paid_before = express(&steps);
     // A step lays its tile with the next in sight: while the tiles up to
     // the one after it are as they were, it stands.
     let same = was.as_ref().filter(|w| w.tool == stroke.tool && w.road == stroke.road && w.start == stroke.start).map_or(0, |w| w.tiles.iter().zip(&stroke.tiles).take_while(|(a, b)| a == b).count());
     let gone = steps.split_off(steps.len().min(same.saturating_sub(2)));
     crate::undo::take_back(world, events, &gone, now);
-    lay_on(world, &stroke, &mut steps, now);
-    let coins = express(&steps);
+    lay_on(world, &stroke, &mut steps);
     world.undo.entry(owner).or_default().push(Done { act: Act::Drawn { stroke, steps }, at: now, after });
-    (paid_before == 0.0 && coins > 0.0).then(|| crate::undo::bought_express(world, coins))
 }
 
 /// The drag laid on from the last step standing, tile by tile, each where
 /// the plan puts it, until it is done or one may not be.
-fn lay_on(world: &mut World, stroke: &Stroke, steps: &mut Vec<Laid>, now: GameTime) {
+fn lay_on(world: &mut World, stroke: &Stroke, steps: &mut Vec<Laid>) {
     let tiles: Vec<GridCoord> = stroke.tiles.iter().map(|s| s.at).collect();
     for i in steps.len() + 1..tiles.len() {
         let froms = match steps.last() {
@@ -122,17 +118,18 @@ fn lay_on(world: &mut World, stroke: &Stroke, steps: &mut Vec<Laid>, now: GameTi
         let (from, to) = (tiles[i - 1], tiles[i]);
         let link = Link { from, to, one_way: stroke.tool != Tool::Street, road: stroke.road, up: [pf.h, pt.h], sides: [pf.s, pt.s], wide: stroke.tool == Tool::Wide };
         let fresh = world.map.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s).is_none();
-        let purse = Purse::of(world);
+        if fresh && !world.affords(link) {
+            return;
+        }
         if fresh {
-            let laid = crate::hand::lay(world, link);
-            crate::economy::paved(world, to, laid, now);
+            crate::hand::lay(world, link);
         } else if let Some((a, b)) = world.map.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s)
             && world.map.is_road_between(a, b) != stroke.road
         {
             world.map.set_priority(a, b, stroke.road);
         }
         let (Some(a), Some(b)) = (world.map.node_in(from, pf.h, pf.s), world.map.node_in(to, pt.h, pt.s)) else { return };
-        steps.push(Laid { link, nodes: [a, b], fresh, paid: purse.paid(world) });
+        steps.push(Laid { link, nodes: [a, b], fresh });
     }
 }
 
@@ -350,7 +347,7 @@ mod tests {
     impl Field {
         fn new() -> Field {
             let mut world = World::from(map::Map::meadow(-10..16, -10..10));
-            world.treasury = 1e9;
+            world.town.allowance = u32::MAX;
             Field { world, events: EventQueue::new(), id: 0 }
         }
 

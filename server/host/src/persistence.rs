@@ -24,6 +24,9 @@ type Migration = Option<fn(&mut [Value], &mut Value)>;
 const MIGRATIONS: &[Migration] = &[
     // Saves from before the stamp are version 0, and already today's.
     Some(|_, _| {}),
+    // The game of families, shops and makers on the old roads: the town
+    // before it is another game, and starts over.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -36,19 +39,13 @@ pub struct Meta {
     /// So a restart continues the day rather than snapping the world back
     /// to midnight.
     pub sim_time: u64,
-    /// GDP to date: the level.
-    pub gdp: f64,
-    /// The mayor's coins.
-    pub treasury: f64,
-    /// The town's missions, open and finished, in order.
-    pub missions: Vec<model::missions::Mission>,
-    /// The market's prices, their week and the orders waiting.
-    pub market: sprawl::market::Market,
+    /// The mayor's hand, and who has come and gone.
+    pub town: sprawl::town::Town,
 }
 
 impl Default for Meta {
     fn default() -> Self {
-        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, missions: Vec::new(), market: Default::default() }
+        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, town: Default::default() }
     }
 }
 
@@ -192,17 +189,16 @@ mod tests {
         assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
-    /// The rest of the world outlives a restart as it stood, the town's
-    /// missions with their steps and the market's week among it, whether or not an object
+    /// The rest of the world outlives a restart as it stood, the mayor's
+    /// hand among it, whether or not an object
     /// changed with it; and a reset leaves nothing to load.
     #[test]
     fn the_world_beside_its_objects_is_saved() {
         let scratch = Scratch::new("meta");
-        let mut missions = sprawl::missions::Missions::default().list;
-        missions[0].steps[1].done = true;
-        missions[0].finished = Some(7);
-        let market = serde_json::from_str(r#"{"hour":3,"at":{"Timber":0.5},"push":{"Timber":0.1},"history":{"Timber":[1.0,1.5,2.0]},"orders":[]}"#).unwrap();
-        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, missions, market };
+        let mut town = sprawl::town::Town::default();
+        town.allowance = 60;
+        town.arrived = 12;
+        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, town };
         let mut db = Db::open(&scratch.0);
         db.save(&[], &[], &meta);
         let (_, loaded) = Db::open(&scratch.0).load();
@@ -225,9 +221,13 @@ mod tests {
         db.save(&[], &[], &meta);
         db.conn.pragma_update(None, "user_version", 0).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
-        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
-        assert_eq!(version(&db), SAVE_VERSION);
+        assert_eq!(loaded.next_id, 1, "a save of the old game was kept");
         assert!(backup(0).exists());
+        db.save(&[], &[], &meta);
+        db.conn.pragma_update(None, "user_version", SAVE_VERSION).unwrap();
+        let (_, loaded) = Db::open(&scratch.0).load();
+        assert_eq!(loaded.next_id, 40, "today's save was not kept");
+        assert_eq!(version(&db), SAVE_VERSION);
         db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
         assert_eq!(loaded.next_id, 1, "a newer save was loaded");

@@ -91,7 +91,7 @@ export function padOf(b: Building): Pad {
   if (kind.quay) {
     // Out from the ramp, a bay of each good two by two, as many high as
     // the quay takes; its forklifts between them and the lane.
-    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
+    const order: Good[] = ["Timber", "Stone", "Fish", "Fuel"];
     const back = -f.d / 2;
     const bays = order.map((good, k) => ({ good, slots: grid(f, -0.42 - (k % 2) * 0.46, back + 0.55 + (k < 2 ? 0 : 0.66), 4, 6), stack: 2 }));
     return { bays, homes: forklifts((k) => f.pose(f.at, -0.2, back + 0.4 + k * 0.4)), yard: true };
@@ -99,7 +99,7 @@ export function padOf(b: Building): Pad {
   const goods = Object.keys(b.stocks) as Good[];
   if (b.kind === "Depot") {
     // Four bays on the open ground, the heavy goods at the back.
-    const order: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
+    const order: Good[] = ["Timber", "Stone", "Fish", "Fuel"];
     const bays = order.filter((g) => goods.includes(g)).map((good, k) => ({ good, slots: grid(f, (k % 2 ? 1 : -1) * 0.46, (k < 2 ? -1 : 1) * 0.42, 4, 4), stack: 1 }));
     return { bays, homes: forklifts((k) => f.pose(f.at, (k - (kind.forklifts - 1) / 2) * 0.12, 0)), yard: true };
   }

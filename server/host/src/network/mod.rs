@@ -32,11 +32,8 @@ pub enum Command {
 pub enum Debug {
     /// A building's lot: its spots, their windows, and what it has seen.
     Lot(EntityId),
-    /// The town's page: what it served and what crossed the door.
+    /// The town as its mayor sees it.
     Town,
-    /// Every shipment, every timetable, every harbour's park and every
-    /// box on a hitch: the sea as the server has it.
-    Sea,
     /// The tiles round a point as a fixture's text.
     Map { x: i32, y: i32, r: i32 },
 }
@@ -125,10 +122,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
 fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
     match (out.last_mut(), msg) {
         (Some(ServerMessage::Update(last)), ServerMessage::Update(su)) => {
-            let (mut ops, mut lumps) = (std::mem::take(&mut last.ops), std::mem::take(&mut last.lumps));
+            let mut ops = std::mem::take(&mut last.ops);
             ops.extend(su.ops);
-            lumps.extend(su.lumps);
-            *last = StateUpdate { ops, lumps, ..su };
+            *last = StateUpdate { ops, ..su };
         }
         (_, msg) => out.push(msg),
     }

@@ -271,7 +271,7 @@ fn stock_yards(world: &mut Map) {
         }
         // A harbour's quay, a ferry's worth landed on it.
         if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
-            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
+            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Fish, 3), (Good::Fuel, 4)] {
                 for _ in 0..n {
                     let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: model::GIFT, partner: None, price: 0.0 };
                     world.building_mut(id).unwrap().pad.push(p);

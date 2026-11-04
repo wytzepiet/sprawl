@@ -285,7 +285,7 @@ const GOOD_LOOKS: Record<Good, { label: string; color: string; glyph: string }> 
     // Three logs stacked, their ends ringed.
     glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
   },
-  Crates: {
+  Fish: {
     label: "crates",
     color: "#5E9E52",
     // A crate: its lid and two slats.

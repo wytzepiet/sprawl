@@ -7,9 +7,6 @@ use ts_rs::TS;
 use land::ChunkCoord;
 
 pub mod blueprint;
-pub mod card;
-pub mod market;
-pub mod missions;
 pub mod needs;
 pub mod orders;
 
@@ -257,11 +254,14 @@ pub enum BuildingKind {
     /// beside it, the stone heaped in its yard for a depot's lorry.
     /// Placed by the mayor, at the mountain's foot.
     Quarry,
+    /// Where fish comes from: a boat out from a jetty on the shore, the
+    /// catch stacked in its yard until a shop's lorry fetches it.
+    Fishery,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 13] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -274,6 +274,7 @@ impl BuildingKind {
         BuildingKind::Harbour,
         BuildingKind::Sawmill,
         BuildingKind::Quarry,
+        BuildingKind::Fishery,
     ];
 }
 
@@ -335,6 +336,34 @@ pub struct Building {
     /// Kept when the street goes, and good again if it comes back.
     #[serde(default)]
     pub door: Option<Door>,
+    /// A family's, if it is a home: what they want and since when.
+    #[serde(default)]
+    pub home: Option<Home>,
+}
+
+/// A family at home: how far their house has grown, what they want and
+/// since when, and when each want next comes.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Home {
+    pub level: u8,
+    pub wants: Vec<Want>,
+    /// When each good is next wanted.
+    #[ts(type = "Record<string, number>")]
+    pub due: std::collections::BTreeMap<Good, u64>,
+    /// Wants met since the house last grew.
+    pub happy: u32,
+}
+
+/// Something a family wants, since when, and the car out to get it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Want {
+    pub good: Good,
+    #[ts(type = "number")]
+    pub since: u64,
+    #[ts(type = "number | null")]
+    pub by: Option<EntityId>,
 }
 
 /// A building's door: its tile a drive runs onto, and the street tile the
@@ -431,6 +460,7 @@ impl Building {
             land: Vec::new(),
             ruts: Vec::new(),
             door: None,
+            home: None,
         }
     }
 }
@@ -532,8 +562,8 @@ pub struct Pose {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Good {
-    /// Food, in wooden crates: what a shop serves meals from.
-    Crates,
+    /// Fish, in wooden crates: what a family eats, bought at a shop.
+    Fish,
     /// What a pump fills a tank from, in drums on a pallet.
     Fuel,
     /// What buildings are built from, the first material: logs in a
@@ -551,7 +581,7 @@ impl Good {
     /// or a pallet of blocks a house's timber or four tiles of road.
     pub fn per_package(self) -> f64 {
         match self {
-            Good::Crates => 25.0,
+            Good::Fish => 1.0,
             Good::Fuel => 10.0,
             Good::Timber | Good::Stone => 4.0,
         }
@@ -560,7 +590,7 @@ impl Good {
     /// What one package of it is called, and several.
     pub fn package(self) -> (&'static str, &'static str) {
         match self {
-            Good::Crates => ("crate of food", "crates of food"),
+            Good::Fish => ("crate of fish", "crates of fish"),
             Good::Fuel => ("pallet of fuel drums", "pallets of fuel drums"),
             Good::Timber => ("bundle of timber", "bundles of timber"),
             Good::Stone => ("pallet of stone", "pallets of stone"),
@@ -568,6 +598,8 @@ impl Good {
     }
 
     /// So many packages of it, in words: "3 bundles of timber".
+    pub const ALL: [Good; 4] = [Good::Fish, Good::Fuel, Good::Timber, Good::Stone];
+
     pub fn packages(self, n: u32) -> String {
         let (one, many) = self.package();
         format!("{n} {}", if n == 1 { one } else { many })
@@ -1031,17 +1063,8 @@ pub enum ClientMessage {
     /// The player's last action taken back (`undo.rs`).
     Undo,
     DespawnAllCars,
-    /// Packages of a good bought from the market or sold to it (`market::trade`).
-    Trade { good: Good, packages: u32, out: bool },
-    /// Packages a letter wants, sent (`orders::send`).
-    Send { #[ts(type = "number")] letter: u64, packages: u32 },
-    /// Packages bought once the price falls to this, or sold once it rises to it.
-    Order { good: Good, out: bool, packages: u32, price: f64 },
-    Cancel { #[ts(type = "number")] order: u64 },
-    /// Buy a depot another lorry from the world.
-    BuyLorry { #[ts(type = "number")] depot: EntityId },
-    /// The card of one thing on the map, asked for again while it is open.
-    Card(#[ts(type = "number")] EntityId),
+    /// A card of the pick on the table taken.
+    Pick(u8),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     /// As fast as the game goes until this sim time, then speed 1: a time
@@ -1086,71 +1109,43 @@ pub struct Clock {
     pub day_ms: u32,
 }
 
-/// How the city is doing, as the two dials read it.
-///
-/// The level is the town's GDP to date.
-/// The treasury is the mayor's coins, stepped as goods cross the border.
-/// Neither is extrapolated: a dial that steps is the event landing.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+/// The town as its mayor sees it: what is in hand to build with, who
+/// lives here, and the pick on the table, if one is.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct Growth {
-    pub level: u32,
-    /// GDP since the level was reached, and what the next takes.
-    pub toward: f64,
-    pub needed: f64,
-    /// GDP added in town today so far.
-    pub gdp: f64,
-    /// What the town has to spend, in coins: earned at the border, net of
-    /// what it bought and built.
-    pub treasury: f64,
-    /// Today's net at the border so far, and what went out: the treasury
-    /// over it is days of imports left.
-    pub income: f64,
-    pub imports: f64,
-    /// Every standing depot's shelves added up, wherever the camera is:
-    /// none, no depot yet.
-    pub held: std::collections::BTreeMap<Good, crate::needs::Stock>,
+pub struct Town {
+    /// Road tiles left to lay.
+    pub roads: u32,
+    /// Buildings in hand, by kind.
+    #[ts(type = "Partial<Record<BuildingKind, number>>")]
+    pub tokens: std::collections::BTreeMap<BuildingKind, u32>,
+    pub people: u32,
+    /// People who moved in since the last pick, and how many bring the next.
+    pub toward: u32,
+    pub step: u32,
+    /// Families who left, all told.
+    pub left: u32,
+    /// The pick waiting for the mayor.
+    pub offer: Vec<Offer>,
+    /// Where the town began, for the camera to find it.
+    pub start: Option<GridCoord>,
 }
 
-/// Something landing on a building: coins as goods cross the border, a
-/// load sold to the world or a delivery bought from it, negative leaving;
-/// or GDP as value is added there, a meal served, a crop cut, a shift
-/// worked at a desk. docs/trade.md.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+/// One card of a pick.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct Lump {
-    #[ts(type = "number")]
-    pub building: EntityId,
-    pub coins: f64,
-    pub gdp: f64,
-    #[ts(type = "number")]
-    pub at: u64,
-    /// Or goods landing: a package unloaded onto a depot's pad; or, less
-    /// than none, leaving it: stone off its pad for a road laid.
-    #[serde(default)]
-    pub good: Option<Good>,
-    #[serde(default)]
-    pub units: f64,
+#[serde(tag = "type", content = "data")]
+pub enum Offer {
+    Kind(BuildingKind, u32),
+    Roads(u32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StateUpdate {
     pub ops: Vec<Operation>,
-    /// Lumps that landed on buildings in view since the last update.
-    #[serde(default)]
-    pub lumps: Vec<Lump>,
     pub clock: Clock,
-    pub growth: Growth,
-    /// Every shipment on its way and every harbour's timetable.
-    #[serde(default)]
-    pub sea: Sea,
-    /// The town's open missions, and those just finished.
-    #[serde(default)]
-    pub missions: Vec<crate::missions::Mission>,
-    /// The mayors of the towns beyond the edge, and how they stand.
-    #[serde(default)]
-    pub neighbours: Vec<crate::orders::Neighbour>,
+    pub town: Town,
     /// The island's map, which the client keeps its camera inside.
     pub island: ChunkBounds,
 }
@@ -1164,17 +1159,10 @@ pub enum ServerMessage {
     Update(StateUpdate),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
-    /// What the town did with the mayor's coins of its own accord, or more
-    /// than it was asked: stone bought express. And
-    /// what the hand did, to its player alone: an undo, a building refused.
+    /// What the hand did, to its player alone: an undo, a building refused.
     News(Vec<News>),
     /// The answer to an `Ask`.
     Hint(Hint),
-    /// The market's prices, its week and the orders waiting: on joining,
-    /// and whenever they change.
-    Market(crate::market::Prices),
-    /// The answer to a `Card`.
-    Card(crate::card::Card),
 }
 
 /// A line of news, and the building a tap on it goes to.

@@ -16,7 +16,7 @@ struct Scheduled {
 // BinaryHeap is a max-heap, so we reverse the ordering to get min-first.
 impl Ord for Scheduled {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.time.cmp(&self.time)
+        (other.time, other.generation).cmp(&(self.time, self.generation))
     }
 }
 
@@ -28,7 +28,7 @@ impl PartialOrd for Scheduled {
 
 impl PartialEq for Scheduled {
     fn eq(&self, other: &Self) -> bool {
-        self.time == other.time
+        (self.time, self.generation) == (other.time, other.generation)
     }
 }
 

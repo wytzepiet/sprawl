@@ -128,8 +128,7 @@ fn inspect(game: &mut Game, query: Debug) -> String {
     let (world, now) = (&mut game.world, game.now);
     let v = match query {
         Debug::Lot(id) => world.map.inspect_lot(id, now),
-        Debug::Town => sprawl::economy::town(world, now),
-        Debug::Sea => sprawl::haul::inspect(world, now),
+        Debug::Town => serde_json::to_value(world.town.view(&world.map)).unwrap_or_default(),
         Debug::Map { x, y, r } => map::fixtures::draw(&world.map, x, y, r).into(),
     };
     serde_json::to_string_pretty(&v).unwrap_or_default()
@@ -143,26 +142,20 @@ fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
     let mut world = if entries.is_empty() {
         World::new()
     } else {
-        // What the city has served, and what the mayor has, outlive a
-        // restart; a fresh world keeps its stake.
+        // What the mayor has outlives a restart.
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
-        world.gdp = meta.gdp;
-        world.treasury = meta.treasury;
-        if !meta.missions.is_empty() {
-            world.missions.list = meta.missions;
-        }
-        world.market = meta.market;
+        world.town = meta.town;
         world
     };
-    // SPRAWL_ALL: a bottomless treasury, to test any building.
+    // SPRAWL_ALL: road without end, to test anything.
     if std::env::var("SPRAWL_ALL").is_ok() {
-        world.treasury = 1_000_000.0;
+        world.town.allowance = 1_000_000;
     }
     (world, sim_time)
 }
 
 /// The objects changed since the last save, and the rest of the world as
-/// it stands, saved even when no object changed: a paused town's coins
+/// it stands, saved even when no object changed: a paused town's hand
 /// and clock are worth keeping too.
 fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
     let (changed, removed) = world.map.objects.drain_persist_dirty();
@@ -171,10 +164,7 @@ fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
         next_id: world.map.objects.next_id(),
         terrain_seed: world.map.terrain_seed,
         sim_time,
-        gdp: world.gdp,
-        treasury: world.treasury,
-        missions: world.missions.list.clone(),
-        market: world.market.clone(),
+        town: world.town.clone(),
     };
     db.save(&changed, &removed, &meta);
     if !changed.is_empty() || !removed.is_empty() {

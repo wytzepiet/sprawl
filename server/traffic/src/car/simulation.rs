@@ -53,14 +53,10 @@ pub fn park_car(
     let_go(world, events, car_id);
     world.map.remove_car_from_edges(car_id);
 
-    // Its building gone, it goes home: its owner's, or a fleet's own yard.
-    // Nobody's any more, it is scrap.
+    // Its building gone, it goes home to its owner's yard. Nobody's any
+    // more, it is scrap.
     let owner = owner.filter(|&o| world.map.owns(o, car_id));
-    let at_building = match (world.map.objects.get(at_building), owner.and_then(|o| world.map.objects.get(o)).map(|e| &e.object)) {
-        (Some(_), _) => at_building,
-        (None, Some(GameObject::Resident(r))) => r.home,
-        (None, _) => owner.unwrap_or(at_building),
-    };
+    let at_building = if world.map.objects.get(at_building).is_some() { at_building } else { owner.unwrap_or(at_building) };
     match world.map.objects.get(at_building).and_then(|e| e.position).filter(|_| owner.is_some()) {
         Some(tile) => {
             world.map.update_position(car_id, tile);
@@ -72,18 +68,6 @@ pub fn park_car(
             world.map.park_in_lot(at_building, car_id, events.now());
         }
         None => world.map.despawn_car(car_id),
-    }
-
-    // The driver steps out wherever the car stopped.
-    if let Some(owner) = owner {
-        let aboard = world.map.objects.get(owner).is_some_and(|e| match e.object {
-            GameObject::Resident(ref r) => r.at == Some(car_id),
-            _ => false,
-        });
-        if aboard {
-            world.arrived.push((owner, at_building));
-            events.wake(0, owner);
-        }
     }
 }
 
@@ -97,12 +81,7 @@ pub fn park_at_home(
         GameObject::Car(ref c) => Some(c.owner),
         _ => None,
     });
-    let home = home.and_then(|owner| {
-        world.map.objects.get(owner).and_then(|e| match e.object {
-            GameObject::Resident(ref r) => Some(r.home),
-            _ => None,
-        })
-    });
+    let home = home.filter(|&owner| world.map.building(owner).is_some());
     match home {
         Some(home) => park_car(world, events, car_id, home),
         // No owner to speak of: scrap it.
@@ -832,12 +811,10 @@ fn advance(world: &mut Traffic, events: &mut EventQueue, role: CarRole, trip: &m
             // or the car would stay on their queues as a ghost.
             leave_crossed(world, events, car_id, &trip, old_ri, ri);
             park_car(world, events, car_id, trip.destination);
-            // A lorry or a van stands for the forklift, as long as what it
-            // lifts takes (`Map::lift`).
-            if matches!(role, CarRole::Truck | CarRole::Van) {
+            // Its driver decides what next, at once, if it is still
+            // anybody's.
+            if world.map.objects.get(car_id).is_some() {
                 events.wake(0, car_id);
-            } else if role != CarRole::Private {
-                events.wake(crate::car::SERVICE_MS, car_id);
             }
             return None;
         }

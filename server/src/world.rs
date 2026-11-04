@@ -1,73 +1,35 @@
-//! The town: its map (`map::Map`), and the life on it, which the sim
-//! runs over the map: its books and calls, its market and missions, its
-//! ferries' lines and voyages, the mayor's undo.
+//! The town: its map (`map::Map`), and what is in the mayor's hand to
+//! build it with (`town::Town`).
 
 use fixed::HashMap;
 use map::tracked::Tracked;
 use map::Map;
-use model::EntityId;
 
-/// The town: its map, and the life on it, its books and calls, its
-/// market and missions, its ferries' lines.
+/// The town: its map, the mayor's hand, and the road's junctions.
 pub struct World {
     pub map: Map,
-    /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
-    /// starts counting afresh.
-    pub books: HashMap<EntityId, crate::economy::Books>,
-    /// The town's own books: what it served, and what crossed the border.
-    pub town: crate::economy::Books<crate::economy::Town>,
-    /// GDP to date: the value the town has added, banked as it appears
-    /// (`economy`). The level is its running sum.
-    pub gdp: f64,
-    /// The mayor's coins: the town's balance of trade, less what it built.
-    /// docs/trade.md, Coins.
-    pub treasury: f64,
-    /// Coins and GDP that landed on buildings since the last flush, for
-    /// the clients looking at them.
-    pub lumps: Vec<model::Lump>,
-    /// What the town bought of its own accord since the last flush, said
-    /// to every player.
+    /// What the mayor has to build with, who has come and gone, the pick
+    /// on the table (`town.rs`). Saved.
+    pub town: crate::town::Town,
+    /// What the hand said to everyone since the last flush.
     pub news: Vec<model::News>,
-    /// The sea, read from the terrain the first time a way over it is
-    /// wanted (`traffic::sea::water`).
-    pub water: std::sync::OnceLock<traffic::sea::water::Water>,
-    /// Each harbour's line to the world, its ways found when it is
-    /// commissioned. Derived, like every other index.
-    pub lines: std::collections::BTreeMap<EntityId, traffic::sea::lines::Line>,
-    /// The lanes those ways are laid as, the junctions where they share
-    /// or cross water, and each ship's leg through them: derived too, and
-    /// a ship saved at sea comes back moored.
-    pub lanes: Option<traffic::sea::lanes::Lanes>,
-    pub voyages: HashMap<EntityId, traffic::sea::voyage::Voyage>,
-    /// Calls raised and not yet resolved. Not saved: a shop still low when
-    /// the world comes back calls again at its next visit.
-    pub calls: Vec<crate::calls::Call>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<model::OwnerId, Vec<crate::undo::Done>>,
-    /// The buildings placed lately, for razing to give back (`undo::raze`).
-    /// Not saved.
-    pub placed: Vec<crate::undo::Placed>,
-    /// The town's missions (`missions.rs`). Saved.
-    pub missions: crate::missions::Missions,
-    /// Who goes first at each sea junction and berth: its ships' claims.
-    pub junctions: traffic::intersection::IntersectionRegistry,
     /// Who goes first at each road junction and crossing: its cars'
     /// claims, keyed by node or crossing. Never saved: trips are not.
     pub streets: traffic::intersection::IntersectionRegistry,
-    /// Every line that may have a desk free: each one settled, and each
-    /// that lost a worker. Some are full; `settle` sees which, by id.
-    pub vacancies: std::collections::BTreeSet<EntityId>,
-    /// Every building settled as a site, standing or not since: those
-    /// still waiting call for their timber (`game::settle_and_wake`).
-    pub sites: std::collections::BTreeSet<EntityId>,
-    /// The market's prices and the orders waiting on them (`market.rs`). Saved.
-    pub market: crate::market::Market,
 }
 
-/// A town on this map, from its first day: the mayor's stake, nothing booked.
+/// A town on this map, from its first day.
 impl From<Map> for World {
     fn from(map: Map) -> World {
         World { map, ..World::new() }
+    }
+}
+
+impl Default for World {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -75,41 +37,27 @@ impl World {
     pub fn new() -> Self {
         Self {
             map: Map::new(),
-            books: HashMap::default(),
             town: Default::default(),
-            gdp: 0.0,
-            treasury: crate::economy::STAKE,
-            lumps: Vec::new(),
             news: Vec::new(),
-            water: Default::default(),
-            lines: Default::default(),
-            lanes: None,
-            voyages: HashMap::default(),
-            calls: Vec::new(),
             undo: HashMap::default(),
-            placed: Vec::new(),
-            missions: Default::default(),
-            junctions: traffic::intersection::IntersectionRegistry::new(),
             streets: traffic::intersection::IntersectionRegistry::new(),
-            vacancies: Default::default(),
-            sites: Default::default(),
-            market: Default::default(),
         }
     }
 
-    /// A saved world's map; its coins, missions and market are the save's to set.
+    /// A saved world's map; its town is the save's to set.
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
-        Self { map: Map::from_loaded(objects, terrain_seed), treasury: 0.0, ..Self::new() }
+        Self { map: Map::from_loaded(objects, terrain_seed), ..Self::new() }
     }
 
-    /// Traffic over the map, and then whoever stepped out of a car on the
-    /// way steps in where it stopped (`resident::set_at`).
+    /// May a road be laid: a level's map has road to spare, a town as
+    /// much as its allowance.
+    pub fn affords(&self, _link: crate::undo::Link) -> bool {
+        self.map.frame.is_some() || self.map.laid < self.town.allowance
+    }
+
+    /// Traffic over the map.
     pub fn drive<R>(&mut self, events: &mut traffic::event_queue::EventQueue, f: impl FnOnce(&mut traffic::Traffic, &mut traffic::event_queue::EventQueue) -> R) -> R {
-        let mut t = traffic::Traffic { map: &mut self.map, streets: &mut self.streets, arrived: Vec::new() };
-        let r = f(&mut t, events);
-        for (who, at) in t.arrived {
-            crate::resident::set_at(self, events, who, at, events.now());
-        }
-        r
+        let mut t = traffic::Traffic { map: &mut self.map, streets: &mut self.streets };
+        f(&mut t, events)
     }
 }

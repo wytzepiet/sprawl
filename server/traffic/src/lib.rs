@@ -9,13 +9,10 @@ pub mod event_queue;
 pub mod intersection;
 pub mod sea;
 
-use model::EntityId;
 
-/// The roads as traffic drives them: the map, who goes first at each
-/// junction and crossing, and every driver who stepped out of a car
-/// since, and where.
+/// The roads as traffic drives them: the map, and who goes first at each
+/// junction and crossing.
 pub struct Traffic<'a> {
     pub map: &'a mut map::Map,
     pub streets: &'a mut intersection::IntersectionRegistry,
-    pub arrived: Vec<(EntityId, EntityId)>,
 }

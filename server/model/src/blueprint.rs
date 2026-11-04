@@ -54,6 +54,8 @@ pub struct Blueprint {
     /// A farm: its land is what its tractor ploughs in a shift, and its
     /// yard holds a harvest, the cycle's make (`map/fields.rs`).
     pub farm: bool,
+    /// Stands on the shore: water beside its plot, a fishery's jetty.
+    pub shore: bool,
 }
 
 /// The row for a kind.
@@ -157,16 +159,19 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
 
     let row = |size, lot, materials, taps: Vec<Tap>| {
         let slots = |need: Need| taps.iter().find(|t| t.need == need).map_or(0, |t| t.slots);
-        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, farm: false }
+        Blueprint { homes: slots(Rest), jobs: slots(Work), size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, forklifts: 1, farm: false, shore: false }
     };
     use Good::{Stone, Timber};
     vec![
-        (House, row((1, 1), (0, 0), &[(Timber, 4)], household(2))),
+        (House, row((1, 1), (0, 0), &[], household(2))),
         (Apartment, row((2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
         // A shop seats as many as it staffs.
+        // A shop: shelves the town's families drive to, a car park for
+        // them to wait in, and a lorry that fetches what it sells.
         (Shop, Blueprint {
-            shelves: &[(Good::Crates, 50)],
-            ..row((1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
+            shelves: &[(Good::Fish, 10)],
+            vehicles: &[CarRole::Truck],
+            ..row((1, 1), (0, 0), &[], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
@@ -184,7 +189,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
         (Supermarket, Blueprint {
-            shelves: &[(Good::Crates, 150)],
+            shelves: &[(Good::Fish, 150)],
             ..row((2, 2), (0, 0), &[(Timber, 16), (Stone, 12)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
         // Where the town's goods are kept, in the open, a little of every
@@ -192,7 +197,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // timber, fifteen pallets of stone. Its lorry hauls packages from
         // the harbour and its vans deliver to shops and sites.
         (Depot, Blueprint {
-            shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
+            shelves: &[(Good::Fish, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
             ..row((2, 2), (3, 2), &[(Timber, 12)], vec![shift(6, 18, 6)])
         }),
@@ -207,8 +212,8 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // hands' nine hours at eighteen crates an hour, a hundred and four
         // crates on its pad.
         (Farm, Blueprint {
-            shelves: &[(Good::Crates, 2600)],
-            makes: Some(Good::Crates),
+            shelves: &[(Good::Fish, 2600)],
+            makes: Some(Good::Fish),
             vehicles: &[CarRole::Tractor],
             farm: true,
             ..row((3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
@@ -243,6 +248,14 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             shelves: &[(Good::Stone, 120)],
             makes: Some(Good::Stone),
             ..row((2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
+        }),
+        // A jetty on the shore and a boat: the catch stacked in its yard
+        // until a shop's lorry comes for it, and full, it rests.
+        (Fishery, Blueprint {
+            shelves: &[(Good::Fish, 6)],
+            makes: Some(Good::Fish),
+            shore: true,
+            ..row((2, 1), (2, 2), &[], vec![shift(7, 16, 2)])
         }),
     ]
 });

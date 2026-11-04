@@ -3,6 +3,7 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Door } from "./Door";
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
+import type { Home } from "./Home";
 import type { Lift } from "./Lift";
 import type { Package } from "./Package";
 import type { Stock } from "./Stock";
@@ -74,4 +75,8 @@ ruts: Array<GridCoord>,
  * road: drawn as one, driven by the cars of its lot, and gone with it.
  * Kept when the street goes, and good again if it comes back.
  */
-door: Door | null, };
+door: Door | null, 
+/**
+ * A family's, if it is a home: what they want and since when.
+ */
+home: Home | null, };

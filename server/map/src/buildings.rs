@@ -523,6 +523,9 @@ impl Map {
                 _ => return Err("Not on open land"),
             }
         }
+        if model::blueprint::blueprint(kind).shore && !self.on_shore(&tiles) {
+            return Err("Not on the shore: a fishery needs water beside it");
+        }
         if model::blueprint::blueprint(kind).quay {
             return match self.behind(&tiles, kind, facing) {
                 Behind::Berth => Ok(tiles),
@@ -540,6 +543,11 @@ impl Map {
             None if model::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
             None => Err("No street beside it"),
         }
+    }
+
+    /// Is there water beside these tiles, a jetty's way out to it.
+    pub fn on_shore(&self, tiles: &[GridCoord]) -> bool {
+        tiles.iter().any(|t| (-1..=1).any(|dx| (-1..=1).any(|dy| matches!(self.terrain.get(&(t.x + dx, t.y + dy)), Some(TerrainType::Sea | TerrainType::Water)))))
     }
 
     /// May a building stand on this tile: open land, or a road's dead end
@@ -1098,7 +1106,7 @@ mod tests {
         assert_eq!(world.fit(BuildingKind::House, GridCoord { x: 0, y: 0 }, 2), Err("A street runs through it"));
         let house = world.fit(BuildingKind::House, GridCoord { x: 0, y: 1 }, 2).unwrap();
         world.raise(BuildingKind::House, house, 2);
-        assert_eq!(world.fit(BuildingKind::Shop, GridCoord { x: 0, y: 1 }, 2), Err("Something stands there"));
+        assert_eq!(world.fit(BuildingKind::House, GridCoord { x: 0, y: 1 }, 2), Err("Something stands there"));
         world.terrain.insert((3, 1), TerrainType::Water);
         assert_eq!(world.fit(BuildingKind::House, GridCoord { x: 3, y: 1 }, 2), Err("Its plot runs into the water"));
     }

@@ -89,7 +89,7 @@ function drums(): Shape {
  *  high as so many. */
 export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
   Timber: { key: "item_Timber", geo: timber(), h: ITEM },
-  Crates: { key: "item_Crates", geo: crate(), h: 0.058 },
+  Fish: { key: "item_Crates", geo: crate(), h: 0.058 },
   Stone: { key: "item_Stone", geo: stone(), h: BOARD + 2 * (ITEM / 2 - 0.003) + 0.001 },
   Fuel: { key: "item_Fuel", geo: drums(), h: BOARD + 0.055 },
 };
