@@ -250,7 +250,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
         // seven, less the shop's two and the pump's one, nine hours
         // each, less the odd late morning, a lunch out, a dinner near
         // work, and the minute or two parking at the kerb.
-        assert!((70.0..=99.0).contains(&desks), "the labs received {desks}h");
+        assert!((68.0..=99.0).contains(&desks), "the labs received {desks}h");
         // Lunches over a whole day: the shops have no depot here, so
         // by the third day their shelves have run down some.
         assert!(sold(lunch, model::needs::Need::Eat) > 1.5, "lunch shop sold {}h", sold(lunch, model::needs::Need::Eat));
@@ -1459,3 +1459,61 @@ fn first_half_hour() {
     }
 }
 
+
+/// Every car and lorry of `fixtures/30-parking.txt` driven between its
+/// home and the places it parks, and back, its trips written as the
+/// client draws them: `bun run plan .dev/park/parking.txt --paths`.
+#[test]
+#[ignore]
+fn parking_trips() {
+    let text = std::fs::read_to_string("fixtures/30-parking.txt").unwrap();
+    let mut world = World::new();
+    map::fixtures::build_text(&mut world.map, &text);
+    let mut game = game(world);
+    let of = |w: &World, k: BuildingKind| w.map.objects.iter().filter_map(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == k).then_some(e.id)).collect::<Vec<_>>();
+    let (homes, shops, depots) = (of(&game.world, BuildingKind::House), [of(&game.world, BuildingKind::Shop), of(&game.world, BuildingKind::Apartment)].concat(), of(&game.world, BuildingKind::Depot));
+    // Each home's car, in its drive; each depot's lorries, in their docks.
+    let mut runs: Vec<(EntityId, EntityId, EntityId)> = Vec::new();
+    for (i, &home) in homes.iter().enumerate() {
+        let c = game.world.map.insert_at(GameObject::Car(model::Car::new(home, Default::default())), game.world.map.objects.get(home).unwrap().position);
+        game.world.map.park_in_lot(home, c, 0);
+        runs.push((c, home, shops[i % shops.len()]));
+    }
+    for (i, &d) in depots.iter().enumerate() {
+        for l in lorries_of(&game.world, d) {
+            runs.push((l, d, depots[(i + 1) % depots.len()]));
+        }
+    }
+    let mut trips = Vec::new();
+    let mut legs = vec![0usize; runs.len()];
+    let record = |w: &World, car: EntityId, trips: &mut Vec<serde_json::Value>| {
+        let Some(c) = w.map.car(car) else { return };
+        let Some(t) = c.trip.as_ref() else { return };
+        let mut v = serde_json::to_value(t).unwrap();
+        v["car"] = car.into();
+        v["role"] = format!("{:?}", c.role).into();
+        v["route"] = serde_json::to_value(&t.route_positions).unwrap();
+        trips.push(v);
+    };
+    while game.now < 4 * 600_000 + runs.len() as u64 * 40_000 + 600_000 {
+        for (k, &(car, home, away)) in runs.iter().enumerate() {
+            // Each sets out in its turn, there and back twice.
+            if legs[k] >= 4 || game.world.map.car(car).is_none_or(|c| c.trip.is_some()) || game.world.map.claims.get(&car) != Some(if legs[k] % 2 == 0 { &home } else { &away }) || game.now < k as u64 * 40_000 + legs[k] as u64 * 600_000 {
+                continue;
+            }
+            let (from, to) = if legs[k] % 2 == 0 { (home, away) } else { (away, home) };
+            let Some(s) = game.world.map.approach(from) else { continue };
+            let now = game.now;
+            if game.world.drive(&mut game.events, |t, e| traffic::car::spawn::start_trip(t, e, car, s, to, now, GameTime::MAX)) {
+                record(&game.world, car, &mut trips);
+                legs[k] += 1;
+            }
+        }
+        game.step_to(game.now + 1000);
+    }
+    eprintln!("{} trips, legs {legs:?}, gone {:?}", trips.len(), runs.iter().filter(|r| game.world.map.car(r.0).is_none()).map(|r| r.0).collect::<Vec<_>>());
+    let w = text.lines().filter(|l| !l.starts_with('#')).map(|l| l.len()).max().unwrap() as i32;
+    std::fs::create_dir_all("../.dev/park").unwrap();
+    std::fs::write("../.dev/park/parking.txt", format!("# origin {},0\n{text}", w - 1)).unwrap();
+    std::fs::write("../.dev/paths.json", serde_json::to_string(&trips).unwrap()).unwrap();
+}

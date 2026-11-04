@@ -694,7 +694,7 @@ impl Map {
                 }));
             }
             if !sides.is_empty() {
-                bays.push(KerbBay { at: dock.at, sides });
+                bays.push(KerbBay { at: grid_at(dock.at[0], dock.at[1]), sides });
             }
         }
         bays
@@ -1097,7 +1097,9 @@ impl Map {
         // From its own door, a neighbour's lot on the same node is reached
         // with no street between: out of one lot and into the other.
         let street = if to == from && self.lots.contains_key(&building) { vec![from] } else { routes.route_to(to).filter(|r| r.len() >= 2)? };
-        let bays = entries.into_iter().filter_map(|e| Some((e, routes.route_to(e).filter(|r| r.len() >= 2)?))).collect();
+        // A bay entered from where the car joins the street, across from its
+        // own door, is a route of that node alone.
+        let bays = entries.into_iter().filter_map(|e| Some((e, if e == from { vec![from] } else { routes.route_to(e).filter(|r| r.len() >= 2)? }))).collect();
         Some(Ways { street, bays })
     }
 
@@ -1118,7 +1120,7 @@ impl Map {
         let sides: Vec<Option<usize>> = match &self.lots[&building].way {
             Way::Kerb { bays, .. } => bays
                 .iter()
-                .map(|b| b.sides.iter().position(|s| ways.bays.get(&s.entry).is_some_and(|r| r[r.len() - 2] != s.ahead)))
+                .map(|b| b.sides.iter().position(|s| ways.bays.get(&s.entry).is_some_and(|r| r.len() < 2 || r[r.len() - 2] != s.ahead)))
                 .collect(),
             _ => Vec::new(),
         };

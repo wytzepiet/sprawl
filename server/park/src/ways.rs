@@ -225,7 +225,7 @@ pub fn back_out(spot: Pose, lane: Line, clear: Clear) -> Vec<Leg> {
         for r in RADII.iter().rev() {
             let leg = Leg { from: spot, back: true, towed: false, moves: moves(&[Piece::Straight(c), Piece::Turn(turn, *r)], &[], true) };
             let stood = leg.end(&crate::CAR);
-            for s in RADII {
+            for s in DRIFTS {
                 let Some(over) = s_curve(stood, lane, false, s, true) else { continue };
                 let legs = vec![leg.clone(), Leg { from: stood, back: false, towed: false, moves: over }];
                 if clear(&legs) {
@@ -277,18 +277,23 @@ pub fn nose_out(spot: Pose, lane: Line, clear: Clear) -> Vec<Leg> {
     for i in 0..12 {
         let c = 0.025 * i as f64;
         for r in RADII.iter().rev() {
-            let mut m = moves(&[Piece::Straight(c), Piece::Turn(turn, *r)], &[], false);
+            let m = moves(&[Piece::Straight(c), Piece::Turn(turn, *r)], &[], false);
             let stood = drive(&crate::CAR, spot, &m).last().unwrap().1;
-            let Some(over) = s_curve(stood, lane, false, RADII[0], false) else { continue };
-            m.extend(over);
-            let legs = vec![Leg { from: spot, back: false, towed: false, moves: m }];
-            if clear(&legs) {
-                return legs;
+            for s in DRIFTS {
+                let Some(over) = s_curve(stood, lane, false, s, false) else { continue };
+                let legs = vec![Leg { from: spot, back: false, towed: false, moves: [m.clone(), over].concat() }];
+                if clear(&legs) {
+                    return legs;
+                }
             }
         }
     }
     Vec::new()
 }
+
+/// The radii of an S over into a lane, gentlest first: a driver drifts
+/// over, never darts.
+const DRIFTS: [f64; 3] = [0.9, 0.6, 0.42];
 
 /// The S onto a line: the steepest it gets.
 const STEEPEST: f64 = 55.0 * std::f64::consts::PI / 180.0;
@@ -527,3 +532,4 @@ pub fn dock(rig: &Rig, yard: Yard, dock: Pose, from: Line, exits: &[Line], clear
         None
     }
 }
+
