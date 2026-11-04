@@ -69,6 +69,9 @@ for (const s of summarise(reports)) {
   const counted = new Map<string, number>();
   for (const r of mine) for (const [k, v] of Object.entries(r.counts ?? {})) counted.set(k, (counted.get(k) ?? 0) + v);
   if (counted.size) console.log(`       counted: ${[...counted].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  const errors = new Map<string, number>();
+  for (const r of mine) for (const [k, v] of Object.entries(r.errors ?? {})) errors.set(k, (errors.get(k) ?? 0) + v);
+  for (const [what, n] of errors) console.log(`       error ×${n}: ${what}`);
   const worst = mine.flatMap((r) => r.long).sort((a, b) => b.ms - a.ms)[0];
   if (worst) console.log(`       longest frame ${worst.ms} ms: ${worst.scripts.slice(0, 3).map((s) => `${s.what} ${s.ms}`).join(", ") || "no script"}`);
 }

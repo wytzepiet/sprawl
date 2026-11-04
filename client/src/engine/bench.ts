@@ -26,6 +26,7 @@ export interface Report {
   meshes: { total: number };
   draws: number;
   long: { ms: number; scripts: { ms: number; what: string }[] }[];
+  errors?: Record<string, number>;
   counts: Record<string, number>;
   profile: { busyMs: number; own: [string, number][]; all: [string, number][] } | "unavailable";
   agent: string;

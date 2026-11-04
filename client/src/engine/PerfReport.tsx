@@ -55,9 +55,26 @@ export default function PerfReport() {
   void (navigator as { wakeLock?: { request(t: string): Promise<unknown> } }).wakeLock?.request("screen").catch(() => {});
   let gpu = "?";
   void navigator.gpu?.requestAdapter({ powerPreference: "high-performance" }).then((a) => {
-    const i = a?.info;
-    if (i) gpu = [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(" ");
+    // `info` since Chrome 127; before, it was asked for.
+    const ask = (a as unknown as { requestAdapterInfo?: () => Promise<GPUAdapterInfo> } | null)?.requestAdapterInfo;
+    void (a?.info ? Promise.resolve(a.info) : ask ? ask.call(a) : Promise.resolve(undefined)).then((i) => {
+      if (i) gpu = [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(" ");
+    });
   });
+  // What went wrong, by message: a throw in a frame costs the frame, and a
+  // phone's console is out of reach.
+  let errors = new Map<string, number>();
+  const caught = (e: ErrorEvent | PromiseRejectionEvent) => {
+    const what = String("message" in e ? `${e.message}${e.filename ? ` ${e.filename.split("/").pop()}:${e.lineno}` : ""}` : (e.reason?.stack ?? e.reason)).slice(0, 300);
+    errors.set(what, (errors.get(what) ?? 0) + 1);
+  };
+  addEventListener("error", caught);
+  addEventListener("unhandledrejection", caught);
+  // And the GPU's own complaints, which no page sees otherwise.
+  const device = (engine as unknown as { _device: GPUDevice })._device;
+  const gpuError = (e: Event) => caught({ message: `GPU: ${(e as GPUUncapturedErrorEvent).error.message}` } as ErrorEvent);
+  device.addEventListener("uncapturederror", gpuError);
+  void device.lost.then((l) => caught({ message: `GPU lost: ${l.reason} ${l.message}` } as ErrorEvent));
   const look = () => {
     if (phase >= PHASES.length) return;
     const t = (performance.now() - phaseBegan) / 1000;
@@ -159,11 +176,13 @@ export default function PerfReport() {
       meshes: { total: scene.meshes.length },
       draws: engine.drawCallCount,
       long: long.sort((a, b) => b.ms - a.ms).slice(0, 6),
+      errors: Object.fromEntries(errors),
       counts: Object.fromEntries([...counts].map(([k, v]) => [k, Math.round(v)])),
       profile: trace ? tally(trace) : "unavailable",
       agent: navigator.userAgent,
     };
     [gaps, cpu, long, gpuMs] = [[], [], [], []];
+    errors = new Map();
     counts.clear();
     void fetch("/perf", { method: "POST", body: JSON.stringify(body) });
     sent.push(body);
@@ -182,6 +201,9 @@ export default function PerfReport() {
     stopAfter();
     stopLook();
     watch.disconnect();
+    removeEventListener("error", caught);
+    removeEventListener("unhandledrejection", caught);
+    device.removeEventListener("uncapturederror", gpuError);
     void profiler?.stop();
   });
 
