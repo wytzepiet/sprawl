@@ -206,8 +206,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   <run>` prints one, phase by phase, with where the JavaScript went;
   `bun run bench 6,80,8` runs it in its own Chrome. Real hardware without
   anyone's hands: push a tag `bench/<preview slug>/<anything>` and
-  `.github/workflows/bench.yml` runs it on phones in AWS Device Farm and on
-  an NVIDIA T4 VM in EC2 (cents a run), its summary in the run's page.
+  `.github/workflows/bench.yml` runs it on real Android phones in Firebase
+  Test Lab (`bench/android`, a few free runs a day) and on an NVIDIA T4 VM
+  in EC2 (cents a run), its summary in the run's page.
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main

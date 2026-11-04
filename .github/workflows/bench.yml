@@ -24,7 +24,7 @@ on:
         default: '6,80,15'
 
 env:
-  URL: ${{ inputs.url || format('https://{0}.preview.sprawl.nl', github.ref_name) }}
+  URL: ${{ inputs.url }}
   WHERE: ${{ inputs.where || '6,80,15' }}
 
 jobs:
