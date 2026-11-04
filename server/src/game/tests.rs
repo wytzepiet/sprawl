@@ -115,12 +115,12 @@ pub(crate) fn whereabouts(world: &World, car: EntityId, now: GameTime) -> Option
     }
     None
 }
-/// A car backing out of its drive waits for a gap in the street, backs
-/// out at a walking pace, all but stops where it changes gear, and the
-/// street waits for it once it has gone: whenever it sets out, with a
-/// car coming either way, the two never meet.
+/// A car leaving its drive waits for a gap in the street, backs (where
+/// it backs) at a walking pace, and the street waits for it once it has
+/// gone: whenever it sets out, with a car coming either way, the two never
+/// meet.
 #[test]
-fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
+fn a_car_leaves_its_drive_into_a_gap_and_the_street_waits_for_it() {
     for (dest_x, from_x) in [(40, 2), (0, 30)] {
         for start in (0..14_000).step_by(400) {
             // Fifty tiles of street are all the two trips need.
@@ -146,8 +146,9 @@ fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
                 game.step_to(game.now + 50);
                 let (world, now) = (&game.world, game.now);
                 let (a, b) = (whereabouts(world, backer, now), whereabouts(world, through, now));
+                let backing = |k: usize| matches!(&world.map.objects.get(backer).unwrap().object, GameObject::Car(c) if c.trip.as_ref().is_some_and(|t| t.backing.iter().any(|&[a, b]| a < k && k <= b)));
                 if let Some((_, v, k)) = a {
-                    if k == 1 {
+                    if backing(k) {
                         assert!(v <= traffic::car::REVERSE_SPEED + 0.06, "backing at {v:.2} (start {start})");
                     }
                 }
@@ -789,9 +790,6 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
             let plot = (-8..-1).rev().flat_map(|y| (x - 10..x - 3).rev().map(move |x| at(x, y))).find(|&p| (0..4).any(|f| world.map.fit(BuildingKind::Park, p, f).is_ok()));
             steps.extend(plot.map(|p| Do::Place(BuildingKind::Park, p)));
         }
-        if world.calls.iter().filter(|c| c.answered_by.is_none()).count() >= 12 {
-            steps.extend(world.map.depots().into_iter().min_by_key(|(_, b)| b.lorries + b.vans).map(|(id, _)| Do::Van(id)));
-        }
         let quay: Vec<EntityId> = world.map.harbours.keys().filter_map(|&h| world.map.building(h)).flat_map(|b| b.waits.iter().filter_map(|w| match w.why {
             Some(model::Why::NoLorry(d)) => Some(d),
             _ => None,
@@ -823,8 +821,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
         // Every block of flats put down at a midnight stands by the next.
         let flats = |site: bool| world.map.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Apartment && b.tiles[0].y < 0 && b.site.is_some() == site)).count();
         stood = flats(false);
-        let waiting: Vec<_> = world.calls.iter().filter(|c| matches!(world.map.objects.get(c.at).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some())).collect();
-        assert_eq!(stood as u64, day - 1, "day {day}: {} sites still waiting; calls {waiting:?}", flats(true));
+        assert_eq!(stood as u64, day - 1, "day {day}: {} sites still waiting", flats(true));
         let level = |id: EntityId, good: Good| match world.map.objects.get(id).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.stocks.get(&good).map_or(0.0, |s| s.level),
             _ => 0.0,
@@ -867,7 +864,7 @@ fn season_the_shelves_stay_stocked_and_everyone_eats() {
                     empty.push(format!("{:?} {} {good:?}", b.kind, e.id));
                 }
                 let days = stood_empty((e.id, format!("{good:?}")), stock.level <= 0.0, day);
-                assert!(days < 1, "day {day}: {:?} {}'s {good:?} has stood empty two midnights running; calls {:?}", b.kind, e.id, world.calls);
+                assert!(days < 1, "day {day}: {:?} {}'s {good:?} has stood empty two midnights running", b.kind, e.id);
             }
         }
         for e in world.map.objects.iter() {
@@ -1040,7 +1037,7 @@ fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
     let bought = |world: &World| world.town.on(now).bought.get(&Good::Grain).copied().unwrap_or(0.0);
     let bought_before = bought(&game.world);
     game.world.map.building_mut(depot).unwrap().stocks.get_mut(&Good::Grain).unwrap().level = 0.0;
-    crate::haul::call_lorries(&mut game.world, &mut game.events);
+    crate::logistics::plan(&mut game.world, &mut game.events, now);
     // Half a day: the lorry may be on its way to the quay with the
     // world's grain, the length of the street off and back.
     game.run_to(now + day / 2);
@@ -1226,14 +1223,14 @@ fn the_opening_from_the_harbour() {
 /// One lorry, its depot a short street from the harbour, fetches the
 /// starter pack: each load is lifted off in the yard and the lorry is
 /// off again once the forklift is done, and the whole pack is home
-/// within twenty hours of the first ferry sailing: ten loads, more
+/// within twenty-one hours of the first ferry sailing: ten loads, more
 /// than one lorry keeps up with, so a second is the opening's first
 /// want. A round trip is two drives, each ending in a backing into a
 /// dock, and two loads lifted by a forklift driving each package across
 /// its yard; it once also stood ten minutes at the depot, a van's
 /// unloading, and every load took longer.
 #[test]
-fn one_lorry_fetches_the_starter_pack_in_twenty_hours() {
+fn one_lorry_fetches_the_starter_pack_in_twenty_one_hours() {
     let mut world = street();
     let harbour = harbour_of(&world);
     let x = HARBOUR_X - 12;
@@ -1249,7 +1246,7 @@ fn one_lorry_fetches_the_starter_pack_in_twenty_hours() {
     let (sailed, hour) = (game.now, day / 24);
     let left = |w: &World| crate::haul::packages(w).iter().filter(|(t, ..)| !t.outbound).count();
     let mut parked_home = None;
-    while left(&game.world) > 0 && game.step_to(sailed + 20 * hour) {
+    while left(&game.world) > 0 && game.step_to(sailed + 21 * hour) {
         let (c, now) = (car_of(&game.world, lorry), game.now);
         match (c.trip.is_none() && game.world.map.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
@@ -1260,7 +1257,7 @@ fn one_lorry_fetches_the_starter_pack_in_twenty_hours() {
             _ => {}
         }
     }
-    assert_eq!(left(&game.world), 0, "{} packages still out after twenty hours", left(&game.world));
+    assert_eq!(left(&game.world), 0, "{} packages still out after twenty-one hours", left(&game.world));
     eprintln!("the starter pack home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }
 

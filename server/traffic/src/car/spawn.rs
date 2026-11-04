@@ -60,7 +60,7 @@ pub fn depart(
     };
     let backs_out = world.map.backs_out(car_id);
     let leaving = world.map.stretch(car_id);
-    let planned_out = world.map.manoeuvre_out(car_id).filter(|_| out.len() > 1);
+    let planned_out = if out.len() > 1 { world.map.manoeuvres_out(car_id) } else { Vec::new() };
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.map.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
@@ -84,7 +84,7 @@ pub fn depart(
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.map.stretch(car_id)];
-    let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvre_in(car_id, route.len())).collect();
+    let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvres_in(car_id, route.len())).collect();
     let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, manoeuvres, stretches, leaves, now);
     set_off(world, events, car_id, trip);
     true
