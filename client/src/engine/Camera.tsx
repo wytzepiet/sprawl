@@ -5,6 +5,7 @@ import { useGame } from "../state/gameObjects";
 import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { groundCover, screenToWorld } from "./view";
+import type { ChunkBounds } from "../generated";
 import { following, setFollowing, positionOf } from "../state/selection";
 
 /**
@@ -38,6 +39,14 @@ const PAN_MARGIN_CHUNKS = 1;
 const LEVEL_MARGIN = 5;
 /** Chunks loaded past the ground in view, so it is there before it is seen. */
 const PAD = 2;
+/** Chunks kept loaded that have gone out of view, as many as this in all:
+ *  a zoom in and back out, or a pan there and back, finds the town as it
+ *  left it, rather than have every road, building and car taken down and
+ *  sent and built again (on a big town, a quarter second at a time). */
+const KEEP = 192;
+/** A view kept in far fewer chunks than it holds lets them go once it has
+ *  stood this long: the player has settled on a closer look. */
+const SHRINK_MS = 5000;
 
 /** Where the island's camera was when the page was left: each world is
  *  served from its own origin, so the browser keeps one per world. */
@@ -94,7 +103,8 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   let at = { x: kept.x as number, y: kept.y as number };
   let target = { half, ...at };
   let flying = false;
-  let lastChunks = "";
+  let lastChunks: ChunkBounds | null = null;
+  let lastSent = 0;
   let lastWelcome = 0;
 
   /** Stand the camera back from the ground at the middle of the view. */
@@ -179,23 +189,33 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   };
   (window as unknown as { sprawlCamera: unknown }).sprawlCamera = eye;
 
-  // Subscription is chunk-granular, so panning within a chunk sends nothing.
+  // Subscription is chunk-granular, so panning within a chunk sends nothing;
+  // and it grows to hold what was seen, up to `KEEP`, and shrinks only once
+  // the view has stood a while in far less of it.
   function sendViewportIfChanged() {
     const chunk = (v: number) => Math.floor(v / CHUNK_SIZE);
     const { x0, y0, x1, y1 } = groundCover(scene, canvas);
-    const data = { min_cx: chunk(x0) - PAD, min_cy: chunk(y0) - PAD, max_cx: chunk(x1) + PAD, max_cy: chunk(y1) + PAD };
-    const key = Object.values(data).join();
+    let data: ChunkBounds = { min_cx: chunk(x0) - PAD, min_cy: chunk(y0) - PAD, max_cx: chunk(x1) + PAD, max_cy: chunk(y1) + PAD };
+    const area = (b: ChunkBounds) => (b.max_cx - b.min_cx + 1) * (b.max_cy - b.min_cy + 1);
+    const room = Math.max(KEEP, area(data));
 
     // A server that welcomed us since knows nothing of what we asked for.
     const welcome = welcomed();
-    if (welcome === lastWelcome && key === lastChunks) return;
+    const last = welcome === lastWelcome ? lastChunks : null;
+    if (last) {
+      const holds = last.min_cx <= data.min_cx && last.min_cy <= data.min_cy && last.max_cx >= data.max_cx && last.max_cy >= data.max_cy;
+      if (holds && (area(last) <= room || performance.now() - lastSent < SHRINK_MS)) return;
+      const both = { min_cx: Math.min(last.min_cx, data.min_cx), min_cy: Math.min(last.min_cy, data.min_cy), max_cx: Math.max(last.max_cx, data.max_cx), max_cy: Math.max(last.max_cy, data.max_cy) };
+      if (!holds && area(both) <= room) data = both;
+    }
 
     // Only remember bounds the server actually heard. The socket is still
     // opening on the first frames, and caching a dropped send would leave the
     // client subscribed to nothing until it happened to pan across a chunk.
     if (!send({ type: "SetChunks", data })) return;
-    lastChunks = key;
+    lastChunks = data;
     lastWelcome = welcome;
+    lastSent = performance.now();
   }
 
   // Smooth zoom animation
