@@ -1,0 +1,17 @@
+// An app of nothing, and its test, which is the bench: Test Lab runs only
+// apps, so this one exists to hold Bench.java.
+plugins { id 'com.android.application' }
+android {
+  namespace 'nl.sprawl.bench'
+  compileSdk 35
+  defaultConfig {
+    applicationId 'nl.sprawl.bench'
+    minSdk 31 // Android 12, WebGPU's least
+    targetSdk 35
+    testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+  }
+}
+dependencies {
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'junit:junit:4.13.2'
+}
