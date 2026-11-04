@@ -11,7 +11,11 @@ apt-get install -yq /tmp/chrome.deb >/dev/null
 [ -e /etc/vulkan/icd.d/nvidia_icd.json ] || { mkdir -p /etc/vulkan/icd.d; echo '{"file_format_version":"1.0.0","ICD":{"library_path":"libGLX_nvidia.so.0","api_version":"1.3"}}' > /etc/vulkan/icd.d/nvidia_icd.json; }
 nvidia-smi -L
 vulkaninfo --summary 2>&1 | grep -i devicename
-xvfb-run -s "-screen 0 1600x1000x24" google-chrome --no-sandbox --no-first-run --user-data-dir=/tmp/c \
+# SCREEN: the window in CSS pixels and the device's pixel ratio, 1600x1000@1
+# a laptop's, 412x915@2.625 a phone's.
+size=${SCREEN:-1600x1000@1}; dpr=${size#*@}; size=${size%@*}; w=${size%x*}; h=${size#*x}
+xw=$(awk "BEGIN { print int($w * $dpr) }"); xh=$(awk "BEGIN { print int($h * $dpr) }")
+xvfb-run -s "-screen 0 ${xw}x${xh}x24" google-chrome --no-sandbox --no-first-run --user-data-dir=/tmp/c \
   --enable-unsafe-webgpu --enable-features=Vulkan,VulkanFromANGLE --use-angle=vulkan --ignore-gpu-blocklist \
-  --window-size=1600,1000 "$PAGE"
+  --force-device-scale-factor=$dpr --window-size=$w,$h "$PAGE"
 sleep infinity

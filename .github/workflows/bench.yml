@@ -25,6 +25,9 @@ on:
       where:
         description: Tile and half-width the camera looks round, x,y,half
         default: '33,23,20'
+      screen:
+        description: The GPU machine's window, CSS pixels and device pixel ratio, e.g. 412x915@2.625 for a phone's
+        default: '1600x1000@1'
       phones:
         description: Also on Test Lab's phones (five a day, free)
         type: boolean
@@ -98,7 +101,7 @@ jobs:
           args="bash -c 'echo $script | base64 -d > /b.sh && bash /b.sh'"
           # The cheapest card that is free, of those that draw like a player's.
           for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation"; do
-            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
+            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }, { key: \"SCREEN\", value: \"${{ inputs.screen || '1600x1000@1' }}\" }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
             [ -n "$id" ] && { echo "$gpu: $id"; break; }
           done
           [ -n "${id:-}" ] || { echo "no GPU free"; exit 1; }
