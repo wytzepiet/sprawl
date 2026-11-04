@@ -1,4 +1,5 @@
 import { work } from "./budget";
+import { run } from "./PerfReport";
 import {
   createContext,
   useContext,
@@ -191,6 +192,9 @@ export default function Canvas(props: ParentProps) {
 
     if (import.meta.env.DEV) {
       (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => ((root.props.opacity = 0), dirt.paint++) };
+    }
+    // The bench ends on it (`PerfReport.tsx`).
+    if (import.meta.env.DEV || run) {
       void import("./cost").then(({ costMeter }) => {
         (window as unknown as { sprawlCost: unknown }).sprawlCost = costMeter(engine, scene, after.run, (h) => (held = h));
       });

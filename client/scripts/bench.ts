@@ -16,7 +16,8 @@
  *   --runs                           the runs that game has, newest last
  */
 import { args, CLIENT, flag, has, launch, word } from "./lib";
-import { summarise, type Report } from "../src/engine/bench";
+import { costLines, summarise, type Report } from "../src/engine/bench";
+import type { CostReport } from "../src/engine/cost";
 
 const url = (word("--url") ?? CLIENT).replace(/\/$/, "");
 const read = word("--read");
@@ -53,7 +54,8 @@ if (!tab) {
   await browser.close();
 }
 
-const reports = await fetchRuns(tab);
+const lines = await fetchRuns(tab);
+const reports = lines.filter((r) => r.phase !== "cost");
 if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
 const [first] = reports;
 console.log(`${tab}: ${first.canvas.join("×")} at ${first.dpr}x, ${first.gpu}\n${first.agent}`);
@@ -78,3 +80,5 @@ for (const s of summarise(reports)) {
   const worst = mine.flatMap((r) => r.long).sort((a, b) => b.ms - a.ms)[0];
   if (worst) console.log(`       longest frame ${worst.ms} ms: ${worst.scripts.slice(0, 3).map((s) => `${s.what} ${s.ms}`).join(", ") || "no script"}`);
 }
+const cost = (lines.find((r) => r.phase === "cost") as unknown as { cost: CostReport } | undefined)?.cost;
+if (cost) console.log(`\n${costLines(cost, "what each kind costs, still").join("\n")}`);

@@ -103,9 +103,9 @@ jobs:
           done
           [ -n "${id:-}" ] || { echo "no GPU free"; exit 1; }
           echo "POD=$id" >> $GITHUB_ENV
-          # Its last report is the far phase's third; twelve minutes is plenty.
-          for _ in $(seq 72); do
-            curl -s "$URL/perf?tab=gpu-$GITHUB_RUN_ID" | grep -c '"phase":"far"' | grep -q 3 && break
+          # Its last report is what each kind costs; fifteen minutes is plenty.
+          for _ in $(seq 90); do
+            curl -s "$URL/perf?tab=gpu-$GITHUB_RUN_ID" | grep -q '"phase":"cost"' && break
             sleep 10
           done
       - name: Delete the GPU machine

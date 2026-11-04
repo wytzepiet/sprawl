@@ -19,6 +19,7 @@
 import { args, CLIENT, flag, launch, ROOT, word } from "./lib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { CostReport } from "../src/engine/cost";
+import { costLines } from "../src/engine/bench";
 
 const OUT = `${ROOT}/.dev/cost`;
 
@@ -38,17 +39,7 @@ for (const { x, y, half } of views) {
   // The meter waits for the view to be ready before it measures.
   const report: CostReport = await page.evaluate(([rounds, only]) => (window as any).sprawlCost(rounds, only), [rounds, only] as const);
 
-  const pad = (s: string | number, n: number) => String(s).padStart(n);
-  const lines = [
-    `${x},${y},${half} at t=${t}: frame ${report.base.frame} ms (CPU ${report.base.cpu}), ${report.base.drawCalls} draw calls, ${report.base.meshes} meshes, ${report.base.rounds} rounds`,
-    "",
-    `${"kind".padEnd(28)}${pad("meshes", 7)}${pad("in view", 8)}${pad("inst", 8)}${pad("tris", 9)}${pad("cast", 6)}${pad("draws", 7)}${pad("frame", 8)}${pad("cpu", 7)}${pad("shadow", 8)}`,
-    ...report.kinds.map((k) =>
-      `${k.kind.slice(0, 27).padEnd(28)}${pad(k.meshes, 7)}${pad(k.inView, 8)}${pad(k.instances, 8)}${pad(Math.round(k.triangles), 9)}${pad(k.casters, 6)}${pad(k.draws, 7)}${pad(k.frame.toFixed(2), 8)}${pad(k.cpu.toFixed(2), 7)}${pad(k.shadow === null ? "" : k.shadow.toFixed(2), 8)}`,
-    ),
-    "",
-    "ms a frame saved by hiding it (frame: whichever of CPU and GPU is slower, so the GPU when the frame is well over the CPU; cpu: drawing it), and by keeping it out of the shadow map alone (shadow, frame).",
-  ];
+  const lines = costLines(report, `${x},${y},${half} at t=${t}`);
   console.log(lines.join("\n"));
   mkdirSync(OUT, { recursive: true });
   const name = `${OUT}/${x}_${y}_${half}_t${t}`;
