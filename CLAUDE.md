@@ -199,17 +199,23 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Is it fast on a real GPU?** Not the cloud's software GPU, and not the
   owner's Mac (it throttles, and it is his). Any device runs the bench by
   opening the game, a preview too, with `?bench` (`?bench=6,80,8` round a
-  tile): the camera still, panning, zooming and far out, fifteen seconds
-  each, and the numbers on its screen at the end, posted to that game's
-  `/perf` as it goes (`PerfReport.tsx`, `server/host/src/perf.rs`). `bun
-  run bench --url <game> --runs` lists the runs a game has, `--read
-  <run>` prints one, phase by phase, with where the JavaScript went;
-  `bun run bench 6,80,8` runs it in its own Chrome. Real hardware without
-  anyone's hands: push a tag `bench/<preview slug>/<anything>` and
-  `.github/workflows/bench.yml` (Actions › Bench, the game's URL) runs it
-  on an NVIDIA GPU on RunPod (cents a run, prepaid) and, when asked, on
-  real Android phones in Firebase Test Lab (`bench/android`, five free a
-  day), its summary and the phones' screens in the run's page.
+  tile; `&town=15-city` plays that fixture in the browser instead of the
+  world, the same city every run): the camera still, panning, zooming and
+  far out, fifteen seconds each, then what each kind of thing in view
+  costs a frame (`cost.ts`), all posted to that game's `/perf` as it goes
+  (`PerfReport.tsx`, `server/host/src/perf.rs`). `bun run bench --url
+  <game> --runs` lists the runs a game has, `--read <run>` prints one,
+  phase by phase, with where the JavaScript went and the cost table;
+  `bun run bench 6,80,8 --town 15-city` runs it in its own Chrome. On real
+  hardware, without anyone's hands: run `.github/workflows/bench.yml` on
+  main (Actions › Bench › Run workflow, or the GitHub MCP's
+  `actions_run_trigger`) with a branch's preview URL; the branch must hold
+  the bench, so merge main into it first. It runs on an NVIDIA GPU on
+  RunPod (an RTX 3070 or so, about five minutes, cents a run, prepaid; the
+  tab is `gpu-<run id>`) and, with `phones` ticked, on real Android phones
+  in Firebase Test Lab (`bench/android`, five free a day, Chrome 122), the
+  summary and the phones' screens in the run's page. Compare GPU ms and
+  draws between runs: a desktop card holds 60 fps where a phone will not.
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main
