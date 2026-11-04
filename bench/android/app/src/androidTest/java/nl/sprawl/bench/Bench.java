@@ -25,7 +25,13 @@ public class Bench {
         + "am force-stop com.android.chrome\n"
         + "svc power stayon true\n"
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
-    Thread.sleep(110_000);
+    // What the screen showed, for the run's files (bench.yml pulls this folder).
+    sh(shell, "mkdir -p /sdcard/Download/bench\n");
+    for (int s = 15; s <= 105; s += 30) {
+      Thread.sleep(s == 15 ? 15_000 : 30_000);
+      sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + s + "s.png\n");
+    }
+    Thread.sleep(5_000);
   }
 
   /** A script for the shell, as the shell user; executeShellCommand alone splits on spaces and quotes nothing. */
