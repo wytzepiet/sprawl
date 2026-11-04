@@ -201,8 +201,9 @@ export default function PerfReport() {
     counts.clear();
     void fetch("/perf", { method: "POST", body: JSON.stringify(body) });
     sent.push(body);
-    // The last settle lasts until the traffic has filled the streets.
-    if (!(PHASES[phase] === "settle" && PHASES[phase + 1] !== "settle" && simNow() < filled)) phase++;
+    // The last settle lasts until the traffic has filled the streets and
+    // the town is drawn: five seconds with no drawing of it.
+    if (!(PHASES[phase] === "settle" && PHASES[phase + 1] !== "settle" && (simNow() < filled || body.counts["town.draws"]))) phase++;
     phaseBegan = performance.now();
     if (phase === PHASES.length) {
       clearInterval(timer);
