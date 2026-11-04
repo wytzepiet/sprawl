@@ -29,6 +29,8 @@ const EVERY_MS = 5000;
 const SAMPLE_MS = 5;
 /** How much of a test town's day is lived through before the bench. */
 const TRAFFIC_MS = 8 * 60_000;
+/** How far out the far phase looks, in the still view's sizes. */
+const FAR = 2.5;
 
 /** The browser's sampling profiler, where the page has asked for it. */
 interface ProfilerTrace {
@@ -94,7 +96,7 @@ export default function PerfReport() {
     const p = PHASES[phase].replace("n-", "");
     if (p === "pan") eye.look(x + h * 3 * Math.sin((Math.PI * t) / 7.5), y, h);
     else if (p === "zoom") eye.look(x, y, h * 2 ** (1.2 * Math.sin((2 * Math.PI * t) / 5)));
-    else eye.look(x, y, p === "far" ? h * 2.5 : h);
+    else eye.look(x, y, p === "far" ? h * FAR : h);
   };
   const stopLook = beforeRender(look);
   // The GPU's own timer, where the GPU keeps one.
@@ -205,8 +207,9 @@ export default function PerfReport() {
     if (phase === PHASES.length) {
       clearInterval(timer);
       setDone(sent);
-      // Then what each kind of thing in the still view costs (`cost.ts`),
-      // by night and then by day: the run is over once that is in.
+      // Then what each kind of thing in view costs (`cost.ts`): close in
+      // by night, the lights on, and the whole town by day, where the
+      // most is drawn. The run is over once that is in.
       eye.look(x, y, h);
       const meter = (window as { sprawlCost?: (rounds: number) => Promise<CostReport> }).sprawlCost;
       const post = (phase: string) => (cost: CostReport) => fetch("/perf", { method: "POST", body: JSON.stringify({ at: new Date().toISOString(), tab: run, phase, cost }) });
@@ -214,7 +217,7 @@ export default function PerfReport() {
         pinTimeOfDay(lightOf("n-"));
         void meter(3)
           .then(post("n-cost"))
-          .then(() => (pinTimeOfDay(lightOf("")), meter(3)))
+          .then(() => (pinTimeOfDay(lightOf("")), eye.look(x, y, h * FAR), meter(3)))
           .then(post("cost"));
       }
     }
