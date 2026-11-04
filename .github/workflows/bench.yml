@@ -19,9 +19,12 @@ on:
       url:
         description: The game, e.g. https://main.preview.sprawl.nl
         required: true
+      town:
+        description: A test town (server/fixtures) run in the tab, or empty for the game's own world
+        default: '15-city'
       where:
         description: Tile and half-width the camera looks round, x,y,half
-        default: '6,80,15'
+        default: '33,23,20'
       phones:
         description: Also on Test Lab's phones (five a day, free)
         type: boolean
@@ -29,7 +32,7 @@ on:
 
 env:
   URL: ${{ inputs.url }}
-  WHERE: ${{ inputs.where || '6,80,15' }}
+  WHERE: ${{ inputs.where || '6,80,15' }}${{ inputs.town && format('&town={0}', inputs.town) || '' }}
 
 jobs:
   phones:
