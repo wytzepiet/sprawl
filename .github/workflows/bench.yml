@@ -1,0 +1,142 @@
+# The bench (client/src/engine/PerfReport.tsx) on real phones in AWS Device
+# Farm: each opens a game's `?bench` in Chrome, and its reports land on that
+# game's /perf, to be read with `bun run bench --url <game> --runs`.
+#
+# Started by a tag, from any branch: `git tag bench/<preview slug>/<anything>
+# && git push origin --tags` benches https://<slug>.<preview domain>; or by
+# hand (Actions › Bench), once this file is on main.
+# Needs the secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, of a user
+# allowed Device Farm. Billed by the device minute: about two a phone.
+name: Bench
+
+on:
+  push:
+    tags: ['bench/**']
+  workflow_dispatch:
+    inputs:
+      url:
+        description: The game, e.g. https://main.preview.sprawl.nl
+        required: true
+      where:
+        description: Tile and half-width the camera looks round, x,y,half
+        default: '6,80,15'
+      phones:
+        description: Phones, by a part of their name, comma between
+        default: 'Pixel 8,Galaxy S23,Galaxy A54'
+
+env:
+  AWS_DEFAULT_REGION: us-west-2  # Device Farm's only region
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+jobs:
+  phones:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: What to bench
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            slug=$(echo "${{ github.ref_name }}" | cut -d/ -f2)
+            echo "URL=https://$slug.${{ vars.PREVIEW_DOMAIN || 'preview.sprawl.nl' }}" >> $GITHUB_ENV
+            echo "WHERE=6,80,15" >> $GITHUB_ENV
+            echo "PHONES=Pixel 8,Galaxy S23,Galaxy A54" >> $GITHUB_ENV
+          else
+            echo "URL=${{ inputs.url }}" >> $GITHUB_ENV
+            echo "WHERE=${{ inputs.where }}" >> $GITHUB_ENV
+            echo "PHONES=${{ inputs.phones }}" >> $GITHUB_ENV
+          fi
+      - name: Run on Device Farm
+        run: |
+          set -euo pipefail
+          df() { aws devicefarm "$@"; }
+          project=$(df list-projects --query "projects[?name=='sprawl-bench'].arn | [0]" --output text)
+          [ "$project" != None ] || project=$(df create-project --name sprawl-bench --query project.arn --output text)
+
+          # Each phone named, the first of that name on Android 12 or later
+          # (WebGPU's least) that is free to use.
+          arns=()
+          df list-devices --filters attribute=PLATFORM,operator=EQUALS,values=ANDROID --output json > devices.json
+          IFS=, read -ra want <<< "$PHONES"
+          for w in "${want[@]}"; do
+            arn=$(jq -r --arg w "$w" '[.devices[] | select((.name | contains($w)) and ((.os | split(".")[0] | tonumber) >= 12) and (.availability != "TEMPORARY_NOT_AVAILABLE" and .availability != "BUSY"))] | sort_by(.os | split(".")[0] | tonumber) | last | .arn // empty' devices.json)
+            if [ -z "$arn" ]; then echo "::warning::no phone named $w"; else echo "$w: $(jq -r --arg a "$arn" '.devices[] | select(.arn == $a) | "\(.name) Android \(.os)"' devices.json)"; arns+=("\"$arn\""); fi
+          done
+          [ ${#arns[@]} -gt 0 ] || { echo "no phones"; exit 1; }
+          pool=$(df create-device-pool --project-arn "$project" --name "bench-$GITHUB_RUN_ID" \
+            --rules "[{\"attribute\":\"ARN\",\"operator\":\"IN\",\"value\":\"[$(IFS=,; echo "${arns[*]}")]\"}]" --query devicePool.arn --output text)
+
+          # Device Farm wants a test package; ours is empty, the spec is the test.
+          mkdir -p pkg && echo '{"name":"sprawl-bench","version":"1.0.0"}' > pkg/package.json
+          (cd pkg && npm pack -q && zip -q ../package.zip *.tgz)
+          sed "s#BENCH_URL#$URL/?bench=$WHERE#" bench/devicefarm.yml > spec.yml
+          upload() { # file type → arn, once it is taken
+            read -r arn url < <(df create-upload --project-arn "$project" --name "$(basename $1)" --type $2 --query 'upload.[arn,url]' --output text)
+            curl -sfT "$1" "$url"
+            until [ "$(df get-upload --arn "$arn" --query upload.status --output text)" = SUCCEEDED ]; do
+              [ "$(df get-upload --arn "$arn" --query upload.status --output text)" = FAILED ] && { df get-upload --arn "$arn" >&2; exit 1; }
+              sleep 5
+            done
+            echo "$arn"
+          }
+          package=$(upload package.zip APPIUM_NODE_TEST_PACKAGE)
+          spec=$(upload spec.yml APPIUM_NODE_TEST_SPEC)
+
+          run=$(df schedule-run --project-arn "$project" --device-pool-arn "$pool" --name "$URL" \
+            --test "type=APPIUM_WEB_NODE,testPackageArn=$package,testSpecArn=$spec" --query run.arn --output text)
+          echo "run $run"
+          until [ "$(df get-run --arn "$run" --query run.status --output text)" = COMPLETED ]; do sleep 20; done
+          df get-run --arn "$run" --query 'run.[result,counters,deviceMinutes]'
+          echo "RUN=$run" >> $GITHUB_ENV
+          df delete-device-pool --arn "$pool" || true
+      - uses: oven-sh/setup-bun@v2
+      - name: What the phones measured
+        run: |
+          cd client
+          curl -s "$URL/perf" | grep '"tab":"df-' | tail -10 | while read -r l; do
+            tab=$(echo "$l" | sed 's/.*"tab":"\([^"]*\)".*/\1/')
+            echo "### $tab" >> $GITHUB_STEP_SUMMARY
+            bun scripts/bench.ts --url "$URL" --read "$tab" | tee -a $GITHUB_STEP_SUMMARY
+          done
+
+  # A GPU VM in EC2 (g4dn.xlarge, an NVIDIA T4, on spot, cents a run): a
+  # desktop GPU that never throttles, for numbers that compare run to run.
+  # Needs the account's spot quota for G instances (4 vCPUs) in us-east-1.
+  gpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - name: What to bench
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            echo "URL=https://$(echo "${{ github.ref_name }}" | cut -d/ -f2).${{ vars.PREVIEW_DOMAIN || 'preview.sprawl.nl' }}" >> $GITHUB_ENV
+            echo "WHERE=6,80,15" >> $GITHUB_ENV
+          else
+            echo "URL=${{ inputs.url }}" >> $GITHUB_ENV
+            echo "WHERE=${{ inputs.where }}" >> $GITHUB_ENV
+          fi
+          echo "TAB=gpu-t4-$(date +%s)" >> $GITHUB_ENV
+      - name: Run on a GPU VM
+        run: |
+          set -euo pipefail
+          ami=$(aws ssm get-parameter --name /aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-22.04/latest/ami-id --query Parameter.Value --output text)
+          sed -e "s#BENCH_URL#$URL/?bench=$WHERE#" -e "s#TAB#$TAB#" bench/gpu-vm.sh > user-data.sh
+          id=$(aws ec2 run-instances --image-id "$ami" --instance-type g4dn.xlarge --count 1 \
+            --instance-market-options 'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}' \
+            --instance-initiated-shutdown-behavior terminate --user-data file://user-data.sh \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=sprawl-bench}]' \
+            --query 'Instances[0].InstanceId' --output text)
+          echo "instance $id"
+          for _ in $(seq 100); do
+            [ "$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].State.Name' --output text)" = terminated ] && break
+            sleep 15
+          done
+          aws ec2 terminate-instances --instance-ids "$id" >/dev/null  # in case it outlived the wait
+          aws ec2 get-console-output --instance-id "$id" --latest --output text | tail -60 || true
+      - uses: oven-sh/setup-bun@v2
+      - name: What the GPU measured
+        run: cd client && bun scripts/bench.ts --url "$URL" --read "$TAB" | tee -a $GITHUB_STEP_SUMMARY

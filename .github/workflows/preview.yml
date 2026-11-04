@@ -7,7 +7,9 @@
 name: Preview
 
 on:
+  # Branches, not tags: a `bench/…` tag runs the bench (bench.yml).
   push:
+    branches: ['**']
   delete:
 
 concurrency:
