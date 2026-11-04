@@ -1,12 +1,22 @@
-import { onCleanup } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { isGpuTimingSupported, setGpuTimingEnabled } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
+import { eye } from "./Camera";
 import { groundCover } from "./view";
+import { PHASES, summarise, type Report } from "./bench";
+
+const params = new URLSearchParams(location.search);
+/**
+ * The bench's run, by name: `?bench` (a name made up) or `?bench&tab=<name>`,
+ * in any build, on any device. `?bench=x,y,half` where it looks.
+ */
+export const run = params.has("bench") ? (params.get("tab") ?? `bench-${Math.random().toString(36).slice(2, 7)}`) : null;
 
 /** Things the game counts as it goes, by name, for the next report. */
 const counts = new Map<string, number>();
 export function perfCount(name: string, by = 1) {
-  if (import.meta.env.DEV) counts.set(name, (counts.get(name) ?? 0) + by);
+  if (run) counts.set(name, (counts.get(name) ?? 0) + by);
 }
 
 /** How often the tab reports, and how finely it samples its JavaScript. */
@@ -25,39 +35,38 @@ interface Profiler {
 }
 declare const Profiler: { new (options: { sampleInterval: number; maxBufferSize: number }): Profiler } | undefined;
 
-/** A tab's report, a line of `.dev/perf.jsonl`, as `scripts/pan.ts` reads it. */
-export interface Report {
-  at: string;
-  tab: string | null;
-  seconds: number;
-  frames: number;
-  fps: number;
-  gap: { p50: number; p90: number; p99: number; max: number; over20: number; over34: number };
-  cpuMs: { mean: number; max: number };
-  gpuMs: number | null;
-  canvas: [number, number];
-  dpr: number;
-  visible: DocumentVisibilityState;
-  camera: { x: number; y: number; half: number };
-  meshes: { total: number };
-  draws: number;
-  long: { ms: number; scripts: { ms: number; what: string }[] }[];
-  counts: Record<string, number>;
-  profile: { busyMs: number; own: [string, number][]; all: [string, number][] } | "unavailable";
-  agent: string;
-}
-
 /**
- * Development only, and only on a tab named `?tab=` (`bun run pan`): what
- * the tab spends drawing, sent to the dev server (`vite.config.ts`), which
- * appends it to `.dev/perf.jsonl`, so how the game runs in a browser can be
- * read from outside it. Every few seconds: the frames' spread, worst gaps
- * and all; the CPU's time on a frame and the GPU's; the long animation
- * frames and what ran in them; and a sample of where the JavaScript went,
- * by function.
+ * The bench (`?bench`): the camera through its phases round one place, and
+ * what the tab spends drawing in each, posted to the game's server
+ * (`server/host/src/perf.rs`), so how the game runs on any device that opens
+ * it can be read from outside it. Every few seconds: the frames' spread,
+ * worst gaps and all; the CPU's time on a frame and the GPU's; the long
+ * animation frames and what ran in them; and, where the browser samples, where
+ * the JavaScript went, by function. At the end, the numbers on the screen.
  */
 export default function PerfReport() {
   const { engine, scene, canvas, beforeRender, afterRender } = useEngine();
+  const [x, y, h] = (params.get("bench") || "6,80,15").split(",").map(Number);
+  let phase = 0;
+  let phaseBegan = performance.now();
+  const [done, setDone] = createSignal<Report[] | null>(null);
+  const sent: Report[] = [];
+  // A phone left alone would lock its screen half way.
+  void (navigator as { wakeLock?: { request(t: string): Promise<unknown> } }).wakeLock?.request("screen").catch(() => {});
+  let gpu = "?";
+  void navigator.gpu?.requestAdapter({ powerPreference: "high-performance" }).then((a) => {
+    const i = a?.info;
+    if (i) gpu = [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(" ");
+  });
+  const look = () => {
+    if (phase >= PHASES.length) return;
+    const t = (performance.now() - phaseBegan) / 1000;
+    const p = PHASES[phase];
+    if (p === "pan") eye.look(x + h * 3 * Math.sin((Math.PI * t) / 7.5), y, h);
+    else if (p === "zoom") eye.look(x, y, h * 2 ** (1.2 * Math.sin((2 * Math.PI * t) / 5)));
+    else eye.look(x, y, p === "far" ? h * 2.5 : h);
+  };
+  const stopLook = beforeRender(look);
   // The GPU's own timer, where the GPU keeps one.
   const timed = isGpuTimingSupported(engine);
   if (timed) setGpuTimingEnabled(engine, true);
@@ -134,8 +143,9 @@ export default function PerfReport() {
     const mean = (a: number[]) => (a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(2) : 0);
     const body: Report = {
       at: new Date().toISOString(),
-      // Which tab: a test's own reports are told from a player's by it (`scripts/pan.ts`).
-      tab: new URLSearchParams(location.search).get("tab"),
+      tab: run!,
+      phase: PHASES[phase],
+      gpu,
       seconds: EVERY_MS / 1000,
       frames: gaps.length,
       fps: +(gaps.length / (EVERY_MS / 1000)).toFixed(1),
@@ -155,7 +165,14 @@ export default function PerfReport() {
     };
     [gaps, cpu, long, gpuMs] = [[], [], [], []];
     counts.clear();
-    void fetch("/__perf", { method: "POST", body: JSON.stringify(body) });
+    void fetch("/perf", { method: "POST", body: JSON.stringify(body) });
+    sent.push(body);
+    phase++;
+    phaseBegan = performance.now();
+    if (phase === PHASES.length) {
+      clearInterval(timer);
+      setDone(sent);
+    }
   };
   const timer = setInterval(() => void report(), EVERY_MS);
 
@@ -163,9 +180,30 @@ export default function PerfReport() {
     clearInterval(timer);
     stopBefore();
     stopAfter();
+    stopLook();
     watch.disconnect();
     void profiler?.stop();
   });
 
-  return null;
+  const f1 = (v: number) => v.toFixed(1);
+  return (
+    <Show when={done()}>
+      {(reports) => (
+        <Portal>
+          <div style={{ position: "fixed", inset: "auto 12px 12px 12px", "z-index": 1000, background: "#000", color: "#fff", "border-radius": "18px", padding: "14px 16px", font: "13px/1.5 ui-monospace, monospace" }}>
+            <div>
+              {run} · {reports()[0].canvas.join("×")} @{reports()[0].dpr}x · {reports()[0].gpu}
+            </div>
+            <For each={summarise(reports())}>
+              {(s) => (
+                <div>
+                  {s.phase.padEnd(6, "\u00a0")} {f1(s.fps)} fps · p90 {f1(s.p90)} ms · cpu {f1(s.cpu)} · gpu {s.gpu === null ? "?" : f1(s.gpu)} ms
+                </div>
+              )}
+            </For>
+          </div>
+        </Portal>
+      )}
+    </Show>
+  );
 }

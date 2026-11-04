@@ -1,13 +1,16 @@
 mod game_loop;
 mod health;
 mod network;
+mod perf;
 mod persistence;
 
 use model::{blueprint, needs};
 use map::fixtures;
 use axum::Router;
 use tokio::sync::mpsc;
+use axum::http::{HeaderName, HeaderValue};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use network::AppState;
 
@@ -29,9 +32,12 @@ async fn main() {
         .route("/town", axum::routing::get(health::town))
         .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
+        .route("/perf", axum::routing::get(perf::get).post(perf::post))
         .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
         .with_state(AppState { command_tx })
-        .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
+        .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)))
+        // A page may sample its own JavaScript only when it is served asking to.
+        .layer(SetResponseHeaderLayer::overriding(HeaderName::from_static("document-policy"), HeaderValue::from_static("js-profiling")));
 
     // Another port lets a fixture server stand beside the game's.
     let port = std::env::var("SPRAWL_PORT").unwrap_or_else(|_| "4801".into());

@@ -54,9 +54,9 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
 }
 
 /** Where the camera looks; and a way to send it somewhere, for the feed's
- *  news. How much of the screen's foot the dock's sheet covers, in CSS
+ *  news, or straight there (`look`). How much of the screen's foot the dock's sheet covers, in CSS
  *  pixels: what the camera follows sits in the middle of the rest. */
-export const eye = { x: 0, y: 0, below: 0, go(_x: number, _y: number) {} };
+export const eye = { x: 0, y: 0, below: 0, go(_x: number, _y: number) {}, look(_x: number, _y: number, _half: number) {} };
 
 /** Ground the camera keeps over, in tiles, corners inclusive. */
 export interface Bounds {
@@ -169,18 +169,15 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
     target = { ...target, x, y };
   };
 
-  // The fixture shots point the camera from outside: straight to a place and
-  // a zoom, no travel. Dev only.
-  if (import.meta.env.DEV) {
-    (window as unknown as { sprawlCamera: unknown }).sprawlCamera = {
-      look(x: number, y: number, size: number) {
-        at = { x, y };
-        half = size;
-        target = { half, ...at };
-        place();
-      },
-    };
-  }
+  // Straight to a place and a zoom, no travel: the bench (`PerfReport`) and
+  // the scripts' shots point the camera so.
+  eye.look = (x, y, size) => {
+    at = { x, y };
+    half = size;
+    target = { half, ...at };
+    place();
+  };
+  (window as unknown as { sprawlCamera: unknown }).sprawlCamera = eye;
 
   // Subscription is chunk-granular, so panning within a chunk sends nothing.
   function sendViewportIfChanged() {

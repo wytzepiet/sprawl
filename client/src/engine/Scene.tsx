@@ -6,7 +6,7 @@ import { Picker } from "./Picker";
 import { Highlight } from "./Highlight";
 import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
-import PerfReport from "./PerfReport";
+import PerfReport, { run } from "./PerfReport";
 import Signs from "./Signs";
 import Glass from "../ui/Glass";
 import Shipments from "../ui/Shipments";
@@ -18,8 +18,7 @@ function SceneInner() {
     <DayNightProvider>
       <Canvas>
         <Camera />
-        {/* Only while `bun run pan` measures: it names its tab. */}
-        {import.meta.env.DEV && new URLSearchParams(location.search).has("tab") && <PerfReport />}
+        {run && <PerfReport />}
         <DayNightLights>
           <Registered>
             <InstancePoolProvider>

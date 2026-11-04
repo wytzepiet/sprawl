@@ -11,6 +11,6 @@
     "act": "bun client/scripts/act.ts",
     "look": "bun client/scripts/look.ts",
     "cost": "bun client/scripts/cost.ts",
-    "pan": "bun client/scripts/pan.ts"
+    "bench": "bun client/scripts/bench.ts"
   }
 }

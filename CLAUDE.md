@@ -195,11 +195,16 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   map, then the shadow map and the other lights as a whole, and prints what
   each saved a frame, with its meshes, instances, triangles and draw calls,
   in `.dev/cost/`. Under a minute; agrees with itself to a tenth of a ms.
-  The frame is the GPU's when it is well over the CPU's. `bun run pan
-  6,80,8` drives its own Chrome round a tile, still, panning, then
-  zooming, and prints each phase's frames, CPU and GPU time and where the
-  JavaScript went, from the reports a tab it names sends
-  (`PerfReport.tsx`, `.dev/perf.jsonl`); no other tab sends any.
+  The frame is the GPU's when it is well over the CPU's.
+- **Is it fast on a real GPU?** Not the cloud's software GPU, and not the
+  owner's Mac (it throttles, and it is his). Any device runs the bench by
+  opening the game, a preview too, with `?bench` (`?bench=6,80,8` round a
+  tile): the camera still, panning, zooming and far out, fifteen seconds
+  each, and the numbers on its screen at the end, posted to that game's
+  `/perf` as it goes (`PerfReport.tsx`, `server/host/src/perf.rs`). `bun
+  run bench --url <game> --runs` lists the runs a game has, `--read
+  <run>` prints one, phase by phase, with where the JavaScript went;
+  `bun run bench 6,80,8` runs it in its own Chrome.
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main
