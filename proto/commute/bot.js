@@ -50,4 +50,3 @@ for (let tick = 0; s.time < minutes * 60; tick++) {
 }
 console.log('firsts', Object.fromEntries(Object.entries(s.stats.firsts).map(([k, v]) => [k, fmt(v)])));
 console.log(`end: people ${s.people()} best ${s.best} delivered ${s.stats.delivered} left ${s.stats.left} roads ${s.roads}`);
-if (process.env.DEPOT) for (const b of s.buildings.values()) if (b.yard) console.log('depot', xy(b.tile), 'carries', [...b.carries].join(','), 'yard', JSON.stringify(b.yard));

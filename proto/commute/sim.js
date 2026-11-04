@@ -59,7 +59,6 @@ const KINDS = {
   tailor:     { name: 'Tailor',     out: 'clothes',   time: 4.0, needs: { wool: 1 }, why: 'Apartments want clothes. A tailor sews them from wool.' },
 };
 // A shop makes nothing: lorries stock its shelves and residents drive there.
-KINDS.depot = { name: 'Depot', out: null, depot: true, why: 'A depot keeps a big yard of whatever the buildings round it use. Its big lorry fetches in bulk from makers far out; shops and workshops nearby fetch from the depot instead of driving all the way.' };
 KINDS.shop = { name: 'Shop', out: null, shop: true, why: 'Houses buy what they want at a shop, building materials too. Its lorries fetch from whoever makes it; residents drive over to buy.' };
 const WOOD_NEED = REGROW / KINDS.woodcutter.time;   // forest tiles that keep one woodcutter cutting for good
 const SHELF = 2, SHELF_MAX = 30, DAY_NEED = 2.5;   // a shop holds a day's worth: a couple of each, and
@@ -354,11 +353,10 @@ P.place = function (kind, i, free) {
   for (const g in k.needs || {}) b.inBuf[g] = 0;
   if (this.terrain[i] === FOREST) { this.terrain[i] = GRASS; this.wood.delete(i); }   // built over: cleared
   if (k.shop) { b.stock = {}; b.sells = new Set(); b.shelf = {}; }
-  if (k.depot) { b.yard = {}; b.carries = new Set(); }
   this.buildings.set(b.id, b); this.tileB.set(i, b.id);
   this.findDoor(b);
   // lorries to fetch with; raw makers wait to be fetched from
-  for (let n = 0; n < (k.shop ? SHOP_LORRIES : k.needs || k.depot ? 1 : 0); n++) this.addTruck(b);
+  for (let n = 0; n < (k.shop ? SHOP_LORRIES : k.needs ? 1 : 0); n++) this.addTruck(b);
   this.unlocked.add(kind);
   this.release();
   this.first('built:' + kind);
@@ -541,22 +539,6 @@ P.catchment = function () {
   }
   for (const sh of shops) { sh.shelf = {}; for (const g in share.get(sh)) sh.shelf[g] = Math.min(SHELF_MAX, SHELF + Math.ceil(DAY_NEED * share.get(sh)[g])); }
 };
-// A depot keeps a yard of what the buildings round it use, and pins for more.
-P.tickDepot = function (b) {
-  if (this.tick % 60 === 1 || !b.carries.size) {
-    b.carries = new Set();
-    const d = b.door >= 0 ? this.dist(b.door) : new Map();
-    for (const o of this.buildings.values()) {
-      if (o.house || o === b || o.yard || o.door < 0 || (d.get(o.door) ?? Infinity) > DEPOT_REACH) continue;
-      for (const g of o.stock ? o.sells : Object.keys(KINDS[o.kind].needs || {})) b.carries.add(g);
-    }
-  }
-  for (const g of b.carries) {
-    let have = (b.yard[g] || 0) + this.pins.filter(p => p.at === b.id && p.good === g).length;
-    while (have < DEPOT_YARD) { this.addPin(b.id, g, 'input'); have++; }
-  }
-  b.idle = b.carries.size ? '' : 'quiet';
-};
 // A shop out of something with every lorry out fetching: it can't keep up.
 P.swamped = function (b) {
   return !!b.stock && b.idle === 'starved' && b.trucks.every(id => this.vehicles.find(u => u.id === id)?.state !== 'in');
@@ -573,7 +555,6 @@ P.nearestShop = function (h) {
 };
 P.tickProducer = function (b, dt) {
   if (b.stock) return this.tickShop(b);
-  if (b.yard) return this.tickDepot(b);
   const k = KINDS[b.kind];
   // input pins: keep two loads' worth on hand or on the way
   for (const g in k.needs || {}) {
@@ -639,8 +620,7 @@ P.regrow = function (dt) {
 // shop, a shop's or a workshop's lorry to whoever makes what it lacks. Makers of
 // raw goods have no lorry; they stack their yard and wait to be fetched from.
 
-const LOAD = 3, SHOP_LOAD = 10, DEPOT_LOAD = 20;
-const DEPOT_REACH = 14, DEPOT_YARD = 12;   // a depot stocks what buildings this far by road use, this many of each   // crates a lorry carries; a shop's are bigger
+const LOAD = 3, SHOP_LOAD = 10;   // crates a lorry carries; a shop's are bigger
 const SPOTS = 2, SHOP_SPOTS = 4;   // vehicles that can wait beside a building
 const SHOP_LORRIES = 2;   // a busier town needs more shops, not bigger ones
 
@@ -648,11 +628,10 @@ const SHOP_LORRIES = 2;   // a busier town needs more shops, not bigger ones
 P.avail = function (b, g) {
   if (!b) return 0;
   if (b.stock) return b.stock[g] || 0;
-  if (b.yard) return b.yard[g] || 0;
   return KINDS[b.kind].out === g ? b.out : 0;
 };
 P.take = function (b, g) {
-  if (b.stock) b.stock[g]--; else if (b.yard) b.yard[g]--; else b.out--;
+  if (b.stock) b.stock[g]--; else b.out--;
 };
 // What a vehicle has on board, by good.
 P.cargo = function (v) { return v.claims.filter(q => v.bag.includes(q.id)).map(q => q.good); };
@@ -668,8 +647,7 @@ P.source = function (home, g, car) {
   let best = null, bd = Infinity, wait = null, wd = Infinity;
   for (const b of this.buildings.values()) {
     if (b.door < 0 || b === home) continue;
-    // a lorry fetches from whoever makes it, or from a depot that has it in
-    if (b.house || (car ? !b.stock : !(KINDS[b.kind].out === g || (b.yard && !home.yard && this.avail(b, g) > 0)))) continue;
+    if (b.house || (car ? !b.stock : KINDS[b.kind].out !== g)) continue;
     if (car && (!b.sells.has(g) || !this.open())) continue;
     const d = this.dist(b.door).get(home.door);
     if (d === undefined || (car && d > REACH)) continue;
@@ -693,7 +671,7 @@ P.findJob = function (home) {
   const d = this.dist(home.door);
   let best = null, bd = Infinity;
   for (const b of this.buildings.values()) {
-    if (b.house || b.stock || b.yard || b.door < 0 || (taken.get(b.id) || 0) >= JOBS) continue;
+    if (b.house || b.stock || b.door < 0 || (taken.get(b.id) || 0) >= JOBS) continue;
     const dd = d.get(b.door) ?? Infinity;
     if (dd < bd) { bd = dd; best = b; }
   }
@@ -724,7 +702,7 @@ P.fitCars = function (h) {
   for (const v of cars.slice(want)) this.dropVehicle(v);
 };
 P.addTruck = function (b) {
-  const v = { id: this.nextId++, home: b.id, cap: b.stock ? SHOP_LOAD : b.yard ? DEPOT_LOAD : LOAD, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
+  const v = { id: this.nextId++, home: b.id, cap: b.stock ? SHOP_LOAD : LOAD, state: 'in', claims: [], bag: [], route: null, seg: 0, d: 0, wait: 0, ghost: 0, lock: -1, dest: -1, hop: 0 };
   b.trucks.push(v.id);
   this.vehicles.push(v);
   return true;
@@ -796,7 +774,6 @@ P.unpack = function (v) {
       }
     } else {
       if (b.stock) b.stock[q.good] = (b.stock[q.good] || 0) + 1;
-      else if (b.yard) b.yard[q.good] = (b.yard[q.good] || 0) + 1;
       else b.inBuf[q.good] = (b.inBuf[q.good] || 0) + 1;
       this.emit({ type: 'deliver', tile: b.tile, good: q.good, pay: 0 });
     }
@@ -907,7 +884,7 @@ P.step = function (dt) {
   const pop = s.people();
   let st = 0;
   while (st + 1 < STATUSES.length && pop >= STATUSES[st + 1].at) st++;
-  if (st > s.status) { s.status = st; if (st >= 2) s.unlock('depot'); s.computeBounds(); s.first('status:' + st); s.emit({ type: 'status', name: STATUSES[st].name }); }
+  if (st > s.status) { s.status = st; s.computeBounds(); s.first('status:' + st); s.emit({ type: 'status', name: STATUSES[st].name }); }
   s.best = Math.max(s.best || 0, pop);
 
   // trucks parked or at a door
@@ -1018,7 +995,7 @@ P.moveTraffic = function (dt) {
 // ---- the week's pick ---------------------------------------------------------------
 
 P.backlog = function (good) {
-  return this.pins.filter(p => p.good === good && p.by < 0 && this.time - p.born > 8 && !this.B(p.at)?.yard).length;
+  return this.pins.filter(p => p.good === good && p.by < 0 && this.time - p.born > 8).length;
 };
 // Where a shortage of a good really comes from: its makers waiting on an input
 // (follow that input), or too few makers.
@@ -1037,7 +1014,7 @@ P.makeOffer = function () {
   const weight = {};
   // (a want that sends a family away counts thrice a crate a building waits for)
   for (const k of s.unlocked) {
-    const g = KINDS[k].out, n = s.pins.filter(p => p.good === g && p.by < 0 && s.time - p.born > 8 && !s.B(p.at)?.yard).reduce((a, p) => a + (p.kind === 'want' ? 3 : 1), 0);
+    const g = KINDS[k].out, n = s.pins.filter(p => p.good === g && p.by < 0 && s.time - p.born > 8).reduce((a, p) => a + (p.kind === 'want' ? 3 : 1), 0);
     const r = n && s.rootOf(g); if (r) weight[r] = (weight[r] || 0) + n;
   }
   // houses with no shop in reach want one
@@ -1108,6 +1085,6 @@ P.vehiclePose = function (v) {
   return { x: x - hy * off, y: y + hx * off, hx, hy, ghost: v.ghost > 0 };
 };
 
-root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, DAY, CLEAN_DAY_ROADS, SEATS, JOBS, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS, DEPOT_REACH, DEPOT_YARD,
+root.SprawlPinned = { Sim, W, H, GRASS, FOREST, WATER, MEADOW, CLAY, SAND, WOOD, GOODS, KINDS, MAKER, LEVELS, STATUSES, PATIENCE, DAY, CLEAN_DAY_ROADS, SEATS, JOBS, REACH, SHELF, WOOD_NEED, SPOTS, SHOP_SPOTS,
   OUT_CAP, ROAD_COST, BRIDGE_COST, PICK_STEP, HOUSE_ROADS, xy, at, cheb, edgeLen, STEPS4, STEPS8 };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -173,13 +173,9 @@ const C = {
 // ---- icons, drawn in a unit box centred on 0,0 ------------------------------------
 // a shop has no good of its own: a dark front under a striped awning
 const SHOP_COL = '#4d5560';
-const DEPOT_COL = '#7a6a58';
-const kindCol = k => KINDS[k].shop ? SHOP_COL : KINDS[k].depot ? DEPOT_COL : GOODS[KINDS[k].out].col;
-const kindIcon = k => KINDS[k].shop ? 'shop' : KINDS[k].depot ? 'depot' : KINDS[k].out;
+const kindCol = k => KINDS[k].shop ? SHOP_COL : GOODS[KINDS[k].out].col;
+const kindIcon = k => KINDS[k].shop ? 'shop' : KINDS[k].out;
 const ICON = {
-  depot(g) { const c = g.fillStyle;
-    for (const [x, y] of [[-0.3, 0.02], [0.02, 0.02], [-0.14, -0.3]]) { g.fillStyle = c; rr(g, x, y, 0.28, 0.28, 0.04); g.fill(); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x + 0.04, y + 0.12, 0.2, 0.04); }
-    g.fillStyle = c; },
   shop(g) { const c = g.fillStyle;
     g.beginPath(); g.roundRect(-0.3, -0.05, 0.6, 0.38, 0.04); g.fill();
     for (let k = 0; k < 4; k++) { g.fillStyle = k % 2 ? 'rgba(255,255,255,.55)' : c; g.beginPath(); g.moveTo(-0.38 + k * 0.19, -0.32); g.lineTo(-0.19 + k * 0.19, -0.32); g.lineTo(-0.19 + k * 0.19, -0.08); g.quadraticCurveTo(-0.285 + k * 0.19, 0.02, -0.38 + k * 0.19, -0.08); g.fill(); }
@@ -587,7 +583,7 @@ function drawProducer(b, now) {
   });
   // its jobs down the left edge: filled unless the worker is driving to or
   // from work, faint while nobody has the job
-  if (!b.stock && !b.yard) {
+  if (!b.stock) {
     const hired = sim.vehicles.filter(u => u.car && u.job === b.id);
     for (let n = 0; n < S.JOBS; n++) {
       const w = hired[n];
@@ -595,14 +591,6 @@ function drawProducer(b, now) {
       if (w && !w.commuting) { g.fillStyle = '#fff'; g.fill(); }
       else { g.strokeStyle = w ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.3)'; g.lineWidth = 0.025; g.stroke(); }
     }
-  }
-  // a depot's yard: a column for each good it keeps
-  if (b.yard) {
-    [...b.carries].slice(0, 5).forEach((gd, n) => {
-      const x0 = -0.32 + n * 0.135, full = Math.min(1, (b.yard[gd] || 0) / S.DEPOT_YARD);
-      g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.roundRect(x0, 0.12, 0.11, 0.24, 0.025); g.fill();
-      if (full > 0) { g.fillStyle = GOODS[gd].col; g.fillRect(x0 + 0.015, 0.345 - 0.21 * full, 0.08, 0.21 * full); }
-    });
   }
   // a shop's shelves: a column for each good it sells, as full as the shelf
   if (b.stock) {
@@ -1032,7 +1020,7 @@ function goodIcon(good) {
   icon(t, good, 0.5, 0.5, 0.62, GOODS[good].col);
   return c;
 }
-const ORDER = ['shop', 'depot', 'fishery', 'woodcutter', 'sawmill', 'farm', 'bakery', 'claypit', 'brickworks', 'workshop', 'sandpit', 'glassworks', 'sheep', 'tailor'];
+const ORDER = ['shop', 'fishery', 'woodcutter', 'sawmill', 'farm', 'bakery', 'claypit', 'brickworks', 'workshop', 'sandpit', 'glassworks', 'sheep', 'tailor'];
 function buildBar(fresh) {
   const bar = document.getElementById('bar');
   bar.innerHTML = '';
@@ -1112,25 +1100,6 @@ function panel() {
     const rm = document.createElement('button'); rm.className = 'quiet';
     rm.textContent = 'Move';
     rm.onclick = () => { sim.removeBuilding(b.id); selected = null; panel(); buildBar(); setTool('shop'); };
-    acts.append(rm);
-    el.appendChild(acts);
-  } else if (b.yard) {
-    h.innerHTML = `Depot <small>for what's used within ${S.DEPOT_REACH} tiles</small>`;
-    el.appendChild(h);
-    const f = document.createElement('div'); f.className = 'flow';
-    f.append('Yard');
-    for (const gd of b.carries) { const ic = goodIcon(gd); if (!(b.yard[gd] > 0)) ic.style.opacity = 0.3; f.append(ic, `${b.yard[gd] || 0}/${S.DEPOT_YARD} `); }
-    if (!b.carries.size) f.append('empty');
-    el.appendChild(f);
-    const say = document.createElement('div'); say.className = 'say';
-    if (b.door < 0) { say.className += ' bad'; say.textContent = 'Not on a road yet.'; }
-    else if (!b.carries.size) say.textContent = `Nothing within ${S.DEPOT_REACH} road tiles uses anything yet. Put it near shops and workshops.`;
-    else say.textContent = 'Its big lorry fetches in bulk, from far out if it must. Shops and workshops nearby fetch from here instead.';
-    el.appendChild(say);
-    const acts = document.createElement('div'); acts.className = 'acts';
-    const rm = document.createElement('button'); rm.className = 'quiet';
-    rm.textContent = 'Move';
-    rm.onclick = () => { sim.removeBuilding(b.id); selected = null; panel(); buildBar(); setTool('depot'); };
     acts.append(rm);
     el.appendChild(acts);
   } else {
