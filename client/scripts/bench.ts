@@ -80,7 +80,7 @@ for (const s of summarise(reports)) {
   const worst = mine.flatMap((r) => r.long).sort((a, b) => b.ms - a.ms)[0];
   if (worst) console.log(`       longest frame ${worst.ms} ms: ${worst.scripts.slice(0, 3).map((s) => `${s.what} ${s.ms}`).join(", ") || "no script"}`);
 }
-for (const [phase, title] of [["cost", "what each kind costs, far out, by day"], ["n-cost", "close in, by night"]]) {
+for (const [phase, title] of [["cost", "what each kind costs, far out, by day"], ["d-cost", "close in, by day"], ["n-cost", "close in, by night"]]) {
   const cost = (lines.find((r) => r.phase === phase) as unknown as { cost: CostReport } | undefined)?.cost;
   if (cost) console.log(`\n${costLines(cost, title).join("\n")}`);
 }

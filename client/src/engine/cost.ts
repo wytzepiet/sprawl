@@ -1,3 +1,4 @@
+import { night } from "./lights";
 import { crownsBaked } from "./trees";
 import { renderFrame, setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "@babylonjs/lite";
 
@@ -130,10 +131,12 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
         }
       };
       const shown = [...kinds].filter(([kind, ms]) => kind.includes(only) && ms.some((m) => active.has(m) || casters.has(m)));
-      // What belongs to no one mesh: the shadow map's pass as a whole.
-      const whole: Record<string, () => () => void> = sun
-        ? { "(shadow map)": () => (setShadowGeneratorEnabled(sun, false), () => setShadowGeneratorEnabled(sun, true)) }
-        : {};
+      // What belongs to no one mesh: the shadow map's pass as a whole, and
+      // the night's lights.
+      const whole: Record<string, () => () => void> = {
+        ...(sun ? { "(shadow map)": () => (setShadowGeneratorEnabled(sun, false), () => setShadowGeneratorEnabled(sun, true)) } : {}),
+        ...(night.on > 0 ? { "(night lights)": () => ((night.off = true), () => (night.off = false)) } : {}),
+      };
       const medians = () => new Map([...saved].map(([name, samples]) => [name, median(samples.map((x) => x.frame))]));
       let done = 0;
       for (let r = 0, before = medians(); r < rounds; r++, done = r) {
@@ -154,7 +157,7 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
           }
           await against(changes);
         }
-        if (!only && sun) await against(Object.entries(whole).map(([name, change]) => [`hide ${name}`, change]));
+        if (!only && Object.keys(whole).length) await against(Object.entries(whole).map(([name, change]) => [`hide ${name}`, change]));
         const now = medians();
         if (r >= 1 && [...now].every(([name, m]) => Math.abs(m - (before.get(name) ?? Infinity)) <= STEADY)) {
           done = r + 1;

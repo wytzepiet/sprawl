@@ -59,8 +59,9 @@ export const unbeam = (id: number) => void beams.delete(id);
 export const beamCount = () => beams.size;
 
 /** How on the lights are, 0 by day to 1 by night: what the lamps' heads
- *  glow with (`props.ts`). */
-export const night = { on: 0 };
+ *  glow with (`props.ts`); and whether they are held off whatever the
+ *  hour, to see what they cost (`cost.ts`). */
+export const night = { on: 0, off: false };
 
 /** The night's lights, set up before the scene is registered; `dark` says
  *  how far toward night it is, 0 to 1. */
@@ -79,7 +80,7 @@ export function nightLights(ctx: EngineContext, dark: () => number): () => void 
     const d = dark();
     night.on = d;
     const { cx, cy, radius } = groundCover(scene, canvas);
-    const k = d * Math.min(1, Math.max(0, (FARTHEST - radius) / (FARTHEST / 4)));
+    const k = night.off ? 0 : d * Math.min(1, Math.max(0, (FARTHEST - radius) / (FARTHEST / 4)));
     let [n, b] = [0, 0];
     if (k > 0) {
       const reach = radius + LAMP.range;

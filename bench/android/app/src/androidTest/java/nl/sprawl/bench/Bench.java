@@ -10,7 +10,7 @@ import org.junit.Test;
 /**
  * The bench (client/src/engine/PerfReport.tsx) on this phone: Chrome opened
  * on the game's `?bench`, past its first-run screens, and left for the
- * bench's seventy seconds and more. The page posts its own reports to the
+ * bench's first four minutes. The page posts its own reports to the
  * game; `url` and `tab` come from the run (.github/workflows/bench.yml).
  */
 public class Bench {
@@ -29,7 +29,7 @@ public class Bench {
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
     // What the screen showed, for the run's files (bench.yml pulls this folder).
     sh(shell, "mkdir -p /sdcard/Download/bench\n");
-    for (int s = 15; s <= 105; s += 30) {
+    for (int s = 15; s <= 225; s += 30) {
       Thread.sleep(s == 15 ? 15_000 : 30_000);
       sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + s + "s.png\n");
     }
