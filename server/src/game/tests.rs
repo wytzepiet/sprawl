@@ -249,7 +249,7 @@ pub(crate) fn arrival_log(days: u64) -> Vec<Move> {
         // seven, less the shop's two and the pump's one, nine hours
         // each, less the odd late morning, a lunch out, a dinner near
         // work, and the minute or two parking at the kerb.
-        assert!((70.0..=99.0).contains(&desks), "the labs received {desks}h");
+        assert!((66.0..=99.0).contains(&desks), "the labs received {desks}h");
         // Lunches over a whole day: the shops have no depot here, so
         // by the third day their shelves have run down some.
         assert!(sold(lunch, model::needs::Need::Eat) > 1.4, "lunch shop sold {}h", sold(lunch, model::needs::Need::Eat));
@@ -273,8 +273,9 @@ fn both_shifts_are_worked() {
     let day = DAY_MS as u64;
     game.run_to(2 * day);
     let worked = game.world.books[&pumps].before(2 * day).served.get(&model::needs::Need::Work).copied().unwrap_or(0.0);
-    // Two eight-hour shifts, less the odd late start.
-    assert!(worked > 12.0, "the kiosk was worked {worked}h");
+    // Two shifts, less the odd late start: the evening hand comes at
+    // four, and the evening is short.
+    assert!(worked > 11.0, "the kiosk was worked {worked}h");
 }
 
 /// Nobody wants for anything: everyone has a job, and whatever they
@@ -1235,13 +1236,14 @@ fn the_opening_from_the_harbour() {
 /// One lorry, its depot a short street from the harbour, fetches the
 /// starter pack: each load is lifted off in the yard and the lorry is
 /// off again once the forklift is done, and the whole pack is home
-/// within fourteen hours of the first ferry sailing: ten loads, more
+/// within seventeen hours of the first ferry sailing: ten loads, more
 /// than one lorry keeps up with, so a second is the opening's first
 /// want. A round trip is two drives, each ending in a backing into a
-/// dock; it once also stood ten minutes at the depot, a van's
+/// dock: at the depot from the street, past its gate, a few tiles at a
+/// walking pace; it once also stood ten minutes at the depot, a van's
 /// unloading, and every load took longer.
 #[test]
-fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
+fn one_lorry_fetches_the_starter_pack_in_seventeen_hours() {
     let mut world = street();
     let harbour = harbour_of(&world);
     let x = HARBOUR_X - 12;
@@ -1257,7 +1259,7 @@ fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
     let (sailed, hour) = (game.now, day / 24);
     let left = |w: &World| crate::haul::packages(w).iter().filter(|(t, ..)| !t.outbound).count();
     let mut parked_home = None;
-    while left(&game.world) > 0 && game.step_to(sailed + 14 * hour) {
+    while left(&game.world) > 0 && game.step_to(sailed + 17 * hour) {
         let (c, now) = (car_of(&game.world, lorry), game.now);
         match (c.trip.is_none() && game.world.map.claims.get(&lorry) == Some(&depot), parked_home) {
             (true, None) => parked_home = Some(now),
@@ -1268,7 +1270,7 @@ fn one_lorry_fetches_the_starter_pack_in_fourteen_hours() {
             _ => {}
         }
     }
-    assert_eq!(left(&game.world), 0, "{} packages still out after fourteen hours", left(&game.world));
+    assert_eq!(left(&game.world), 0, "{} packages still out after seventeen hours", left(&game.world));
     eprintln!("the starter pack home in {:.2} hours", (game.now - sailed) as f64 / hour as f64);
 }
 

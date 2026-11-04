@@ -56,8 +56,9 @@ impl Map {
     /// where they are. Each stretch between changes of gear (`backing`) is
     /// measured on its own, as the client draws it: a change of gear is a
     /// point the vehicle stops at, not a corner it rounds, and is where it
-    /// is, not on a lane.
-    pub fn compute_segment_lengths(&self, route: &[EntityId], from_lot: usize, to_lot: usize, backing: &[[usize; 2]]) -> Vec<f64> {
+    /// is, not on a lane. An edge driven by a parking plan is as long as
+    /// the plan.
+    pub fn compute_segment_lengths(&self, route: &[EntityId], from_lot: usize, to_lot: usize, backing: &[[usize; 2]], manoeuvres: &[model::Manoeuvre]) -> Vec<f64> {
         let centers = self.route_positions(route);
         let n = centers.len();
         let mut lengths = vec![0.0]; // index 0 unused
@@ -73,6 +74,11 @@ impl Map {
             }
         }
         lengths.resize(route.len().max(1), 1.0);
+        for m in manoeuvres {
+            if let Some(l) = lengths.get_mut(m.edge + 1) {
+                *l = m.moves.iter().map(|m| m.length).sum();
+            }
+        }
         lengths
     }
 }
