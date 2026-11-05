@@ -28,6 +28,8 @@ export function connectLevel(
   onLayout: (json: string) => void,
 ): LevelConnection {
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+  // A worker that fails dies quietly, and the game with it: said aloud.
+  worker.onerror = (e) => reportError(e.error ?? new Error(`level worker: ${e.message || "failed to start"} ${e.filename}:${e.lineno}`));
   const post = (m: ToWorker) => worker.postMessage(m);
   let replayed: ((json: string) => void)[] = [];
   worker.onmessage = (e: MessageEvent<FromWorker>) => {

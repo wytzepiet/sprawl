@@ -30,6 +30,11 @@ let lastState = "";
 let lastLayout = "";
 let ticks = 0;
 
+// A promise that fails here is thrown, so the page's `onerror` hears it.
+self.addEventListener("unhandledrejection", (e) => {
+  throw e.reason;
+});
+
 const post = (m: FromWorker) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m);
 
 function flush(force = false) {
