@@ -14,7 +14,7 @@ import { FISHERY } from "./fishery";
 import { HOUSES } from "./house";
 import { FARM } from "./farm";
 import { QUARRY } from "./quarry";
-import { BARN_DOOR, SAWMILL } from "./sawmill";
+import { BARN_DOOR, SAWMILL, WOODCUTTER } from "./sawmill";
 import { BAKERY, CEMENT, MACHINE, STEELWORKS } from "./works";
 import { glow, glowing, placing } from "./finishes";
 import type { Built } from "./kit";
@@ -47,7 +47,8 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
   if (kind === "Shop") return ["shopHall", SHOP_HALL, -1];
   if (kind === "Fishery") return ["fishery", FISHERY, gate];
   if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, odd];
-  if (kind === "Sawmill" || kind === "Woodcutter") return ["sawmill", SAWMILL, gate];
+  if (kind === "Sawmill") return ["sawmill", SAWMILL, gate];
+  if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate];
   if (kind === "ClayPit" || kind === "SandPit") return ["quarry", QUARRY, gate];
   // Until each has its own model, the nearest of the kit's.
   const works: Partial<Record<Building["kind"], [string, Built]>> = { Bakery: ["bakery", BAKERY], Tailor: ["bakery", BAKERY], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
