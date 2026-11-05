@@ -3,7 +3,7 @@ import { For, Show, createEffect, createRoot, createSignal } from "solid-js";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { select } from "../state/selection";
 import { selected } from "../state/selection";
-import { getEntity } from "../state/gameObjects";
+import { eachEntity, getEntity, reached } from "../state/gameObjects";
 import { now } from "../state/town";
 import { BAD, Bar, GOOD, Press, Row, Section, ROUND } from "./kit";
 import { PATIENCE_MS } from "../generated/rows";
@@ -70,14 +70,39 @@ export function InspectHead() {
 export function InspectBody() {
   return (
     <Show when={thing()?.kind === "building" && thing()}>
-      {(t) => <BuildingLines b={(t() as { b: Building }).b} />}
+      {(t) => <BuildingLines b={(t() as { b: Building }).b} id={selected()!} />}
     </Show>
   );
 }
 
+/** How far a family drives to a shop (`town::homes::REACH`). */
+const REACH = 26;
+
+/** Why a want is not met yet, as near as the client can tell: the link
+ *  in the chain that is missing, so the mayor knows what to build. */
+function why(home: Building, homeId: number, good: Good): string {
+  const entry = getEntity(homeId);
+  if (!entry || !reached(entry)) return "no road to the house";
+  const at = home.tiles[0];
+  let shop: Building | null = null, best = Infinity, maker = false;
+  eachEntity((e) => {
+    if (e.object.kind !== "Building") return;
+    const b = e.object.data as Building;
+    if (BLUEPRINTS[b.kind].makes === good) maker = true;
+    if (b.kind !== "Shop" || !reached(e)) return;
+    const d = Math.max(Math.abs(b.tiles[0].x - at.x), Math.abs(b.tiles[0].y - at.y));
+    if (d <= REACH && d < best) [shop, best] = [b, d];
+  });
+  const name = GOODS[good].label.toLowerCase();
+  if (!shop) return "no shop within reach";
+  if (!maker) return `nobody makes ${name}`;
+  if (((shop as Building).stocks[good]?.level ?? 0) < 1) return `the shop is out of ${name}`;
+  return "on the shelf: the car goes soon";
+}
+
 const stocks = (s: { [key in Good]?: Stock }) => Object.entries(s) as [Good, Stock][];
 
-function BuildingLines(props: { b: Building }) {
+function BuildingLines(props: { b: Building; id: number }) {
   const bp = () => BLUEPRINTS[props.b.kind];
   return (
     <>
@@ -92,7 +117,7 @@ function BuildingLines(props: { b: Building }) {
                     return (
                       <Row label={GOODS[w.good].label}>
                         <Bar value={left()} color={left() < 0.3 ? BAD : GOOD} />
-                        <Text size={12} soft>{w.by !== null ? "on its way" : "waiting"}</Text>
+                        <Text size={12} soft>{w.by !== null ? "on its way" : why(props.b, props.id, w.good)}</Text>
                       </Row>
                     );
                   }}
