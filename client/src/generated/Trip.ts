@@ -39,8 +39,9 @@ from_lot: number, to_lot: number,
  */
 backing: Array<[number, number]>, 
 /**
- * How far along the route each change of gear is, by `progress`: the
- * client drives each stretch between them to fit exactly.
+ * How far along the route, by `progress`, each change of gear and each
+ * end of a parking move is: the client drives each stretch between
+ * them to fit exactly.
  */
 cusps: Array<number>, 
 /**

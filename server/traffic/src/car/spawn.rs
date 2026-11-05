@@ -126,7 +126,7 @@ pub(crate) fn trip(
         lanes: world.map.lanes_for(&route),
         from_lot,
         to_lot,
-        cusps: cusps(&backing, &along),
+        cusps: cusps(&backing, &manoeuvres, &along),
         manoeuvres,
         leaves,
         stands: world.map.pose_held(car_id),
@@ -243,10 +243,15 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
     v
 }
 
-/// How far along the route each change of gear is, as its physics measures
-/// it: where a vehicle stops and pulls away the other way.
-pub fn cusps(backing: &[[usize; 2]], along: &[f64]) -> Vec<f64> {
-    map::geometry::parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
+/// How far along the route, as its physics measures it, each stretch the
+/// client draws on its own starts: at each change of gear, and at each end
+/// of a parking move, so a vehicle stops where the server has it stop.
+pub fn cusps(backing: &[[usize; 2]], manoeuvres: &[model::Manoeuvre], along: &[f64]) -> Vec<f64> {
+    let n = along.len();
+    let mut cuts: Vec<usize> = backing.iter().flatten().copied().chain(manoeuvres.iter().flat_map(|m| [m.edge, m.edge + 1])).filter(|&k| k > 0 && k + 1 < n).collect();
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.into_iter().map(|k| along[k]).collect()
 }
 
 /// How far along a route each node of it is, from its segments' lengths:

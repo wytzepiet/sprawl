@@ -632,8 +632,11 @@ impl Map {
         };
         // The dock's frame: x along the street from the gate, y out from
         // the yard, the street's middle line half a tile out from its front.
-        let frame = Frame { o: grid_at(u_gate, -0.5), x: eu, y: [-ev[0], -ev[1]] };
-        let local = |u: f64, v: f64| (u - u_gate, -0.5 - v);
+        // Turned so that it is never a mirror of the map's own, as `park`
+        // draws: x runs along the street whichever way keeps it so.
+        let frame = Frame { o: grid_at(u_gate, -0.5), x: [ev[1], -ev[0]], y: [-ev[0], -ev[1]] };
+        let s = frame.x[0] * eu[0] + frame.x[1] * eu[1];
+        let local = move |u: f64, v: f64| (s * (u - u_gate), -0.5 - v);
         let span = |u0: f64, v0: f64, u1: f64, v1: f64| {
             let ((x0, y0), (x1, y1)) = (local(u0, v0), local(u1, v1));
             park::Rect::span(x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1))
@@ -652,7 +655,7 @@ impl Map {
         let rig = park::LORRY;
         let at = |p: &Pose| {
             let (x, y) = local(p.at[0], p.at[1]);
-            park::Pose::new(x, y, -p.heading)
+            park::Pose::new(x, y, (-p.heading.sin()).atan2(s * p.heading.cos()))
         };
         let docked: Vec<park::Pose> = docks.iter().map(|(p, ..)| at(p).ahead(-rig.cab.axle())).collect();
         let Some(here) = self.objects.get(street).and_then(|e| e.position) else { return Vec::new() };
@@ -661,7 +664,7 @@ impl Map {
         let o = frame.o;
         let to_local = |x: f64, y: f64| {
             let q = [x - o[0], y - o[1]];
-            (q[0] * eu[0] + q[1] * eu[1], -(q[0] * ev[0] + q[1] * ev[1]))
+            (q[0] * frame.x[0] + q[1] * frame.x[1], -(q[0] * ev[0] + q[1] * ev[1]))
         };
         let (hx, hy) = to_local(here.x as f64 + 0.5, here.y as f64 + 0.5);
         let line = |h: f64| park::ways::Line { x: hx + h.sin() * ROAD.lane, y: hy - h.cos() * ROAD.lane, heading: h };

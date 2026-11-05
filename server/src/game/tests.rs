@@ -1509,7 +1509,15 @@ fn parking_trips() {
                 legs[k] += 1;
             }
         }
-        game.step_to(game.now + 1000);
+        // Where each is along its trip, a tenth of a second at a time.
+        for &(car, ..) in &runs {
+            let Some(t) = game.world.map.car(car).and_then(|c| c.trip.as_ref()) else { continue };
+            let (p, v) = t.at(game.now);
+            if let Some(rec) = trips.iter_mut().rev().find(|r| r["car"] == car).filter(|r| r["total_route_length"] == t.total_route_length) {
+                rec["samples"].as_array_mut().map(|a| a.push(serde_json::json!([p, v]))).unwrap_or_else(|| rec["samples"] = serde_json::json!([[p, v]]));
+            }
+        }
+        game.step_to(game.now + 100);
     }
     eprintln!("{} trips, legs {legs:?}, gone {:?}", trips.len(), runs.iter().filter(|r| game.world.map.car(r.0).is_none()).map(|r| r.0).collect::<Vec<_>>());
     let w = text.lines().filter(|l| !l.starts_with('#')).map(|l| l.len()).max().unwrap() as i32;

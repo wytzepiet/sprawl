@@ -957,8 +957,9 @@ pub struct Trip {
     /// lorry backing into its dock. Each end of one is a change of gear.
     #[serde(default)]
     pub backing: Vec<[usize; 2]>,
-    /// How far along the route each change of gear is, by `progress`: the
-    /// client drives each stretch between them to fit exactly.
+    /// How far along the route, by `progress`, each change of gear and each
+    /// end of a parking move is: the client drives each stretch between
+    /// them to fit exactly.
     #[serde(default)]
     pub cusps: Vec<f64>,
     /// The edges driven by a parking plan, laid out across a lot.
