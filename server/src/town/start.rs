@@ -70,7 +70,7 @@ fn shore(map: &mut Map) -> Option<(GridCoord, GridCoord)> {
         for i in 0..(8 * r).max(1) {
             let (x, y) = ring(r, i);
             for facing in 0..4 {
-                let tiles: Vec<GridCoord> = Map::footprint(GridCoord { x, y }, model::blueprint::plot(BuildingKind::Fishery, facing).size).collect();
+                let tiles: Vec<GridCoord> = Map::footprint(GridCoord { x, y }, model::blueprint::plot(BuildingKind::Fishery, facing)).collect();
                 if !map.may_stand_on(&tiles, BuildingKind::Fishery, facing) || !map.on_shore(&tiles, facing) {
                     continue;
                 }

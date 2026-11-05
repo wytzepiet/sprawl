@@ -545,20 +545,13 @@ pub struct Move {
 }
 
 /// An edge of a trip driven by a parking plan, the edge from `route[edge]`
-/// on: the moves driven from `from`, the cab's rear axle, its trailer
-/// pointing `trailer` behind it (`park::ways`). `towed`, the moves steer
-/// the trailer's axle, as a lorry is backed, and the cab follows its nose
-/// (`park::tow`); else the cab's rear axle, the trailer drawn after.
+/// on: the moves driven from `from`, the rear axle (`park::ways`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Manoeuvre {
     pub edge: usize,
     pub from: Pose,
-    #[serde(default)]
-    pub trailer: f64,
     pub moves: Vec<Move>,
-    #[serde(default)]
-    pub towed: bool,
 }
 
 /// A good: what a yard, a shelf or a crate holds, and what a family

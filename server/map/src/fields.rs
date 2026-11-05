@@ -280,19 +280,18 @@ impl Map {
 
     /// Where a run leaves the farm and comes back to it: the middle of
     /// the barn's back row, so the tractor goes out to the fields behind
-    /// and round, never through the yard to the street side.
+    /// and round, never out the front to the street side.
     pub fn gate(&self, farm: EntityId) -> Option<GridCoord> {
         let Some(e) = self.objects.get(farm) else { return None };
         let GameObject::Building(b) = &e.object else { return None };
-        let (pos, p) = Self::lie(&b.tiles, b.kind, b.facing);
-        let ((bx, by), (bw, bh)) = p.building;
+        let (pos, (bw, bh)) = Self::bounds(&b.tiles);
         let (fx, fy) = model::blueprint::FACINGS[b.facing as usize % 4];
         let back = |street: i32, size: u8| match street {
             0 => size / 2,
             1 => 0,
             _ => size - 1,
         };
-        Some(GridCoord { x: pos.x + (bx + back(fx, bw)) as i32, y: pos.y + (by + back(fy, bh)) as i32 })
+        Some(GridCoord { x: pos.x + back(fx, bw) as i32, y: pos.y + back(fy, bh) as i32 })
     }
 
     /// A run over a batch of tiles as a farmer drives one, in two passes.
@@ -653,7 +652,7 @@ mod tests {
     }
 
     /// §12.8: a farm reached by a street claims a rectangle of grass
-    /// round its plot with the plot cut out, near enough square, as much
+    /// behind its plot, near enough square, as much
     /// as a shift ploughs and no more, all of it grass and none of it
     /// across the street; a road behind the plot is its edge and the
     /// field grows along it instead, with the road's side made up for; a house in the
@@ -665,21 +664,22 @@ mod tests {
         let (_, tiles) = farm_at(&mut world, 10);
         let wanted = capacity(BuildingKind::Farm) as usize;
         let (x0, y0, x1, y1, _) = rect(&tiles);
-        let (w, h) = model::blueprint::plot(BuildingKind::Farm, 0).size;
+        let (w, h) = model::blueprint::plot(BuildingKind::Farm, 0);
         let area = ((x1 - x0 + 1) * (y1 - y0 + 1)) as usize;
-        assert!(area >= tiles.len() + (w * h) as usize && area <= tiles.len() + (w * h) as usize + h as usize, "the land is not the rectangle less the plot and a sliver beside it");
+        assert!(area >= tiles.len() && area <= tiles.len() + h as usize, "the land is not the rectangle behind the plot and a sliver beside it");
+        let _ = w;
         assert!(tiles.len() <= wanted && tiles.len() * 4 >= wanted * 3, "the farm claimed {} tiles of {wanted}", tiles.len());
         assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
-        assert!(y0 == 1 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not round the plot");
+        assert!(y0 == 2 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not behind the plot");
         assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
         assert_eq!(world.laid, 0);
         // Bounded: a road four tiles behind the plot walls the land in,
         // and the field runs along the road instead.
         let mut walled = land();
-        walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 6 }).collect::<Vec<_>>());
+        walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 5 }).collect::<Vec<_>>());
         let (_, tiles) = farm_at(&mut walled, 10);
         let (_, y0, _, y1, _) = rect(&tiles);
-        assert!(y0 == 1 && y1 <= 5 && tiles.len() * 4 >= wanted * 3, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
+        assert!(y0 >= 1 && y1 <= 4 && tiles.len() * 4 >= wanted * 3, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
         // A house in the field is cut out, and the field made up for it.
         let mut cramped = land();
         cramped.place_building(GridCoord { x: 4, y: 6 }, BuildingKind::House, 2);

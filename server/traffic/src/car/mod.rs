@@ -35,15 +35,14 @@ pub const DECELERATION: f64 = 0.4;
 pub const HALT: f64 = 0.15;
 pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
 /// How far a vehicle reaches ahead of and behind the point the simulation
-/// moves. A car is 0.29 tiles about its middle; a lorry is a cab-over
-/// tractor with a semi-trailer behind it, 0.67 tiles in all, and the point
-/// is the tractor. Following distance and the hold on a junction are by
+/// moves. Each is its length about its middle: a car 0.29 tiles, a
+/// lorry, a rigid box truck, 0.47. Following distance and the hold on a junction are by
 /// the vehicle's own length.
 pub fn nose(role: model::CarRole) -> f64 {
     match role {
         model::CarRole::Private => 0.145,
         model::CarRole::Van | model::CarRole::Tractor => 0.185,
-        model::CarRole::Truck => 0.085,
+        model::CarRole::Truck => 0.235,
         // Never on a road; the water has no queue.
         model::CarRole::Ferry => 0.5,
     }
@@ -52,7 +51,7 @@ pub fn tail(role: model::CarRole) -> f64 {
     match role {
         model::CarRole::Private => 0.145,
         model::CarRole::Van | model::CarRole::Tractor => 0.185,
-        model::CarRole::Truck => 0.58,
+        model::CarRole::Truck => 0.235,
         model::CarRole::Ferry => 0.5,
     }
 }

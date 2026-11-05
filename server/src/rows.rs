@@ -3,13 +3,13 @@
 
 #[cfg(test)]
 mod tests {
-    use model::blueprint::{blueprint, lot};
+    use model::blueprint::{blueprint, size};
     use model::BuildingKind;
 
     /// The game's half of each row, written where the client reads it,
-    /// beside ts-rs's types (`.cargo/config.toml`): its body, its lot,
+    /// beside ts-rs's types (`.cargo/config.toml`): its size,
     /// what it makes and from what, its seats, its bays at the kerb and docks
-    /// in its yard, and its vehicles. `blueprints.ts`
+    /// at its front, and its vehicles. `blueprints.ts`
     /// keeps only the look.
     #[test]
     fn the_client_reads_the_rows() {
@@ -20,18 +20,16 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { size: [number, number]; lot: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; bays: number; docks: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {\n",
+             export const ROWS: Record<BuildingKind, { size: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; bays: number; docks: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
-            let (size, yard) = lot(kind);
             let takes: Vec<_> = b.takes.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
             let takes = if takes.is_empty() { "{}".into() } else { format!("{{ {} }}", takes.join(", ")) };
             let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
             ts += &format!(
-                "  {kind:?}: {{ size: {}, lot: {}, makes: {makes}, every: {}, takes: {takes}, seats: {}, bays: {}, docks: {}, lorries: {}, forklifts: {}, farm: {}, loud: {} }},\n",
-                pair(size),
-                pair(yard),
+                "  {kind:?}: {{ size: {}, makes: {makes}, every: {}, takes: {takes}, seats: {}, bays: {}, docks: {}, lorries: {}, forklifts: {}, farm: {}, loud: {} }},\n",
+                pair(size(kind)),
                 b.every,
                 b.seats,
                 b.bays(),

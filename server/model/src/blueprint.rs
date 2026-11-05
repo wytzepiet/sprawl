@@ -55,8 +55,8 @@ pub struct Blueprint {
 }
 
 impl Blueprint {
-    /// Docks in its yard: one for each of its lorries, and one for each
-    /// lorry that may wait to load.
+    /// Docks at its front: one for each of its trucks, and one for each
+    /// truck that may wait to load, two at most.
     pub fn docks(&self) -> usize {
         (self.lorries as usize + self.queue as usize).min(2)
     }
@@ -146,62 +146,38 @@ pub const CRATE: f64 = 1.0;
 /// 1 toward +x, 2 toward +y, 3 toward -x.
 pub const FACINGS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
-/// A plot as it lies on the grid for a facing: its size, and where the
-/// building and the lot are within it, as (offset, size).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Plot {
-    pub size: (u8, u8),
-    pub building: ((u8, u8), (u8, u8)),
-    pub lot: Option<((u8, u8), (u8, u8))>,
-}
-
-/// How many tiles of frontage hold `n` square kerb bays, a bay's width
-/// apart within a fifth of a tile of each end (`SQUARE_PITCH`,
+/// How many tiles of frontage a building needs before its street: its
+/// docks side by side at its gate, a truck backed into each, room either
+/// side of them for a truck to swing its nose round as it backs in, and
+/// its square kerb bays out from them, a bay's width apart, within a fifth
+/// of a tile of each end (`DOCK_PITCH`, `DOCK_CLEAR`, `SQUARE_PITCH`,
 /// `WALL_INSET` in `map/lots.rs`).
-pub fn frontage(n: usize) -> u8 {
-    if n == 0 {
+pub fn frontage(bays: usize, docks: usize) -> u8 {
+    if bays + docks == 0 {
         return 0;
     }
-    ((n - 1) as f64 * 0.27 + 0.4 + 0.25).ceil() as u8
+    let docks = if docks > 0 { docks as f64 * 0.3 + 2.0 * 0.35 } else { 0.0 };
+    (bays as f64 * 0.27 + docks + 0.4).ceil() as u8
 }
 
-/// A yard's size, wide along the street and deep, for so many docks: one
-/// row before the building, the docks side by side at its gate, a lorry
-/// backed into each from the street, and room either side for its
-/// trailer to swing round. None for none.
-pub fn yard(docks: usize) -> (u8, u8) {
-    match docks {
-        0 => (0, 0),
-        _ => (3, 1),
-    }
+/// Whether a kind has a front: a gate in the middle of the side toward
+/// its street, its docks before it, a truck backed into each to its
+/// loading door.
+pub fn fronted(kind: BuildingKind) -> bool {
+    blueprint(kind).docks() > 0
 }
 
-/// A kind's size and lot, worked out from what it needs room for.
-pub fn lot(kind: BuildingKind) -> ((u8, u8), (u8, u8)) {
+/// A kind's size, wide along its street and deep: the building, as wide
+/// as its frontage needs.
+pub fn size(kind: BuildingKind) -> (u8, u8) {
     let b = blueprint(kind);
-    let (yw, yd) = yard(b.docks());
-    let w = b.body.0.max(yw).max(frontage(b.bays()));
-    ((w, b.body.1), (if yd > 0 { w } else { 0 }, yd))
+    (b.body.0.max(frontage(b.bays(), b.docks())), b.body.1)
 }
 
-pub fn plot(kind: BuildingKind, facing: u8) -> Plot {
-    let ((w, bh), (_, ld)) = lot(kind);
-    let size = if facing % 2 == 0 { (w, bh + ld) } else { (bh + ld, w) };
-    lie(kind, facing, size)
-}
-
-/// How a building `size` across lies facing this way: its yard, if its
-/// kind keeps one, the rows on its street side as deep as the kind's, the
-/// whole width; the rest the building.
-pub fn lie(kind: BuildingKind, facing: u8, (w, h): (u8, u8)) -> Plot {
-    let d = lot(kind).1 .1;
-    let lot = d > 0;
-    match facing % 4 {
-        2 => Plot { size: (w, h), building: ((0, 0), (w, h - d)), lot: lot.then_some(((0, h - d), (w, d))) },
-        0 => Plot { size: (w, h), building: ((0, d), (w, h - d)), lot: lot.then_some(((0, 0), (w, d))) },
-        1 => Plot { size: (w, h), building: ((0, 0), (w - d, h)), lot: lot.then_some(((w - d, 0), (d, h))) },
-        _ => Plot { size: (w, h), building: ((d, 0), (w - d, h)), lot: lot.then_some(((0, 0), (d, h))) },
-    }
+/// A kind's size on the grid, facing this way.
+pub fn plot(kind: BuildingKind, facing: u8) -> (u8, u8) {
+    let (w, h) = size(kind);
+    if facing % 2 == 0 { (w, h) } else { (h, w) }
 }
 
 #[cfg(test)]
@@ -215,14 +191,13 @@ mod tests {
         }
     }
 
-    /// A maker's yard holds its lorries and those that come to it; a shop
-    /// fronts the street with bays for its customers.
+    /// A maker fronts its street with its docks and its staff's bays; a
+    /// shop with its customers' too.
     #[test]
-    fn lots_follow_what_they_hold() {
-        assert_eq!(lot(BuildingKind::Fishery), ((3, 1), (3, 1)));
-        assert_eq!(lot(BuildingKind::Sawmill), ((3, 2), (3, 1)));
-        assert_eq!(lot(BuildingKind::House), ((1, 1), (0, 0)));
-        let ((w, _), (yw, yd)) = lot(BuildingKind::Shop);
-        assert!(w >= 2 && yw == w && yd == 1, "a shop's lorry has a dock: {:?}", lot(BuildingKind::Shop));
+    fn sizes_follow_what_they_front() {
+        assert_eq!(size(BuildingKind::Fishery), (3, 1));
+        assert_eq!(size(BuildingKind::Sawmill), (3, 2));
+        assert_eq!(size(BuildingKind::House), (1, 1));
+        assert_eq!(size(BuildingKind::Shop), (3, 1));
     }
 }

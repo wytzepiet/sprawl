@@ -7,7 +7,7 @@
 //! must. Where a shape has a choice to make, how far to swing out, how
 //! tight to turn, it tries the gentlest first, as a driver with room does.
 
-use crate::{Move, Pose, Rig, drive, tow, wrap};
+use crate::{Move, Pose, Rect, Rig, drive, wrap};
 
 /// How fast a driver winds the wheel as the vehicle creeps: curvature a
 /// tile, so full lock in about a tenth of a tile, a metre and a half.
@@ -51,24 +51,22 @@ impl Line {
     }
 }
 
-/// One gear's part of a way: where it starts, whether it backs, whether
-/// its moves steer the trailer's axle (`tow`) rather than the cab's, and
-/// the moves.
+/// One gear's part of a way: where it starts, whether it backs, and the
+/// moves.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Leg {
     pub from: Pose,
     pub back: bool,
-    pub towed: bool,
     pub moves: Vec<Move>,
 }
 
 impl Leg {
-    pub fn poses(&self, rig: &Rig) -> Vec<(f64, Pose)> {
-        if self.towed { tow(rig, self.from, &self.moves) } else { drive(rig, self.from, &self.moves) }
+    pub fn poses(&self) -> Vec<(f64, Pose)> {
+        drive(self.from, &self.moves)
     }
 
-    pub fn end(&self, rig: &Rig) -> Pose {
-        self.poses(rig).last().unwrap().1
+    pub fn end(&self) -> Pose {
+        self.poses().last().unwrap().1
     }
 
     pub fn length(&self) -> f64 {
@@ -132,7 +130,7 @@ fn moves(pieces: &[Piece], free: &[f64], back: bool) -> Vec<Move> {
 
 /// Where a shape ends, its free straights so long.
 fn end(from: Pose, pieces: &[Piece], free: &[f64], back: bool) -> Pose {
-    drive(&crate::CAR, from, &moves(pieces, free, back)).last().unwrap().1
+    drive(from, &moves(pieces, free, back)).last().unwrap().1
 }
 
 /// The way each free straight runs, by the heading it is driven at.
@@ -194,7 +192,7 @@ pub fn nose_in(lane: Line, spot: Pose, clear: Clear) -> Option<Leg> {
         for r in RADII {
             let pieces = [Piece::Free, Piece::Turn(swing, r), Piece::Turn(turn - swing, r), Piece::Free];
             let Some([a, b]) = fit_point(from, &pieces, false, (spot.x, spot.y)) else { continue };
-            let leg = Leg { from: lane.at(a), back: false, towed: false, moves: moves(&pieces[1..], &[b], false) };
+            let leg = Leg { from: lane.at(a), back: false, moves: moves(&pieces[1..], &[b], false) };
             if b >= SETTLE && clear(std::slice::from_ref(&leg)) {
                 return Some(leg);
             }
@@ -214,7 +212,7 @@ pub fn back_out(spot: Pose, lane: Line, clear: Clear) -> Vec<Leg> {
         if let Some(c) = fit_line(spot, &pieces, true, lane)
             && c >= SETTLE
         {
-            let legs = vec![Leg { from: spot, back: true, towed: false, moves: moves(&pieces, &[c], true) }];
+            let legs = vec![Leg { from: spot, back: true, moves: moves(&pieces, &[c], true) }];
             if clear(&legs) {
                 return legs;
             }
@@ -223,11 +221,11 @@ pub fn back_out(spot: Pose, lane: Line, clear: Clear) -> Vec<Leg> {
     for i in 0..12 {
         let c = SETTLE + 0.025 * i as f64;
         for r in RADII.iter().rev() {
-            let leg = Leg { from: spot, back: true, towed: false, moves: moves(&[Piece::Straight(c), Piece::Turn(turn, *r)], &[], true) };
-            let stood = leg.end(&crate::CAR);
+            let leg = Leg { from: spot, back: true, moves: moves(&[Piece::Straight(c), Piece::Turn(turn, *r)], &[], true) };
+            let stood = leg.end();
             for s in DRIFTS {
                 let Some(over) = s_curve(stood, lane, false, s, true) else { continue };
-                let legs = vec![leg.clone(), Leg { from: stood, back: false, towed: false, moves: over }];
+                let legs = vec![leg.clone(), Leg { from: stood, back: false, moves: over }];
                 if clear(&legs) {
                     return legs;
                 }
@@ -249,7 +247,7 @@ pub fn tail_in(lane: Line, spot: Pose, clear: Clear) -> Option<Leg> {
             let first = if wound { Piece::Wound(turn, *r) } else { Piece::Turn(turn, *r) };
             let pieces = [Piece::Free, first, Piece::Free];
             let Some([a, b]) = fit_point(from, &pieces, true, (spot.x, spot.y)) else { continue };
-            let leg = Leg { from: lane.at(-a), back: true, towed: false, moves: moves(&pieces[1..], &[b], true) };
+            let leg = Leg { from: lane.at(-a), back: true, moves: moves(&pieces[1..], &[b], true) };
             if b >= 0.0 && clear(std::slice::from_ref(&leg)) {
                 return Some(leg);
             }
@@ -268,7 +266,7 @@ pub fn nose_out(spot: Pose, lane: Line, clear: Clear) -> Vec<Leg> {
         if let Some(c) = fit_line(spot, &pieces, false, lane)
             && c >= 0.0
         {
-            let legs = vec![Leg { from: spot, back: false, towed: false, moves: moves(&pieces, &[c], false) }];
+            let legs = vec![Leg { from: spot, back: false, moves: moves(&pieces, &[c], false) }];
             if clear(&legs) {
                 return legs;
             }
@@ -278,10 +276,10 @@ pub fn nose_out(spot: Pose, lane: Line, clear: Clear) -> Vec<Leg> {
         let c = 0.025 * i as f64;
         for r in RADII.iter().rev() {
             let m = moves(&[Piece::Straight(c), Piece::Turn(turn, *r)], &[], false);
-            let stood = drive(&crate::CAR, spot, &m).last().unwrap().1;
+            let stood = drive(spot, &m).last().unwrap().1;
             for s in DRIFTS {
                 let Some(over) = s_curve(stood, lane, false, s, false) else { continue };
-                let legs = vec![Leg { from: spot, back: false, towed: false, moves: [m.clone(), over].concat() }];
+                let legs = vec![Leg { from: spot, back: false, moves: [m.clone(), over].concat() }];
                 if clear(&legs) {
                     return legs;
                 }
@@ -355,21 +353,23 @@ pub struct Place {
     pub outs: Vec<Vec<Leg>>,
 }
 
-/// A place square to the street behind its kerb, its middle at (x,
-/// -depth), and its ways from the near lane (+x) and from the far one
-/// (-x), each clear of the cars that may stand at `beside` (their middles,
-/// square to the street) and of the far side of the road. From its own
+/// A place square to the street behind its kerb, for `rig`, its middle at
+/// (x, -depth), and its ways from the near lane (+x) and from the far one
+/// (-x), each clear of what may stand about it (`parked`), of the far
+/// side of the road, and of the kerb (y = -0.5). A dock is in a notch in
+/// a building's front, reaching `notch` either side of its middle behind
+/// the kerb, and is only backed into, its tail to the loading door. From its own
 /// lane a car goes past and backs in, to leave forward either way; from
 /// across the road it turns straight in nose first and backs out the way
 /// it came, or forward across if it must. A way none of these fit is
 /// `None`.
-pub fn square(x: f64, depth: f64, beside: &[(f64, f64)], road: Road) -> [Option<Place>; 2] {
-    let car = crate::CAR;
-    let stand = |h: f64| Pose::new(x, -depth, h).ahead(-car.cab.axle());
-    let parked: Vec<crate::Rect> = beside.iter().flat_map(|&(bx, by)| crate::bodies(&car, Pose::new(bx, by, std::f64::consts::FRAC_PI_2).ahead(-car.cab.axle())).collect::<Vec<_>>()).collect();
+pub fn square(rig: &Rig, x: f64, depth: f64, notch: Option<f64>, parked: &[Rect], road: Road) -> [Option<Place>; 2] {
+    let room = notch.unwrap_or(f64::INFINITY);
+    let stand = |h: f64| Pose::new(x, -depth, h).ahead(-rig.cab.axle());
     let clear = |legs: &[Leg]| {
         legs.iter().all(|l| {
-            l.poses(&car).iter().all(|(_, p)| crate::bodies(&car, *p).all(|b| parked.iter().all(|c| !b.meets(c)) && b.corners().iter().all(|c| c.1 < road.half + 0.08)))
+            l.moves.iter().all(|m| m.from.abs().max(m.to.abs()) <= rig.lock * 1.001)
+                && l.poses().iter().all(|(_, p)| crate::bodies(rig, *p).all(|b| parked.iter().all(|c| !b.meets(c)) && b.corners().iter().all(|c| c.1 < road.half + 0.08 && (c.1 > -0.5 || (c.0 - x).abs() <= room))))
         })
     };
     let (near, far) = (road.near(), road.far());
@@ -380,122 +380,11 @@ pub fn square(x: f64, depth: f64, beside: &[(f64, f64)], road: Road) -> [Option<
         let outs = vec![out(exits[0]), out(exits[1])];
         (!outs[0].is_empty()).then_some(Place { into: vec![into], stands, outs })
     };
+    if notch.is_some() {
+        return [way(near, true, [near, far]), way(far, true, [far, near])];
+    }
     [
         way(near, true, [near, far]).or_else(|| way(near, false, [near, far])),
         way(far, false, [far, near]).or_else(|| way(far, true, [far, near])),
     ]
-}
-
-/// How fast a driver backing a trailer changes how it curves: curvature a
-/// tile. Slower than a car's wheel, as a trailer answers its cab late.
-pub const TRAILER_HAND: f64 = 4.0;
-
-/// A trailer backed from where a lorry stands round onto a heading, its
-/// axle turning at radius `r`, and on straight `b`: the moves of its axle
-/// (`tow`). It starts turning as its cab's angle to it turns it, and eases
-/// from that to the turn the driver wants.
-fn backed(rig: &Rig, from: Pose, to: f64, r: f64, b: f64) -> Option<Leg> {
-    let length = rig.trailer?.length;
-    let k0 = wrap(from.heading - from.trailer).tan() / length;
-    let dh = wrap(to - from.trailer);
-    // Backing, the heading turns by the curvature times minus the length.
-    let kt = -dh.signum() / r;
-    let r1 = (kt - k0).abs() / TRAILER_HAND;
-    let r2 = kt.abs() / TRAILER_HAND;
-    let hold = (-dh - (k0 + kt) / 2.0 * r1 - kt / 2.0 * r2) / kt;
-    if hold < 0.0 || b < 0.0 {
-        return None;
-    }
-    let back = true;
-    let mut moves = vec![Move { back, from: k0, to: kt, length: r1 }, Move { back, from: kt, to: kt, length: hold }, Move { back, from: kt, to: 0.0, length: r2 }, Move { back, from: 0.0, to: 0.0, length: b }];
-    moves.retain(|m| m.length > 1e-9);
-    Some(Leg { from, back, towed: true, moves })
-}
-
-/// Whether a lorry's way keeps to what it can do: its cab never turns
-/// tighter than lock, nor folds against its trailer past what the hitch
-/// allows.
-fn drivable(rig: &Rig, legs: &[Leg]) -> bool {
-    let fold = rig.trailer.map_or(f64::MAX, |t| t.fold);
-    legs.iter().all(|l| {
-        let ps = l.poses(rig);
-        ps.iter().all(|(_, p)| wrap(p.heading - p.trailer).abs() <= fold)
-            && ps.windows(3).all(|w| {
-                let ds = (w[2].0 - w[0].0).max(1e-9);
-                (wrap(w[2].1.heading - w[0].1.heading) / ds).abs() <= rig.lock * 1.05
-            })
-    })
-}
-
-/// A lorry's way into a dock behind the kerb, square to the street, its
-/// tail to the building's loading door (`dock`: its cab's middle, facing
-/// the street), from a lane, and out onto `exits`: on along the lane past
-/// it, swung away from it, stopped, and the trailer backed round into it,
-/// straight the last of the way; out forward round onto each exit and on
-/// until the trailer is behind it. Each clear of `clear`.
-pub fn dock(rig: &Rig, dock: Pose, from: Line, exits: &[Line], clear: Clear) -> Option<Place> {
-    let t = rig.trailer.expect("a lorry");
-    let stands = Pose::new(dock.x, dock.y, dock.heading).ahead(-rig.cab.axle());
-    let axle = (stands.x - stands.heading.cos() * t.length, stands.y - stands.heading.sin() * t.length);
-    let outs = |exit: Line| -> Vec<Leg> {
-        for r in RADII {
-            let pieces = [Piece::Free, Piece::Turn(wrap(exit.heading - stands.heading), r)];
-            let Some(c) = fit_line(stands, &pieces, false, exit).filter(|&c| c >= 0.0) else { continue };
-            let mut m = moves(&pieces, &[c], false);
-            m.push(Move { back: false, from: 0.0, to: 0.0, length: 0.45 });
-            let legs = vec![Leg { from: stands, back: false, towed: false, moves: m }];
-            if drivable(rig, &legs) && clear(&legs) {
-                return legs;
-            }
-        }
-        Vec::new()
-    };
-    // Away from the dock: it is on the right of the lane, or the left.
-    let away = if from.left(dock.x, dock.y) < 0.0 { 1.0 } else { -1.0 };
-    let start = from.at(from.along(dock.x, dock.y) - 0.9);
-    for swing in [30.0f64, 45.0, 20.0, 60.0, 10.0, 75.0].map(|d| away * d.to_radians()) {
-        for rt in [0.9, 0.7, 0.55, 0.45] {
-            // How far on along the lane before the swing, and how far the
-            // trailer backs straight in at the end: found together.
-            let leg = |a: f64| Leg { from: start, back: false, towed: false, moves: moves(&[Piece::Straight(a.max(0.0)), Piece::Turn(swing, RADII[0]), Piece::Straight(0.15)], &[], false) };
-            let land = |a: f64, b: f64| -> Option<(f64, f64)> {
-                let l = backed(rig, leg(a).end(rig), stands.trailer, rt, b)?;
-                let e = l.end(rig);
-                Some((e.x - e.trailer.cos() * t.length - axle.0, e.y - e.trailer.sin() * t.length - axle.1))
-            };
-            let (mut a, mut b) = (1.3, 0.2);
-            let mut found = false;
-            for _ in 0..30 {
-                let Some(f) = land(a, b) else { break };
-                if f.0.hypot(f.1) < 1e-6 {
-                    found = true;
-                    break;
-                }
-                let h = 1e-4;
-                let (Some(fa), Some(fb)) = (land(a + h, b), land(a, b + h)) else { break };
-                let j = [[(fa.0 - f.0) / h, (fb.0 - f.0) / h], [(fa.1 - f.1) / h, (fb.1 - f.1) / h]];
-                let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
-                if det.abs() < 1e-12 {
-                    break;
-                }
-                a -= (f.0 * j[1][1] - f.1 * j[0][1]) / det;
-                b -= (j[0][0] * f.1 - j[1][0] * f.0) / det;
-            }
-            if !found || a < 0.0 || b < 0.05 {
-                continue;
-            }
-            let first = leg(a);
-            let Some(second) = backed(rig, first.end(rig), stands.trailer, rt, b) else { continue };
-            let into = vec![first, second];
-            if !drivable(rig, &into) || !clear(&into) {
-                continue;
-            }
-            let outs: Vec<Vec<Leg>> = exits.iter().map(|&e| outs(e)).collect();
-            if outs.first().is_none_or(Vec::is_empty) {
-                return None;
-            }
-            return Some(Place { into, stands: Pose { trailer: stands.heading, ..stands }, outs });
-        }
-    }
-    None
 }

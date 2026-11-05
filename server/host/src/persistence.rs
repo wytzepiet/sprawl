@@ -30,6 +30,8 @@ const MIGRATIONS: &[Migration] = &[
     None,
     None,
     None,
+    // Lots became fronts: a building is its body alone, its trucks rigid.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

@@ -3,17 +3,15 @@
 //!
 //! A real driver parks with a handful of moves and makes them the same way
 //! every time: swing out, full lock in, straighten; back out round, pull
-//! away; pull past a dock, swing away from it and back the trailer in. So
-//! does this. Each kind of place has its shape (`ways`): a few arcs and
+//! away. So does this. Each kind of place has its shape (`ways`): a few arcs and
 //! straights in one gear, the wheel turned at a hand's pace between them.
 //! The shape is fixed; only how long its straights run is worked out, so the
 //! vehicle ends exactly where it stands. Nothing is searched, and nothing
 //! is smoothed after: what is planned is what is driven, here and in the
 //! client, and every place's moves can be drawn and looked at (`sheet`).
 //!
-//! A car is steered by its rear axle. A lorry backing is steered by its
-//! trailer's, as a driver backing a trailer thinks: the trailer goes where
-//! it is put and the cab follows its nose (`tow`).
+//! Everything is steered by its rear axle: a car, and a truck, a rigid
+//! box on two axles, a car grown long.
 //!
 //! No randomness and no hashing, so the same place gives the same moves on
 //! every machine.
@@ -24,19 +22,17 @@ mod sheet;
 
 use std::f64::consts::PI;
 
-/// Where a vehicle stands: its cab's rear axle, the way the cab points, and
-/// the way its trailer points, if it has one (the cab's heading if not).
+/// Where a vehicle stands: its rear axle, and the way it points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pose {
     pub x: f64,
     pub y: f64,
     pub heading: f64,
-    pub trailer: f64,
 }
 
 impl Pose {
     pub fn new(x: f64, y: f64, heading: f64) -> Pose {
-        Pose { x, y, heading, trailer: heading }
+        Pose { x, y, heading }
     }
 
     /// Moved `d` along its heading.
@@ -61,38 +57,22 @@ impl Body {
     }
 }
 
-/// A trailer hitched on its cab's rear axle: how far behind the hitch its
-/// axle is, its body round that axle, and the most it may fold against
-/// the cab.
-#[derive(Clone, Copy, Debug)]
-pub struct Trailer {
-    pub length: f64,
-    pub body: Body,
-    pub fold: f64,
-}
-
 /// A vehicle as it steers: the tightest its rear axle turns, as a
-/// curvature, its cab, and its trailer.
+/// curvature, and its body.
 #[derive(Clone, Copy, Debug)]
 pub struct Rig {
     pub lock: f64,
     pub cab: Body,
-    pub trailer: Option<Trailer>,
 }
 
 /// A car, 0.29 tiles long and 0.15 wide, its rear axle a third of its
 /// length behind its middle; turning no tighter than 0.3 tiles.
-pub const CAR: Rig = Rig { lock: 1.0 / 0.3, cab: Body { ahead: 0.145 + 0.29 / 3.0, behind: 0.145 - 0.29 / 3.0, half: 0.075 }, trailer: None };
+pub const CAR: Rig = Rig { lock: 1.0 / 0.3, cab: Body { ahead: 0.145 + 0.29 / 3.0, behind: 0.145 - 0.29 / 3.0, half: 0.075 } };
 
-/// A cab-over tractor, 0.17 long, and a semi-trailer 0.46 long hitched on
-/// its rear axle: the trailer's axle 0.37 behind the hitch, its nose 0.025
-/// ahead of the hitch and its tail 0.065 behind the axle (the client's
-/// `CAB` and `TRAILER`). It folds no further than 75 degrees.
-pub const LORRY: Rig = Rig {
-    lock: 1.0 / 0.3,
-    cab: Body { ahead: 0.085 + 0.17 / 3.0, behind: 0.085 - 0.17 / 3.0, half: 0.085 },
-    trailer: Some(Trailer { length: 0.37, body: Body { ahead: 0.395, behind: 0.065, half: 0.085 }, fold: 1.3 }),
-};
+/// A box truck, 0.47 long and 0.17 wide, a cab-over and a box on one
+/// chassis, its rear axle a quarter of its length behind its middle
+/// (the client's `TRUCK`); turning no tighter than 0.36 tiles.
+pub const TRUCK: Rig = Rig { lock: 1.0 / 0.36, cab: Body { ahead: 0.235 + 0.47 / 4.0, behind: 0.235 - 0.47 / 4.0, half: 0.085 } };
 
 /// A rectangle, turned: its middle, half its length and half its width,
 /// and the way its length runs.
@@ -170,56 +150,23 @@ fn steps(moves: &[Move]) -> impl Iterator<Item = (f64, f64)> + '_ {
     })
 }
 
-/// Moves driven from `from` by the cab's rear axle, every fiftieth of a
-/// tile or so, the trailer drawn after its hitch: each pose, with how far
-/// it has gone.
-pub fn drive(rig: &Rig, from: Pose, moves: &[Move]) -> Vec<(f64, Pose)> {
+/// Moves driven from `from` by the rear axle, every fiftieth of a tile or
+/// so: each pose, with how far it has gone.
+pub fn drive(from: Pose, moves: &[Move]) -> Vec<(f64, Pose)> {
     let mut out = vec![(0.0, from)];
     let (mut p, mut s) = (from, 0.0);
     for (k, ds) in steps(moves) {
         let (x, y, h) = arc(p.x, p.y, p.heading, k, ds);
-        let trailer = match rig.trailer {
-            // The trailer's axle follows the hitch: it turns toward the cab
-            // by as much as the hitch moves across it.
-            Some(t) => p.trailer + ds / t.length * wrap((p.heading + h) / 2.0 - p.trailer).sin(),
-            None => h,
-        };
-        p = Pose { x, y, heading: h, trailer };
+        p = Pose { x, y, heading: h };
         s += ds.abs();
         out.push((s, p));
     }
     out
 }
 
-/// Moves driven from `from` by its trailer's axle, the way a lorry is
-/// backed: the trailer goes where the moves take it, and the cab's rear
-/// axle, on the hitch, points the way the hitch is moving. A cab standing
-/// at an angle to its trailer turns it as it starts, so the first move's
-/// curvature is that angle's (`ways::towing`).
-pub fn tow(rig: &Rig, from: Pose, moves: &[Move]) -> Vec<(f64, Pose)> {
-    let Some(t) = rig.trailer else { return drive(rig, from, moves) };
-    let mut out = vec![(0.0, from)];
-    let (mut tx, mut ty, mut th) = (from.x - from.trailer.cos() * t.length, from.y - from.trailer.sin() * t.length, from.trailer);
-    let (mut p, mut s) = (from, 0.0);
-    for (k, ds) in steps(moves) {
-        (tx, ty, th) = arc(tx, ty, th, k, ds);
-        let (hx, hy) = (tx + th.cos() * t.length, ty + th.sin() * t.length);
-        let (mx, my) = (hx - p.x, hy - p.y);
-        let heading = if mx.hypot(my) < 1e-12 { p.heading } else if ds < 0.0 { (-my).atan2(-mx) } else { my.atan2(mx) };
-        p = Pose { x: hx, y: hy, heading, trailer: th };
-        s += ds.abs();
-        out.push((s, p));
-    }
-    out
-}
-
-/// The rectangles a vehicle stands in.
+/// The rectangle a vehicle stands in.
 pub fn bodies(rig: &Rig, p: Pose) -> impl Iterator<Item = Rect> {
-    let rect = |x: f64, y: f64, h: f64, b: &Body| {
-        let mid = (b.ahead - b.behind) / 2.0;
-        Rect { x: x + h.cos() * mid, y: y + h.sin() * mid, half_l: (b.ahead + b.behind) / 2.0, half_w: b.half, heading: h }
-    };
-    let cab = rect(p.x, p.y, p.heading, &rig.cab);
-    let trailer = rig.trailer.map(|t| rect(p.x - p.trailer.cos() * t.length, p.y - p.trailer.sin() * t.length, p.trailer, &t.body));
-    std::iter::once(cab).chain(trailer)
+    let b = rig.cab;
+    let mid = (b.ahead - b.behind) / 2.0;
+    std::iter::once(Rect { x: p.x + p.heading.cos() * mid, y: p.y + p.heading.sin() * mid, half_l: (b.ahead + b.behind) / 2.0, half_w: b.half, heading: p.heading })
 }

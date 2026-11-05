@@ -5,9 +5,9 @@
 //! strobe of each body from blue to red as it goes, so a shape a real
 //! driver would not drive can be seen.
 
-use crate::ways::{dock as dock_ways, *};
+use crate::ways::*;
 use crate::*;
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::FRAC_PI_2;
 
 /// The street: its middle line along x, half its width, the lanes either
 /// side; a square bay's middle.
@@ -15,6 +15,13 @@ const HALF_ROAD: f64 = 0.22;
 const LANE: f64 = 0.1;
 const SQUARE: f64 = 0.37;
 const SQUARE_PITCH: f64 = 0.27;
+/// Docks: how far apart, a truck's middle behind the street's middle
+/// line, and the nearest car bay's middle out from the gate.
+const DOCK_PITCH: f64 = 0.3;
+const DOCK: f64 = 0.465;
+const DOCK_CAR: f64 = 0.6;
+/// How far either side of its middle a dock's notch reaches.
+const NOTCH: f64 = 0.15;
 
 /// A scene: what it is called, the rig, its ways, the cars parked round
 /// it, its bays drawn, and the places it must end at.
@@ -50,7 +57,8 @@ fn scenes() -> Vec<Scene> {
     let drive_bays = vec![bay(0.0, -0.53, FRAC_PI_2, 0.3, 0.44)];
     for (what, x, depth, beside, bays) in [("square", 0.0, SQUARE, &beside[..], &bays), ("drive", 0.11, 0.53, &drive[..], &drive_bays)] {
         let parked: Vec<(Rig, Pose)> = beside.iter().map(|&(bx, by)| (CAR, car(bx, by, FRAC_PI_2))).collect();
-        for (side, place) in square(x, depth, beside, road).into_iter().enumerate() {
+        let rects: Vec<Rect> = parked.iter().flat_map(|(r, p)| bodies(r, *p).collect::<Vec<_>>()).collect();
+        for (side, place) in square(&CAR, x, depth, None, &rects, road).into_iter().enumerate() {
             let from = ["from its own lane", "from across the road"][side];
             let Some(p) = place else {
                 out.push(Scene { name: format!("{what}, {from}: none"), rig: CAR, legs: Vec::new(), parked: parked.clone(), bays: bays.clone(), ends: Pose::new(0.0, 0.0, 0.0), extent: None });
@@ -66,32 +74,29 @@ fn scenes() -> Vec<Scene> {
             }
         }
     }
-    // A yard one row deep behind the kerb: two docks square to the street
-    // at its gate, the lorry's tail to the wall; car bays either side,
-    // clear of them; the other dock taken.
-    let docks = [Pose::new(-0.15, -0.858, FRAC_PI_2), Pose::new(0.15, -0.858, FRAC_PI_2)];
-    let cars: Vec<Pose> = [-1.22, -0.95, 0.95, 1.22].iter().map(|&x| car(x, -SQUARE, -FRAC_PI_2)).collect();
-    let ground = [Rect::span(-3.0, -0.5, 3.0, HALF_ROAD + 0.08), Rect::span(-1.48, -1.48, 1.48, -0.45)];
-    let yard_bays: Vec<Rect> = docks.iter().map(|d| bay(d.x, d.y - 0.2, FRAC_PI_2, 0.66, 0.28)).collect();
+    // Two docks side by side at a gate, square to the street, a truck's
+    // tail in a notch in the building's front, its nose short of the road;
+    // car bays either side, clear of them; the other dock taken.
+    let docks = [-DOCK_PITCH / 2.0, DOCK_PITCH / 2.0];
+    let cars: Vec<Pose> = [-DOCK_CAR - SQUARE_PITCH, -DOCK_CAR, DOCK_CAR, DOCK_CAR + SQUARE_PITCH].iter().map(|&x| car(x, -SQUARE, -FRAC_PI_2)).collect();
+    let notch = bay(0.0, -0.61, FRAC_PI_2, 0.22, 2.0 * NOTCH + DOCK_PITCH);
     for which in [0, 1] {
-        let dock = docks[which];
-        let other = docks[1 - which];
-        let mut others: Vec<(Rig, Pose)> = vec![(LORRY, Pose::new(other.x, other.y, other.heading).ahead(-LORRY.cab.axle()))];
-        others.extend(cars.iter().map(|&p| (CAR, p)));
+        let (dock, other) = (docks[which], docks[1 - which]);
+        let mut others: Vec<(Rig, Pose)> = vec![(TRUCK, Pose::new(other, -DOCK, FRAC_PI_2).ahead(-TRUCK.cab.axle()))];
+        others.extend(cars.iter().map(|&p| (TRUCK, p)).map(|(_, p)| (CAR, p)));
         let parked: Vec<Rect> = others.iter().flat_map(|(r, p)| bodies(r, *p).collect::<Vec<_>>()).collect();
-        let clear = |legs: &[Leg]| legs.iter().all(|l| l.poses(&LORRY).iter().all(|(_, p)| bodies(&LORRY, *p).all(|b| parked.iter().all(|c| !b.meets(c)) && b.corners().iter().all(|&c| ground.iter().any(|g| g.holds(c))))));
-        let (near, far) = (road.near(), road.far());
-        for (side, place) in [dock_ways(&LORRY, dock, near, &[near, far], &clear), dock_ways(&LORRY, dock, far, &[far, near], &clear)].into_iter().enumerate() {
+        let bays = vec![notch];
+        for (side, place) in square(&TRUCK, dock, DOCK, Some(NOTCH), &parked, road).into_iter().enumerate() {
             let from = ["from its own lane", "from across the road"][side];
             let name = format!("dock {}, ", ["left", "right"][which]);
             let Some(p) = place else {
-                out.push(Scene { name: format!("{name}{from}: none"), rig: LORRY, legs: Vec::new(), parked: others.clone(), bays: yard_bays.clone(), ends: Pose::new(0.0, 0.0, 0.0), extent: Some(ground.to_vec()) });
+                out.push(Scene { name: format!("{name}{from}: none"), rig: TRUCK, legs: Vec::new(), parked: others.clone(), bays: bays.clone(), ends: Pose::new(0.0, 0.0, 0.0), extent: None });
                 continue;
             };
-            out.push(Scene { name: format!("{name}in {from}"), rig: LORRY, legs: p.into.clone(), parked: others.clone(), bays: yard_bays.clone(), ends: p.stands, extent: Some(ground.to_vec()) });
+            out.push(Scene { name: format!("{name}in {from}"), rig: TRUCK, legs: p.into.clone(), parked: others.clone(), bays: bays.clone(), ends: p.stands, extent: None });
             for (k, legs) in p.outs.iter().enumerate() {
                 if !legs.is_empty() {
-                    out.push(Scene { name: format!("{name}in {from}, out {}", ["on", "back"][k]), rig: LORRY, legs: legs.clone(), parked: others.clone(), bays: yard_bays.clone(), ends: p.stands, extent: Some(ground.to_vec()) });
+                    out.push(Scene { name: format!("{name}in {from}, out {}", ["on", "back"][k]), rig: TRUCK, legs: legs.clone(), parked: others.clone(), bays: bays.clone(), ends: p.stands, extent: None });
                 }
             }
         }
@@ -101,7 +106,7 @@ fn scenes() -> Vec<Scene> {
 
 /// Every pose of a scene's ways, in order.
 fn poses(s: &Scene) -> Vec<Pose> {
-    s.legs.iter().flat_map(|l| l.poses(&s.rig).into_iter().map(|(_, p)| p)).collect()
+    s.legs.iter().flat_map(|l| l.poses().into_iter().map(|(_, p)| p)).collect()
 }
 
 fn close(a: Pose, b: Pose) -> bool {
@@ -118,13 +123,13 @@ fn sheet() {
             continue;
         }
         let ps = poses(s);
-        let (first, last) = (s.legs[0].from, s.legs.last().unwrap().end(&s.rig));
+        let (first, last) = (s.legs[0].from, s.legs.last().unwrap().end());
         if !close(first, s.ends) && !close(last, s.ends) {
             wrong.push(format!("{}: ends at {last:?}, starts at {first:?}, not {:?}", s.name, s.ends));
         }
         // Each leg starts where the one before ended.
         for w in s.legs.windows(2) {
-            if !close(w[0].end(&s.rig), w[1].from) {
+            if !close(w[0].end(), w[1].from) {
                 wrong.push(format!("{}: a leg starts where the last did not end", s.name));
             }
         }
@@ -200,7 +205,7 @@ fn draw(all: &[Scene]) {
                 svg += &poly(&b, "fill='#456' stroke='#123'");
             }
         }
-        let ps: Vec<(f64, Pose, bool)> = s.legs.iter().flat_map(|l| l.poses(&s.rig).into_iter().map(move |(_, p)| (0.0, p, l.back))).collect();
+        let ps: Vec<(f64, Pose, bool)> = s.legs.iter().flat_map(|l| l.poses().into_iter().map(move |(_, p)| (0.0, p, l.back))).collect();
         let n = ps.len().max(2);
         for (k, (_, p, back)) in ps.iter().enumerate() {
             if k % 5 != 0 && k + 1 != ps.len() {

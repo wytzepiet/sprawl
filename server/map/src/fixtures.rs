@@ -12,12 +12,13 @@
 //! ```text
 //! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
 //! %  grass over clay
-//! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
+//! :  paved (a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
 //! H house  S shop  F fishery  L woodcutter  W sawmill  B farm  K bakery
 //! C clay pit  R brickworks  Q workshop  A sand pit  G glassworks
 //! E sheep farm  Y tailor
-//! d  (any letter small) that building's yard, as `/map` writes the game's
+//! d  (any letter small) that building's gate: its front faces the street
+//!    beyond it
 //! ```
 //!
 //! A building's letters are its tiles: a kind bigger than a tile is one
@@ -172,7 +173,7 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
             }
             let mut run = vec![(col, row)];
             let mut i = 0;
-            while i < run.len() && model::blueprint::plot(kind, 0).size != (1, 1) {
+            while i < run.len() && model::blueprint::plot(kind, 0) != (1, 1) {
                 let (c, r) = run[i];
                 for (dc, dr) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                     let n = (c + dc, r + dr);
@@ -183,13 +184,11 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
                 i += 1;
             }
             let tiles: Vec<GridCoord> = run.iter().map(|&(c, r)| at(c, r)).collect();
-            // Its yard where its small letters are, as `/map` writes
-            // a game's; else toward the first street it has.
-            let mut marked: Vec<GridCoord> = run.iter().filter(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r)).collect();
-            marked.sort_by_key(|t| (t.x, t.y));
-            let yard = |f: u8| Map::yard_of(&tiles, kind, f).map(|mut y| { y.sort_by_key(|t| (t.x, t.y)); y });
+            // Its gate where its small letter is, as `/map` writes a
+            // game's; else toward the first street it has.
+            let marked = run.iter().find(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r));
             let facing = (0..4)
-                .find(|&f| !marked.is_empty() && yard(f).as_ref() == Some(&marked))
+                .find(|&f| marked.is_some() && Map::gate_of(&tiles, kind, f) == marked)
                 .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some()))
                 .unwrap_or(2);
             if !world.may_stand_on(&tiles, kind, facing) {
@@ -280,10 +279,10 @@ pub fn draw(world: &Map, x: i32, y: i32, r: i32) -> String {
             let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
             let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
-                // A building is its letter on every tile, its yard's in
-                // small letters, where the game lays its lot.
-                (_, Some(GameObject::Building(b))) => match Map::yard_of(&b.tiles, b.kind, b.facing) {
-                    Some(yard) if yard.contains(&GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
+                // A building is its letter on every tile, its gate's a
+                // small one, where its docks are.
+                (_, Some(GameObject::Building(b))) => match b.door {
+                    Some(d) if model::blueprint::fronted(b.kind) && d.tile == (GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
                     _ => letter(b.kind),
                 },
                 (Some(GameObject::RoadNode(n)), _) => if n.road.is_empty() { '=' } else { '#' },
