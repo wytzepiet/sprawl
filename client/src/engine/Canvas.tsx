@@ -75,6 +75,16 @@ const MAX_DEVICE_RATIO = 2;
  *  six million of them, four times a phone's, and runs hot for it. Here it
  *  is drawn at about 1.4 instead, the flat colours no worse for it. */
 const MAX_PIXELS = 3e6;
+/** And less again while the GPU cannot keep up: when, as the view moves,
+ *  the middle of the last `JUDGED` frames comes later than `LATE_MS`, the
+ *  ratio is let down a step, to a pixel to the CSS pixel at the least; and
+ *  once it has kept time `RETRY_MS` it is tried a step up, but never back
+ *  to a ratio it was late at. A slow phone draws softer and keeps its
+ *  frames and its battery; a fast one never knows. */
+const JUDGED = 60;
+const LATE_MS = 22;
+const STEP = 0.8;
+const RETRY_MS = 10_000;
 
 /** Frames a second while the view moves: a 120Hz display shows the town no
  *  better than a 60Hz one, for twice the shading. */
@@ -166,6 +176,18 @@ export default function Canvas(props: ParentProps) {
     // Held while something outside draws the frames itself (`cost.ts`).
     let held = false;
     let running = true;
+    // The ratio drawn at, as the frames have kept time at it (`JUDGED`).
+    let [ratio, ceiling, keptSince] = [Infinity, Infinity, 0];
+    const gaps: number[] = [];
+    const judge = (now: number, delta: number, cap: number) => {
+      const drawn = Math.min(cap, ratio);
+      gaps.push(delta);
+      if (gaps.length > JUDGED) gaps.shift();
+      const middle = gaps.length === JUDGED ? [...gaps].sort((a, b) => a - b)[JUDGED / 2] : 0;
+      if (middle > LATE_MS && drawn > 1) [ceiling, ratio, gaps.length, keptSince] = [drawn, Math.max(1, drawn * STEP), 0, now];
+      else if (middle > LATE_MS) keptSince = now;
+      else if (now - keptSince > RETRY_MS && drawn < cap && drawn / STEP < ceiling) [ratio, gaps.length, keptSince] = [drawn / STEP, 0, now];
+    };
     // The glass moving counts too: the UI's springs move at the moving rate.
     const where = () => {
       const c = scene.camera;
@@ -177,13 +199,16 @@ export default function Canvas(props: ParentProps) {
       if (held) return;
       glass.read();
       if (where() !== seen) lastMoved = now;
-      const fps = now - lastMoved < MOVING_LINGER_MS ? MOVING_FPS : STILL_FPS;
+      const moving = now - lastMoved < MOVING_LINGER_MS;
+      const fps = moving ? MOVING_FPS : STILL_FPS;
       if (now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
       lastFrame = now;
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
-      engine.surfaces[0].maxDevicePixelRatio = Math.min(MAX_DEVICE_RATIO, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
+      const cap = Math.min(MAX_DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
+      if (moving) judge(now, delta, cap);
+      engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, ratio);
       resizeEngine(engine);
       renderFrame(engine, delta);
       after.run();
