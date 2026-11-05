@@ -173,7 +173,7 @@ pub fn unpack(world: &mut World, events: &mut EventQueue, id: EntityId, car: Ent
         world.town.arrived += LEVELS[level as usize].people - LEVELS[level as usize - 1].people;
         world.town.grew += 1;
         fit_cars(world, id, now);
-        super::picks::offer(world);
+        super::picks::offer(world, now);
     }
     events.wake(0, id);
 }
@@ -200,12 +200,12 @@ fn fit_cars(world: &mut World, id: EntityId, now: GameTime) {
 
 /// A cottage at a tile, a family in it who will want fish soon.
 pub fn house(world: &mut World, at: GridCoord, now: GameTime) -> Option<EntityId> {
-    let map = &mut world.map;
-    if let Some((lo, hi)) = map.frame
+    if let Some((lo, hi)) = world.town.ground()
         && (at.x < lo.x || at.y < lo.y || at.x > hi.x || at.y > hi.y)
     {
         return None;
     }
+    let map = &mut world.map;
     if map.terrain.get(&(at.x, at.y)) != Some(&land::TerrainType::Grass) {
         return None;
     }
@@ -232,7 +232,9 @@ pub fn spawn(world: &mut World, events: &mut EventQueue, now: GameTime) {
     if world.town.start.is_none() {
         return;
     }
-    if !world.town.offer.is_empty() {
+    // A pick on the table, or a third of the town kept waiting: nobody
+    // new until it is seen to.
+    if !world.town.offer.is_empty() || strained(world, now) > 0.3 {
         events.wake(2_000, SPAWN);
         return;
     }
@@ -254,7 +256,7 @@ pub fn spawn(world: &mut World, events: &mut EventQueue, now: GameTime) {
         }
     }
     if placed.is_none()
-        && let Some((lo, hi)) = world.map.frame
+        && let Some((lo, hi)) = world.town.ground()
     {
         let mut best: Option<(i32, GridCoord)> = None;
         for _ in 0..80 {
@@ -275,25 +277,32 @@ pub fn spawn(world: &mut World, events: &mut EventQueue, now: GameTime) {
         world.town.arrived += LEVELS[1].people;
         world.town.allowance += HOUSE_ROADS;
         events.wake(0, id);
-        super::picks::offer(world);
+        super::picks::offer(world, now);
     }
     events.wake(next_spawn(world, now), SPAWN);
 }
 
 /// When the next family is due: the first two soon, then sooner as the
-/// town grows; later while its families are kept waiting.
+/// town grows; later while its families are kept waiting, and none while
+/// many are.
 pub fn next_spawn(world: &World, now: GameTime) -> GameTime {
-    let homes: Vec<&Home> = world.map.objects.iter().filter_map(|e| match e.object {
-        GameObject::Building(ref b) => b.home.as_ref(),
-        _ => None,
-    }).collect();
-    let strained = homes.iter().filter(|h| h.wants.iter().any(|w| now.saturating_sub(w.since) > PATIENCE_MS / 2)).count() as f64 / homes.len().max(1) as f64;
+    let strained = strained(world, now);
     let base = match world.town.spawned {
         0 => 50_000.0,
         1 => 40_000.0,
         _ => (48_000.0 - now as f64 / 20.0).max(12_000.0),
     };
-    (base * (1.0 + 0.8 * strained)) as GameTime
+    (base * (1.0 + 4.0 * strained)) as GameTime
+}
+
+/// How many of the town's families have waited half their patience on
+/// something, of all of them.
+fn strained(world: &World, now: GameTime) -> f64 {
+    let homes: Vec<&Home> = world.map.objects.iter().filter_map(|e| match e.object {
+        GameObject::Building(ref b) => b.home.as_ref(),
+        _ => None,
+    }).collect();
+    homes.iter().filter(|h| h.wants.iter().any(|w| now.saturating_sub(w.since) > PATIENCE_MS / 2)).count() as f64 / homes.len().max(1) as f64
 }
 
 /// A family whose house came down moves to a cottage nearby, if there's
@@ -363,16 +372,17 @@ pub fn catchment(world: &mut World) {
     }
 }
 
-/// The nearest shop within reach of a house that sells any of these, open.
+/// The nearest shop within reach of a house that has any of these on its
+/// shelves, else that sells any of them, open.
 pub fn shop_for(world: &World, home: EntityId, goods: &[Good], now: GameTime) -> Option<EntityId> {
     if !open(now) {
         return None;
     }
     let map = &world.map;
+    let has = |s: EntityId, k: f64| map.building(s).is_some_and(|b| goods.iter().any(|g| b.stocks.get(g).is_some_and(|st| st.level >= k)));
     of_kind(map, BuildingKind::Shop)
         .into_iter()
         .map(|(id, _)| id)
-        .filter(|&s| apart(map, s, home) <= REACH && reaches(map, s, home))
-        .filter(|&s| map.building(s).is_some_and(|b| goods.iter().any(|g| b.stocks.contains_key(g))))
-        .min_by_key(|&s| (apart(map, s, home), s))
+        .filter(|&s| apart(map, s, home) <= REACH && reaches(map, s, home) && has(s, 0.0))
+        .min_by_key(|&s| (!has(s, 1.0), apart(map, s, home), s))
 }

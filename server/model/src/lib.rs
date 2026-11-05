@@ -955,8 +955,6 @@ pub struct Town {
     pub dawn: Option<Dawn>,
     /// Where the town began, for the camera to find it.
     pub start: Option<GridCoord>,
-    /// The ground the town may build on, which grows with its standing.
-    pub bounds: Option<[GridCoord; 2]>,
 }
 
 /// A day, summed up at the next dawn.

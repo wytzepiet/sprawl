@@ -48,8 +48,9 @@ pub const SPAWN: EntityId = EntityId::MAX;
 pub const DAWN: EntityId = EntityId::MAX - 1;
 pub const LOOK: EntityId = EntityId::MAX - 2;
 
-/// The town's standings, the people each begins at, and the ground it may
-/// build on: a hamlet's patch, growing to a city's.
+/// The town's standings, the people each begins at, and the ground new
+/// families settle on: a hamlet's patch, growing to a city's. The mayor
+/// builds anywhere; the road he has is his limit.
 pub const STATUSES: [(&str, u32, (i32, i32)); 5] = [
     ("Hamlet", 0, (44, 30)),
     ("Village", 12, (60, 40)),
@@ -127,8 +128,15 @@ impl Town {
             status: self.status,
             dawn: self.dawn,
             start: self.start,
-            bounds: map.frame.map(|(a, b)| [a, b]),
         }
+    }
+
+    /// Where new families settle, corner to corner: round where the town
+    /// began, as wide as its standing.
+    fn ground(&self) -> Option<(GridCoord, GridCoord)> {
+        let c = self.start?;
+        let (w, h) = STATUSES[self.status as usize].2;
+        Some((GridCoord { x: c.x - w / 2, y: c.y - h / 2 }, GridCoord { x: c.x + w - w / 2 - 1, y: c.y + h - h / 2 - 1 }))
     }
 
     /// A number from 0 to 1, the same on every machine.
@@ -233,11 +241,8 @@ pub fn standing(world: &mut World) {
     let status = STATUSES.iter().rposition(|s| pop >= s.1).unwrap_or(0) as u8;
     if status > world.town.status {
         world.town.status = status;
-        world.news.push(model::News { text: format!("A {}", STATUSES[status as usize].0.to_lowercase()), sub: "the town may build further out".into(), at: 0 });
+        world.news.push(model::News { text: format!("A {}", STATUSES[status as usize].0.to_lowercase()), sub: "families settle further out".into(), at: 0 });
     }
-    let Some(c) = world.town.start else { return };
-    let (w, h) = STATUSES[world.town.status as usize].2;
-    world.map.frame = Some((GridCoord { x: c.x - w / 2, y: c.y - h / 2 }, GridCoord { x: c.x + w - w / 2 - 1, y: c.y + h - h / 2 - 1 }));
 }
 
 /// The day turns: yesterday summed up, a clean day added to the streak,
@@ -304,8 +309,8 @@ pub fn raze(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
 }
 
 /// A card of the pick taken.
-pub fn pick(world: &mut World, n: u8) {
-    picks::pick(world, n);
+pub fn pick(world: &mut World, n: u8, now: GameTime) {
+    picks::pick(world, n, now);
 }
 
 // ---- reading the map ----------------------------------------------------
@@ -336,3 +341,5 @@ fn reaches(map: &Map, a: EntityId, b: EntityId) -> bool {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod bot;

@@ -1,4 +1,5 @@
-//! A new town: a fishery on the shore nearest the island's middle with a
+//! A new town: a fishery on the shore nearest the island's middle, by a
+//! wood, with a
 //! short street inland, two cottages a little way off, a shop in hand and
 //! road enough to join them. Everything else the town asks for.
 
@@ -62,30 +63,41 @@ fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
     path.last().copied()
 }
 
-/// The first place on a shore, out from the island's middle, a fishery
-/// stands with its yard to the land, and the lane it comes with: its tile,
-/// and the far end of the lane.
+/// The first place on a shore, out from the island's middle, with a wood
+/// near enough for the town's first woodcutter, where a fishery stands
+/// with its yard to the land; on an island with none, the first place
+/// at all. Its tile, and the far end of the lane it comes with.
 fn shore(map: &mut Map) -> Option<(GridCoord, GridCoord)> {
-    for r in 0..90 {
-        for i in 0..(8 * r).max(1) {
-            let (x, y) = ring(r, i);
-            for facing in 0..4 {
-                let tiles: Vec<GridCoord> = Map::footprint(GridCoord { x, y }, model::blueprint::plot(BuildingKind::Fishery, facing)).collect();
-                if !map.may_stand_on(&tiles, BuildingKind::Fishery, facing) || !map.on_shore(&tiles, facing) {
-                    continue;
-                }
-                let id = map.raise(BuildingKind::Fishery, tiles, facing);
-                match lane(map, id) {
-                    Some(end) => {
-                        map.orient(id);
-                        return Some((GridCoord { x, y }, end));
+    for wood in [true, false] {
+        for r in 0..90 {
+            for i in 0..(8 * r).max(1) {
+                let (x, y) = ring(r, i);
+                for facing in 0..4 {
+                    let tiles: Vec<GridCoord> = Map::footprint(GridCoord { x, y }, model::blueprint::plot(BuildingKind::Fishery, facing)).collect();
+                    if !map.may_stand_on(&tiles, BuildingKind::Fishery, facing) || !map.on_shore(&tiles, facing) || (wood && !wooded(map, GridCoord { x, y })) {
+                        continue;
                     }
-                    None => map.remove_building(id),
+                    let id = map.raise(BuildingKind::Fishery, tiles, facing);
+                    match lane(map, id) {
+                        Some(end) => {
+                            map.orient(id);
+                            return Some((GridCoord { x, y }, end));
+                        }
+                        None => map.remove_building(id),
+                    }
                 }
             }
         }
     }
     None
+}
+
+/// How near a wood the town begins, and how big a wood, in tiles.
+const WOOD_NEAR: i32 = 14;
+const WOOD: usize = 40;
+
+fn wooded(map: &Map, at: GridCoord) -> bool {
+    (-WOOD_NEAR..=WOOD_NEAR).flat_map(|dx| (-WOOD_NEAR..=WOOD_NEAR).map(move |dy| (at.x + dx, at.y + dy))).filter(|t| map.terrain.get(t) == Some(&land::TerrainType::Forest)).count() >= WOOD
 }
 
 /// The `i`th tile round the square ring `r` tiles out from the middle.

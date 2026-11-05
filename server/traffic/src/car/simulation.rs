@@ -351,6 +351,11 @@ fn gap_at(world: &Traffic, car_id: EntityId, trip: &Trip, now: GameTime) -> bool
             let Some(k) = (t.route_index - 1..t.route.len()).find(|&k| t.route[k] == street) else { return true };
             let (p, v) = t.at(now);
             let d = t.along[k] - p;
+            // One standing to turn in here waits for a bay, likely this
+            // car's: it lets it out.
+            if v < 0.05 && t.to_lot > 0 && t.route[t.route.len() - 1 - t.to_lot] == street {
+                return true;
+            }
             // Standing on the node shuts it; coming, and too near to stop,
             // shuts it; one standing in a queue short of it lets the car
             // out ahead of it, as drivers in a queue do.

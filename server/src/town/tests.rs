@@ -72,7 +72,6 @@ fn a_town_begins_by_the_water() {
     assert_eq!(world.map.objects.of_kind(BuildingKind::Fishery).count(), 1);
     assert_eq!(homes(world).len(), 2);
     assert!(world.town.has(BuildingKind::Shop));
-    assert!(world.map.frame.is_some());
 }
 
 /// Wanting what the town has never made brings its chain to hand from

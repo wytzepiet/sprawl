@@ -22,10 +22,12 @@ const SHOP_LOAD: usize = 8;
 const LOAD: usize = 4;
 /// A worker's shift, and their rest at home between shifts. A maker
 /// loses only the time its workers spend on the road.
-const SHIFT_MS: GameTime = 80_000;
-const REST_MS: GameTime = 40_000;
-/// A family keeps one of each thing it eats put by for every this many
-/// tiles to its shop: the further the shop, the more it brings home.
+const SHIFT_MS: GameTime = 160_000;
+const REST_MS: GameTime = 60_000;
+/// A family keeps a couple of each thing it eats put by, and one more for
+/// every this many tiles to its shop: a shop's car park takes a car a
+/// meal no better than a real one would.
+const PANTRY: i32 = 2;
 const PANTRY_TILES: i32 = 8;
 
 /// A car's errand: where it went and for what, what it has, and since
@@ -66,7 +68,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
             }
             fetch(world, events, car, owner, role, now);
         }
-        Some(Errand::Fetch { got, extra, .. } | Errand::Home { got, extra }) if here == Some(owner) => unpack(world, events, car, owner, role, got, extra, now),
+        // Home, or nowhere: set down at home with no spot free there.
+        Some(Errand::Fetch { got, extra, .. } | Errand::Home { got, extra }) if here == Some(owner) || here.is_none() => unpack(world, events, car, owner, role, got, extra, now),
         Some(Errand::Fetch { got, extra, .. } | Errand::Home { got, extra }) => {
             world.town.errands.insert(car, Errand::Home { got, extra });
             go_home(world, events, car, owner, here, now);
@@ -189,7 +192,8 @@ fn lorry_errand(world: &World, owner: EntityId) -> Option<(EntityId, Vec<Good>)>
 }
 
 /// The nearest maker of a good a lorry from `home` can reach: one with
-/// some in its yard, else one with room to wait in its yard.
+/// some in its yard no lorry already on its way has spoken for, else one
+/// with room to wait in its yard.
 fn source(world: &World, home: EntityId, good: Good) -> Option<EntityId> {
     let map = &world.map;
     let kind = maker(good);
@@ -200,13 +204,22 @@ fn source(world: &World, home: EntityId, good: Good) -> Option<EntityId> {
             continue;
         }
         let d = apart(map, home, id);
-        if stock(map, id, good) >= 1.0 {
+        if stock(map, id, good) - spoken_for(world, id, good) >= 1.0 {
             best = best.filter(|b| b.0 <= d).or(Some((d, id)));
         } else if waiting_at(world, id) < blueprint(kind).queue as usize {
             wait = wait.filter(|b| b.0 <= d).or(Some((d, id)));
         }
     }
     best.or(wait).map(|(_, id)| id)
+}
+
+/// Crates of a good the lorries on their way to a yard, or in it, have
+/// still to load.
+fn spoken_for(world: &World, id: EntityId, good: Good) -> f64 {
+    world.town.errands.values().map(|e| match e {
+        Errand::Fetch { to, want, got, .. } if *to == id => want.iter().filter(|&&g| g == good).count().saturating_sub(got.iter().filter(|&&g| g == good).count()) as f64,
+        _ => 0.0,
+    }).sum()
 }
 
 /// Lorries on their way to, or waiting at, a building for its goods.
@@ -254,6 +267,15 @@ fn fetch(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Entit
             }
         }
     }
+    // A lorry waiting on an empty yard while another has some goes there.
+    if lorry && got.is_empty() && took.is_empty()
+        && let Some(&g) = want.first()
+        && let Some(other) = source(world, owner, g).filter(|&o| o != to && stock(&world.map, o, g) >= 1.0)
+        && trip(world, events, car, to, other, now)
+    {
+        world.town.errands.insert(car, Errand::Fetch { to: other, want, got, extra, at: None, last: now });
+        return;
+    }
     let k = lorry as usize;
     let done = shut || got.len() >= want.len() || (!got.is_empty() && now - last >= SOME_MS[k]) || now - since >= NONE_MS[k];
     if done && !lorry && !shut {
@@ -273,10 +295,10 @@ fn fetch(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Entit
     go_home(world, events, car, owner, Some(to), now);
 }
 
-/// The further the shop, the more a family brings home to put by: what it
-/// eats, taken off the shelf now.
+/// What a family brings home to put by, more the further the shop: what
+/// it eats, taken off the shelf now.
 fn pantry(world: &mut World, home: EntityId, shop: EntityId) -> Vec<Good> {
-    let keep = apart(&world.map, home, shop) / PANTRY_TILES;
+    let keep = PANTRY + apart(&world.map, home, shop) / PANTRY_TILES;
     let Some(h) = world.map.building(home).and_then(|b| b.home.as_ref()) else { return Vec::new() };
     let goods: Vec<(Good, i32)> = LEVELS[h.level as usize].wants.iter().map(|&(g, _)| (g, keep - *h.pantry.get(&g).unwrap_or(&0) as i32)).collect();
     let mut extra = Vec::new();

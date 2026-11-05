@@ -1,5 +1,5 @@
-//! Makers: a crate every so often at a full crew, slower for each seat
-//! empty, from what its lorry fetched; stacked in its yard until someone
+//! Makers: a crate every so often at a full crew, at half the pace with
+//! nobody in, from what its lorry fetched; stacked in its yard until someone
 //! comes for it. A farm's crates are its tractor's harvest
 //! (`tractor.rs`).
 
@@ -32,7 +32,7 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     if full || !fed || ground == 0.0 {
         return;
     }
-    let pace = TURN_MS as f64 / row.every as f64 * (0.25 + 0.75 * crew) * ground;
+    let pace = TURN_MS as f64 / row.every as f64 * (0.5 + 0.5 * crew) * ground;
     let Some(b) = world.map.building_mut(id) else { return };
     b.work += pace;
     if b.work < 1.0 {

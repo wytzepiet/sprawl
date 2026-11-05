@@ -27,7 +27,7 @@ pub(crate) fn handle_player_action(
         }
         ClientMessage::Undo => Some(crate::undo::undo(world, events, owner, now)),
         ClientMessage::Pick(n) => {
-            crate::town::pick(world, n);
+            crate::town::pick(world, n, now);
             None
         }
         ClientMessage::SetSpeed(_) | ClientMessage::RunTo(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) => {

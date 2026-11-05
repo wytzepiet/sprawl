@@ -105,7 +105,11 @@ impl Map {
         if self.occupied.contains_key(&(coord.x, coord.y)) {
             return false;
         }
-        matches!(
+        // Another's door: taking it would leave that one with no street.
+        let door = [(1, 0), (-1, 0), (0, 1), (0, -1)].into_iter().filter_map(|(dx, dy)| self.occupied.get(&(coord.x + dx, coord.y + dy))).any(|&b| {
+            matches!(self.objects.get(b).map(|e| &e.object), Some(GameObject::Building(b)) if b.door.is_some_and(|d| d.street == coord))
+        });
+        !door && matches!(
             self.terrain.get(&(coord.x, coord.y)),
             Some(TerrainType::Grass | TerrainType::Forest)
         )

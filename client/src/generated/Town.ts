@@ -55,8 +55,4 @@ dawn: Dawn | null,
 /**
  * Where the town began, for the camera to find it.
  */
-start: GridCoord | null, 
-/**
- * The ground the town may build on, which grows with its standing.
- */
-bounds: [GridCoord, GridCoord] | null, };
+start: GridCoord | null, };

@@ -359,7 +359,7 @@ impl IntersectionManager {
         let at_line = e.claim.due <= now;
         match self.meet(e, p) {
             Meet::Apart => false,
-            Meet::Cross([i0, i1], [j0, j1]) => e.nose(i0, now) < p.tail(j1, now) + SPARE / 2 && !(at_line && e.tail(i1, now) + SPARE <= p.nose(j0, now)),
+            Meet::Cross([i0, i1], [j0, j1]) => e.nose(i0, now) < p.tail(j1, now).saturating_add(SPARE / 2) && !(at_line && e.tail(i1, now).saturating_add(SPARE) <= p.nose(j0, now)),
             Meet::Merge => e.due(now) < p.tail(0, now),
             Meet::Rule => true,
         }

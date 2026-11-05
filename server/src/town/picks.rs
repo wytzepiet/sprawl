@@ -5,7 +5,7 @@
 //! pick is on the table.
 
 use model::blueprint::{blueprint, maker};
-use model::{BuildingKind, EntityId, GameObject, Good, Offer, Unlock};
+use model::{BuildingKind, EntityId, Good, Offer, Unlock};
 use crate::world::World;
 use super::{of_kind, PICK_ROADS, PICK_STEP};
 
@@ -35,7 +35,7 @@ pub fn release(world: &mut World) {
 }
 
 /// A card of the pick taken.
-pub fn pick(world: &mut World, n: u8) {
+pub fn pick(world: &mut World, n: u8, now: model::GameTime) {
     let town = &mut world.town;
     let Some(&card) = town.offer.get(n as usize) else { return };
     match card {
@@ -50,18 +50,18 @@ pub fn pick(world: &mut World, n: u8) {
     // the table does not stack a second behind it.
     town.picked = town.arrived.max(town.picked + PICK_STEP);
     town.left_since = 0;
-    offer(world);
+    offer(world, now);
 }
 
 /// Every `PICK_STEP` people moving in or up, the mayor is offered a pick:
 /// what the town most lacks always among it, the rest by chance weighted
 /// by need; a wider one when nobody left since the last.
-pub fn offer(world: &mut World) {
+pub fn offer(world: &mut World, now: model::GameTime) {
     let town = &world.town;
     if !town.offer.is_empty() || town.arrived < town.picked + PICK_STEP {
         return;
     }
-    let mut cands = candidates(world);
+    let mut cands = candidates(world, now);
     let want = if world.town.left_since == 0 { 3 } else { 2 };
     cands.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut out = vec![cands.remove(0).0];
@@ -80,21 +80,22 @@ pub fn offer(world: &mut World) {
 
 /// Every card the town could be offered, and how much it needs it: a
 /// kind by the shortages it would fix at their root, a shop by the
-/// families no shop reaches, road by how little is left, a tool once.
-fn candidates(world: &World) -> Vec<(Offer, f64)> {
+/// families on a street no shop reaches, road by how little is left, a tool once.
+pub(super) fn candidates(world: &World, now: model::GameTime) -> Vec<(Offer, f64)> {
     let map = &world.map;
-    let now_waits: Vec<(Good, f64)> = map.objects.iter().filter_map(|e| match e.object {
-        GameObject::Building(ref b) => b.home.as_ref(),
-        _ => None,
-    }).flat_map(|h| h.wants.iter().map(|w| (w.good, 3.0)).chain(h.growing.iter().flat_map(|g| g.iter().filter(|(_, s)| s.short() >= 1.0).map(|(&g, _)| (g, 1.0))))).collect();
+    // Each family's wait, at what it is short of: a want waited on a while
+    // three times what the house grows with.
     let mut weight: std::collections::BTreeMap<BuildingKind, f64> = Default::default();
-    for (g, w) in now_waits {
-        *weight.entry(root(world, g, 0)).or_default() += w;
+    for (id, _) in of_kind(map, BuildingKind::House) {
+        let Some(h) = map.building(id).and_then(|b| b.home.as_ref()) else { continue };
+        let waits = h.wants.iter().filter(|w| now >= w.since + super::homes::PATIENCE_MS / 3).map(|w| (w.good, 3.0)).chain(h.growing.iter().flat_map(|g| g.iter().filter(|(_, s)| s.short() >= 1.0).map(|(&g, _)| (g, 1.0))));
+        for (g, w) in waits.collect::<Vec<_>>() {
+            *weight.entry(short_of(world, id, g)).or_default() += w;
+        }
     }
     let homes: Vec<EntityId> = of_kind(map, BuildingKind::House).into_iter().map(|(id, _)| id).collect();
-    let unserved = homes.iter().filter(|&&h| super::homes::shop_for(world, h, &[Good::Fish], 0).is_none()).count() as f64;
-    let swamped = of_kind(map, BuildingKind::Shop).into_iter().filter(|&(s, _)| map.building(s).is_some_and(|b| b.stocks.values().any(|st| st.level < 1.0 && st.cap > 0.0))).count() as f64;
-    *weight.entry(BuildingKind::Shop).or_default() += unserved * 1.5 + swamped * 4.0;
+    let unserved = homes.iter().filter(|&&h| map.street_of(h).is_some() && super::homes::shop_for(world, h, &[Good::Fish], 0).is_none()).count() as f64;
+    *weight.entry(BuildingKind::Shop).or_default() += unserved * 1.5;
     let mut cands: Vec<(Offer, f64)> = world.town.met.iter().map(|&k| (Offer::Building(k, 1), 1.0 + weight.get(&k).copied().unwrap_or(0.0) * 2.0)).collect();
     let roads = world.town.roads(map);
     cands.push((Offer::Roads(PICK_ROADS), if roads < 10 { 8.0 } else { 2.0 }));
@@ -105,6 +106,19 @@ fn candidates(world: &World) -> Vec<(Offer, f64)> {
         }
     }
     cands
+}
+
+/// What a family waiting on a good is short of: a shop, if the shop it
+/// goes to has it on the shelf, or it sits in a maker's yard with no lorry
+/// come for it yet; else whoever makes it.
+pub(super) fn short_of(world: &World, home: EntityId, good: Good) -> BuildingKind {
+    let map = &world.map;
+    let shelf = super::homes::shop_for(world, home, &[good], 0).is_some_and(|s| super::stock(map, s, good) >= 1.0);
+    let yard = of_kind(map, maker(good)).into_iter().map(|(id, _)| super::stock(map, id, good)).sum::<f64>() >= 3.0;
+    if shelf || yard {
+        return BuildingKind::Shop;
+    }
+    root(world, good, 0)
 }
 
 /// Where a shortage of a good really comes from: its makers waiting on an
