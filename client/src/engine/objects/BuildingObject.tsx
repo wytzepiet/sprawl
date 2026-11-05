@@ -9,8 +9,8 @@ import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, itemOf, ITEMS } from "./goods";
-import { DEPOT } from "./depot";
 import { SHOP_HALL } from "./shop";
+import { FISHERY } from "./fishery";
 import { HOUSES } from "./house";
 import { FARM } from "./farm";
 import { QUARRY } from "./quarry";
@@ -45,11 +45,12 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
   }
   // A shop's door at the end its lunch table stands, its goods before its window.
   if (kind === "Shop") return ["shopHall", SHOP_HALL, -1];
+  if (kind === "Fishery") return ["fishery", FISHERY, gate];
   if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, odd];
   if (kind === "Sawmill" || kind === "Woodcutter") return ["sawmill", SAWMILL, gate];
   if (kind === "ClayPit" || kind === "SandPit") return ["quarry", QUARRY, gate];
   // Until each has its own model, the nearest of the kit's.
-  const works: Partial<Record<Building["kind"], [string, Built]>> = { Fishery: ["depot", DEPOT], Bakery: ["bakery", BAKERY], Tailor: ["bakery", BAKERY], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
+  const works: Partial<Record<Building["kind"], [string, Built]>> = { Bakery: ["bakery", BAKERY], Tailor: ["bakery", BAKERY], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
   const w = works[kind];
   return w ? [w[0], w[1], gate] : null;
 }
