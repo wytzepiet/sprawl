@@ -159,7 +159,7 @@ mod tests {
     fn a_fishery_finds_the_shore() {
         let mut world = World::from(map::Map::meadow(-5..25, -10..1));
         world.map.place_road_path(&(-5..25).map(|x| at(x, -3)).collect::<Vec<_>>());
-        for y in 1..20 {
+        for y in 0..20 {
             for x in -5..25 {
                 world.map.terrain.insert((x, y), TerrainType::Sea);
             }

@@ -22,7 +22,7 @@ struct Scene {
     name: String,
     rig: Rig,
     legs: Vec<Leg>,
-    parked: Vec<Pose>,
+    parked: Vec<(Rig, Pose)>,
     bays: Vec<Rect>,
     ends: Pose,
     /// The ground it may drive on, where that is not just the street.
@@ -49,7 +49,7 @@ fn scenes() -> Vec<Scene> {
     let drive = [(-0.11, -0.53)];
     let drive_bays = vec![bay(0.0, -0.53, FRAC_PI_2, 0.3, 0.44)];
     for (what, x, depth, beside, bays) in [("square", 0.0, SQUARE, &beside[..], &bays), ("drive", 0.11, 0.53, &drive[..], &drive_bays)] {
-        let parked: Vec<Pose> = beside.iter().map(|&(bx, by)| car(bx, by, FRAC_PI_2)).collect();
+        let parked: Vec<(Rig, Pose)> = beside.iter().map(|&(bx, by)| (CAR, car(bx, by, FRAC_PI_2))).collect();
         for (side, place) in square(x, depth, beside, road).into_iter().enumerate() {
             let from = ["from its own lane", "from across the road"][side];
             let Some(p) = place else {
@@ -66,26 +66,24 @@ fn scenes() -> Vec<Scene> {
             }
         }
     }
-    // A depot's yard behind the street: its gate, its lane, four rows of
-    // docks either side, every other dock taken.
-    let yard = Yard { front: -0.5, lane: road.lane };
-    let rows = [-1.95, -1.65, -1.35, -1.05];
-    let docks: Vec<Pose> = rows.iter().flat_map(|&y| [Pose::new(0.9, y, PI), Pose::new(-0.9, y, 0.0)]).collect();
-    let ground = [
-        Rect::span(-2.6, -0.5, 2.6, 0.45),
-        Rect::span(-0.5, -0.62, 0.5, -0.4),
-        Rect::span(-1.45, -2.45, 1.45, -0.55),
-    ];
-    let yard_bays: Vec<Rect> = docks.iter().map(|d| bay(d.x + d.heading.cos() * -0.21, d.y, 0.0, 0.62, 0.22)).collect();
-    for which in [0, 7] {
+    // A yard one row deep behind the kerb: two docks square to the street
+    // at its gate, the lorry's tail to the wall; car bays either side,
+    // clear of them; the other dock taken.
+    let docks = [Pose::new(-0.15, -0.858, FRAC_PI_2), Pose::new(0.15, -0.858, FRAC_PI_2)];
+    let cars: Vec<Pose> = [-1.22, -0.95, 0.95, 1.22].iter().map(|&x| car(x, -SQUARE, -FRAC_PI_2)).collect();
+    let ground = [Rect::span(-3.0, -0.5, 3.0, HALF_ROAD + 0.08), Rect::span(-1.48, -1.48, 1.48, -0.45)];
+    let yard_bays: Vec<Rect> = docks.iter().map(|d| bay(d.x, d.y - 0.2, FRAC_PI_2, 0.66, 0.28)).collect();
+    for which in [0, 1] {
         let dock = docks[which];
-        let others: Vec<Pose> = docks.iter().enumerate().filter(|&(i, _)| i != which).map(|(_, d)| Pose::new(d.x, d.y, d.heading).ahead(-LORRY.cab.axle())).collect();
-        let parked: Vec<Rect> = others.iter().flat_map(|p| bodies(&LORRY, *p).collect::<Vec<_>>()).collect();
+        let other = docks[1 - which];
+        let mut others: Vec<(Rig, Pose)> = vec![(LORRY, Pose::new(other.x, other.y, other.heading).ahead(-LORRY.cab.axle()))];
+        others.extend(cars.iter().map(|&p| (CAR, p)));
+        let parked: Vec<Rect> = others.iter().flat_map(|(r, p)| bodies(r, *p).collect::<Vec<_>>()).collect();
         let clear = |legs: &[Leg]| legs.iter().all(|l| l.poses(&LORRY).iter().all(|(_, p)| bodies(&LORRY, *p).all(|b| parked.iter().all(|c| !b.meets(c)) && b.corners().iter().all(|&c| ground.iter().any(|g| g.holds(c))))));
         let (near, far) = (road.near(), road.far());
-        for (side, place) in [dock_ways(&LORRY, yard, dock, near, &[near, far], &clear), dock_ways(&LORRY, yard, dock, far, &[far, near], &clear)].into_iter().enumerate() {
+        for (side, place) in [dock_ways(&LORRY, dock, near, &[near, far], &clear), dock_ways(&LORRY, dock, far, &[far, near], &clear)].into_iter().enumerate() {
             let from = ["from its own lane", "from across the road"][side];
-            let name = format!("dock {}, ", ["at the back", "at the front"][(which != 0) as usize]);
+            let name = format!("dock {}, ", ["left", "right"][which]);
             let Some(p) = place else {
                 out.push(Scene { name: format!("{name}{from}: none"), rig: LORRY, legs: Vec::new(), parked: others.clone(), bays: yard_bays.clone(), ends: Pose::new(0.0, 0.0, 0.0), extent: Some(ground.to_vec()) });
                 continue;
@@ -130,7 +128,7 @@ fn sheet() {
                 wrong.push(format!("{}: a leg starts where the last did not end", s.name));
             }
         }
-        if let Some(p) = ps.iter().find(|p| bodies(&s.rig, **p).any(|b| s.parked.iter().any(|q| bodies(&s.rig, *q).any(|c| b.meets(&c))))) {
+        if let Some(p) = ps.iter().find(|p| bodies(&s.rig, **p).any(|b| s.parked.iter().any(|(r, q)| bodies(r, *q).any(|c| b.meets(&c))))) {
             wrong.push(format!("{}: touches a parked car at {p:?}", s.name));
         }
         if let Some(ground) = &s.extent
@@ -197,8 +195,8 @@ fn draw(all: &[Scene]) {
         for b in &s.bays {
             svg += &poly(b, "fill='none' stroke='#fff' stroke-width='1.5'");
         }
-        for q in &s.parked {
-            for b in bodies(&s.rig, *q) {
+        for (r, q) in &s.parked {
+            for b in bodies(r, *q) {
                 svg += &poly(&b, "fill='#456' stroke='#123'");
             }
         }
@@ -234,3 +232,4 @@ fn draw(all: &[Scene]) {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("sheet.svg"), svg).unwrap();
 }
+

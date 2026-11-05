@@ -991,9 +991,9 @@ mod tests {
     fn a_building_is_placed_whole_with_its_yard_on_the_street() {
         let world_ = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
         let mut world = world_;
-        // A sawmill's yard is two deep toward the street at y = 0, so it
+        // A sawmill's yard is a row toward the street at y = 0, so it
         // faces -y (0).
-        let at = GridCoord { x: 0, y: 3 };
+        let at = GridCoord { x: 0, y: 2 };
         assert_eq!(world.facing_for(BuildingKind::Sawmill, at), Some(0));
         let tiles = world.fit(BuildingKind::Sawmill, at, 0).expect("the depot fits by the street");
         let id = world.raise(BuildingKind::Sawmill, tiles, 0);
@@ -1001,7 +1001,7 @@ mod tests {
         assert_eq!(tiles_of(&world, id).len(), w as usize * h as usize);
         assert!(world.street_of(id).is_some(), "its door is open");
         let yard = Map::yard_of(&tiles_of(&world, id), BuildingKind::Sawmill, 0).unwrap();
-        assert!(yard.iter().all(|t| t.y <= 2), "its yard is not on the street side: {yard:?}");
+        assert!(yard.iter().all(|t| t.y == 1), "its yard is not on the street side: {yard:?}");
     }
 
     /// A building keeps its door while it stands, whatever else comes
@@ -1011,7 +1011,7 @@ mod tests {
     #[test]
     fn a_yard_turns_to_the_street_it_has() {
         let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        let at = GridCoord { x: 0, y: 3 };
+        let at = GridCoord { x: 0, y: 2 };
         let tiles = world.fit(BuildingKind::Sawmill, at, 0).unwrap();
         let id = world.raise(BuildingKind::Sawmill, tiles.clone(), 0);
         world.finish(id);
@@ -1021,7 +1021,7 @@ mod tests {
         };
         let yard = |w: &Map| Map::yard_of(&tiles, BuildingKind::Sawmill, facing(w)).unwrap();
         // A street along its back: the door it has stands, so nothing turns.
-        world.place_road_path(&(-6..=6).map(|x| GridCoord { x, y: 5 }).collect::<Vec<_>>());
+        world.place_road_path(&(-6..=6).map(|x| GridCoord { x, y: 4 }).collect::<Vec<_>>());
         world.changed();
         assert_eq!(facing(&world), 0);
         // Its own street taken up: it turns about, its yard to the back.
@@ -1030,13 +1030,13 @@ mod tests {
         }
         world.changed();
         assert_eq!(facing(&world), 2, "it turned to the street behind");
-        assert!(yard(&world).iter().all(|t| t.y >= 3), "its yard is at the back: {:?}", yard(&world));
+        assert!(yard(&world).iter().all(|t| t.y == 3), "its yard is at the back: {:?}", yard(&world));
         let (door, street) = world.door_of(id).expect("reached from behind");
-        assert!(yard(&world).contains(&door) && world.objects.get(street).unwrap().position.unwrap().y == 5);
+        assert!(yard(&world).contains(&door) && world.objects.get(street).unwrap().position.unwrap().y == 4);
         assert!(world.lot_mut(id).is_some(), "its lot is laid in the new yard");
         // That one gone too, and a street down its side: it turns sideways.
         for x in -6..=6 {
-            lift_road(&mut world, GridCoord { x, y: 5 });
+            lift_road(&mut world, GridCoord { x, y: 4 });
         }
         world.place_road_path(&(-2..=7).map(|y| GridCoord { x: 2, y }).collect::<Vec<_>>());
         world.changed();

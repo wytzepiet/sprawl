@@ -113,37 +113,54 @@ interface Bay {
   a: number;
 }
 
+/** Docks side by side at a gate, and how far a car's bay keeps past the
+ *  outer ones (`DOCK_PITCH`, `DOCK_CLEAR` in `lots.rs`). */
+const DOCK_PITCH = 0.3;
+const DOCK_CLEAR = 0.8;
+
 /**
  * A building's bays at the kerb, as the server lays them (`kerb_bays`):
- * as many as its long side holds, on the side its door opens onto first,
+ * as many as its blueprint asks, on the side its door opens onto first,
  * then on the sides with a street all along them, the fullest first, until
- * it has them; along each side evenly within its walls, each where the
- * street runs straight past.
+ * it has them; each where the street runs straight past. Along a side
+ * evenly about its middle, or, on a yard's gate's side, out either way
+ * from the gate's docks, clear of where a trailer swings in.
  */
-export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number]): Bay[] {
-  const need = baysAlong(Math.max(...BLUEPRINTS[kind].size));
+export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number], gate?: GridCoord): Bay[] {
+  const { bays: need, docks } = BLUEPRINTS[kind];
   const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
   const sides = FACINGS.map(([dx, dy]) => {
     const run = sideOf(tiles, [dx, dy]);
     const [ux, uy] = [Math.abs(dy), Math.abs(dx)];
     const whole = run.every((t, i) => street(t.x + dx, t.y + dy) && (i === 0 || town.linked(run[i - 1].x + dx, run[i - 1].y + dy, t.x + dx, t.y + dy)));
-    const n = baysAlong(run.length);
+    const ours = !!door && door[0] === dx && door[1] === dy;
+    const g = ours && gate ? run.findIndex((t) => t.x === gate.x && t.y === gate.y) : -1;
+    const len = run.length;
+    let at: number[];
+    if (g < 0) {
+      const n = Math.min(baysAlong(len), need);
+      at = Array.from({ length: n }, (_, i) => len / 2 + (i - (n - 1) / 2) * SQUARE_PITCH);
+    } else {
+      const d0 = (Math.max(0, docks - 1) * DOCK_PITCH) / 2 + DOCK_CLEAR;
+      at = Array.from({ length: 8 * len }, (_, k) => g + 0.5 + (k % 2 ? -1 : 1) * (d0 + Math.floor(k / 2) * SQUARE_PITCH))
+        .filter((u) => u >= BAY_INSET && u <= len - BAY_INSET)
+        .slice(0, need);
+    }
     const bays: Bay[] = [];
-    for (let i = 0; i < n; i++) {
-      const u = run.length / 2 + (i - (n - 1) / 2) * SQUARE_PITCH;
-      const k = Math.min(Math.floor(u), run.length - 1);
+    for (const u of at) {
+      const k = Math.min(Math.floor(u), len - 1);
       const a = u - k - 0.5;
       const [c, r] = [run[k].x + dx, run[k].y + dy];
       if (!straight(town, c, r, ux, uy)) continue;
       bays.push({ x: c + 0.5 + ux * a - dx * SQUARE, y: r + 0.5 + uy * a - dy * SQUARE, angle: Math.atan2(-dy, -dx), road: [c, r], side: [-dx, -dy], a });
     }
-    return { other: !door || door[0] !== dx || door[1] !== dy, broken: !whole, bays };
+    return { other: !ours, broken: !whole, bays };
   });
   sides.sort((p, q) => +p.other - +q.other || +p.broken - +q.broken || q.bays.length - p.bays.length);
   const bays: Bay[] = [];
   for (const side of sides) {
     if (bays.length >= need) break;
-    bays.push(...side.bays);
+    bays.push(...side.bays.slice(0, need - bays.length));
   }
   return bays;
 }
@@ -162,15 +179,18 @@ export function baysAt(town: Town, c: number, r: number): Bay[] {
       // The building's tiles, and its door, wherever on it.
       const tiles: GridCoord[] = [{ x: c + sx, y: r + sy }];
       let door: [number, number] | undefined;
+      let gate: GridCoord | undefined;
       for (let i = 0; i < tiles.length; i++) {
-        door ??= town.door?.(tiles[i].x, tiles[i].y);
+        const d = town.door?.(tiles[i].x, tiles[i].y);
+        if (d && !door) [door, gate] = [d, tiles[i]];
         for (const [dx, dy] of EIGHT) {
           const [x, y] = [tiles[i].x + dx, tiles[i].y + dy];
           const n = town.tile(x, y);
           if (n.id === t.id && n.kind === t.kind && !tiles.some((q) => q.x === x && q.y === y)) tiles.push({ x, y });
         }
       }
-      bays = baysOf(town, tiles, t.kind as BuildingKind, door && (!door[0] || !door[1]) ? door : undefined);
+      const square = door && (!door[0] || !door[1]) ? door : undefined;
+      bays = baysOf(town, tiles, t.kind as BuildingKind, square, square && BLUEPRINTS[t.kind as BuildingKind].lot[1] > 0 ? gate : undefined);
       mine.set(t.id, bays);
     }
     out.push(...bays.filter((b) => b.road[0] === c && b.road[1] === r));

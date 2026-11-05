@@ -427,108 +427,75 @@ fn drivable(rig: &Rig, legs: &[Leg]) -> bool {
     })
 }
 
-/// A yard behind the street, as a lorry sees it: its gate's middle at
-/// x = 0, its front at y = `front` (the street's middle line at y = 0),
-/// its lane straight in from the gate, driven `lane` right of the middle
-/// each way.
-#[derive(Clone, Copy, Debug)]
-pub struct Yard {
-    pub front: f64,
-    pub lane: f64,
-}
-
-/// A lorry's way into a dock (its cab's middle and heading) from a lane,
-/// and out onto `exits`: forward round through the gate and up the yard's
-/// lane, past the dock and swung away from it, stopped, and the trailer
-/// backed round into it; out forward round into the lane, down it and
-/// round onto each exit. Each clear of `clear`.
-pub fn dock(rig: &Rig, yard: Yard, dock: Pose, from: Line, exits: &[Line], clear: Clear) -> Option<Place> {
+/// A lorry's way into a dock behind the kerb, square to the street, its
+/// tail to the building's loading door (`dock`: its cab's middle, facing
+/// the street), from a lane, and out onto `exits`: on along the lane past
+/// it, swung away from it, stopped, and the trailer backed round into it,
+/// straight the last of the way; out forward round onto each exit and on
+/// until the trailer is behind it. Each clear of `clear`.
+pub fn dock(rig: &Rig, dock: Pose, from: Line, exits: &[Line], clear: Clear) -> Option<Place> {
     let t = rig.trailer.expect("a lorry");
     let stands = Pose::new(dock.x, dock.y, dock.heading).ahead(-rig.cab.axle());
     let axle = (stands.x - stands.heading.cos() * t.length, stands.y - stands.heading.sin() * t.length);
-    let lane_in = Line { x: -yard.lane, y: yard.front, heading: -std::f64::consts::FRAC_PI_2 };
-    let lane_out = Line { x: yard.lane, y: yard.front, heading: std::f64::consts::FRAC_PI_2 };
-    // The dock's side of the lane: a swing is away from it.
-    let side = dock.x.signum();
     let outs = |exit: Line| -> Vec<Leg> {
         for r in RADII {
-            for r2 in RADII {
-                let turn = wrap(lane_out.heading - stands.heading);
-                let first = [Piece::Free, Piece::Turn(turn, r)];
-                let Some(c) = fit_line(stands, &first, false, lane_out).filter(|&c| c >= 0.0) else { continue };
-                let mut m = moves(&first, &[c], false);
-                let up = drive(rig, stands, &m).last().unwrap().1;
-                let second = [Piece::Free, Piece::Turn(wrap(exit.heading - lane_out.heading), r2)];
-                let Some(u) = fit_line(Pose::new(up.x, up.y, up.heading), &second, false, exit).filter(|&u| u >= 0.0) else { continue };
-                m.extend(moves(&second, &[u], false));
-                // On along the street until the trailer is behind it.
-                m.push(Move { back: false, from: 0.0, to: 0.0, length: 0.4 });
-                let legs = vec![Leg { from: stands, back: false, towed: false, moves: m }];
-                if drivable(rig, &legs) && clear(&legs) {
-                    return legs;
-                }
+            let pieces = [Piece::Free, Piece::Turn(wrap(exit.heading - stands.heading), r)];
+            let Some(c) = fit_line(stands, &pieces, false, exit).filter(|&c| c >= 0.0) else { continue };
+            let mut m = moves(&pieces, &[c], false);
+            m.push(Move { back: false, from: 0.0, to: 0.0, length: 0.45 });
+            let legs = vec![Leg { from: stands, back: false, towed: false, moves: m }];
+            if drivable(rig, &legs) && clear(&legs) {
+                return legs;
             }
         }
         Vec::new()
     };
-    let lane = from;
-    {
-        for r in RADII {
-            let turn = wrap(lane_in.heading - lane.heading);
-            let gate = [Piece::Free, Piece::Turn(turn, r)];
-            let a0 = fit_line(lane.at(0.0), &gate, false, lane_in)?;
-            let start = lane.at(a0);
-            for swing in [0.0, 15.0f64, 30.0, 45.0, 60.0, 75.0, 90.0].map(|d| -side * d.to_radians()) {
-                for rt in [0.9, 0.7, 0.55, 0.45] {
-                    // How far up the lane before the swing, and how far the
-                    // trailer backs straight in at the end: found together.
-                    let leg = |a: f64| {
-                        let m = moves(&[Piece::Turn(turn, r), Piece::Straight(a.max(0.0)), Piece::Turn(swing, RADII[0]), Piece::Straight(0.3)], &[], false);
-                        Leg { from: start, back: false, towed: false, moves: m }
-                    };
-                    let land = |a: f64, b: f64| -> Option<(f64, f64)> {
-                        let stop = leg(a).end(rig);
-                        let l = backed(rig, stop, stands.trailer, rt, b)?;
-                        let e = l.end(rig);
-                        let (ex, ey) = (e.x - e.trailer.cos() * t.length, e.y - e.trailer.sin() * t.length);
-                        Some((ex - axle.0, ey - axle.1))
-                    };
-                    let (mut a, mut b) = ((yard.front - stands.y).abs(), 0.2);
-                    let mut found = false;
-                    for _ in 0..30 {
-                        let Some(f) = land(a, b) else { break };
-                        if f.0.hypot(f.1) < 1e-6 {
-                            found = true;
-                            break;
-                        }
-                        let h = 1e-4;
-                        let (Some(fa), Some(fb)) = (land(a + h, b), land(a, b + h)) else { break };
-                        let j = [[(fa.0 - f.0) / h, (fb.0 - f.0) / h], [(fa.1 - f.1) / h, (fb.1 - f.1) / h]];
-                        let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
-                        if det.abs() < 1e-12 {
-                            break;
-                        }
-                        a -= (f.0 * j[1][1] - f.1 * j[0][1]) / det;
-                        b -= (j[0][0] * f.1 - j[1][0] * f.0) / det;
-                    }
-                    if !found || a < 0.0 || b < 0.05 {
-                        continue;
-                    }
-                    let first = leg(a);
-                    let Some(second) = backed(rig, first.end(rig), stands.trailer, rt, b) else { continue };
-                    let into = vec![first, second];
-                    if !drivable(rig, &into) || !clear(&into) {
-                        continue;
-                    }
-                    let outs: Vec<Vec<Leg>> = exits.iter().map(|&e| outs(e)).collect();
-                    if outs.iter().all(Vec::is_empty) {
-                        return None;
-                    }
-                    return Some(Place { into, stands: Pose { trailer: stands.heading, ..stands }, outs });
+    // Away from the dock: it is on the right of the lane, or the left.
+    let away = if from.left(dock.x, dock.y) < 0.0 { 1.0 } else { -1.0 };
+    let start = from.at(from.along(dock.x, dock.y) - 0.9);
+    for swing in [30.0f64, 45.0, 20.0, 60.0, 10.0, 75.0].map(|d| away * d.to_radians()) {
+        for rt in [0.9, 0.7, 0.55, 0.45] {
+            // How far on along the lane before the swing, and how far the
+            // trailer backs straight in at the end: found together.
+            let leg = |a: f64| Leg { from: start, back: false, towed: false, moves: moves(&[Piece::Straight(a.max(0.0)), Piece::Turn(swing, RADII[0]), Piece::Straight(0.15)], &[], false) };
+            let land = |a: f64, b: f64| -> Option<(f64, f64)> {
+                let l = backed(rig, leg(a).end(rig), stands.trailer, rt, b)?;
+                let e = l.end(rig);
+                Some((e.x - e.trailer.cos() * t.length - axle.0, e.y - e.trailer.sin() * t.length - axle.1))
+            };
+            let (mut a, mut b) = (1.3, 0.2);
+            let mut found = false;
+            for _ in 0..30 {
+                let Some(f) = land(a, b) else { break };
+                if f.0.hypot(f.1) < 1e-6 {
+                    found = true;
+                    break;
                 }
+                let h = 1e-4;
+                let (Some(fa), Some(fb)) = (land(a + h, b), land(a, b + h)) else { break };
+                let j = [[(fa.0 - f.0) / h, (fb.0 - f.0) / h], [(fa.1 - f.1) / h, (fb.1 - f.1) / h]];
+                let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
+                if det.abs() < 1e-12 {
+                    break;
+                }
+                a -= (f.0 * j[1][1] - f.1 * j[0][1]) / det;
+                b -= (j[0][0] * f.1 - j[1][0] * f.0) / det;
             }
+            if !found || a < 0.0 || b < 0.05 {
+                continue;
+            }
+            let first = leg(a);
+            let Some(second) = backed(rig, first.end(rig), stands.trailer, rt, b) else { continue };
+            let into = vec![first, second];
+            if !drivable(rig, &into) || !clear(&into) {
+                continue;
+            }
+            let outs: Vec<Vec<Leg>> = exits.iter().map(|&e| outs(e)).collect();
+            if outs.first().is_none_or(Vec::is_empty) {
+                return None;
+            }
+            return Some(Place { into, stands: Pose { trailer: stands.heading, ..stands }, outs });
         }
-        None
     }
+    None
 }
-

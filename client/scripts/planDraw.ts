@@ -13,7 +13,7 @@ import { dress } from "../src/engine/town/dressing";
 import { asphalt, pavement } from "../src/engine/town/surface";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { slope } from "../src/engine/town/mass";
-import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
+import { CAR } from "../src/engine/objects/roadGeometry";
 import { BLUEPRINTS } from "../src/blueprints";
 import { themes } from "../src/engine/theme";
 
@@ -77,18 +77,9 @@ export function planSvg(text: string, { crop, px, paths }: Options): string {
   fill(street, hex(T.road), "nonzero");
   fill(through, hex(T.highway), "nonzero");
 
-  // What stands on the ground: yard lines, lorries at docks, parked
-  // cars.
+  // What stands on the ground: yard lines, parked cars.
   fill(dressing.yardLines.map((r) => [r]), "#b8b2a0");
   for (const car of dressing.cars) box(car.x, car.y, car.angle, CAR.l, CAR.w, CARS[car.colour]);
-  for (const dock of dressing.docks) {
-    const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
-    line([[dock.x - uy * 0.11, dock.y + ux * 0.11], [dock.x + uy * 0.11, dock.y - ux * 0.11]], "#383d4d", 0.03);
-    if (!dock.lorry) continue;
-    const trailer = 0.01 + TRAILER.l / 2, cab = 0.01 + TRAILER.l + 0.02 + CAB.l / 2;
-    box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, TRAILER.l, TRAILER.w, "#e6e6e0");
-    box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, CAB.l, CAB.w, "#475c94");
-  }
 
   // The buildings: each part its kind's colour; the roof's
   // faces' edges, ridges and hips, thin and light.

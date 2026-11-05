@@ -58,7 +58,7 @@ impl Blueprint {
     /// Docks in its yard: one for each of its lorries, and one for each
     /// lorry that may wait to load.
     pub fn docks(&self) -> usize {
-        self.lorries as usize + self.queue as usize
+        (self.lorries as usize + self.queue as usize).min(2)
     }
 
     /// Bays at its kerb: its workers' cars and its customers'.
@@ -118,7 +118,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Bakery, maker((2, 1), Bread, 8 * SECOND, &[(Wheat, 1)], 1, Ground::Any)),
         (ClayPit, maker((1, 1), Clay, 9 * SECOND, &[], 0, Ground::Clay)),
         (Brickworks, Blueprint { loud: true, ..maker((2, 2), Bricks, 9 * SECOND, &[(Clay, 1), (Logs, 1)], 1, Ground::Any) }),
-        (Workshop, Blueprint { loud: true, ..maker((2, 1), Furniture, 11 * SECOND, &[(Planks, 2)], 1, Ground::Any) }),
+        (Workshop, Blueprint { loud: true, ..maker((2, 2), Furniture, 11 * SECOND, &[(Planks, 2)], 1, Ground::Any) }),
         (SandPit, maker((1, 1), Sand, 9 * SECOND, &[], 0, Ground::Beach)),
         (Glassworks, Blueprint { loud: true, ..maker((2, 2), Glass, 10 * SECOND, &[(Sand, 1), (Logs, 1)], 1, Ground::Any) }),
         (SheepFarm, maker((2, 1), Wool, 10 * SECOND, &[], 0, Ground::Any)),
@@ -165,15 +165,14 @@ pub fn frontage(n: usize) -> u8 {
     ((n - 1) as f64 * 0.27 + 0.4 + 0.25).ceil() as u8
 }
 
-/// A yard's size, wide along the street and deep, for so many docks: a
-/// lane in from a gate in the middle, and docks either side of it a lorry
-/// backs into. None for none.
+/// A yard's size, wide along the street and deep, for so many docks: one
+/// row before the building, the docks side by side at its gate, a lorry
+/// backed into each from the street, and room either side for its
+/// trailer to swing round. None for none.
 pub fn yard(docks: usize) -> (u8, u8) {
     match docks {
         0 => (0, 0),
-        1..=2 => (3, 2),
-        3..=4 => (4, 2),
-        _ => (5, 2),
+        _ => (3, 1),
     }
 }
 
@@ -220,10 +219,10 @@ mod tests {
     /// fronts the street with bays for its customers.
     #[test]
     fn lots_follow_what_they_hold() {
-        assert_eq!(lot(BuildingKind::Fishery), ((3, 1), (3, 2)));
-        assert_eq!(lot(BuildingKind::Sawmill), ((4, 2), (4, 2)));
+        assert_eq!(lot(BuildingKind::Fishery), ((3, 1), (3, 1)));
+        assert_eq!(lot(BuildingKind::Sawmill), ((3, 2), (3, 1)));
         assert_eq!(lot(BuildingKind::House), ((1, 1), (0, 0)));
         let ((w, _), (yw, yd)) = lot(BuildingKind::Shop);
-        assert!(w >= 2 && yw == w && yd == 2, "a shop's lorry has a dock: {:?}", lot(BuildingKind::Shop));
+        assert!(w >= 2 && yw == w && yd == 1, "a shop's lorry has a dock: {:?}", lot(BuildingKind::Shop));
     }
 }

@@ -218,11 +218,11 @@ export function forkliftAt(yard: Yard, lifts: Lift[], now: number): { truck: Pos
   return { truck, load: { at: { at, heading: truck.heading }, z: made.a.z + (made.b.z - made.a.z) * k } };
 }
 
-/** A building's forklifts, each its yard and its runs: `runs` its lifts,
- *  and a mill's own from its barn `door` (`car` -1). Its pad's packages
+/** A building's forklifts, each its yard and its runs: `runs` its lifts.
+ *  Its pad's packages
  *  stand on `base`; `slotOf` is where a run's package stands on its
  *  vehicle (`liftSlot`). */
-export function yardsOf(id: number, data: Building, pad: Pad, base: number, runs: Lift[], slotOf: (l: Lift, j: number) => { at: Pose; z: number; edge: number; face?: number; via?: P } | null, door?: Pose): { yard: Yard; mine: Lift[] }[] {
+export function yardsOf(id: number, data: Building, pad: Pad, base: number, runs: Lift[], slotOf: (l: Lift, j: number) => { at: Pose; z: number; edge: number; face?: number; via?: P } | null): { yard: Yard; mine: Lift[] }[] {
   /** A run's `j`th package's two ends: where it stands on the pad, the
    *  next free place or the last taken as the pad is seen when it is
    *  taken up or set down there, its bay's face toward the forklift; and
@@ -235,14 +235,14 @@ export function yardsOf(id: number, data: Building, pad: Pad, base: number, runs
     const seen = packagesOf(data, l.good) + runs.filter((m) => m.good === l.good).reduce((n, m) => n + atPad(m, when), 0);
     const [slot, up] = placeIn(bay, l.onto ? seen - 1 : seen);
     const onPad: End = { at: slot.at, face: bay.face, z: base + up * ITEMS[l.good].h, inside: bay.inside, reach: FORKS };
-    const there = l.car === -1 ? (door ? { at: door, z: base, edge: 0 } : null) : slotOf(l, j);
+    const there = slotOf(l, j);
     if (!there) return null;
     // The side it comes from: the pad's, or its aisle mouth's.
     const [x, y] = there.at.at;
     const [rx, ry] = bay.inside && pad.exits.length ? nearest(pad.exits, [x, y]) : slot.at;
     const side = there.at.heading + Math.PI / 2;
     const toward = Math.cos(side) * (rx - x) + Math.sin(side) * (ry - y) >= 0;
-    const face = l.car === -1 ? there.at.heading : (there.face ?? (toward ? side : side + Math.PI));
+    const face = there.face ?? (toward ? side : side + Math.PI);
     const onCar: End = { at: [x, y], face, z: there.z, inside: false, reach: Math.max(FORKS, there.edge + MAST), via: there.via };
     return l.onto ? { from: onPad, to: onCar } : { from: onCar, to: onPad };
   };

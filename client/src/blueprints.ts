@@ -41,9 +41,9 @@ export type Blueprint = Look & (typeof ROWS)[BuildingKind];
 /** The four ways a plot can lie: which side the lot and street are on. */
 export const FACINGS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
-/** A kind that parks at the kerb before it: neither a house's drive nor a
- *  yard. Mirrors `lots::kerbed`. */
-export const kerbed = (kind: BuildingKind) => kind !== "House" && BLUEPRINTS[kind].lot[1] === 0;
+/** A kind with bays at its kerb: its workers' and customers' cars.
+ *  Mirrors `lots::kerbed`. */
+export const kerbed = (kind: BuildingKind) => kind !== "House" && BLUEPRINTS[kind].bays > 0;
 
 /** A building's tiles that face the way (dx, dy), nothing of its own
  *  beyond them, in order along that side. Mirrors `lots::side_of`. */

@@ -8,7 +8,8 @@ mod tests {
 
     /// The game's half of each row, written where the client reads it,
     /// beside ts-rs's types (`.cargo/config.toml`): its body, its lot,
-    /// what it makes and from what, its seats and vehicles. `blueprints.ts`
+    /// what it makes and from what, its seats, its bays at the kerb and docks
+    /// in its yard, and its vehicles. `blueprints.ts`
     /// keeps only the look.
     #[test]
     fn the_client_reads_the_rows() {
@@ -19,7 +20,7 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { size: [number, number]; lot: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {\n",
+             export const ROWS: Record<BuildingKind, { size: [number, number]; lot: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; bays: number; docks: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
@@ -28,11 +29,13 @@ mod tests {
             let takes = if takes.is_empty() { "{}".into() } else { format!("{{ {} }}", takes.join(", ")) };
             let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
             ts += &format!(
-                "  {kind:?}: {{ size: {}, lot: {}, makes: {makes}, every: {}, takes: {takes}, seats: {}, lorries: {}, forklifts: {}, farm: {}, loud: {} }},\n",
-                pair((size.0, size.1 + yard.1)),
+                "  {kind:?}: {{ size: {}, lot: {}, makes: {makes}, every: {}, takes: {takes}, seats: {}, bays: {}, docks: {}, lorries: {}, forklifts: {}, farm: {}, loud: {} }},\n",
+                pair(size),
                 pair(yard),
                 b.every,
                 b.seats,
+                b.bays(),
+                b.docks(),
                 b.lorries,
                 b.forklifts,
                 b.farm,

@@ -3,34 +3,23 @@ import { Solid } from "../solid";
 import { barn, box, door, ground, heap, hull, jitter, lamp, leanTo, model, pitched, put, rod, window, PANE, type Cover, type Model, type V, type Wall } from "./kit";
 
 /**
- * A quarry, whole, the sawmill's twin at the mountain's foot
- * (`refresh/refs/quarry-gpt.png`): one model on its plot, two tiles
- * across (x, -1 to 1) and four deep (y), the street at +y; its ground on
- * z = 0. Its yard, the front half, is its lorries' as the sawmill's is
- * (`lots.rs`): the lane up the gate's side (+x), the stone on its pad
- * beside it (`pads.ts`), the docks across. Everything here is the back
- * half's.
+ * A pit, whole, on the back row of its plot (x -1.5 to 1.5, the street at
+ * +y, its yard before it as the shop's): the bank it is dug into, clay or
+ * sand by the kind.
  *
- * - At the back, the rock: a pale crag cut into in benches, a step each,
- *   down to the pit's floor, open to the yard; boulders on its rim.
- * - On the floor, a yellow digger at the face, boulders it broke.
- * - At the pit's mouth, the crusher: a steel frame on legs under a little
- *   roof, its yellow hopper on top, a skip under its chute; its belt out
- *   to a heap of gravel.
- * - On the gate's side the site hut: cream, a slate roof, a green door, a
- *   window over a box of flowers, a lean-to; a pallet of cut blocks by it,
- *   its lamp.
+ * - On the left the bank, a mound cut into in benches, a step each, down
+ *   to the pit's floor, open to the yard; boulders on its rim.
+ * - On the floor, a yellow digger at the face.
+ * - On the right the site hut: cream, a slate roof, a green door, a
+ *   window over a box of flowers, a lean-to; heaps of what was dug
+ *   before it.
  */
 
-const ROCK: RGB = [0.8, 0.74, 0.64];
 const DUST: RGB = [0.84, 0.79, 0.7];
 const STONES: RGB = [0.8, 0.78, 0.74];
-const BLOCKS: RGB = [0.86, 0.84, 0.8];
 const YELLOW: RGB = [0.94, 0.74, 0.22];
 const TRACK: RGB = [0.24, 0.24, 0.26];
-const FRAME: RGB = [0.33, 0.42, 0.6];
 const STEEL: RGB = [0.5, 0.52, 0.56];
-const BELT: RGB = [0.25, 0.25, 0.27];
 const WALL: RGB = [0.92, 0.87, 0.76];
 const SLATE: Cover = { finish: "tiles", rgb: [0.36, 0.44, 0.62] };
 const DOOR: RGB = [0.28, 0.5, 0.36];
@@ -41,12 +30,19 @@ const WOOD: RGB = [0.55, 0.38, 0.25];
 const PIT: [number, number] = [0, -1.05];
 const BENCHES = [0, 1, 2, 3].map((k) => ({ rx: 0.4 + 0.13 * k, ry: 0.32 + 0.12 * k, z: 0.1 * k }));
 
-/** A boulder at (x, y), `r` round, standing on `z`. */
-const boulder = (m: Model, x: number, y: number, r: number, seed: number, z = 0.008) =>
-  put(m, "rock", hull(Array.from({ length: 10 }, (_, j): V => [x + r * jitter(seed * 7 + j), y + r * jitter(seed * 11 + j), z + r * 1.2 * Math.abs(jitter(seed * 13 + j))])), ROCK);
+/** The bank drawn in a frame two tiles across and one and a half deep,
+ *  laid onto the back row: squeezed front to back, to the left. */
+const [BX, BS, BY] = [-0.42, 0.62, -0.5];
+const onRow = (x: number, y: number): [number, number] => [BX + x, BY + (y + 0.45) * BS];
+
+/** A boulder at (x, y) in the bank's frame, `r` round, standing on `z`. */
+const boulder = (m: Model, x: number, y: number, r: number, seed: number, z: number, rock: RGB) => {
+  const [bx, by] = onRow(x, y);
+  put(m, "rock", hull(Array.from({ length: 10 }, (_, j): V => [bx + r * jitter(seed * 7 + j), by + r * jitter(seed * 11 + j), z + r * 1.2 * Math.abs(jitter(seed * 13 + j))])), rock);
+};
 
 /** The crag, a mound over the back, cut into in benches. */
-function crag(m: Model) {
+function crag(m: Model, rock: RGB) {
   const points: V[] = [];
   let k = 0;
   for (const [x, y, z] of [[-0.97, -1.97, 0], [0.97, -1.97, 0], [-0.97, -0.62, 0], [0.97, -0.62, 0], [-0.7, -0.45, 0], [0.7, -0.45, 0],
@@ -62,11 +58,11 @@ function crag(m: Model) {
     ring.push([PIT[0] + rx * 1.05, 0.5, 0], [PIT[0] - rx * 1.05, 0.5, 0]);
     return hull(ring.flatMap(([x, y]): V[] => [[x, y, z + 0.004], [x, y, 1]]));
   }));
-  put(m, "rock", hull(points).subtract(cut), ROCK);
+  put(m, "rock", hull(points).subtract(cut).scale([1, BS, 1]).translate([BX, BY + 0.45 * BS, 0]), rock);
   // Boulders on the rim and the benches, and on the floor, broken off the face.
   for (const [x, y, r, s, z] of [[-0.78, -1.62, 0.09, 6, 0.36], [0.66, -1.7, 0.08, 7, 0.38], [0.78, -0.92, 0.075, 8, 0.22], [-0.74, -0.7, 0.07, 9, 0.1], [0.55, -0.62, 0.08, 10, 0.08], [-0.2, -1.72, 0.07, 13, 0.42],
     [-0.28, -0.72, 0.07, 1, 0], [-0.2, -0.64, 0.045, 2, 0], [0.32, -0.9, 0.065, 3, 0], [-0.38, -1.15, 0.05, 4, 0], [0.42, -0.5, 0.045, 5, 0]])
-    boulder(m, x, y, r, s, z + 0.008);
+    boulder(m, x, y, r, s, z + 0.008, rock);
 }
 
 /** The digger at the face: its tracks, its body on them, its cab with its
@@ -84,32 +80,6 @@ function digger(m: Model, ex: number, ey: number) {
   put(m, "matte", hull([[b2[0] - 0.03, b2[1] + 0.01, b2[2]], [b2[0] + 0.03, b2[1] + 0.01, b2[2]], [b2[0] - 0.03, b2[1] - 0.04, b2[2] - 0.02], [b2[0] + 0.03, b2[1] - 0.04, b2[2] - 0.02], [b2[0] - 0.03, b2[1] - 0.01, b2[2] - 0.06], [b2[0] + 0.03, b2[1] - 0.01, b2[2] - 0.06]]), STEEL);
 }
 
-/** The crusher at the pit's mouth, its belt out to the heap at (hx, hy). */
-function crusher(m: Model, cx: number, cy: number, hx: number, hy: number, hh: number) {
-  // Its frame: four legs, a deck, a little roof over the works.
-  put(m, "matte", Solid.union([
-    ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => box(cx + sx * 0.07 - 0.01, cx + sx * 0.07 + 0.01, cy + sy * 0.07 - 0.01, cy + sy * 0.07 + 0.01, 0, 0.26)),
-    box(cx - 0.085, cx + 0.085, cy - 0.085, cy + 0.085, 0.1, 0.125),
-    ...[-1, 1].map((s) => rod([cx + s * 0.07, cy + 0.07, 0.01], [cx - s * 0.07, cy + 0.07, 0.1], 0.012)),
-  ]), FRAME);
-  pitched(m, "y", cx - 0.085, cx + 0.085, cy - 0.085, cy + 0.085, 0.26, 0.32, SLATE, { over: 0.015 });
-  put(m, "matte", barn("y", cx - 0.085, cx + 0.085, cy - 0.085, cy - 0.07, 0.26, 0.32), FRAME);
-  // The hopper on the deck, open at the top; the chute under it to the skip.
-  const funnel = (lo: number, hi: number, a: number, b: number) => hull([[a, lo], [b, hi]].flatMap(([r, z]) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]): V => [cx + sx * r, cy + sy * r, z])));
-  put(m, "matte", funnel(0.125, 0.22, 0.05, 0.08).subtract(funnel(0.14, 0.24, 0.035, 0.065)), YELLOW);
-  put(m, "gravel", box(cx - 0.06, cx + 0.06, cy - 0.06, cy + 0.06, 0.18, 0.195), STONES);
-  put(m, "matte", box(cx - 0.03, cx + 0.03, cy + 0.04, cy + 0.11, 0.06, 0.1), STEEL);
-  put(m, "matte", hull([[-0.05, 0], [0.06, 0.06]].flatMap(([o, z]) => [-1, 1].flatMap((sx) => [-1, 1].map((sy): V => [cx + sx * (0.05 + o / 3), cy + 0.16 + sy * (0.045 + o / 3), z])))).subtract(box(cx - 0.04, cx + 0.04, cy + 0.125, cy + 0.195, 0.012, 0.1)), YELLOW);
-  heap(m, "gravel", cx, cy + 0.16, 0.035, 0.012, 0.045, 5, STONES);
-  // The belt, up to the top of the heap, on a trestle.
-  const belt = (z0: number, z1: number, half: number) => hull([[cx - 0.06, 0.07], [hx + 0.06, hh + 0.05]].flatMap(([x, z]) => [-half, half].flatMap((d) => [z0, z1].map((t): V => [x, cy + ((hy - cy) * (x - cx)) / (hx - cx) + d, z + t]))));
-  put(m, "matte", belt(0, 0.02, 0.035), STEEL);
-  put(m, "matte", belt(0.02, 0.028, 0.028), BELT);
-  const tx = hx + 0.22, ty = cy + ((hy - cy) * (tx - cx)) / (hx - cx);
-  for (const d of [-0.03, 0.03]) put(m, "matte", box(tx - 0.008, tx + 0.008, ty + d - 0.006, ty + d + 0.006, 0, 0.14), STEEL);
-  heap(m, "gravel", hx, hy, 0.22, hh, 0.02, 3, STONES);
-}
-
 /** The site hut, its door to the yard, its lean-to to the pit. */
 function hut(m: Model, x0: number, x1: number, y0: number, y1: number) {
   put(m, "matte", barn("x", x0, x1, y0, y1, 0.13, 0.22), WALL);
@@ -124,20 +94,15 @@ function hut(m: Model, x0: number, x1: number, y0: number, y1: number) {
   lamp(m, x0 - 0.03, y1 + 0.04, [x0 + 0.04, y1 + 0.08]);
 }
 
-/** A pallet of cut blocks, three by two, stacked. */
-function pallet(m: Model, x: number, y: number) {
-  put(m, "matte", box(x - 0.07, x + 0.07, y - 0.05, y + 0.05, 0, 0.014), WOOD);
-  const s = 0.044;
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) for (let k = 0; k < (i + j < 3 ? 2 : 1); k++)
-    put(m, "matte", box(x - 0.068 + i * (s + 0.002), x - 0.068 + i * (s + 0.002) + s, y - 0.046 + j * (s + 0.002), y - 0.046 + j * (s + 0.002) + s, 0.014 + k * (s + 0.002), 0.014 + k * (s + 0.002) + s), BLOCKS);
-}
-
-export const QUARRY = model((m) => {
-  ground(m, "dust", [[-0.96, 0.96, -1.96, -0.04]], DUST, { z: 0.018, round: 0.03 });
-  crag(m);
-  digger(m, 0.06, -1.0);
-  crusher(m, -0.1, -0.34, -0.6, -0.2, 0.17);
-  hut(m, 0.6, 0.92, -0.42, -0.16);
-  pallet(m, 0.5, -0.08);
-  for (const [x, y, r, s] of [[0.42, -0.2, 0.03, 11], [0.47, -0.25, 0.022, 12]]) boulder(m, x, y, r, s);
+/** A pit dug into ground this colour, its heaps of it. */
+const pit = (rock: RGB) => model((m) => {
+  ground(m, "dust", [[-1.49, 1.49, -1.49, -0.5]], DUST, { z: 0.018, round: 0.03 });
+  crag(m, rock);
+  digger(m, BX + 0.06, -0.66);
+  hut(m, 0.82, 1.18, -1.36, -1.08);
+  heap(m, "gravel", 1.05, -0.74, 0.2, 0.12, 0.02, 3, rock);
+  heap(m, "gravel", 0.66, -0.7, 0.12, 0.07, 0.02, 4, rock);
 });
+
+export const CLAY_PIT = pit([0.74, 0.5, 0.38]);
+export const SAND_PIT = pit([0.9, 0.82, 0.62]);

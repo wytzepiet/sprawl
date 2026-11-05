@@ -13,8 +13,8 @@ import { SHOP_HALL } from "./shop";
 import { FISHERY } from "./fishery";
 import { HOUSES } from "./house";
 import { FARM } from "./farm";
-import { QUARRY } from "./quarry";
-import { BARN_DOOR, SAWMILL, WOODCUTTER } from "./sawmill";
+import { CLAY_PIT, SAND_PIT } from "./quarry";
+import { SAWMILL, WOODCUTTER } from "./sawmill";
 import { BAKERY, CEMENT, MACHINE, STEELWORKS } from "./works";
 import { glow, glowing, placing } from "./finishes";
 import type { Built } from "./kit";
@@ -27,33 +27,33 @@ import { forkliftAt, REST_MS, yardsOf } from "./forklift";
 import { liftSlot } from "./motion";
 import { simNow } from "../../network/clock";
 import { getEntity } from "../../state/gameObjects";
-import { HANDLE_MS } from "../../generated/rows";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import type { Building, GameObjectEntry, Lift, Pose } from "../../generated";
 
 /** A building drawn whole from the kit (`kit.ts`), by its kind: its
- *  buckets' name, its model and which way round. A house is one of a few
- *  by its id, as if at random, so a street of them is mixed; a house and
- *  a farm every other one the other way round; a sawmill's wing
- *  and a quarry's hut on the gate's side. */
-function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1] | null {
+ *  buckets' name, its model, which way round, and where its front wall
+ *  stands in it (y), set on the line between the building and its yard.
+ *  A house is one of a few by its id, as if at random, so a street of
+ *  them is mixed; a house and a farm every other one the other way round. */
+function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1, number] | null {
   const odd = id % 2 ? 1 : -1;
   if (kind === "House") {
     const k = (Math.imul(id, 0x9e3779b1) >>> 7) % HOUSES.length;
-    return [`house${k}`, HOUSES[k], odd];
+    return [`house${k}`, HOUSES[k], odd, 0.5];
   }
   // A shop's door at the end its lunch table stands, its goods before its window.
-  if (kind === "Shop") return ["shopHall", SHOP_HALL, -1];
-  if (kind === "Fishery") return ["fishery", FISHERY, gate];
-  if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, odd];
-  if (kind === "Sawmill") return ["sawmill", SAWMILL, gate];
-  if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate];
-  if (kind === "ClayPit" || kind === "SandPit") return ["quarry", QUARRY, gate];
-  // Until each has its own model, the nearest of the kit's.
-  const works: Partial<Record<Building["kind"], [string, Built]>> = { Bakery: ["bakery", BAKERY], Tailor: ["bakery", BAKERY], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
+  if (kind === "Shop") return ["shopHall", SHOP_HALL, -1, -0.5];
+  if (kind === "Fishery") return ["fishery", FISHERY, gate, -0.5];
+  if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, odd, -0.5];
+  if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate, -0.5];
+  if (kind === "ClayPit") return ["clayPit", CLAY_PIT, gate, -0.5];
+  if (kind === "SandPit") return ["sandPit", SAND_PIT, gate, -0.5];
+  if (kind === "Bakery" || kind === "Tailor") return ["bakery", BAKERY, gate, -0.5];
+  // Two rows deep. Until each has its own model, the nearest of the kit's.
+  const works: Partial<Record<Building["kind"], [string, Built]>> = { Sawmill: ["sawmill", SAWMILL], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
   const w = works[kind];
-  return w ? [w[0], w[1], gate] : null;
+  return w ? [w[0], w[1], gate, 0] : null;
 }
 /** Each model's finishes placed, made once. */
 const placings = new Map<string, ReturnType<typeof placing>>();
@@ -98,9 +98,6 @@ function keepWhole(id: number, was: string, theme: Theme, draw: () => () => void
     });
   };
 }
-/** How many packages of what it makes each building had when last
- *  mounted: one more is one just made. */
-const seen = new Map<number, number>();
 /**
  * What a building lays on the ground past its own walls, which the town
  * grid does not draw: a harbour's quay out over the water, a farm's
@@ -139,21 +136,25 @@ export function mountBuilding(
 
   // Its model, whole, on its plot (`kit.ts`); the town grid leaves it.
   const whole = wholeOf(data.kind, entry.id, gate);
-  const built = whole && keepWhole(entry.id, JSON.stringify([whole[0], whole[2], middle, dx, dy]), theme, () => {
+  // Its front wall on the line between it and its yard.
+  const deep = dx === 0 ? Math.max(...ys) - Math.min(...ys) + 1 : Math.max(...xs) - Math.min(...xs) + 1;
+  const out = whole ? deep / 2 - BLUEPRINTS[data.kind].lot[1] - whole[3] : 0;
+  const o: [number, number] = [middle[0] + dx * out, middle[1] + dy * out];
+  const built = whole && keepWhole(entry.id, JSON.stringify([whole[0], whole[2], o, dx, dy]), theme, () => {
     const [key, it, side] = whole;
     const finishes = placed_(key, it)(ctx.engine, side).map((finish) => {
-      const one = placeShape(pool, finish, { at: middle, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
+      const one = placeShape(pool, finish, { at: o, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
       if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
       return one;
     });
     // Its lamps and its smoke, the town's props, where it has them.
-    const onMap = ([x, y]: number[]): [number, number] => [middle[0] + dx * y + dy * x * side, middle[1] + dy * y - dx * x * side];
+    const onMap = ([x, y]: number[]): [number, number] => [o[0] + dx * y + dy * x * side, o[1] + dy * y - dx * x * side];
     const props = new Float32Array(it.props.length * PROP_FLOATS);
     it.props.forEach((p, k) => {
       const [x, y] = onMap(p.at), [tx, ty] = onMap(p.to ?? p.at);
-      props.set([PROP_KINDS.indexOf(p.kind), x - middle[0], y - middle[1], KERB_Z - 0.012 + p.at[2], p.size, p.high, tx - middle[0], ty - middle[1]], k * PROP_FLOATS);
+      props.set([PROP_KINDS.indexOf(p.kind), x - o[0], y - o[1], KERB_Z - 0.012 + p.at[2], p.size, p.high, tx - o[0], ty - o[1]], k * PROP_FLOATS);
     });
-    const meshes = placeProps(ctx, `whole_${entry.id}`, props, middle, [middle[0] - 3, middle[1] - 3, middle[0] + 3, middle[1] + 3], pool.casters);
+    const meshes = placeProps(ctx, `whole_${entry.id}`, props, o, [o[0] - 3, o[1] - 3, o[0] + 3, o[1] + 3], pool.casters);
     const trees = it.trees.length ? stand(ctx, `whole_${entry.id}`, it.trees.map(([x, y, scale], k) => ({ at: onMap([x, y]), scale, shade: k % 3 })), theme, pool.casters) : () => {};
     return () => {
       for (const one of finishes) one.remove();
@@ -161,11 +162,6 @@ export function mountBuilding(
       trees();
     };
   });
-  // A sawmill's barn door, its forklift's way out toward the street.
-  const mill = data.kind === "Sawmill"
-    ? { door: { at: [middle[0] + dx * BARN_DOOR[1] + dy * BARN_DOOR[0] * gate, middle[1] + dy * BARN_DOOR[1] - dx * BARN_DOOR[0] * gate], heading: Math.atan2(dy, dx) } as Pose }
-    : null;
-
   // A shop's front: at the far end from its crates, through lunch, a
   // table out under a parasol.
   const lunch = data.kind === "Shop"
@@ -192,13 +188,7 @@ export function mountBuilding(
   // vehicle with a package in their forks, one lift at a time.
   setLifts(entry.id, data.lifts);
   const pad = padOf(data);
-  // A bundle the mill has made since it was last seen: carried out of the
-  // barn door to its place on the pad, a run of its forklift's.
-  const made = BLUEPRINTS[data.kind].makes;
-  const count = made ? packagesOf(data, made) : 0;
-  const fresh = mill && made && count > (seen.get(entry.id) ?? count) && !data.lifts.some((l) => !l.onto && l.good === made && ends(l) > simNow());
-  if (made) seen.set(entry.id, count);
-  const runs: Lift[] = fresh ? [...data.lifts, { car: -1, good: made!, n: 1, onto: false, start: simNow(), every: HANDLE_MS, k: 0 }] : data.lifts;
+  const runs = data.lifts;
   const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
   const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
   const lay = (now: number) =>
@@ -214,7 +204,7 @@ export function mountBuilding(
   lay(simNow());
   const working = pad && runs.some((l) => ends(l) + REST_MS > simNow());
   // A yard's forklifts stand in it; a shop's or a site's come out to a lift.
-  const forks = (pad && (pad.yard || working) ? yardsOf(entry.id, data, pad, base, runs, slotOf, mill?.door) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
+  const forks = (pad && (pad.yard || working) ? yardsOf(entry.id, data, pad, base, runs, slotOf) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
   const stop = working
     ? ctx.beforeRender(() => {
         const now = simNow();

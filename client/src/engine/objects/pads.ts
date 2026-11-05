@@ -1,4 +1,4 @@
-import { BLUEPRINTS, FACINGS, standing, yardOf } from "../../blueprints";
+import { BLUEPRINTS, FACINGS, standing } from "../../blueprints";
 import { INSET } from "../town/footprint";
 import { ITEM } from "./goods";
 import type { Building, Good, Lift, Pose } from "../../generated";
@@ -12,12 +12,11 @@ import type { Building, Good, Lift, Pose } from "../../generated";
  * moved by what its forklifts are still lifting: the server changes its
  * counts as a run starts, the forklift carries them across one by one.
  *
- * - A depot is an open yard, no roof: a bay of each good on the ground
- *   where a hall would stand, its lorry's docks in its lot.
- * - A maker's pad runs down the side of its yard's lane the docks are
- *   not on: a farm's crates stacked four high.
- * - A shop, a supermarket and a gas station keep theirs along the front
- *   wall, on the pavement; a site its materials there.
+ * - A building with a yard keeps its goods along its front wall, in the
+ *   yard, either side of the docks at its gate: a lorry backs up beside
+ *   them and the forklift has a few steps to its tail.
+ * - Anything else along the front wall, on the pavement; a site its
+ *   materials there.
  */
 
 /** A pad's bay: the slots of one good in the order they fill, each a
@@ -33,8 +32,8 @@ export interface Bay {
   inside: boolean;
 }
 
-/** The goods, the heaviest first: what stands at the back of a yard. */
-const HEAVY: Good[] = ["Bricks", "Clay", "Logs", "Planks", "Sand", "Glass", "Furniture", "Wheat", "Wool", "Clothes", "Fish", "Bread"];
+/** Docks side by side at a gate (`DOCK_PITCH` in `lots.rs`). */
+const DOCK_PITCH = 0.3;
 
 /** How far apart packages stand on a pad. */
 const PITCH = ITEM + 0.02;
@@ -48,20 +47,6 @@ function frame(b: Building) {
   /** `across` and `out` from (x, y), in the building's frame. */
   const pose = ([x, y]: [number, number], across: number, out: number): Pose => ({ at: [x - dy * across + dx * out, y + dx * across + dy * out], heading: Math.atan2(dy, dx) });
   return { at, w, d, pose, heading: Math.atan2(dy, dx) };
-}
-
-/** A bay of packages `wide` along its face and `deep` back from it, its
- *  middle at `at`, its face looking `face`, each package turned `heading`:
- *  in rows from the back. */
-function bay(good: Good, at: [number, number], face: number, wide: number, deep: number, heading: number, inside: boolean, stack: number): Bay {
-  const [fx, fy, wx, wy] = [Math.cos(face), Math.sin(face), -Math.sin(face), Math.cos(face)];
-  const slots: Pose[] = [];
-  for (let r = 0; r < deep; r++)
-    for (let c = 0; c < wide; c++) {
-      const [d, w] = [(r - (deep - 1) / 2) * PITCH, (c - (wide - 1) / 2) * PITCH];
-      slots.push({ at: [at[0] + fx * d + wx * w, at[1] + fy * d + wy * w], heading });
-    }
-  return { good, slots, stack, face, inside };
 }
 
 /** How many packages a stock is seen as: a maker's whole ones, the
@@ -94,47 +79,24 @@ export function padOf(b: Building): Pad {
   const forklifts = (at: (k: number) => Pose) => Array.from({ length: kind.forklifts }, (_, k) => at(k));
   const front = { face: f.heading, inside: false };
   const goods = Object.keys(b.stocks) as Good[];
-  if (b.door && kind.lot[1] > 0 && goods.length > 1) {
-    // A yard of several goods: a bay of each on the open ground, in two
-    // rows facing each other across an aisle that runs out to its gate,
-    // the heavy goods at the back; its forklifts at the aisle's back, and
-    // out by its mouth.
-    const kept = HEAVY.filter((g) => goods.includes(g));
-    const row = Math.ceil(kept.length / 2);
-    const [vx, vy] = [b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y];
-    const { at, size } = standing(b);
-    const long = vx ? size[0] : size[1];
-    const pitch = Math.min(0.36, (long - 0.4) / row);
-    const wide = pitch >= 3 * PITCH ? 3 : 2;
-    const along = (a: number, s: number): [number, number] => [at[0] + vx * a - vy * s, at[1] + vy * a + vx * s];
+  if (b.door && kind.lot[1] > 0) {
+    // Along the front wall in its yard, either side of the docks at its
+    // gate (`lots::yard_bays`): a bay of each good, the forklifts beside
+    // the docks, a few steps from a docked lorry's tail.
+    const [gx, gy] = [b.door.tile.x + 0.5 - f.at[0], b.door.tile.y + 0.5 - f.at[1]];
+    const [dx, dy] = FACINGS[b.facing % 4];
+    const g = -dy * gx + dx * gy;
+    const half = (Math.max(1, kind.docks) * DOCK_PITCH) / 2 + 0.06;
+    const out = f.d / 2 + 0.1;
+    const free: number[] = [];
+    for (let a = -f.w / 2 + 0.12; a <= f.w / 2 - 0.12; a += PITCH) if (Math.abs(a - g) > half) free.push(a);
+    const kept = goods.filter((good) => most(b, good) > 0);
+    const each = Math.max(1, Math.floor(free.length / Math.max(1, kept.length)));
     const bays = kept.map((good, k) => {
-      const [side, c] = [k < row ? -1 : 1, k % row];
-      const middle = along((c - (row - 1) / 2) * pitch, side * (0.225 + 1.5 * PITCH));
-      const one = bay(good, middle, Math.atan2(-vx * side, vy * side), wide, 3, f.heading, true, 1);
-      return { ...one, stack: Math.ceil(most(b, good) / one.slots.length) };
+      const slots = free.slice(k * each, (k + 1) * each).map((a) => f.pose(f.at, a, out));
+      return { good, slots, stack: Math.ceil(most(b, good) / Math.max(1, slots.length)), ...front };
     });
-    const heading = Math.atan2(vy, vx);
-    const homes = forklifts((k) => ({ at: along(-long / 2 + 0.2 + k * 0.15, 0), heading }));
-    return { bays, homes, homeInside: true, exits: [along(long / 2 + 0.2, 0)], aisle: [along(-long / 2, 0), along(long / 2, 0)], yard: true };
-  }
-  if (kind.makes && b.door) {
-    // Down the lane's free side, from the yard's back to its gate, two
-    // deep, facing the lane: the far one of each pair first.
-    const good = kind.makes;
-    const lot = yardOf(b.tiles, b.kind, b.facing) ?? [];
-    const [fx, fy] = [b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y];
-    const [px, py] = [-fy, fx];
-    const has = (x: number, y: number) => lot.some((t) => t.x === x && t.y === y);
-    const side = has(b.door.tile.x + px, b.door.tile.y + py) ? -1 : 1;
-    let deep = 1;
-    while (has(b.door.tile.x - fx * deep, b.door.tile.y - fy * deep)) deep++;
-    const back: [number, number] = [b.door.tile.x + 0.5 - fx * (deep - 0.5), b.door.tile.y + 0.5 - fy * (deep - 0.5)];
-    const slots: Pose[] = [];
-    for (let s = 0.12; s < deep - 0.3; s += PITCH)
-      for (const o of [0.22 + PITCH, 0.22]) slots.push({ at: [back[0] + fx * s + px * side * o, back[1] + fy * s + py * side * o], heading: Math.atan2(fy, fx) });
-    const home = (k: number): Pose => ({ at: [back[0] + fx * (0.1 + k * 0.12), back[1] + fy * (0.1 + k * 0.12)], heading: Math.atan2(fy, fx) });
-    const bay = { good, slots, stack: Math.max(1, Math.ceil(most(b, good) / slots.length)), face: Math.atan2(-py * side, -px * side), inside: false };
-    return { bays: [bay], homes: forklifts(home), homeInside: false, exits: [], aisle: null, yard: true };
+    return { bays, homes: forklifts((k) => f.pose(f.at, g + (k % 2 ? -1 : 1) * (half + 0.06), out)), homeInside: false, exits: [], aisle: null, yard: true };
   }
   // Along the front wall, on the pavement: a bay of each good it keeps.
   let a = -f.w / 2 + 0.12;
