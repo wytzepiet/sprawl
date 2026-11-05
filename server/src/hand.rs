@@ -97,11 +97,14 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, step: Build, now: G
         }
         Tool::Demolish => {
             // A tap takes the road at the tile and height, all its links,
-            // the cars on it rerouted. A drag cuts only the road between
-            // the two tiles.
+            // the cars on it rerouted, or else the building standing there,
+            // back into the hand. A drag cuts only the road between the
+            // two tiles.
             if from == to {
                 if let Some(id) = world.map.node_in(to, ht, st) {
                     world.drive(events, |t, e| traffic::car::reroute::handle_road_demolish(t, e, id, now));
+                } else if let Some(id) = razable(world, to, ht) {
+                    crate::town::raze(world, events, id, now);
                 }
             } else if let Some((a, b)) = world.map.link_between_at(from, hf, sf, to, ht, st) {
                 world.drive(events, |t, e| traffic::car::reroute::handle_link_demolish(t, e, a, b, now));
@@ -109,6 +112,12 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, step: Build, now: G
         }
     }
     true
+}
+
+/// The building a tap of the demolisher takes at the ground of a tile: a
+/// town's, never a level's.
+fn razable(world: &World, at: GridCoord, h: u8) -> Option<model::EntityId> {
+    (h == 0 && world.town.start.is_some()).then(|| world.map.occupied.get(&(at.x, at.y)).copied()).flatten()
 }
 
 /// A road laid between two tiles, at their heights and sides, its edges
@@ -184,7 +193,7 @@ pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }:
                 && world.map.may_lay_at_on(from, hf, sf, to, ht, st, tool, on, then)
         }
         Tool::Light => from == to && b.is_some_and(|id| world.map.is_intersection(id)),
-        Tool::Demolish if from == to => b.is_some(),
+        Tool::Demolish if from == to => b.is_some() || razable(world, to, ht).is_some(),
         Tool::Demolish => world.map.link_between_at(from, hf, sf, to, ht, st).is_some(),
     }
 }
@@ -233,8 +242,8 @@ mod tests {
     }
 
     /// A drag of the demolisher cuts only the road between the tiles it
-    /// crosses. A tap takes the road at the point; a building is not the
-    /// demolisher's to take.
+    /// crosses. A tap takes the road at the point, or the building there,
+    /// back into the hand.
     #[test]
     fn a_drag_cuts_a_link_and_a_tap_takes_the_point() {
         let mut world = street();
@@ -250,8 +259,10 @@ mod tests {
         assert!(world.map.are_connected(at(5, 0), at(5, 1)), "the rest stands");
         let sawmill = build(&mut world, 12, BuildingKind::Sawmill);
         let tile = world.map.building(sawmill).unwrap().tiles[0];
+        let held = world.town.hand.get(&BuildingKind::Sawmill).copied().unwrap_or(0);
         step(&mut world, Tool::Demolish, tile, tile);
-        assert!(world.map.objects.get(sawmill).is_some(), "the demolisher took the sawmill");
+        assert!(world.map.objects.get(sawmill).is_none(), "the tap took the sawmill");
+        assert_eq!(world.town.hand.get(&BuildingKind::Sawmill), Some(&(held + 1)), "back into the hand");
         // A tap takes the point and every link at it.
         step(&mut world, Tool::Demolish, at(5, 0), at(5, 0));
         assert!(world.map.road_node_at(at(5, 0)).is_none());

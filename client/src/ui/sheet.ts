@@ -8,10 +8,11 @@ import { clear } from "./pages";
  * The dock's tabs, and the sheet over them, as the Find My app has it:
  * each tab has a sheet, peeking over the bar as its head alone, drawn up
  * to show the rest. What a tab is for is what it holds: the bare hand
- * a card of what it tapped, the roads their tools, the build menu its buildings,
+ * a card of what it tapped, the roads their tools, the demolisher a line
+ * on what it takes, the build menu its buildings,
  * the goods: what crossed the border, every good's day, the deals.
  */
-export const TABS = ["select", "roads", "build"] as const;
+export const TABS = ["select", "roads", "demolish", "build"] as const;
 export type Tab = (typeof TABS)[number];
 
 const [tab, setTab] = createSignal<Tab>("select");
@@ -22,7 +23,8 @@ export { tab, open, setOpen };
  *  in hand while it is shown: leaving the roads puts the road tool down,
  *  the build menu the building, the bare hand its card. */
 export function show(t: Tab, opened: boolean) {
-  if ((t !== "roads" && tool()) || (t !== "build" && held())) hold(null);
+  const keeps = t === "roads" ? tool() !== "Demolish" : t === "demolish" && tool() === "Demolish";
+  if ((tool() && !keeps) || (t !== "build" && held())) hold(null);
   if (t !== "select" && selected() !== null) select(null);
   clear();
   setTab(t);
@@ -38,6 +40,6 @@ export const sheetWidth = () => (wide() ? 440 : view().w - 2 * bezel());
 // tab at its peek.
 createRoot(() => {
   createEffect(on(selected, (id) => id !== null && show("select", true), { defer: true }));
-  createEffect(on(tool, (t) => t !== null && show("roads", false), { defer: true }));
+  createEffect(on(tool, (t) => t !== null && show(t === "Demolish" ? "demolish" : "roads", false), { defer: true }));
   createEffect(on(held, (h) => h !== null && show("build", false), { defer: true }));
 });

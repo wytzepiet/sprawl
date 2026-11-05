@@ -15,7 +15,7 @@ export const ROAD_KINDS = [
   {
     id: "Demolish",
     label: "Demolish",
-    about: "Tap a road to take it up, drag along one to cut it. To take a building down, press and hold it.",
+    about: "Tap a road or a building to take it down; drag along a road to cut it.",
     color: BAD,
     glyph: "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z",
   },
@@ -45,8 +45,8 @@ export const lastRoad = createRoot(() => {
   return last;
 });
 
-/** The roads tab, all head: the road tools in a row, the one in hand
- *  in its colour, each with an i for its page. */
+/** The roads tab, all head: the road tools the town has in a row, the
+ *  one in hand in its colour, each with an i for its page. */
 export function RoadsHead(props: { info: (k: RoadKind) => void }) {
   return (
     <Box pad={{ x: 12, top: 14, bottom: 12 }} gap={10}>
@@ -55,12 +55,12 @@ export function RoadsHead(props: { info: (k: RoadKind) => void }) {
       <Text size={13} soft>tiles of road left</Text>
     </Box>
     <Box dir="row" gap={6}>
-      <For each={[...ROAD_KINDS]}>
+      <For each={ROAD_KINDS.filter((r) => r.id !== "Demolish" && mayUse(r.id))}>
         {(r) => {
           const on = () => inHand() === r.id;
           return (
-            <Press grow={1} h={60} round={16} gap={4} align="center" justify="center" fill={on() ? r.color : "ink/0.05"} opacity={mayUse(r.id) ? 1 : 0.4} onTap={() => (on() ? setTool(null) : mayUse(r.id) ? take(r.id) : props.info(r.id))}>
-              <Icon d={r.glyph} size={20} ink={on() ? "white" : r.id === "Demolish" ? r.color : "ink/0.72"} />
+            <Press grow={1} h={60} round={16} gap={4} align="center" justify="center" fill={on() ? r.color : "ink/0.05"} onTap={() => (on() ? setTool(null) : take(r.id))}>
+              <Icon d={r.glyph} size={20} ink={on() ? "white" : "ink/0.72"} />
               <Box dir="row" align="center" gap={4}>
                 <Text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</Text>
                 <Info onTap={() => props.info(r.id)} />

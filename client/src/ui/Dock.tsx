@@ -32,6 +32,7 @@ const cx = (j: number) => 30 + SLOT * j;
 const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> = {
   select: { head: InspectHead, body: InspectBody },
   roads: { head: () => <RoadsHead info={(k) => info({ road: k })} />, body: () => <></> },
+  demolish: { head: () => <Box pad={{ x: 16, top: 16, bottom: 14 }}><Text size={13} soft>Tap a road or a building to take it down; drag along a road to cut it.</Text></Box>, body: () => <></> },
   build: { head: BuildHead, body: BuildBody },
 };
 
@@ -42,7 +43,7 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
  * (`sheet.ts`): its head peeking, drawn up by a finger or a tap, the
  * rest under it as tall as it is up to its room, and taller scrolls;
  * dragged down from its top, it sinks again. The bare hand, whose
- * sheet is the card of what it tapped; the road tools and the
+ * sheet is the card of what it tapped; the road tools; the
  * demolisher; and the hand of buildings.
  *
  * What is in hand, in its colour, rides under its tab as dyed glass.
@@ -57,7 +58,7 @@ export default function Dock() {
 
   /** A tab pressed: shown, or, shown already, drawn up or sunk. The bare
    *  hand puts down what it holds. */
-  const press = (t: Tab) => show(t, tab() === t ? !open() : t !== "select" && t !== "roads");
+  const press = (t: Tab) => (t === "demolish" ? (tab() === t ? show("select", false) : take("Demolish")) : show(t, tab() === t ? !open() : t !== "select" && t !== "roads"));
   const onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
@@ -90,7 +91,8 @@ export default function Dock() {
 
   const glyph = (t: Tab) =>
     t === "select" ? SELECT
-    : t === "roads" ? road(roadInHand() ?? "Street").glyph
+    : t === "roads" ? road(roadInHand() && roadInHand() !== "Demolish" ? roadInHand()! : "Street").glyph
+    : t === "demolish" ? road("Demolish").glyph
     : held() ? BLUEPRINTS[held()!.kind].glyph : BUILD;
 
   // The sheet's content, its height and the room it may take; with
