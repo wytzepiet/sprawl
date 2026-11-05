@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseTown, type Town } from "./grid";
-import { facts } from "./facts";
 import { dress } from "./dressing";
 import { asphalt, pavement } from "./surface";
 import { CAR } from "../objects/roadGeometry";
@@ -52,7 +51,7 @@ describe("asphalt and pavement", () => {
     for (const name of ["06-shops", "17-driveways", "12-diagonal", "24-yards"]) {
       const t = fixture(name);
       const on = onAsphalt(t);
-      const cars = dress(t, facts(t)).cars;
+      const cars = dress(t).cars;
       expect(cars.length).toBeGreaterThan(0);
       for (const c of cars) {
         // The wheels: a little in from the car's corners.

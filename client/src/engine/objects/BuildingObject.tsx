@@ -33,7 +33,7 @@ import type { Building, GameObjectEntry, Lift, Pose } from "../../generated";
 
 /** A building drawn whole from the kit (`kit.ts`), by its kind: its
  *  buckets' name, its model, which way round, and where its front wall
- *  stands in it (y), set on the line between the building and its yard.
+ *  stands in it (y), set on its plot's front edge.
  *  A house is one of a few by its id, as if at random, so a street of
  *  them is mixed; a house and a farm every other one the other way round. */
 function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1, number] | null {
@@ -64,6 +64,8 @@ const placed_ = (key: string, it: Built) => placings.get(key) ?? (placings.set(k
 const told = new WeakSet<EngineContext>();
 const lights = (ctx: EngineContext) => void (told.has(ctx) || (told.add(ctx), ctx.beforeRender(glow)));
 
+/** Docks side by side at a gate (`DOCK_PITCH` in `lots.rs`). */
+const DOCK_PITCH = 0.3;
 const IRON = hex("#2E3238");
 /** A shop's lunch table and its parasol. */
 const PARASOL = hex("#F1EADB");
@@ -135,10 +137,14 @@ export function mountBuilding(
   const gate: 1 | -1 = !data.door || (data.door.tile.x + 0.5 - middle[0]) * dy - (data.door.tile.y + 0.5 - middle[1]) * dx >= 0 ? 1 : -1;
 
   // Its model, whole, on its plot (`kit.ts`); the town grid leaves it.
-  const whole = wholeOf(data.kind, entry.id, gate);
-  // Its front wall on the line between it and its yard.
+  // Its loading bay notched into its front at its gate, a truck's width
+  // and a little for each dock (`NOTCH` in `lots.rs`).
+  const docks = data.door ? BLUEPRINTS[data.kind].docks : 0;
+  const plain = wholeOf(data.kind, entry.id, gate);
+  const whole: typeof plain = plain && docks ? [`${plain[0]}_bay${docks}`, plain[1].notched(docks * DOCK_PITCH / 2, plain[3]), plain[2], plain[3]] : plain;
+  // Its front wall on its plot's front edge, the pavement before it.
   const deep = dx === 0 ? Math.max(...ys) - Math.min(...ys) + 1 : Math.max(...xs) - Math.min(...xs) + 1;
-  const out = whole ? deep / 2 - BLUEPRINTS[data.kind].lot[1] - whole[3] : 0;
+  const out = whole ? deep / 2 - whole[3] : 0;
   const o: [number, number] = [middle[0] + dx * out, middle[1] + dy * out];
   const built = whole && keepWhole(entry.id, JSON.stringify([whole[0], whole[2], o, dx, dy]), theme, () => {
     const [key, it, side] = whole;
@@ -189,7 +195,7 @@ export function mountBuilding(
   setLifts(entry.id, data.lifts);
   const pad = padOf(data);
   const runs = data.lifts;
-  const base = pad?.yard ? KERB_Z - 0.012 : KERB_Z;
+  const base = KERB_Z;
   const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
   const lay = (now: number) =>
     pad?.bays.forEach((bay, b) => {
@@ -203,8 +209,8 @@ export function mountBuilding(
     });
   lay(simNow());
   const working = pad && runs.some((l) => ends(l) + REST_MS > simNow());
-  // A yard's forklifts stand in it; a shop's or a site's come out to a lift.
-  const forks = (pad && (pad.yard || working) ? yardsOf(entry.id, data, pad, base, runs, slotOf) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
+  // A front's forklifts stand by its docks; a site's come out to a lift.
+  const forks = (pad && (pad.docked || working) ? yardsOf(entry.id, data, pad, base, runs, slotOf) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
   const stop = working
     ? ctx.beforeRender(() => {
         const now = simNow();

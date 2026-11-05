@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { carried, moment, straightBehind, travelled } from "./motion";
+import { carried, moment, travelled } from "./motion";
+import { ahead } from "./driver";
+import { CAB, TRUCK } from "./roadGeometry";
+import { CAB_BLOCK } from "./sea";
 import { LANE_OFFSET } from "./roadGeometry";
 import type { Car, Package, Trip } from "../../generated";
 
@@ -8,13 +11,13 @@ const car = (c: Partial<Car>): Car => ({ owner: 1, trip: null, role: "Private", 
 const bundle: Package = { id: 9, good: "Logs" };
 
 test("a vehicle is where the server's state has it, and what it carries with it", () => {
-  // Parked: in its spot; a lorry's flatbed straight behind its cab, and
-  // its cargo on it.
+  // Parked: in its spot; a lorry, rigid, its cab at the front and its
+  // flatbed behind, and its cargo on it.
   const spot = { at: [3, 4] as [number, number], heading: 0.5 };
   const lorry = car({ role: "Truck", spot, cargo: [bundle] });
   const parked = moment(1, lorry, 0)!;
-  near(parked.body.at, spot.at);
-  near(parked.bed!.at, straightBehind(spot).at);
+  near(parked.body.at, ahead(spot, (TRUCK.l - CAB.l) / 2).at);
+  near(parked.bed!.at, ahead(spot, -CAB_BLOCK / 2).at);
   expect(carried(lorry)).toEqual(["Logs"]);
   // On a trip, along its route by the trip's physics: here a straight
   // street, so x is the distance driven, on its lane.

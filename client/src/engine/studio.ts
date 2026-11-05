@@ -136,7 +136,7 @@ export function createStudio(main: Engine) {
    *  to look, and how far round, the plot filling the picture. */
   const stage = (kind: BuildingKind) => {
     const old = entries;
-    const [w, h] = plot(kind, 0).size;
+    const [w, h] = plot(kind, 0);
     const x0 = -Math.floor(w / 2);
     const tiles = Array.from({ length: w * h }, (_, k) => ({ x: x0 + (k % w), y: 1 + Math.floor(k / w) }));
     const front = { x: 0, y: 1 };

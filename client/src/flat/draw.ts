@@ -1,9 +1,9 @@
 import { BLUEPRINTS, GOODS, middle } from "../blueprints";
 import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
-import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
+import { CAB, CAR, ROAD_WIDTH, TRUCK, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, hull } from "../engine/objects/sea";
-import { carried, colourOf, liftSlot, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
+import { carried, colourOf, liftSlot, LIVERY, moment, onBed, PALETTE, type Moment, bedLength } from "../engine/objects/motion";
 import { ITEM } from "../engine/objects/goods";
 import { atPad, ends, packagesOf, padOf, placeIn } from "../engine/objects/pads";
 import { forkliftAt, yardsOf } from "../engine/objects/forklift";
@@ -200,7 +200,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
   // forks.
   for (const [e, b] of buildings) {
     const pad = padOf(b);
-    if (!b.tiles.some((t) => on(t.x, t.y)) || (!pad.yard && !b.lifts.some((l) => ends(l) > world.now))) continue;
+    if (!b.tiles.some((t) => on(t.x, t.y)) || (!pad.docked && !b.lifts.some((l) => ends(l) > world.now))) continue;
     for (const { yard, mine } of yardsOf(e.id, b, pad, 0, b.lifts, (l, j) => {
       const car = cars.find(([c]) => c.id === l.car)?.[1];
       return car ? liftSlot(l, car, j) : null;
@@ -304,8 +304,8 @@ export function item(g: CanvasRenderingContext2D, p: Stand, good: Good) {
 /** A vehicle by its role, at its moment, with what it carries. */
 function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
   if (m.bed) {
-    const l = car.role === "Van" ? VAN_BED : TRAILER.l;
-    body(g, m.bed, l, TRAILER.w, "#80838a", false);
+    const l = bedLength(car.role);
+    body(g, m.bed, l, TRUCK.w, "#80838a", false);
     carried(car).forEach((good, k) => item(g, onBed(m.bed!, l, k), good));
   }
   switch (car.role) {
@@ -327,7 +327,7 @@ function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
       body(g, m.body, 0.2, FERRY.w, "#3d73a8", false);
       return;
     }
-    // A van, a small rigid lorry: its cab, and its load on a short flatbed behind.
+    // A lorry or a van, rigid: its cab, and its load on the flatbed behind.
     case "Truck":
     case "Van":
       return body(g, m.body, CAB.l, CAB.w, css(LIVERY.cab));

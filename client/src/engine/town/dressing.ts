@@ -1,7 +1,6 @@
 import { isBuilt, type Town } from "./grid";
 import { BLUEPRINTS } from "../../blueprints";
 import type { BuildingKind } from "../../generated";
-import type { Facts } from "./facts";
 import { formOf } from "./mass";
 import { HALF_W } from "../objects/roadGeometry";
 import { defaultJoins, INSET } from "./footprint";
@@ -63,8 +62,8 @@ export interface Dressing {
   hedges: Hedge[];
   lamps: Lamp[];
   cars: Car[];
-  /** The lines between the bays of yards, painted on their asphalt. */
-  yardLines: P[][];
+  /** The lines between a front's docks, painted on their asphalt. */
+  dockLines: P[][];
 }
 
 
@@ -75,7 +74,7 @@ function hash(c: number, r: number, salt: number) {
   return ((s ^ (s >>> 16)) >>> 0) / 4294967296;
 }
 
-export function dress(town: Town, facts: Facts): Dressing {
+export function dress(town: Town): Dressing {
   const trees: Tree[] = [];
   const at = (c: number, r: number) => (town.at ? town.at(c, r) : [c, r]);
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
@@ -112,7 +111,7 @@ export function dress(town: Town, facts: Facts): Dressing {
     hedges: hedges(town),
     lamps: lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })),
     cars: [...park(town), ...drives.cars],
-    yardLines: dockLines(town, facts),
+    dockLines: dockLines(town),
   };
 }
 
@@ -274,24 +273,29 @@ function driveways(town: Town): { strips: P[][]; cars: Car[] } {
   return { strips, cars };
 }
 
-/** Docks side by side at a gate (`DOCK_PITCH` in `lots.rs`). */
+/** Docks side by side at a gate (`DOCK_PITCH` in `lots.rs`); how far
+ *  from the street's middle line the notch's back wall stands, and the
+ *  road's edge (`DOCK`, `NOTCH_BACK` in `surface.ts`). */
 const DOCK_PITCH = 0.3;
+const NOTCH_BACK = 0.72;
+const ROAD_EDGE = 0.24;
 
-/** A yard's docks, as the server lays them (`lots::yard_bays`): side by
- *  side at its gate, square to the street, a lorry's tail to the wall;
- *  the lines between them painted on the asphalt. */
-function dockLines(town: Town, facts: Facts): P[][] {
+/** A front's docks, as the server lays them (`lots::dock_bays`): side by
+ *  side at its gate, square to the street, a truck's tail in its notch at
+ *  the loading door, its nose at the road's edge; the lines either side
+ *  of each painted on the asphalt, from the door out across the pavement. */
+function dockLines(town: Town): P[][] {
   const lines: P[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      const way = facts.yard(c, r) === "docks" ? town.door?.(c, r) : undefined;
+      const way = town.tile(c, r).gate ? town.door?.(c, r) : undefined;
       if (!way || (way[0] && way[1])) continue;
       // Out toward the street (fx, fy), and across (px, py).
       const [fx, fy] = way, [px, py] = [-fy, fx];
       const n = BLUEPRINTS[town.tile(c, r).kind as BuildingKind]?.docks ?? 0;
       for (let k = 0; k <= n; k++) {
         const o = (k - n / 2) * DOCK_PITCH;
-        lines.push(strip(c + 0.5, r + 0.5, px, py, o - 0.008, o + 0.008, fx, fy, -0.46, 0.3));
+        lines.push(strip(c + 0.5, r + 0.5, px, py, o - 0.008, o + 0.008, fx, fy, 1 - NOTCH_BACK, 1 - ROAD_EDGE));
       }
     }
   }

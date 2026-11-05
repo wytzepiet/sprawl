@@ -8,52 +8,33 @@ import { isBuilt, type Tile } from "./grid";
  * `facts.ts`'s, the shapes `footprint.ts`'s, the mesh `roof.ts`'s.
  */
 
-/** What stands in a building's yard, the tiles the server lays its lot in
- *  (`Tile.yard`): lorries at docks against the building; a harbour's
- *  lane, docks and quay; or a depot's pad, its goods out in the open
- *  (`pads.ts`). */
-export interface Yard {
-  fill: "docks" | "park" | "pad";
-}
-
 /** Homes and the shops of a high street are one family; offices, sheds
  *  and big boxes each another. */
 interface Form {
   family: string;
-  yard?: Yard;
-  /** What stands where its walls would: a kind with none, all yard. */
-  open?: Yard["fill"];
 }
 const STREET: Form = { family: "street" };
+const INDUSTRY: Form = { family: "industry" };
+// A farm is a farmyard, a model of its own (`objects/farm.ts`), its fence
+// its own: no hedge round it.
+const FARM: Form = { family: "farm" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  // A maker's yard is its stacks, a lorry backed to them.
-  Shop: { family: "street", yard: { fill: "docks" } },
-  Fishery: { family: "industry", yard: { fill: "docks" } },
-  Woodcutter: { family: "industry", yard: { fill: "docks" } },
-  Sawmill: { family: "industry", yard: { fill: "docks" } },
-  ClayPit: { family: "industry", yard: { fill: "docks" } },
-  SandPit: { family: "industry", yard: { fill: "docks" } },
-  Brickworks: { family: "industry", yard: { fill: "docks" } },
-  Glassworks: { family: "industry", yard: { fill: "docks" } },
-  Workshop: { family: "industry", yard: { fill: "docks" } },
-  // A farm is a farmyard, a model of its own (`objects/farm.ts`), its
-  // fence its own: no hedge round it.
-  Farm: { family: "farm", yard: { fill: "docks" } },
-  SheepFarm: { family: "farm", yard: { fill: "docks" } },
-  Bakery: { family: "street", yard: { fill: "docks" } },
-  Tailor: { family: "street", yard: { fill: "docks" } },
+  Fishery: INDUSTRY,
+  Woodcutter: INDUSTRY,
+  Sawmill: INDUSTRY,
+  ClayPit: INDUSTRY,
+  SandPit: INDUSTRY,
+  Brickworks: INDUSTRY,
+  Glassworks: INDUSTRY,
+  Workshop: INDUSTRY,
+  Farm: FARM,
+  SheepFarm: FARM,
 };
 /** Kinds drawn whole from the kit (`objects/BuildingObject.tsx`): the
- *  town grid lays their ground and yard and raises no walls of its own,
+ *  town grid lays their ground and raises no walls of its own,
  *  and no sign lies on them, the model saying what it is. */
 export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor"]);
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
-/** What stands in a tile of yard, if it is one: where the server lays a
- *  building's lot (`Tile.yard`), docks unless its kind says; or anywhere
- *  on a kind with no walls, as a harbour and a depot are. */
-export const yardFill = (t: Tile): Yard["fill"] | undefined => (t.yard ? (formOf(t).yard?.fill ?? "docks") : formOf(t).open);
-export const isYard = (t: Tile) => yardFill(t) !== undefined;
-
 /** The walls' height. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
 /** How steeply a kind's roof climbs from its walls, and how high before

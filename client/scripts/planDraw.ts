@@ -69,7 +69,7 @@ export function planSvg(text: string, { crop, px, paths }: Options): string {
   fill(pavement(town), hex(T.paved));
 
   const fs = facts(town);
-  const dressing = dress(town, fs);
+  const dressing = dress(town);
 
   // The asphalt: roads, drives, yards and bays, one surface, a piece a
   // tile overlapping the next.
@@ -78,7 +78,7 @@ export function planSvg(text: string, { crop, px, paths }: Options): string {
   fill(through, hex(T.highway), "nonzero");
 
   // What stands on the ground: yard lines, parked cars.
-  fill(dressing.yardLines.map((r) => [r]), "#b8b2a0");
+  fill(dressing.dockLines.map((r) => [r]), "#b8b2a0");
   for (const car of dressing.cars) box(car.x, car.y, car.angle, CAR.l, CAR.w, CARS[car.colour]);
 
   // The buildings: each part its kind's colour; the roof's

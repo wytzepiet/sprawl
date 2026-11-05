@@ -6,15 +6,15 @@ import type { Building, Good, Lift, Pose } from "../../generated";
 /**
  * Where goods stand at a building, and how many are seen there now
  * (docs/plan-goods.md §Pads and handling). A pad is bays of slots, each
- * slot a package, or a stack of them where a yard holds more than its
+ * slot a package, or a stack of them where a pad holds more than its
  * slots; the client lays them out from the building's own tiles, as the
  * town grid lays its dressing. What the server says stands there is
  * moved by what its forklifts are still lifting: the server changes its
  * counts as a run starts, the forklift carries them across one by one.
  *
- * - A building with a yard keeps its goods along its front wall, in the
- *   yard, either side of the docks at its gate: a lorry backs up beside
- *   them and the forklift has a few steps to its tail.
+ * - A building with a front keeps its goods along its front wall on the
+ *   pavement, clear of its docks and its kerb bays; its forklift waits
+ *   beside the docks, a few steps from a docked truck's flank.
  * - Anything else along the front wall, on the pavement; a site its
  *   materials there.
  */
@@ -32,8 +32,13 @@ export interface Bay {
   inside: boolean;
 }
 
-/** Docks side by side at a gate (`DOCK_PITCH` in `lots.rs`). */
+/** Docks side by side at a gate, and the kerb bays either side of them,
+ *  a car's half width either side of each (`DOCK_PITCH`, `DOCK_CLEAR`,
+ *  `SQUARE_PITCH` in `lots.rs`). */
 const DOCK_PITCH = 0.3;
+const DOCK_CLEAR = 0.45;
+const SQUARE_PITCH = 0.27;
+const CAR_HALF = 0.075;
 
 /** How far apart packages stand on a pad. */
 const PITCH = ITEM + 0.02;
@@ -63,15 +68,15 @@ const most = (b: Building, good: Good) => Math.ceil(b.stocks[good]!.cap - 1e-9);
 
 /** A building's pad: its bays, where its forklifts stand when they are
  *  not lifting and whether that is in its aisle, the aisle's mouths and
- *  the line down its middle, and whether it is on a yard's asphalt or the pavement. A harbour's is its
- *  quay's, beside its lane on the side its docks are not (`Berth::park`). */
+ *  the line down its middle, and whether it has docks, its forklifts out
+ *  whether lifting or not. */
 export interface Pad {
   bays: Bay[];
   homes: Pose[];
   homeInside: boolean;
   exits: [number, number][];
   aisle: [[number, number], [number, number]] | null;
-  yard: boolean;
+  docked: boolean;
 }
 export function padOf(b: Building): Pad {
   const f = frame(b);
@@ -79,24 +84,26 @@ export function padOf(b: Building): Pad {
   const forklifts = (at: (k: number) => Pose) => Array.from({ length: kind.forklifts }, (_, k) => at(k));
   const front = { face: f.heading, inside: false };
   const goods = Object.keys(b.stocks) as Good[];
-  if (b.door && kind.lot[1] > 0) {
-    // Along the front wall in its yard, either side of the docks at its
-    // gate (`lots::yard_bays`): a bay of each good, the forklifts beside
-    // the docks, a few steps from a docked lorry's tail.
+  if (b.door && kind.docks > 0) {
+    // Along the front wall on the pavement, either side of the docks at
+    // its gate and clear of its kerb bays (`lots::dock_bays`): a bay of
+    // each good, the forklifts beside the docks.
     const [gx, gy] = [b.door.tile.x + 0.5 - f.at[0], b.door.tile.y + 0.5 - f.at[1]];
     const [dx, dy] = FACINGS[b.facing % 4];
     const g = -dy * gx + dx * gy;
-    const half = (Math.max(1, kind.docks) * DOCK_PITCH) / 2 + 0.06;
-    const out = f.d / 2 + 0.1;
+    const half = (kind.docks * DOCK_PITCH) / 2 + 0.06;
+    const d0 = ((kind.docks - 1) * DOCK_PITCH) / 2 + DOCK_CLEAR;
+    const cars = Array.from({ length: kind.bays }, (_, k) => g + (k % 2 ? -1 : 1) * (d0 + Math.floor(k / 2) * SQUARE_PITCH));
+    const out = f.d / 2 + ITEM / 2 + 0.02;
     const free: number[] = [];
-    for (let a = -f.w / 2 + 0.12; a <= f.w / 2 - 0.12; a += PITCH) if (Math.abs(a - g) > half) free.push(a);
+    for (let a = -f.w / 2 + 0.12; a <= f.w / 2 - 0.12; a += PITCH) if (Math.abs(a - g) > half + 0.08 && cars.every((c) => Math.abs(a - c) > CAR_HALF + ITEM / 2 + 0.01)) free.push(a);
     const kept = goods.filter((good) => most(b, good) > 0);
     const each = Math.max(1, Math.floor(free.length / Math.max(1, kept.length)));
     const bays = kept.map((good, k) => {
       const slots = free.slice(k * each, (k + 1) * each).map((a) => f.pose(f.at, a, out));
       return { good, slots, stack: Math.ceil(most(b, good) / Math.max(1, slots.length)), ...front };
     });
-    return { bays, homes: forklifts((k) => f.pose(f.at, g + (k % 2 ? -1 : 1) * (half + 0.06), out)), homeInside: false, exits: [], aisle: null, yard: true };
+    return { bays, homes: forklifts((k) => f.pose(f.at, g + (k % 2 ? -1 : 1) * (half + 0.06), out)), homeInside: false, exits: [], aisle: null, docked: true };
   }
   // Along the front wall, on the pavement: a bay of each good it keeps.
   let a = -f.w / 2 + 0.12;
@@ -107,7 +114,7 @@ export function padOf(b: Building): Pad {
     a += slots.length * PITCH + 0.04;
     return { good, slots, stack: Math.ceil(n / slots.length), ...front };
   });
-  return { bays, homes: forklifts(() => f.pose(f.at, 0, f.d / 2 + 0.05)), homeInside: false, exits: [], aisle: null, yard: false };
+  return { bays, homes: forklifts(() => f.pose(f.at, 0, f.d / 2 + 0.05)), homeInside: false, exits: [], aisle: null, docked: false };
 }
 
 /** Where the `i`th package of a bay stands: its slot, and how many it

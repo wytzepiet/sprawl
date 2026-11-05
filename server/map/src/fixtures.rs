@@ -185,11 +185,13 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
             }
             let tiles: Vec<GridCoord> = run.iter().map(|&(c, r)| at(c, r)).collect();
             // Its gate where its small letter is, as `/map` writes a
-            // game's; else toward the first street it has.
+            // game's, toward a street (a plot a tile deep has its gate on
+            // both long sides); else toward the first street it has.
             let marked = run.iter().find(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r));
+            let streets = |f: &u8| world.driveway_for(&tiles, kind, *f).is_some();
             let facing = (0..4)
-                .find(|&f| marked.is_some() && Map::gate_of(&tiles, kind, f) == marked)
-                .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some()))
+                .filter(streets)
+                .find(|&f| marked.is_none() || Map::gate_of(&tiles, kind, f) == marked)
                 .unwrap_or(2);
             if !world.may_stand_on(&tiles, kind, facing) {
                 println!("fixtures: {name}: no room for {kind:?} at column {col}, row {row}");
@@ -269,7 +271,7 @@ fn stock_yards(world: &mut Map) {
 
 /// The tiles within `r` of a point as a fixture's text, laid out as the map
 /// is seen (+x to the left, +y up), so it reads, and draws, as the game
-/// does. A building is its letter, its lot or yard paved. The first line names the
+/// does. A building is its letter, its gate's small. The first line names the
 /// game's tile at column 0, row 0: a column on is a tile less of x, a row
 /// on a tile less of y.
 pub fn draw(world: &Map, x: i32, y: i32, r: i32) -> String {
@@ -328,7 +330,7 @@ mod tests {
                         Some(GameObject::Building(b)) => Some(letter(b.kind)),
                         _ => None,
                     });
-                    if building(c).map(|_| c) != built {
+                    if building(c).map(|_| c.to_ascii_uppercase()) != built {
                         wrong.push(format!("{} col {col} row {row}: {c} built {built:?}", p.name));
                     }
                     let drawn = draw(&world, at.x, at.y, 0).lines().last().and_then(|l| l.chars().next());

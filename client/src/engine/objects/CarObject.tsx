@@ -8,10 +8,10 @@ import { carShape, ROUNDING } from "./carShape";
 import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import { running as runs } from "./field";
-import { CAR, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
-import { BED_TOP, DECK_Z, FERRY_SHAPE, LORRY_BED, LORRY_SHAPE, vanBed } from "./sea";
+import { CAR, ROAD_Z, VAN } from "./roadGeometry";
+import { BED_TOP, DECK_Z, FERRY_SHAPE, LORRY_SHAPE, bedShape } from "./sea";
 import type { Drive } from "./driver";
-import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, type Moment, onBed, PALETTE, travelled, VAN_BED } from "./motion";
+import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, type Moment, onBed, PALETTE, travelled, bedLength } from "./motion";
 import { itemOf } from "./goods";
 import { liftsOf, onVehicle } from "./pads";
 import type { Car, GameObjectEntry, Good, Pose } from "../../generated";
@@ -130,8 +130,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const moving = !!(car.trip || car.run || car.sail);
   const look = bodyOf(pool, id, car, !moving);
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
-  const bedLength = car.role === "Van" ? VAN_BED : TRAILER.l;
-  const bed = first.m.bed ? placeShape(pool, car.role === "Van" ? vanBed(VAN_BED) : LORRY_BED, first.m.bed, GROUND + first.lift) : null;
+  const bedL = bedLength(car.role);
+  const bed = first.m.bed ? placeShape(pool, bedShape(bedL), first.m.bed, GROUND + first.lift) : null;
   // What stands on its deck, each what and where it is: at the berth the
   // harbour's forklifts change it (`deckSeen`).
   const deck: { key: string; it: ReturnType<typeof place> }[] = [];
@@ -164,8 +164,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     let same = 0;
     while (same < aboard.length && same < want.length && aboard[same].good === want[same]) same++;
     for (const { it } of aboard.splice(same)) it.remove();
-    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedLength, k), GROUND + lift + BED_TOP) });
-    if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedLength, k), lift));
+    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedL, k), GROUND + lift + BED_TOP) });
+    if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedL, k), lift));
   };
   load(first.m, first.lift, simNow());
   carPoses.set(id, first.m.body.at);

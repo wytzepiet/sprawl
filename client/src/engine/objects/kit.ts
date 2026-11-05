@@ -58,29 +58,78 @@ export interface Model {
   /** `[x, y, scale]`, the town's own trees. */
   trees: [number, number, number][];
 }
-/** A model built: a shape a finish. */
+/** A model built: a shape a finish; and the same built again with its
+ *  loading bay cut into its front (`notched`). */
 export interface Built {
   finishes: Partial<Record<Finish, Shape>>;
   props: ModelProp[];
   trees: [number, number, number][];
+  notched(half: number, wall: number): Built;
 }
 
-/** A model, built by `build` and every solid it made let go. */
-export const model = (build: (m: Model) => void): Built =>
-  solids(() => {
-    const m: Model = { parts: {}, props: [], trees: [] };
-    build(m);
-    return {
-      finishes: Object.fromEntries(Object.entries(m.parts).map(([k, parts]) => [k, shape(parts)])),
-      props: m.props,
-      trees: m.trees,
-    };
-  });
+/** What is cut out of everything a model puts while it is built: its
+ *  loading bay, x and y from and to. */
+let cutting: { solid: Manifold; x: number; y: number } | null = null;
+
+/** How deep a loading bay reaches into its building behind the front
+ *  wall: a docked truck's tail at its door (`NOTCH_BACK` in
+ *  `surface.ts`, less the pavement). */
+export const BAY_DEEP = 0.22;
+const ROLLER: RGB = [0.42, 0.44, 0.47];
+const TRIM: RGB = [0.3, 0.31, 0.33];
+
+/** A model, built by `build` and every solid it made let go. Notched, its
+ *  front wall at y = `wall`, a loading bay `half` either side of x = 0 is
+ *  cut out of it, unroofed, from the street back `BAY_DEEP`, a roller
+ *  door at its back: where a truck backs in to be loaded. */
+export const model = (build: (m: Model) => void): Built => {
+  const made = new Map<string, Built>();
+  const make = (cut?: [number, number]): Built =>
+    solids(() => {
+      const m: Model = { parts: {}, props: [], trees: [] };
+      if (cut) {
+        const [half, wall] = cut;
+        cutting = { solid: box(-half, half, wall - BAY_DEEP, wall + 1, -0.5, 5), x: half, y: wall - BAY_DEEP };
+      }
+      try {
+        build(m);
+      } finally {
+        cutting = null;
+      }
+      if (cut) shutter(m, { face: "+y", at: cut[1] - BAY_DEEP }, 0, 2 * cut[0] - 0.04, 0.17, ROLLER, TRIM);
+      return {
+        finishes: Object.fromEntries(Object.entries(m.parts).map(([k, parts]) => [k, shape(parts)])),
+        props: m.props.filter((p) => !cut || Math.abs(p.at[0]) > cut[0] || p.at[1] < cut[1] - BAY_DEEP),
+        trees: m.trees.filter(([x, y]) => !cut || Math.abs(x) > cut[0] + 0.05 || y < cut[1] - BAY_DEEP),
+        notched: (half, wall) => {
+          const key = `${half},${wall}`;
+          return made.get(key) ?? (made.set(key, make([half, wall])), made.get(key)!);
+        },
+      };
+    });
+  return make();
+};
 
 /** Something in a finish and a colour: a solid, faced flat; or a mesh as
- *  it is. Glass is its own finish whatever it is put in. */
+ *  it is. Glass is its own finish whatever it is put in. Out of either,
+ *  the loading bay being cut, if one is. */
 export function put(m: Model, finish: Finish, it: Manifold | MeshGeometry, rgb: RGB) {
-  (m.parts[finish] ??= []).push(["positions" in it ? it : mesh(it), [0, 0, 0], rgb]);
+  const geo = "positions" in it ? (cutting ? outside(it, cutting.x, cutting.y) : it) : mesh(cutting ? it.subtract(cutting.solid) : it);
+  if (geo.indices.length) (m.parts[finish] ??= []).push([geo, [0, 0, 0], rgb]);
+}
+
+/** A mesh with the triangles over the loading bay taken out: those whose
+ *  middle is within `x` of x = 0, in front of `y`. */
+function outside(g: MeshGeometry, x: number, y: number): MeshGeometry {
+  const p = g.positions;
+  const indices: number[] = [];
+  for (let i = 0; i < g.indices.length; i += 3) {
+    const [a, b, c] = [g.indices[i] * 3, g.indices[i + 1] * 3, g.indices[i + 2] * 3];
+    const [mx, my] = [(p[a] + p[b] + p[c]) / 3, (p[a + 1] + p[b + 1] + p[c + 1]) / 3];
+    if (Math.abs(mx) < x && my > y) continue;
+    indices.push(g.indices[i], g.indices[i + 1], g.indices[i + 2]);
+  }
+  return { ...g, indices };
 }
 
 // --- Solids ---------------------------------------------------------------

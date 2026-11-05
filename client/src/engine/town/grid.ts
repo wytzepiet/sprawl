@@ -1,11 +1,11 @@
 import type { BuildingKind, GridCoord } from "../../generated";
-import { FACINGS, gateOf, kerbed, plot, yardOf } from "../../blueprints";
+import { FACINGS, gateOf, kerbed, plot } from "../../blueprints";
 
 /**
  * The town as the look sees it: a grid of tiles, each one kind of thing,
  * built up some storeys, and the road links between them. Where a car
  * parks and which way a door faces are the simulation's: the look is
- * told a building's door and which of its tiles are its yard, and decides
+ * told a building's door and which of its tiles is its gate, and decides
  * the rest from the neighbours alone.
  *
  * Coordinates are the fixture's: column east, row south, the tile (c, r)
@@ -40,9 +40,9 @@ export interface Tile {
   storeys: number;
   /** Which building it is. */
   id?: number;
-  /** Part of its building's yard, as the server lays it out
-   *  (`World::yard_of`): paved, its docks against the building. */
-  yard?: boolean;
+  /** Its building's gate, as the server has it (`World::gate_of`): the
+   *  tile of its front its trucks back into. */
+  gate?: boolean;
 }
 
 export interface Town {
@@ -93,9 +93,9 @@ export const isBuilt = (t: Tile) => !GROUND.has(t.kind);
 export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
 
 function tileOf(ch: string): Tile {
-  // A building's letter, its yard's small, as `/map` writes the game's.
+  // A building's letter, its gate's small, as `/map` writes the game's.
   const kind = LETTERS[ch.toUpperCase()];
-  if (kind) return ch === ch.toUpperCase() ? { kind, storeys: storeysOf(kind) } : { kind, storeys: storeysOf(kind), yard: true };
+  if (kind) return ch === ch.toUpperCase() ? { kind, storeys: storeysOf(kind) } : { kind, storeys: storeysOf(kind), gate: true };
   const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" || ch === "≈" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }
@@ -113,7 +113,7 @@ export function parseTown(text: string): Town & { rows: string[] } {
   const tiles = rows.map((row) => Array.from({ length: w }, (_, c) => tileOf(row[c] ?? ".")));
   // Each building as the server raises a fixture's (`fixtures.rs`): a
   // kind a tile big a building a tile, any other a run of its letter,
-  // beside or diagonal; its yard where its small letters are, or else
+  // beside or diagonal; its gate where its small letter is, or else
   // toward the first side with a street.
   let next = 0;
   for (let r = 0; r < rows.length; r++) {
@@ -124,7 +124,7 @@ export function parseTown(text: string): Town & { rows: string[] } {
       const id = next++;
       t.id = id;
       const run: GridCoord[] = [{ x: c, y: r }];
-      const [pw, ph] = plot(kind, 0).size;
+      const [pw, ph] = plot(kind, 0);
       for (let i = 0; i < run.length && pw * ph > 1; i++) {
         for (let dr = -1; dr <= 1; dr++) {
           for (let dc = -1; dc <= 1; dc++) {
@@ -135,10 +135,13 @@ export function parseTown(text: string): Town & { rows: string[] } {
         }
       }
       const road = (x: number, y: number) => tiles[y]?.[x]?.kind === "road";
-      const fronts = (f: number) => yardOf(run, kind, f)?.some((q) => road(q.x + FACINGS[f][0], q.y + FACINGS[f][1]));
-      if (run.some((q) => tiles[q.y][q.x].yard)) continue;
-      const facing = [0, 1, 2, 3].find(fronts);
-      for (const q of facing === undefined ? [] : yardOf(run, kind, facing)!) tiles[q.y][q.x].yard = true;
+      const fronts = (f: number) => {
+        const g = gateOf(run, kind, f);
+        return g && road(g.x + FACINGS[f][0], g.y + FACINGS[f][1]) ? g : null;
+      };
+      if (run.some((q) => tiles[q.y][q.x].gate)) continue;
+      const gate = [0, 1, 2, 3].map(fronts).find((g) => g);
+      if (gate) tiles[gate.y][gate.x].gate = true;
     }
   }
   return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
@@ -176,8 +179,8 @@ const EIGHT: [number, number][] = [...SIDES, ...CORNERS];
  * Each door as the server's loader finds it (`World::driveway_for`), the
  * way from its tile to its street: a house's on the first side a street
  * runs straight past, or else on the diagonal where a drive meets its
- * street square, not at a hairpin; a yard's gate from a street ahead of
- * it, by its gate (`World::enters`), beside first; anything else's on the first side a
+ * street square, not at a hairpin; a front's gate from the street
+ * ahead of it (`World::enters`); anything else's on the first side a
  * street runs past, the side it parks on first (`baysOf`).
  */
 function doorsOf(town: Town): Map<string, [number, number]> {
@@ -185,11 +188,11 @@ function doorsOf(town: Town): Map<string, [number, number]> {
   const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
   const square = (x: number, y: number, fx: number, fy: number) =>
     EIGHT.every(([dx, dy]) => !town.linked(x, y, x + dx, y + dy) || dx * fx + dy * fy >= 0) && EIGHT.some(([dx, dy]) => town.linked(x, y, x + dx, y + dy));
-  const yarded = new Set<number>();
+  const gated = new Set<number>();
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const t = town.tile(c, r);
-      if (t.yard && t.id !== undefined) yarded.add(t.id);
+      if (t.gate && t.id !== undefined) gated.add(t.id);
       if (t.kind !== "House") continue;
       const door =
         SIDES.find(([fx, fy]) => street(c + fx, r + fy) && (town.linked(c + fx, r + fy, c + fx - fy, r + fy + fx) || town.linked(c + fx, r + fy, c + fx + fy, r + fy - fx))) ??
@@ -208,27 +211,18 @@ function doorsOf(town: Town): Map<string, [number, number]> {
       if (way) doors.set(`${c},${r}`, way), kerbside.add(t.id);
     }
   }
-  for (const id of yarded) {
+  for (const id of gated) {
     const run: GridCoord[] = [];
     for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (isBuilt(town.tile(c, r)) && town.tile(c, r).id === id) run.push({ x: c, y: r });
     const kind = town.tile(run[0].x, run[0].y).kind as BuildingKind;
-    const marked = run.filter((q) => town.tile(q.x, q.y).yard);
+    const gate = run.find((q) => town.tile(q.x, q.y).gate)!;
+    // The way its front faces: its gate's, with the street straight
+    // ahead of it (a plot a tile deep has its gate on both long sides).
     const facing = [0, 1, 2, 3].find((f) => {
-      const yard = yardOf(run, kind, f);
-      return yard?.length === marked.length && marked.every((q) => yard.some((p) => p.x === q.x && p.y === q.y));
+      const g = gateOf(run, kind, f);
+      return g?.x === gate.x && g.y === gate.y && street(gate.x + FACINGS[f][0], gate.y + FACINGS[f][1]);
     });
-    if (facing === undefined) continue;
-    const [fx, fy] = FACINGS[facing];
-    const gate = gateOf(run, kind, facing);
-    const on = (x: number, y: number) => run.some((q) => q.x === x && q.y === y);
-    const enters = ({ x, y }: GridCoord, [dx, dy]: [number, number]) =>
-      dx * fx + dy * fy > 0 && !on(x + dx, y + dy) && street(x + dx, y + dy) && (!dx || !dy || (!on(x + dx, y) && !on(x, y + dy) && square(x + dx, y + dy, dx, dy)));
-    for (const way of EIGHT) {
-      const q = marked.find((q) => q.x === gate?.x && q.y === gate.y && enters(q, way));
-      if (!q) continue;
-      doors.set(`${q.x},${q.y}`, way);
-      break;
-    }
+    if (facing !== undefined) doors.set(`${gate.x},${gate.y}`, FACINGS[facing]);
   }
   return doors;
 }

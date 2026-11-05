@@ -39,7 +39,7 @@ export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
  *  frame a tenth or more over a town (`bun run cost`), more at night, when
  *  each shaded pixel pays for the lamps over it. */
 export const LAYER_ORDER = { mass: 80, pavement: 85, road: 90, field: 95, ground: 120 };
-/** The lines painted on a yard's asphalt, just over it: a worn white. */
+/** The lines painted on the docks' asphalt, just over it: a worn white. */
 const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
 const LINE = rgb(0.82, 0.81, 0.77);
 
@@ -47,7 +47,7 @@ const LINE = rgb(0.82, 0.81, 0.77);
  * The town grid's town, drawn: the pavement, the
  * buildings; the roads are the game's
  * (`roads.ts`).
- * Geometry alone, in the same frame, and the lines painted on the yards'
+ * Geometry alone, in the same frame, and the lines painted on the docks'
  * asphalt. The trees the dressing plants are the caller's to plant
  * (`treeInstances`), and what stands on its roofs and its street lamps the
  * props' (`props.ts`); what moves on it the game draws itself.
@@ -62,11 +62,11 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   const { wall, cap } = quay(town, paved);
   add("quay", wall, QUAY);
   add("quayCap", cap, CAP);
-  const dressing = dress(town, known);
+  const dressing = dress(town);
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
   // Each wound as the sheets' outlines are.
-  add("lines", flatPolygons(dressing.yardLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
+  add("lines", flatPolygons(dressing.dockLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
   add("hedges", hedgeMesh(dressing.hedges), HEDGE);
   // A street lamp stands on the pavement, a prop like what stands on a roof.
   const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: KERB_Z, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
@@ -124,7 +124,7 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
   const wall: MeshGeometry = { positions: [], normals: [], indices: [] };
   const cap: MeshGeometry = { positions: [], normals: [], indices: [] };
   const kind = ([x, y]: number[]) => town.tile(Math.floor(x), Math.floor(y)).kind;
-  // A fishery stands on the water: its yard's edge there is a quay.
+  // A fishery stands on the water: its edge there is a quay.
   const quayed = (k: string) => k === "Fishery";
   for (const ring of paved.flat()) {
     ring.forEach((a, i) => {

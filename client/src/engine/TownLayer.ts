@@ -14,7 +14,7 @@ import { areaOf, CHUNK, grow, kerbed, MARGIN, turned, widen, type Bounds, type C
 import type { TownApi } from "./townWorker";
 import { theme } from "./theme";
 import type { Look } from "./objects/look";
-import { BLUEPRINTS, yardOf } from "../blueprints";
+import { BLUEPRINTS, gateOf } from "../blueprints";
 import { KERB_Z, LAYER_ORDER } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
@@ -27,7 +27,7 @@ import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
-import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType, Placing } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
 
 /** How many roads one tile may hold: the ground's two side by side, and
@@ -231,17 +231,17 @@ export class TownLayer {
         const b = e.object.data as Building;
         g.byId.set(e.id, e);
         if (b.door) g.doors.push([b.door.tile.x, b.door.tile.y, b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
-        const yard = yardTiles(b.tiles, b.kind, b.facing);
+        const gate = gateOf(b.tiles, b.kind, b.facing);
         for (const t of b.tiles) {
-          g.buildings.push([t.x, t.y, e.id, b.kind, yard.has(`${t.x},${t.y}`)]);
+          g.buildings.push([t.x, t.y, e.id, b.kind, t.x === gate?.x && t.y === gate.y]);
           grow(g.built, t.x, t.y);
         }
       }
     });
     if (held) {
-      const yard = yardTiles(held.tiles, held.kind, held.facing);
+      const gate = gateOf(held.tiles, held.kind, held.facing);
       for (const t of held.tiles) {
-        g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
+        g.buildings.push([t.x, t.y, HELD, held.kind, t.x === gate?.x && t.y === gate.y]);
         grow(g.built, t.x, t.y);
       }
       if (held.door) g.doors.push([held.door.tile.x, held.door.tile.y, held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
@@ -434,8 +434,8 @@ export class TownLayer {
     // Every building's door, by its tile: the way on the map to its street.
     const doors = new Map<string, [number, number]>();
     const raise = (id: number, { tiles, kind, facing, site }: Pick<Building, "tiles" | "kind" | "facing"> & { site?: unknown }) => {
-      const yard = site ? new Set<string>() : yardTiles(tiles, kind, facing);
-      for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
+      const gate = site ? null : gateOf(tiles, kind, facing);
+      for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, gate: t.x === gate?.x && t.y === gate.y });
     };
     this.entities((e) => {
       if (e.object.kind === "RoadNode" && e.position) {
@@ -589,8 +589,6 @@ export class TownLayer {
   }
 }
 
-/** A building's yard, as the server lays its lot out, by tile. */
-const yardTiles = (tiles: GridCoord[], kind: BuildingKind, facing: number) => new Set((yardOf(tiles, kind, facing) ?? []).map((t) => `${t.x},${t.y}`));
 
 
 /** The chunk a tile is on. */

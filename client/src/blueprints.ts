@@ -30,15 +30,12 @@ interface Look {
   heights: number[];
 }
 
-/** A kind's look, and the server's columns of its row: what it is built
- *  from, which a depot's vans bring to its site, none standing at once;
- *  its footprint in tiles, wide along its frontage; its yard, along the
- *  frontage and deep, on the street side, [0, 0] none, parking on its
- *  drive; and a harbour's quay, along its back wall, where the ferry
- *  berths. */
+/** A kind's look, and the server's columns of its row: its size in
+ *  tiles, wide along its frontage, what it makes and from what, its bays
+ *  at the kerb and docks at its front. */
 export type Blueprint = Look & (typeof ROWS)[BuildingKind];
 
-/** The four ways a plot can lie: which side the lot and street are on. */
+/** The four ways a plot can lie: which side its front and street are on. */
 export const FACINGS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 /** A kind with bays at its kerb: its workers' and customers' cars.
@@ -53,58 +50,29 @@ export function sideOf(tiles: GridCoord[], [dx, dy]: [number, number]): GridCoor
   return tiles.filter((t) => !on(t.x + dx, t.y + dy)).sort((a, b) => along(a) - along(b));
 }
 
-interface Plot {
-  size: [number, number];
-  building: [[number, number], [number, number]];
-  lot: [[number, number], [number, number]] | null;
+/** The smallest of a kind, lying this way. Mirrors `blueprint::plot`. */
+export function plot(kind: BuildingKind, facing: number): [number, number] {
+  const [w, h] = BLUEPRINTS[kind].size;
+  return facing % 2 === 0 ? [w, h] : [h, w];
 }
 
-/** The smallest of a kind, lying this way: its size, and where building and yard lie in it. Mirrors `blueprint::plot`. */
-export function plot(kind: BuildingKind, facing: number): Plot {
-  const { size: [bw, bh], lot: [lw, ld] } = BLUEPRINTS[kind];
-  // As wide as the wider of building and yard, as the server lays it.
-  const w = Math.max(bw, lw);
-  return lie(kind, facing, facing % 2 === 0 ? [w, bh + ld] : [bh + ld, w]);
-}
-
-/** A building `size` across, lying this way: its yard the rows on its street side as deep as its kind's, its whole width; the rest the building. Mirrors `blueprint::lie`. */
-export function lie(kind: BuildingKind, facing: number, [w, h]: [number, number]): Plot {
-  const d = BLUEPRINTS[kind].lot[1];
-  const yard = d > 0;
-  switch (facing % 4) {
-    case 2: return { size: [w, h], building: [[0, 0], [w, h - d]], lot: yard ? [[0, h - d], [w, d]] : null };
-    case 0: return { size: [w, h], building: [[0, d], [w, h - d]], lot: yard ? [[0, 0], [w, d]] : null };
-    case 1: return { size: [w, h], building: [[0, 0], [w - d, h]], lot: yard ? [[w - d, 0], [d, h]] : null };
-    default: return { size: [w, h], building: [[d, 0], [w - d, h]], lot: yard ? [[0, 0], [d, h]] : null };
-  }
-}
+/** A kind with a front: a gate in the middle of the side toward its
+ *  street, its docks notched in there. Mirrors `blueprint::fronted`. */
+export const fronted = (kind: BuildingKind) => BLUEPRINTS[kind].docks > 0;
 
 /** Does a building on these tiles hold the smallest of its kind, one way
  *  round or the other? Mirrors `World::works`. */
 function works(tiles: GridCoord[], kind: BuildingKind): boolean {
-  const [w, h] = plot(kind, 0).size;
+  const [w, h] = plot(kind, 0);
   const on = (x: number, y: number) => tiles.some((t) => t.x === x && t.y === y);
   const holds = ([sw, sh]: number[]) => tiles.some((t) => Array.from({ length: sw * sh }, (_, i) => on(t.x + (i % sw), t.y + Math.floor(i / sw))).every(Boolean));
   return holds([w, h]) || holds([h, w]);
 }
 
-/** A building's yard tiles, lying this way, if its kind keeps one and it
- *  is big enough to work: the yard the server lays its lot in, drawn
- *  where the server has it. Mirrors `World::yard_of`. */
-export function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord[] | null {
-  if (!works(tiles, kind)) return null;
-  const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
-  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
-  const { lot } = lie(kind, facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]);
-  if (!lot) return null;
-  const [[lx, ly], [lw, ld]] = lot;
-  return tiles.filter((t) => t.x >= x0 + lx && t.x < x0 + lx + lw && t.y >= y0 + ly && t.y < y0 + ly + ld);
-}
-
-/** A harbour's gate: the middle tile of its front, the one way in, where
- *  its lane starts down to the ramp. Mirrors `World::gate_of`. */
+/** A front's gate: the middle tile of the side toward its street, where
+ *  its trucks back in. Mirrors `World::gate_of`. */
 export function gateOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord | null {
-  if (!works(tiles, kind)) return null;
+  if (!fronted(kind) || !works(tiles, kind)) return null;
   const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
   const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
   const [mx, my] = [x0 + Math.floor((x1 - x0 + 1) / 2), y0 + Math.floor((y1 - y0 + 1) / 2)];
@@ -113,15 +81,14 @@ export function gateOf(tiles: GridCoord[], kind: BuildingKind, facing: number): 
 }
 
 /** Where a building stands and how big it is, in tiles: the middle and
- *  size of its bounds, its yard left out. */
+ *  size of its bounds. */
 export function standing(b: Building): { at: [number, number]; size: [number, number] } {
   const xs = b.tiles.map((t) => t.x), ys = b.tiles.map((t) => t.y);
-  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
-  const [[bx, by], [bw, bh]] = lie(b.kind, b.facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]).building;
-  return { at: [x0 + bx + bw / 2, y0 + by + bh / 2], size: [bw, bh] };
+  const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs) + 1, Math.max(...ys) + 1];
+  return { at: [(x0 + x1) / 2, (y0 + y1) / 2], size: [x1 - x0, y1 - y0] };
 }
 
-/** Where a building stands: the middle of its bounds, its yard left out. */
+/** Where a building stands: the middle of its bounds. */
 export const middle = (b: Building): [number, number] => standing(b).at;
 
 const LOOKS: Record<BuildingKind, Look> = {

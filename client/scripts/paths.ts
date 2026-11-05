@@ -4,7 +4,7 @@
  * checking). `bun run act watch` records the trips, `bun run plan --live …
  * --paths` draws them, every bend tighter than a car can turn marked.
  */
-import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
+import { CAR, TRUCK } from "../src/engine/objects/roadGeometry";
 import { CAR_RIG, driveTrip, LORRY_RIG, type Driven } from "../src/engine/objects/driver";
 import type { Pose } from "../src/generated";
 
@@ -65,11 +65,10 @@ export const trace = (trips: Recorded[]) =>
     if (!d) return { points: [], tight: [], strobe: [] };
     const points: P[] = [], strobe: P[][] = [];
     for (let s = 0; s <= d.length; s += 0.02) {
-      const { body, trailer } = d.at(s);
+      const { body } = d.at(s);
       points.push(body.at);
       if (Math.round(s / 0.02) % 12 === 0) {
-        strobe.push(box(body, lorry ? CAB.l : CAR.l, lorry ? CAB.w : CAR.w));
-        if (trailer) strobe.push(box(trailer, TRAILER.l, TRAILER.w));
+        strobe.push(box(body, lorry ? TRUCK.l : CAR.l, lorry ? TRUCK.w : CAR.w));
       }
     }
     const r = radii(points);
