@@ -1,6 +1,6 @@
 import { Box, Icon, Text } from "~ui";
 import { For, Show, createMemo } from "solid-js";
-import { signed } from "../state/gameObjects";
+import { reached, signed } from "../state/gameObjects";
 import { now } from "../state/town";
 import { select } from "../state/selection";
 import { PATIENCE_MS } from "../generated/rows";
@@ -12,11 +12,37 @@ import type { Building, Want } from "../generated";
  * What every family wants, over its roof, as Mini Motorways shows a house
  * wanting a car: a pin of the good, its ring filling red as the family
  * waits; full, it leaves. A car out for it is a dot in the good's colour
- * instead: on its way. A tap opens the house's card.
+ * instead: on its way. A building no road reaches asks for one. A tap
+ * opens the card.
  */
 export default function Pins() {
   const wanting = createMemo(() => signed().filter((e) => (e.object.data as Building).home?.wants.length));
-  return <For each={wanting()}>{(e) => <Over id={e.id} building={() => e.object.data as Building} />}</For>;
+  const cut = createMemo(() => signed().filter((e) => !reached(e)));
+  return (
+    <>
+      <For each={wanting()}>{(e) => <Over id={e.id} building={() => e.object.data as Building} />}</For>
+      <For each={cut()}>{(e) => <NoRoad id={e.id} building={() => e.object.data as Building} />}</For>
+    </>
+  );
+}
+
+/** A street's glyph: its kerbs and the line down its middle. */
+const STREET = "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z";
+
+/** Over a building no road reaches: a red pin of a street. */
+function NoRoad(props: { id: number; building: () => Building }) {
+  const at = onMap(() => [...middle(props.building()), 0.9]);
+  return (
+    <Show when={at()}>
+      {(p) => (
+        <Box at={{ left: 0, top: 0 }} x={p().sx - 15} y={p().sy - 34}>
+          <Press w={30} h={30} round={15} fill={BAD} stroke={[2, "white"]} align="center" justify="center" onTap={() => select(props.id)}>
+            <Icon d={STREET} size={15} ink="white" />
+          </Press>
+        </Box>
+      )}
+    </Show>
+  );
 }
 
 /** Pins over one building, at most; the rest a count. */

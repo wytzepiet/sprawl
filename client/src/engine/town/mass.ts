@@ -66,13 +66,6 @@ export const planted = (_t: Tile) => false;
 /** A flat roof's parapet: how thick its wall, and how high above the roof. */
 export const PARAPET_W = 0.045, PARAPET_H = 0.05;
 
-/** Where a sign lies on a building's roof: how high; how far in from the
- *  walls the flat it lies on begins; and that it is painted on, as roof
- *  markings are. */
-export function seat(t: Tile): { z: number; inset: number; painted: boolean } {
-  const { pitch, height } = slope(t);
-  return { z: eaves(t) + height, inset: height / pitch, painted: true };
-}
 
 /** Buildings that may join, where no stroke says: tiles of one kind, as
  *  the terrain's types are. A home, a big box and anything with a yard stand

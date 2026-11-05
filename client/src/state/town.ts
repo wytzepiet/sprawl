@@ -1,4 +1,4 @@
-import { createEffect, createRoot, createSignal, on } from "solid-js";
+import { createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
 import { dayLengthMs, simNow } from "../network/clock";
 import type { Town } from "../generated";
 
@@ -48,11 +48,13 @@ export function clockAt(t: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-// Each dawn, yesterday in a line: who came, who grew, who left.
+// Each dawn, yesterday in a line: who came, who grew, who left. Once a
+// day: `on` fires whenever the town updates, so it follows a memo of the
+// day, which changes only when the day does.
 createRoot(() =>
   createEffect(
     on(
-      () => town().dawn?.day,
+      createMemo(() => town().dawn?.day),
       (day) => {
         const d = town().dawn;
         if (!day || !d) return;

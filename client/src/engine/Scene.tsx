@@ -7,7 +7,6 @@ import { Highlight } from "./Highlight";
 import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import PerfReport, { run } from "./PerfReport";
-import Signs from "./Signs";
 import { Root } from "~ui";
 import Hud from "../ui/Hud";
 
@@ -23,7 +22,6 @@ function SceneInner() {
               <Picker />
               <Highlight />
               <World />
-              <Signs />
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>
