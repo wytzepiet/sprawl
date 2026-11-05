@@ -16,10 +16,12 @@ import {
   enablePbrMaterialPluginVertexData,
   enablePixelTextureMipmaps,
   enableSurfaceResizeObserver,
+  isGpuTimingSupported,
   onBeforeRender,
   registerSceneWithShadowSupport,
   renderFrame,
   resizeEngine,
+  setGpuTimingEnabled,
   type EngineContext as Engine,
   type SceneContext,
 } from "@babylonjs/lite";
@@ -75,13 +77,18 @@ const MAX_DEVICE_RATIO = 2;
  *  six million of them, four times a phone's, and runs hot for it. Here it
  *  is drawn at about 1.4 instead, the flat colours no worse for it. */
 const MAX_PIXELS = 3e6;
-/** And less again while the GPU cannot keep up: when, as the view moves,
- *  the middle of the last `JUDGED` frames comes later than `LATE_MS`, the
- *  ratio is let down a step, to a pixel to the CSS pixel at the least; and
- *  once it has kept time `RETRY_MS` it is tried a step up, but never back
- *  to a ratio it was late at. A slow phone draws softer and keeps its
- *  frames and its battery; a fast one never knows. */
+/** And less again while the GPU cannot keep up, judged as the view moves
+ *  over the middle of the last `JUDGED` frames, to a pixel to the CSS pixel
+ *  at the least. Where the GPU's own time can be read, a step down when it
+ *  is over `GPU_MS` and up when a step up would still be under it, a ratio's
+ *  pixels being its square. Where not, by the gaps between frames: down
+ *  when they come later than `LATE_MS`, those after a long task left out,
+ *  which is the main thread's and no fault of the GPU; up after keeping
+ *  time `RETRY_MS`, but never back to a ratio it was late at. A slow phone
+ *  draws softer and keeps its frames and its battery; a fast GPU never
+ *  knows. */
 const JUDGED = 60;
+const GPU_MS = 12;
 const LATE_MS = 22;
 const STEP = 0.8;
 const RETRY_MS = 10_000;
@@ -177,18 +184,26 @@ export default function Canvas(props: ParentProps) {
     let held = false;
     let running = true;
     // The ratio drawn at, as the frames have kept time at it (`JUDGED`).
-    let [ratio, ceiling, keptSince] = [Infinity, Infinity, 0];
-    const gaps: number[] = [];
+    let [ratio, ceiling, keptSince, longEnded] = [Infinity, Infinity, 0, 0];
+    const timed = isGpuTimingSupported(engine);
+    if (timed) setGpuTimingEnabled(engine, true);
+    else if (PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+      new PerformanceObserver((list) => list.getEntries().forEach((e) => (longEnded = Math.max(longEnded, e.startTime + e.duration)))).observe({ type: "longtask" });
+    }
+    const samples: number[] = [];
     const judge = (now: number, delta: number, cap: number) => {
       const drawn = Math.min(cap, ratio);
-      gaps.push(delta);
-      if (gaps.length > JUDGED) gaps.shift();
-      const middle = gaps.length === JUDGED ? [...gaps].sort((a, b) => a - b)[JUDGED / 2] : 0;
-      if (middle > LATE_MS && drawn > 1) [ceiling, ratio, gaps.length, keptSince] = [drawn, Math.max(1, drawn * STEP), 0, now];
-      else if (middle > LATE_MS) keptSince = now;
-      else if (now - keptSince > RETRY_MS && drawn < cap && drawn / STEP < ceiling) [ratio, gaps.length, keptSince] = [drawn / STEP, 0, now];
+      if (!timed && now - longEnded < 2 * delta) return;
+      samples.push(timed ? engine.gpuFrameTimeMs : delta);
+      if (samples.length < JUDGED) return;
+      const middle = [...samples].sort((a, b) => a - b)[JUDGED / 2];
+      samples.length = 0;
+      const up = Math.min(cap, drawn / STEP);
+      if (middle > (timed ? GPU_MS : LATE_MS)) {
+        if (drawn > 1) [ceiling, ratio] = [drawn, Math.max(1, drawn * STEP)];
+        keptSince = now;
+      } else if (drawn < cap && (timed ? middle * (up / drawn) ** 2 < GPU_MS : now - keptSince > RETRY_MS && up < ceiling)) [ratio, keptSince] = [up, now];
     };
-    // The glass moving counts too: the UI's springs move at the moving rate.
     const where = () => {
       const c = scene.camera;
       return c ? `${c.worldMatrixVersion},${c.fov},${glass.key()},${paint.key()}` : "";
