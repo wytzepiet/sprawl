@@ -80,7 +80,7 @@ const REACH = 26;
 
 /** Why a want is not met yet, as near as the client can tell: the link
  *  in the chain that is missing, so the mayor knows what to build. */
-function why(home: Building, homeId: number, good: Good): string {
+export function why(home: Building, homeId: number, good: Good): string {
   const entry = getEntity(homeId);
   if (!entry || !reached(entry)) return "no road to the house";
   const at = home.tiles[0];

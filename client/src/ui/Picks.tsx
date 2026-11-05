@@ -3,6 +3,7 @@ import { For, Show } from "solid-js";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { town } from "../state/town";
 import { BLUEPRINTS, GOODS } from "../blueprints";
+import { why } from "./Card";
 import { ROAD_KINDS } from "./Roads";
 import { Pop, Press, view, ROUND } from "./kit";
 import type { Building, Good, Offer, Unlock } from "../generated";
@@ -17,7 +18,7 @@ const TOOL: Record<Unlock, { id: string; label: string; about: string }> = {
 };
 const road = (id: string) => ROAD_KINDS.find((r) => r.id === id) ?? ROAD_KINDS[0];
 
-/** The houses waiting on a good now, or growing with it. */
+/** The houses waiting on a good now (their pins up), or growing with it. */
 function waiting(good: Good, growing: boolean): number {
   // Read again as the buildings change: the entities are not a signal.
   builtVersion();
@@ -25,7 +26,18 @@ function waiting(good: Good, growing: boolean): number {
   eachEntity((e) => {
     const h = e.object.kind === "Building" ? (e.object.data as Building).home : null;
     const grows = h?.growing?.[good];
-    if (h && (growing ? grows && grows.level < grows.cap : h.wants.some((w) => w.good === good))) n++;
+    if (h && (growing ? grows && grows.level < grows.cap : h.wants.some((w) => w.good === good && w.by === null))) n++;
+  });
+  return n;
+}
+
+/** The houses a want of which is held up for this reason (`Card.why`). */
+function cut(reason: string): number {
+  builtVersion();
+  let n = 0;
+  eachEntity((e) => {
+    const b = e.object.kind === "Building" ? (e.object.data as Building) : null;
+    if (b?.home?.wants.some((w) => w.by === null && why(b, e.id, w.good) === reason)) n++;
   });
   return n;
 }
@@ -35,10 +47,13 @@ function waiting(good: Good, growing: boolean): number {
 function need(o: Offer): string | null {
   if (o.kind === "Building") {
     const makes = BLUEPRINTS[o.data[0]].makes;
-    if (!makes) return null;
+    if (!makes) {
+      const far = cut("no shop within reach");
+      return far ? `${far} ${far === 1 ? "house has" : "houses have"} no shop near` : null;
+    }
     const [want, grow] = [waiting(makes, false), waiting(makes, true)];
     const what = GOODS[makes].label.toLowerCase();
-    return want ? `${want} ${want === 1 ? "house wants" : "houses want"} ${what}` : grow ? `${grow} ${grow === 1 ? "house grows" : "houses grow"} with ${what}` : null;
+    return want ? `${want} ${want === 1 ? "house waits" : "houses wait"} for ${what}` : grow ? `${grow} ${grow === 1 ? "house grows" : "houses grow"} with ${what}` : null;
   }
   if (o.kind === "Roads") return town().roads < 10 ? `${town().roads} left` : null;
   return null;

@@ -1,5 +1,5 @@
 import type { RGB } from "../rgb";
-import { barn, box, cask, chimney, crate, door, model, pitched, plate, post, put, window, type Cover, type Wall } from "./kit";
+import { barn, box, cask, ground, chimney, crate, door, model, pitched, plate, post, put, window, type Cover, type Wall } from "./kit";
 
 /**
  * A fishery, whole, on the back row of its plot (x -1.5 to 1.5, the street
@@ -23,6 +23,8 @@ const DOOR: RGB = [0.3, 0.42, 0.5];
 const [X0, X1, Y0, Y1, EAVE, RIDGE] = [-1.3, 0.55, -1.44, -0.66, 0.3, 0.52];
 
 export const FISHERY = model((m) => {
+  // The back row sandy dust, the yard before it the town's paving.
+  ground(m, "dust", [[-1.49, 1.49, -1.49, -0.5]], [0.84, 0.77, 0.62], { round: 0.04 });
   // The boathouse, its boards in courses, a white sill along its foot.
   put(m, "matte", barn("x", X0, X1, Y0, Y1, EAVE, RIDGE), BOARDS);
   for (let z = 0.06; z < EAVE; z += 0.06) put(m, "matte", box(X0 - 0.004, X1 + 0.004, Y0 - 0.004, Y1 + 0.004, z, z + 0.006), [0.54, 0.65, 0.71]);

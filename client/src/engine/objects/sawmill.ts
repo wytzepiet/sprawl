@@ -219,6 +219,8 @@ export const SAWMILL = model((m) => {
  */
 export const WOODCUTTER = model((m) => {
   const [X0, X1, Y0, Y1, EAVE, RIDGE] = [-1.25, -0.25, -1.4, -0.72, 0.2, 0.42];
+  // The back row trodden earth, the yard before it the town's paving.
+  ground(m, "earth", [[-1.49, 1.49, -1.49, -0.5]], [0.55, 0.42, 0.3], { round: 0.04 });
   // The cabin's walls a pile of logs, their ends past the corners.
   for (let z = 0.024, k = 0; z < EAVE; z += 0.042, k++) {
     log(m, [(X0 + X1) / 2, Y1, z], 0.022, X1 - X0 + (k % 2 ? 0.06 : 0.02), "x");

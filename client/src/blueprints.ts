@@ -136,7 +136,7 @@ const LOOKS: Record<BuildingKind, Look> = {
   },
   Shop: {
     label: "Shop",
-    about: "Where families buy. Its two lorries fetch each good the town eats from the nearest maker that has it, so the shelf is never far behind.",
+    about: "Families buy here what the makers make. Its two lorries fetch each good the town eats from the nearest maker that has it, so the shelf is never far behind.",
     color: "#D9A02B",
     material: "#B8743A",
     glyph: "M2 3h20l1.5 6.5c0 1.6-1.3 2.8-2.9 2.8-1.5 0-2.7-1-2.9-2.4-.3 1.4-1.5 2.4-2.9 2.4S12.3 11.3 12 9.9c-.3 1.4-1.5 2.4-2.9 2.4S6.5 11.3 6.2 9.9c-.2 1.4-1.4 2.4-2.9 2.4C1.8 12.3.5 11.1.5 9.5zM3.5 14h17v8h-17zm3 2v6h4v-6zm7 0v3.5h4V16z",
