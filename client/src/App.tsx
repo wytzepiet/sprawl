@@ -21,10 +21,11 @@ export default function App() {
   if (!town) return <Scene connect={(on) => createConnection(wsUrl, on)} />;
   const [text] = createResource(async () => {
     const text = await (fixtures[`../../server/fixtures/${town}.txt`]?.() ?? Promise.reject(new Error(`no town ${town}`)));
-    // Opened over the town's middle, not wherever the camera was last left.
+    // Opened over the town's middle, not wherever the camera was last
+    // left; its rows run south from y = 0.
     const rows = text.split("\n").filter((l) => l && !l.startsWith("#") && !l.startsWith("@"));
     const width = Math.max(...rows.map((l) => l.length));
-    localStorage.setItem("sprawl.camera", JSON.stringify({ x: width / 2, y: rows.length / 2, half: 24 }));
+    localStorage.setItem("sprawl.camera", JSON.stringify({ x: width / 2, y: 1 - rows.length / 2, half: 24 }));
     return text;
   });
   return <Show when={text()}>{(text) => <Scene connect={(on) => connectLevel(town, text(), null, on, () => {}, () => {})} />}</Show>;
