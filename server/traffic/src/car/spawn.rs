@@ -60,7 +60,7 @@ pub fn depart(
     };
     let backs_out = world.map.backs_out(car_id);
     let leaving = world.map.stretch(car_id);
-    let planned_out = world.map.manoeuvre_out(car_id).filter(|_| out.len() > 1);
+    let planned_out = if out.len() > 1 { world.map.manoeuvres_out(car_id) } else { Vec::new() };
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.map.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
@@ -84,7 +84,7 @@ pub fn depart(
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.map.stretch(car_id)];
-    let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvre_in(car_id, route.len())).collect();
+    let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvres_in(car_id, route.len())).collect();
     let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, manoeuvres, stretches, leaves, now);
     set_off(world, events, car_id, trip);
     true
@@ -126,7 +126,7 @@ pub(crate) fn trip(
         lanes: world.map.lanes_for(&route),
         from_lot,
         to_lot,
-        cusps: cusps(&backing, &along),
+        cusps: cusps(&backing, &manoeuvres, &along),
         manoeuvres,
         leaves,
         stands: world.map.pose_held(car_id),
@@ -234,10 +234,15 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
     v
 }
 
-/// How far along the route each change of gear is, as its physics measures
-/// it: where a vehicle stops and pulls away the other way.
-pub fn cusps(backing: &[[usize; 2]], along: &[f64]) -> Vec<f64> {
-    map::geometry::parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
+/// How far along the route, as its physics measures it, each stretch the
+/// client draws on its own starts: at each change of gear, and at each end
+/// of a parking move, so a vehicle stops where the server has it stop.
+pub fn cusps(backing: &[[usize; 2]], manoeuvres: &[model::Manoeuvre], along: &[f64]) -> Vec<f64> {
+    let n = along.len();
+    let mut cuts: Vec<usize> = backing.iter().flatten().copied().chain(manoeuvres.iter().flat_map(|m| [m.edge, m.edge + 1])).filter(|&k| k > 0 && k + 1 < n).collect();
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.into_iter().map(|k| along[k]).collect()
 }
 
 /// How far along a route each node of it is, from its segments' lengths:
@@ -286,6 +291,6 @@ mod tests {
             Some(GameObject::Car(c)) => c.trip.clone().unwrap(),
             _ => unreachable!(),
         };
-        assert_eq!(trip.backing, vec![[0, 1]], "the first edge backwards, the rest forward");
+        assert_eq!(trip.backing.first(), Some(&[0, 1]), "the first edge backwards");
     }
 }

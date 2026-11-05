@@ -86,13 +86,11 @@ function straight(town: Town, c: number, r: number, ux: number, uy: number) {
   return links.length === 2 && town.linked(c, r, c + ux, r + uy) && town.linked(c, r, c - ux, r - uy);
 }
 
-/** Kerb bays as the server lays them (`lots.rs`): along the kerb, a car's
- *  middle this far from its street's middle line and this far apart; nose
- *  in, this far out, its tail at the road's edge, and this far apart;
- *  within the building's walls. A bay's asphalt reaches past its car by
- *  `ROOM` all round, so a car stands wholly on it. */
-const KERB = 0.305;
-const ALONG_PITCH = 0.42;
+/** Kerb bays as the server lays them (`lots.rs`): square to the kerb, a
+ *  car's middle this far out from its street's middle line, its end at the
+ *  road's edge, and this far apart; within the building's walls. A bay's
+ *  asphalt reaches past its car by `ROOM` all round, so a car stands
+ *  wholly on it. */
 const SQUARE = 0.37;
 const SQUARE_PITCH = 0.27;
 const ROOM = 0.02;
@@ -101,7 +99,7 @@ const ROOM = 0.02;
 const BAY_INSET = 0.2;
 
 /** How many bays a side `len` tiles long holds (`bays_along`). */
-const baysAlong = (len: number, square: boolean) => Math.max(0, Math.floor((len - 2 * BAY_INSET) / (square ? SQUARE_PITCH : ALONG_PITCH) + 1e-9));
+const baysAlong = (len: number) => Math.max(0, Math.floor((len - 2 * BAY_INSET) / SQUARE_PITCH + 1e-9));
 
 /** A car's bay at the kerb: where its middle is, which way it faces
  *  (radians from +x, y down), and the street tile it is before, the way
@@ -110,7 +108,6 @@ interface Bay {
   x: number;
   y: number;
   angle: number;
-  square: boolean;
   road: [number, number];
   side: [number, number];
   a: number;
@@ -121,35 +118,24 @@ interface Bay {
  * as many as its long side holds, on the side its door opens onto first,
  * then on the sides with a street all along them, the fullest first, until
  * it has them; along each side evenly within its walls, each where the
- * street runs straight past: nose in, or along the kerb before flats.
+ * street runs straight past.
  */
 export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number]): Bay[] {
-  const square = true;
-  const need = baysAlong(Math.max(...BLUEPRINTS[kind].size), square);
-  const pitch = square ? SQUARE_PITCH : ALONG_PITCH;
+  const need = baysAlong(Math.max(...BLUEPRINTS[kind].size));
   const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
   const sides = FACINGS.map(([dx, dy]) => {
     const run = sideOf(tiles, [dx, dy]);
     const [ux, uy] = [Math.abs(dy), Math.abs(dx)];
     const whole = run.every((t, i) => street(t.x + dx, t.y + dy) && (i === 0 || town.linked(run[i - 1].x + dx, run[i - 1].y + dy, t.x + dx, t.y + dy)));
-    const n = baysAlong(run.length, square);
+    const n = baysAlong(run.length);
     const bays: Bay[] = [];
     for (let i = 0; i < n; i++) {
-      const u = run.length / 2 + (i - (n - 1) / 2) * pitch;
+      const u = run.length / 2 + (i - (n - 1) / 2) * SQUARE_PITCH;
       const k = Math.min(Math.floor(u), run.length - 1);
       const a = u - k - 0.5;
       const [c, r] = [run[k].x + dx, run[k].y + dy];
       if (!straight(town, c, r, ux, uy)) continue;
-      if (!square) {
-        const s = a >= 0 ? 1 : -1;
-        if (!straight(town, c + s * ux, r + s * uy, ux, uy)) continue;
-      }
-      const out = square ? SQUARE : KERB;
-      bays.push({
-        x: c + 0.5 + ux * a - dx * out, y: r + 0.5 + uy * a - dy * out,
-        angle: square ? Math.atan2(-dy, -dx) : Math.atan2(uy, ux),
-        square, road: [c, r], side: [-dx, -dy], a,
-      });
+      bays.push({ x: c + 0.5 + ux * a - dx * SQUARE, y: r + 0.5 + uy * a - dy * SQUARE, angle: Math.atan2(-dy, -dx), road: [c, r], side: [-dx, -dy], a });
     }
     return { other: !door || door[0] !== dx || door[1] !== dy, broken: !whole, bays };
   });
@@ -196,13 +182,13 @@ export function baysAt(town: Town, c: number, r: number): Bay[] {
  *  past the bays' far edge, along the tile as far as its bays go, run on
  *  into the next tile where the row goes on there. */
 function bayRect(town: Town, c: number, r: number, bays: Bay[]): Rect {
-  const { side: [sx, sy], square } = bays[0];
+  const { side: [sx, sy] } = bays[0];
   const [ux, uy] = [Math.abs(sy), Math.abs(sx)];
-  const half = (square ? CAR.w : CAR.l) / 2 + ROOM;
+  const half = CAR.w / 2 + ROOM;
   const on = (s: number) => baysAt(town, c + s * ux, r + s * uy).some((b) => b.side[0] === sx && b.side[1] === sy);
   const lo = on(-1) ? -0.5 - RUN : Math.min(...bays.map((b) => b.a)) - half;
   const hi = on(1) ? 0.5 + RUN : Math.max(...bays.map((b) => b.a)) + half;
-  const out = (square ? SQUARE + CAR.l / 2 : KERB + CAR.w / 2) + ROOM;
+  const out = SQUARE + CAR.l / 2 + ROOM;
   // Out: from the middle toward the side.
   const [a0, a1] = [Math.min(0, sx * out, sy * out), Math.max(0, sx * out, sy * out)];
   const [x0, x1, y0, y1] = ux ? [0.5 + lo, 0.5 + hi, 0.5 + a0, 0.5 + a1] : [0.5 + a0, 0.5 + a1, 0.5 + lo, 0.5 + hi];

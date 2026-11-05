@@ -72,34 +72,49 @@ const SETTLE_PLAN = 0.3;
 /** How far a plan's step is: the server's own (`park::SUB`). */
 const SUB = 0.02;
 
+/** A point driven `ds` along heading `h` (negative backing) with the
+ *  wheel at curvature `k`: where it ends (`park::arc`). */
+function arc(p: Body, k: number, ds: number): Body {
+  const h = p.heading + k * ds;
+  return Math.abs(k) < 1e-9
+    ? { x: p.x + Math.cos(p.heading) * ds, y: p.y + Math.sin(p.heading) * ds, heading: h }
+    : { x: p.x + (Math.sin(h) - Math.sin(p.heading)) / k, y: p.y - (Math.cos(h) - Math.cos(p.heading)) / k, heading: h };
+}
+
 /**
- * A manoeuvre's plan driven as the server drives it (`park::drive`): the
- * cab's rear axle on an arc at each step, the wheel turning evenly
- * through each move, its trailer drawn after the hitch on the axle. A
- * plan played backwards is driven forwards from where it ends and read
- * back, so a trailer is never pushed by the numbers.
+ * A manoeuvre's plan driven as the server drives it, step for step. The
+ * moves steer the cab's rear axle, its trailer drawn after the hitch on
+ * that axle (`park::drive`); or, `towed`, the trailer's axle, as a lorry
+ * is backed, the cab on the hitch pointing the way the hitch moves
+ * (`park::tow`).
  */
 export function planned(m: Manoeuvre, rig: Rig): Planned {
-  let p: Body = { x: m.from.at[0], y: m.from.at[1], heading: m.from.heading };
-  let trailer = m.from.heading;
+  let cab: Body = { x: m.from.at[0], y: m.from.at[1], heading: m.from.heading };
+  const l = rig.trailer?.axle;
+  let axle: Body | undefined = l ? { x: cab.x - Math.cos(m.trailer) * l, y: cab.y - Math.sin(m.trailer) * l, heading: m.trailer } : undefined;
   let s = 0;
-  const out: Planned = [{ u: 0, cab: p, trailer }];
+  const out: Planned = [{ u: 0, cab, trailer: axle?.heading ?? cab.heading }];
   for (const mv of m.moves) {
     const n = Math.max(1, Math.ceil(mv.length / SUB - 1e-6));
     const ds = (mv.back ? -1 : 1) * (mv.length / n);
     for (let i = 0; i < n; i++) {
       const k = mv.from + ((mv.to - mv.from) * (i + 0.5)) / n;
-      const h = p.heading + k * ds;
-      const [x, y] = Math.abs(k) < 1e-9
-        ? [p.x + Math.cos(p.heading) * ds, p.y + Math.sin(p.heading) * ds]
-        : [p.x + (Math.sin(h) - Math.sin(p.heading)) / k, p.y - (Math.cos(h) - Math.cos(p.heading)) / k];
-      if (rig.trailer) trailer += (ds / rig.trailer.axle) * Math.sin(wrap((p.heading + h) / 2 - trailer));
-      p = { x, y, heading: h };
+      if (m.towed && axle && l) {
+        axle = arc(axle, k, ds);
+        const hitch = { x: axle.x + Math.cos(axle.heading) * l, y: axle.y + Math.sin(axle.heading) * l };
+        const [mx, my] = [hitch.x - cab.x, hitch.y - cab.y];
+        const heading = Math.hypot(mx, my) < 1e-12 ? cab.heading : ds < 0 ? Math.atan2(-my, -mx) : Math.atan2(my, mx);
+        cab = { ...hitch, heading };
+      } else {
+        const next = arc(cab, k, ds);
+        if (axle && l) axle = { ...axle, heading: axle.heading + (ds / l) * Math.sin(wrap((cab.heading + next.heading) / 2 - axle.heading)) };
+        cab = next;
+      }
       s += Math.abs(ds);
-      out.push({ u: s, cab: p, trailer: rig.trailer ? trailer : h });
+      out.push({ u: s, cab, trailer: axle?.heading ?? cab.heading });
     }
   }
-  return m.reversed ? out.reverse().map((e) => ({ ...e, u: s - e.u })) : out;
+  return out;
 }
 
 /** How far ahead along the route the driver looks. */

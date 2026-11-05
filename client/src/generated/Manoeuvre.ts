@@ -4,9 +4,9 @@ import type { Pose } from "./Pose";
 
 /**
  * An edge of a trip driven by a parking plan, the edge from `route[edge]`
- * on: the moves driven from `from`, the cab's rear axle, its trailer in
- * line behind it; or, `reversed`, the same played backwards, so it ends
- * at `from`. A lorry backing into its dock drives its way out backwards:
- * a trailer is only ever drawn after its cab, never pushed by the numbers.
+ * on: the moves driven from `from`, the cab's rear axle, its trailer
+ * pointing `trailer` behind it (`park::ways`). `towed`, the moves steer
+ * the trailer's axle, as a lorry is backed, and the cab follows its nose
+ * (`park::tow`); else the cab's rear axle, the trailer drawn after.
  */
-export type Manoeuvre = { edge: number, from: Pose, moves: Array<Move>, reversed: boolean, };
+export type Manoeuvre = { edge: number, from: Pose, trailer: number, moves: Array<Move>, towed: boolean, };
