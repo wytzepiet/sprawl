@@ -10,7 +10,7 @@ import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, itemOf, ITEMS } from "./goods";
 import { DEPOT } from "./depot";
-import { SHOP } from "./shop";
+import { SHOP_HALL } from "./shop";
 import { HOUSES } from "./house";
 import { FARM } from "./farm";
 import { QUARRY } from "./quarry";
@@ -44,7 +44,7 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
     return [`house${k}`, HOUSES[k], odd];
   }
   // A shop's door at the end its lunch table stands, its goods before its window.
-  if (kind === "Shop") return ["shop", SHOP, -1];
+  if (kind === "Shop") return ["shopHall", SHOP_HALL, -1];
   if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, odd];
   if (kind === "Sawmill" || kind === "Woodcutter") return ["sawmill", SAWMILL, gate];
   if (kind === "ClayPit" || kind === "SandPit") return ["quarry", QUARRY, gate];
