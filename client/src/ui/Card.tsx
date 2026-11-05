@@ -84,11 +84,11 @@ export function why(home: Building, homeId: number, good: Good): string {
   const entry = getEntity(homeId);
   if (!entry || !reached(entry)) return "no road to the house";
   const at = home.tiles[0];
-  let shop: Building | null = null, best = Infinity, maker = false;
+  let shop: Building | null = null, best = Infinity, maker = false, crewed = false;
   eachEntity((e) => {
     if (e.object.kind !== "Building") return;
     const b = e.object.data as Building;
-    if (BLUEPRINTS[b.kind].makes === good) maker = true;
+    if (BLUEPRINTS[b.kind].makes === good) [maker, crewed] = [true, crewed || b.present > 0];
     if (b.kind !== "Shop" || !reached(e)) return;
     const d = Math.max(Math.abs(b.tiles[0].x - at.x), Math.abs(b.tiles[0].y - at.y));
     if (d <= REACH && d < best) [shop, best] = [b, d];
@@ -96,7 +96,7 @@ export function why(home: Building, homeId: number, good: Good): string {
   const name = GOODS[good].label.toLowerCase();
   if (!shop) return "no shop within reach";
   if (!maker) return `nobody makes ${name}`;
-  if (((shop as Building).stocks[good]?.level ?? 0) < 1) return `the shop is out of ${name}`;
+  if (((shop as Building).stocks[good]?.level ?? 0) < 1) return crewed ? `the shop is out of ${name}` : `nobody at work making ${name}`;
   return "on the shelf: the car goes soon";
 }
 
