@@ -656,20 +656,24 @@ impl Map {
         };
         let docked: Vec<park::Pose> = docks.iter().map(|(p, ..)| at(p).ahead(-rig.cab.axle())).collect();
         let Some(here) = self.objects.get(street).and_then(|e| e.position) else { return Vec::new() };
-        let (ux, uy) = (eu[0].round() as i32, eu[1].round() as i32);
-        let arm = |dx: i32, dy: i32| self.road_node_at(GridCoord { x: here.x + dx, y: here.y + dy }).filter(|&n| self.arms_of(street, false).contains(&n));
-        let (back, on) = (arm(-ux, -uy), arm(ux, uy));
-        // A street that only comes up to the gate: in along it and out the
-        // same way, whichever way it comes.
-        let stub = self.arms_of(street, false).into_iter().find(|&a| back.is_none() && on.is_none() && self.edges.contains_key(&(a, street)) && self.edges.contains_key(&(street, a)));
-        let stub = stub.and_then(|a| {
-            let g = self.objects.get(a)?.position?;
-            let d = [(g.x - here.x) as f64, (g.y - here.y) as f64];
-            let h = (-(d[0] * ev[0] + d[1] * ev[1])).atan2(d[0] * eu[0] + d[1] * eu[1]);
-            // Kept to the right of the street's middle.
-            let line = |h: f64| park::ways::Line { x: h.sin() * ROAD.lane, y: -h.cos() * ROAD.lane, heading: h };
-            Some((a, line(h + std::f64::consts::PI), line(h)))
-        });
+        // Every way the street runs from the gate's node: in from it, kept
+        // to the right of its middle, and out onto it.
+        let o = frame.o;
+        let to_local = |x: f64, y: f64| {
+            let q = [x - o[0], y - o[1]];
+            (q[0] * eu[0] + q[1] * eu[1], -(q[0] * ev[0] + q[1] * ev[1]))
+        };
+        let (hx, hy) = to_local(here.x as f64 + 0.5, here.y as f64 + 0.5);
+        let line = |h: f64| park::ways::Line { x: hx + h.sin() * ROAD.lane, y: hy - h.cos() * ROAD.lane, heading: h };
+        let arms: Vec<(EntityId, f64)> = self
+            .arms_of(street, false)
+            .into_iter()
+            .filter_map(|a| {
+                let g = self.objects.get(a)?.position?;
+                let (ax, ay) = to_local(g.x as f64 + 0.5, g.y as f64 + 0.5);
+                Some((a, (ay - hy).atan2(ax - hx)))
+            })
+            .collect();
         let mut bays = Vec::new();
         for (i, (dock, ..)) in docks.iter().enumerate() {
             let parked: Vec<park::Rect> = docked.iter().enumerate().filter(|&(j, _)| j != i).flat_map(|(_, p)| park::bodies(&rig, *p).collect::<Vec<_>>()).collect();
@@ -678,21 +682,25 @@ impl Map {
                     l.poses(&rig).iter().all(|(_, p)| park::bodies(&rig, *p).all(|b| parked.iter().all(|c| !b.meets(c)) && b.corners().iter().all(|&c| ground.iter().any(|g| g.holds(c)))))
                 })
             };
-            let yard = park::ways::Yard { front: -0.5, lane: 0.0 };
-            let (near, far) = (ROAD.near(), ROAD.far());
-            let places = [near, far].map(|from| park::ways::dock(&rig, yard, at(dock), from, &[from, if from == near { far } else { near }], &clear));
-            let mut sides = self.sides_of(&rig, frame, &places, street, back, on);
-            if let (true, Some((stub, up, down))) = (sides.is_empty(), stub) {
-                let place = park::ways::dock(&rig, park::ways::Yard { lane: ROAD.lane, ..yard }, at(dock), up, &[down], &clear);
-                sides.extend(place.map(|p| KerbSide {
-                    entry: stub,
-                    ahead: street,
-                    heading: frame.heading(p.stands.heading),
-                    into: p.into.iter().map(|l| frame.leg(&rig, l)).collect(),
-                    path: Vec::new(),
-                    outs: vec![Exit { node: stub, legs: p.outs[0].iter().map(|l| frame.leg(&rig, l)).collect(), path: Vec::new() }],
-                }));
-            }
+            let yard = park::ways::Yard { front: -0.5, lane: ROAD.lane };
+            // In from each arm; out onto the others first, then back the way
+            // it came.
+            let sides: Vec<KerbSide> = arms
+                .iter()
+                .filter(|&&(a, _)| self.edges.contains_key(&(a, street)))
+                .filter_map(|&(a, h)| {
+                    let exits: Vec<(EntityId, f64)> = arms.iter().filter(|e| e.0 != a).chain(arms.iter().filter(|e| e.0 == a)).filter(|e| self.edges.contains_key(&(street, e.0))).copied().collect();
+                    let lines: Vec<park::ways::Line> = exits.iter().map(|e| line(e.1)).collect();
+                    let place = park::ways::dock(&rig, yard, at(dock), line(h + std::f64::consts::PI), &lines, &clear)?;
+                    let outs: Vec<Exit> = exits
+                        .iter()
+                        .zip(&place.outs)
+                        .filter(|(_, legs)| !legs.is_empty())
+                        .map(|(e, legs)| Exit { node: e.0, legs: legs.iter().map(|l| frame.leg(&rig, l)).collect(), path: Vec::new() })
+                        .collect();
+                    Some(KerbSide { entry: a, ahead: street, heading: frame.heading(place.stands.heading), into: place.into.iter().map(|l| frame.leg(&rig, l)).collect(), path: Vec::new(), outs })
+                })
+                .collect();
             if !sides.is_empty() {
                 bays.push(KerbBay { at: grid_at(dock.at[0], dock.at[1]), sides });
             }

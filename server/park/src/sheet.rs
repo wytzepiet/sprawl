@@ -68,7 +68,7 @@ fn scenes() -> Vec<Scene> {
     }
     // A depot's yard behind the street: its gate, its lane, four rows of
     // docks either side, every other dock taken.
-    let yard = Yard { front: -0.5, lane: 0.0 };
+    let yard = Yard { front: -0.5, lane: road.lane };
     let rows = [-1.95, -1.65, -1.35, -1.05];
     let docks: Vec<Pose> = rows.iter().flat_map(|&y| [Pose::new(0.9, y, PI), Pose::new(-0.9, y, 0.0)]).collect();
     let ground = [

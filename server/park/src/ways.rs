@@ -346,13 +346,13 @@ impl Road {
 }
 
 /// A place and its ways, from one way along the street: in, where the car
-/// then stands (its axle), and out, on the way it came along and back the
-/// way it came.
+/// then stands (its axle), and out onto each exit it was given, in order,
+/// empty where none fits.
 #[derive(Clone, Debug)]
 pub struct Place {
     pub into: Vec<Leg>,
     pub stands: Pose,
-    pub outs: [Vec<Leg>; 2],
+    pub outs: Vec<Vec<Leg>>,
 }
 
 /// A place square to the street behind its kerb, its middle at (x,
@@ -377,7 +377,7 @@ pub fn square(x: f64, depth: f64, beside: &[(f64, f64)], road: Road) -> [Option<
         let stands = stand(if tail { std::f64::consts::FRAC_PI_2 } else { -std::f64::consts::FRAC_PI_2 });
         let into = if tail { tail_in(lane, stands, &clear)? } else { nose_in(lane, stands, &clear)? };
         let out = |l: Line| if tail { nose_out(stands, l, &clear) } else { back_out(stands, l, &clear) };
-        let outs = [out(exits[0]), out(exits[1])];
+        let outs = vec![out(exits[0]), out(exits[1])];
         (!outs[0].is_empty()).then_some(Place { into: vec![into], stands, outs })
     };
     [
@@ -520,9 +520,8 @@ pub fn dock(rig: &Rig, yard: Yard, dock: Pose, from: Line, exits: &[Line], clear
                     if !drivable(rig, &into) || !clear(&into) {
                         continue;
                     }
-                    let mut outs = exits.iter().map(|&e| outs(e));
-                    let outs = [outs.next().unwrap_or_default(), outs.next().unwrap_or_default()];
-                    if outs[0].is_empty() {
+                    let outs: Vec<Vec<Leg>> = exits.iter().map(|&e| outs(e)).collect();
+                    if outs.iter().all(Vec::is_empty) {
                         return None;
                     }
                     return Some(Place { into, stands: Pose { trailer: stands.heading, ..stands }, outs });
