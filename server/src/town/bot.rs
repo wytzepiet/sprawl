@@ -148,8 +148,15 @@ fn place_hand(game: &mut Game, tried: &mut BTreeMap<BuildingKind, u32>) {
         let map = &game.world.map;
         let Some(start) = game.world.town.start else { return };
         let houses: Vec<GridCoord> = of_kind(map, BuildingKind::House).into_iter().map(|(_, p)| p).collect();
+        // A shop by the house furthest from any shop: the first, by the
+        // houses' middle.
+        let shops: Vec<GridCoord> = of_kind(map, BuildingKind::Shop).into_iter().map(|(_, p)| p).collect();
+        let far = |p: &GridCoord| shops.iter().map(|s| (s.x - p.x).abs() + (s.y - p.y).abs()).min().unwrap_or(0);
         let mid = if kind == BuildingKind::Shop && !houses.is_empty() {
-            at(houses.iter().map(|p| p.x).sum::<i32>() / houses.len() as i32, houses.iter().map(|p| p.y).sum::<i32>() / houses.len() as i32)
+            match houses.iter().max_by_key(|p| far(p)).filter(|_| !shops.is_empty()) {
+                Some(&p) => p,
+                None => at(houses.iter().map(|p| p.x).sum::<i32>() / houses.len() as i32, houses.iter().map(|p| p.y).sum::<i32>() / houses.len() as i32),
+            }
         } else {
             start
         };
@@ -211,8 +218,10 @@ fn pick(game: &mut Game) {
     if offer.is_empty() {
         return;
     }
-    // A building the town is short of, else road, else whatever is first.
-    let n = offer.iter().position(|o| matches!(o, Offer::Building(..))).or_else(|| offer.iter().position(|o| matches!(o, Offer::Roads(_)))).unwrap_or(0);
+    // Road, when the grid is running out of it; else a building the town
+    // is short of; else whatever is first.
+    let road = offer.iter().position(|o| matches!(o, Offer::Roads(_))).filter(|_| game.world.town.roads(&game.world.map) < 25);
+    let n = road.or_else(|| offer.iter().position(|o| matches!(o, Offer::Building(..)))).or_else(|| offer.iter().position(|o| matches!(o, Offer::Roads(_)))).unwrap_or(0);
     let mut c = picks::candidates(&game.world, game.now);
     c.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut why: BTreeMap<String, u32> = BTreeMap::new();

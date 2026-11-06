@@ -1019,12 +1019,13 @@ mod tests {
         for x in -6..=6 {
             lift_road(&mut world, GridCoord { x, y: 3 });
         }
-        world.place_road_path(&(-2..=7).map(|y| GridCoord { x: 2, y }).collect::<Vec<_>>());
+        let side = tiles.iter().map(|t| t.x).max().unwrap() + 1;
+        world.place_road_path(&(-2..=7).map(|y| GridCoord { x: side, y }).collect::<Vec<_>>());
         world.changed();
         assert_eq!(facing(&world), 1, "it turned to the side street");
         // And none at all: no door, and so nowhere to drive to.
         for y in -2..=7 {
-            lift_road(&mut world, GridCoord { x: 2, y });
+            lift_road(&mut world, GridCoord { x: side, y });
         }
         world.changed();
         assert!(world.door_of(id).is_none() && world.street_of(id).is_none());

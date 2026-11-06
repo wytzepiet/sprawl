@@ -131,7 +131,7 @@ interface Bay {
 /** Docks side by side at a gate, and how far a car's bay keeps past the
  *  outer ones (`DOCK_PITCH`, `DOCK_CLEAR` in `lots.rs`). */
 const DOCK_PITCH = 0.3;
-const DOCK_CLEAR = 0.45;
+const DOCK_CLEAR = 0.4;
 
 /**
  * A building's bays at the kerb, as the server lays them (`kerb_bays`):

@@ -36,8 +36,10 @@ export interface Bay {
  *  a car's half width either side of each (`DOCK_PITCH`, `DOCK_CLEAR`,
  *  `SQUARE_PITCH` in `lots.rs`). */
 const DOCK_PITCH = 0.3;
-const DOCK_CLEAR = 0.45;
+const DOCK_CLEAR = 0.4;
 const SQUARE_PITCH = 0.27;
+/** A kerb bay's middle keeps this far inside the walls (`WALL_INSET`). */
+const BAY_INSET = 0.2;
 const CAR_HALF = 0.075;
 
 /** How far apart packages stand on a pad. */
@@ -93,7 +95,9 @@ export function padOf(b: Building): Pad {
     const g = -dy * gx + dx * gy;
     const half = (kind.docks * DOCK_PITCH) / 2 + 0.06;
     const d0 = ((kind.docks - 1) * DOCK_PITCH) / 2 + DOCK_CLEAR;
-    const cars = Array.from({ length: kind.bays }, (_, k) => g + (k % 2 ? -1 : 1) * (d0 + Math.floor(k / 2) * SQUARE_PITCH));
+    const cars = Array.from({ length: 8 * Math.ceil(f.w) }, (_, k) => g + (k % 2 ? -1 : 1) * (d0 + Math.floor(k / 2) * SQUARE_PITCH))
+      .filter((u) => Math.abs(u) <= f.w / 2 - BAY_INSET)
+      .slice(0, kind.bays);
     const out = f.d / 2 + ITEM / 2 + 0.02;
     const free: number[] = [];
     for (let a = -f.w / 2 + 0.12; a <= f.w / 2 - 0.12; a += PITCH) if (Math.abs(a - g) > half + 0.08 && cars.every((c) => Math.abs(a - c) > CAR_HALF + ITEM / 2 + 0.01)) free.push(a);

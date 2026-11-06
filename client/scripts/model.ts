@@ -5,6 +5,8 @@
  * closer, for its details. In a second or so, into `.dev/model/`.
  *
  *   --side -1       its mirror, as every other one stands
+ *   --notch 0.5,1   its loading bay cut at x = 0.5 for one dock (two
+ *                   rows deep: --notch 0.5,2,0)
  *   --ref <image>   the reference image beside it, to compare
  *   --px 220        pixels to a tile in the game's view
  *   --name <name>   the picture's name
@@ -32,7 +34,10 @@ const name = word("--name");
 const [file] = args;
 if (!file) throw new Error("bun run model <file in objects/> [--side -1] [--ref image]");
 const module = await import(`../src/engine/objects/${file}.ts`);
-const models = Object.entries(module).filter((e): e is [string, Built] => !!e[1] && typeof e[1] === "object" && "finishes" in (e[1] as object));
+const notch = word("--notch")?.split(",").map(Number);
+const models = Object.entries(module)
+  .filter((e): e is [string, Built] => !!e[1] && typeof e[1] === "object" && "finishes" in (e[1] as object))
+  .map(([k, b]): [string, Built] => [k, notch ? b.notched(notch[0], (notch[1] ?? 1) * 0.15, notch[2] ?? -0.5) : b]);
 if (!models.length) throw new Error(`${file}.ts exports no model`);
 
 /** The sun, toward it: high, from behind on the right, as the game's

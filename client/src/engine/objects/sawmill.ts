@@ -2,25 +2,24 @@ import { BARK_ALONG } from "../bark";
 import type { MeshGeometry } from "../geometry";
 import type { RGB } from "../rgb";
 import { Solid } from "../solid";
-import { add, barn, box, chimney, gablet, golf, ground, heap, hull, model, pitched, plate, post, put, rod, scale, tree, window, PANE, type Cover, type Model, type V, type Wall } from "./kit";
+import { add, barn, box, chimney, gablet, ground, heap, hull, model, pitched, plate, post, put, rod, scale, tree, window, PANE, type Cover, type Model, type V, type Wall } from "./kit";
 
 /**
- * A sawmill, whole (`refresh/refs/sawmill-gpt.png`), on the back two rows
- * of its plot (x -1.5 to 1.5, its front wall at y = 0, the street at +y),
- * its yard before it as the shop's; its ground on z = 0.
+ * A sawmill, whole (`refresh/refs/sawmill-gpt.png`), on its plot (x -1
+ * to 1, its front wall at y = 0, the street at +y, its loading bay cut at
+ * x = 0.5); its ground on z = 0.
  *
  * - Painted timber, green, its corners and gables picked out in cream,
  *   under roofs of brown boards.
- * - At the back, the long hall: its ridge along the street, four small
+ * - At the back, the long hall: its ridge along the street, three small
  *   gables along its back, a window in each; its big door to the front,
  *   braced, a lamp over it and a dormer above, where the logs go in.
  * - On the right, the wing, in two: its tall back, its lower front, its
- *   gable to the yard and the barn door the bundles come out of, a lamp
- *   over it; a zinc lean-to down its side; the brick chimney behind,
- *   smoking through the shift.
+ *   gable to the street, the loading bay coming in to it; the brick
+ *   chimney behind, smoking through the shift.
  * - Before the hall, on wood chips: the water tower, the conveyor up into
  *   the hall with logs on it, sawdust heaped, a stack of sawn planks;
- *   logs racked between posts at either end.
+ *   logs racked between posts.
  */
 
 const WALL: RGB = [0.33, 0.52, 0.42];
@@ -37,7 +36,6 @@ const STEEL: RGB = [0.46, 0.48, 0.52];
 const BELT: RGB = [0.27, 0.27, 0.28];
 const TIMBER: RGB = [0.52, 0.37, 0.25];
 const HOOP: RGB = [0.32, 0.33, 0.36];
-const ZINC: RGB = [0.66, 0.7, 0.76];
 
 /** Round a log: this many sides, smooth, its bark's map once round. */
 const SIDES = 12;
@@ -115,16 +113,16 @@ function trimmed(m: Model, along: "x" | "y", x0: number, x1: number, y0: number,
 }
 
 export const SAWMILL = model((m) => {
-  ground(m, "dust", [[-1.49, 1.49, -1.98, -0.02]], SAWDUST, { z: 0.016, round: 0.12 });
+  ground(m, "dust", [[-0.99, 0.99, -1.98, -0.02]], SAWDUST, { z: 0.016, round: 0.12 });
 
   // The hall, at the back: its long front slope, its short back one, and
-  // the four gables along its back, a window in each.
-  const [hx0, hx1, hy0, hy1, he, hr, ridgeAt] = [-0.78, 0.5, -1.86, -1.0, 0.22, 0.44, -1.62];
+  // the three gables along its back, a window in each.
+  const [hx0, hx1, hy0, hy1, he, hr, ridgeAt] = [-0.92, 0.24, -1.86, -1.0, 0.22, 0.44, -1.62];
   put(m, "matte", barn("x", hx0, hx1, hy0, hy1, he, hr, ridgeAt), WALL);
   pitched(m, "x", hx0, hx1, hy0, hy1, he, hr, ROOF, { over: 0.05, ridgeAt });
   trimmed(m, "x", hx0, hx1, hy0, hy1, he, hr, ["-"]);
-  const gw = (hx1 - hx0) / 4;
-  for (let k = 0; k < 4; k++) {
+  const gw = (hx1 - hx0) / 3;
+  for (let k = 0; k < 3; k++) {
     const [gx0, gx1] = [hx0 + k * gw + 0.02, hx0 + (k + 1) * gw - 0.02];
     put(m, "matte", barn("y", gx0, gx1, hy0, ridgeAt, he, hr), WALL);
     pitched(m, "y", gx0, gx1, hy0, ridgeAt, he, hr + 0.004, ROOF, { over: 0.03 });
@@ -134,51 +132,44 @@ export const SAWMILL = model((m) => {
   // Its front to the yard: the big door the conveyor runs in by, a lamp
   // over it, a dormer above; a window beside.
   const front: Wall = { face: "+y", at: hy1 };
-  barnDoor(m, front, -0.14, 0.22, 0.16);
-  put(m, "glass", plate(front, -0.155, -0.125, 0.19, 0.21, 0, 0.025), [0.95, 0.85, 0.6]);
-  window(m, front, -0.56, 0.07, { w: 0.08, h: 0.07, frame: TRIM });
+  const cx = -0.3;
+  barnDoor(m, front, cx, 0.22, 0.16);
+  put(m, "glass", plate(front, cx - 0.015, cx + 0.015, 0.19, 0.21, 0, 0.025), [0.95, 0.85, 0.6]);
+  window(m, front, -0.72, 0.07, { w: 0.08, h: 0.07, frame: TRIM });
   const dz = 0.3;
-  put(m, "matte", plate({ face: "+y", at: hy1 - 0.12 }, -0.2, -0.08, dz - 0.06, dz + 0.04, -0.14, 0.04), WALL);
-  gablet(m, { face: "+y", at: hy1 - 0.08 }, -0.14, dz + 0.04, 0.12, 0.05, 0.05, ROOF, WALL);
-  window(m, { face: "+y", at: hy1 - 0.08 }, -0.14, dz - 0.03, { w: 0.06, h: 0.045, frame: TRIM });
-  // A zinc lean-to down its left end.
-  put(m, "zinc", golf([hx0 - 0.005, hy0 + 0.08, 0.17], [0, -0.8 - hy0, 0], [-0.2, 0, -0.07], 0.01), ZINC);
-  put(m, "matte", box(-0.98, hx0, hy0 + 0.1, -0.75, 0, 0.1), TIMBER);
+  put(m, "matte", plate({ face: "+y", at: hy1 - 0.12 }, cx - 0.06, cx + 0.06, dz - 0.06, dz + 0.04, -0.14, 0.04), WALL);
+  gablet(m, { face: "+y", at: hy1 - 0.08 }, cx, dz + 0.04, 0.12, 0.05, 0.05, ROOF, WALL);
+  window(m, { face: "+y", at: hy1 - 0.08 }, cx, dz - 0.03, { w: 0.06, h: 0.045, frame: TRIM });
 
-  // The wing down the right, in two: its tall back, its lower front with
-  // its gable to the lane, the barn door in it, a lamp over it.
-  const [wx0, wx1] = [0.22, 0.76];
+  // The wing down the right, in two: its tall back, and its lower front,
+  // its gable to the street, where the loading bay comes in to it.
+  const [wx0, wx1] = [0.3, 0.9];
   put(m, "matte", barn("y", wx0, wx1, -1.78, -0.9, 0.26, 0.52), WALL);
   pitched(m, "y", wx0, wx1, -1.78, -0.9, 0.26, 0.52, ROOF, { over: 0.05 });
   trimmed(m, "y", wx0, wx1, -1.78, -0.9, 0.26, 0.52, ["+"]);
-  window(m, { face: "+y", at: -0.9 }, 0.49, 0.32, { w: 0.08, h: 0.05, arch: true, frame: TRIM });
-  const [fy0, fy1] = [-0.94, -0.02];
+  window(m, { face: "+y", at: -0.9 }, (wx0 + wx1) / 2, 0.32, { w: 0.08, h: 0.05, arch: true, frame: TRIM });
+  const [fy0, fy1] = [-0.94, -0.24];
   put(m, "matte", barn("y", wx0 + 0.02, wx1 - 0.02, fy0, fy1, 0.22, 0.44), WALL);
   pitched(m, "y", wx0 + 0.02, wx1 - 0.02, fy0, fy1, 0.22, 0.44, ROOF, { over: 0.05 });
   trimmed(m, "y", wx0 + 0.02, wx1 - 0.02, fy0, fy1, 0.22, 0.44, ["+"]);
-  const gable: Wall = { face: "+y", at: fy1 };
-  barnDoor(m, gable, 0.49, 0.22, 0.19);
-  put(m, "glass", plate(gable, 0.475, 0.505, 0.225, 0.245, 0, 0.025), [0.95, 0.85, 0.6]);
-  window(m, gable, 0.49, 0.29, { w: 0.08, h: 0.04, frame: TRIM });
-  for (const y of [-0.7, -0.35]) window(m, { face: "-x", at: wx0 + 0.02 }, y, 0.08, { w: 0.08, h: 0.06, frame: TRIM });
-  put(m, "zinc", golf([wx1 + 0.005, -1.25, 0.18], [0, 1.23, 0], [0.22, 0, -0.07], 0.01), ZINC);
-  for (const y of [-1.15, -0.5]) put(m, "matte", box(0.95, 0.975, y - 0.012, y + 0.012, 0, 0.11), TIMBER);
+  window(m, { face: "+y", at: fy1 }, (wx0 + wx1) / 2, 0.29, { w: 0.08, h: 0.04, frame: TRIM });
+  for (const y of [-0.7, -0.45]) window(m, { face: "-x", at: wx0 + 0.02 }, y, 0.08, { w: 0.08, h: 0.06, frame: TRIM });
   // Its chimney, brick, behind the wing, smoking.
-  chimney(m, 0.84, -1.56, 0.72, BRICK, { w: 0.12, smoke: 0.15 });
+  chimney(m, 0.62, -1.86, 0.72, BRICK, { w: 0.12, smoke: 0.15 });
 
-  // The water tower at the yard's back, on four braced legs.
-  const [tx, ty, legs, tr, th] = [-0.8, -0.62, 0.26, 0.15, 0.2];
+  // The water tower at the yard's corner, on four braced legs.
+  const [tx, ty, legs, tr, th] = [-0.8, -0.66, 0.26, 0.14, 0.2];
   put(m, "matte", Solid.union([
-    ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => hull([[tx + sx * 0.13, ty + sy * 0.13, 0], [tx + sx * 0.15, ty + sy * 0.15, 0], [tx + sx * 0.1, ty + sy * 0.1, legs], [tx + sx * 0.12, ty + sy * 0.12, legs]])),
-    box(tx - 0.13, tx + 0.13, ty - 0.13, ty + 0.13, legs - 0.02, legs),
-    ...[-1, 1].flatMap((s) => [rod([tx - 0.13, ty + s * 0.135, 0.03], [tx + 0.11, ty + s * 0.115, legs - 0.03], 0.016), rod([tx + s * 0.135, ty - 0.13, 0.03], [tx + s * 0.115, ty + 0.11, legs - 0.03], 0.016)]),
+    ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => hull([[tx + sx * 0.12, ty + sy * 0.12, 0], [tx + sx * 0.14, ty + sy * 0.14, 0], [tx + sx * 0.09, ty + sy * 0.09, legs], [tx + sx * 0.11, ty + sy * 0.11, legs]])),
+    box(tx - 0.12, tx + 0.12, ty - 0.12, ty + 0.12, legs - 0.02, legs),
+    ...[-1, 1].flatMap((s) => [rod([tx - 0.12, ty + s * 0.125, 0.03], [tx + 0.1, ty + s * 0.105, legs - 0.03], 0.016), rod([tx + s * 0.125, ty - 0.12, 0.03], [tx + s * 0.105, ty + 0.1, legs - 0.03], 0.016)]),
   ]), TIMBER);
   put(m, "matte", Solid.cylinder(th, tr, tr, 18).translate([tx, ty, legs]), WALL);
   put(m, "matte", Solid.union([0.04, 0.1, 0.16].map((h) => post(tx, ty, legs + h, 0.012, tr + 0.006, 18))), HOOP);
   put(m, "matte", Solid.cylinder(0.09, tr + 0.025, 0.015, 18).translate([tx, ty, legs + th]), ROOF.rgb);
 
   // The conveyor, from the yard up into the hall's door, logs on it.
-  const [cx, cw, c0, c1, z0, z1] = [-0.14, 0.09, -0.04, -1.0, 0.03, 0.15];
+  const [cw, c0, c1, z0, z1] = [0.09, -0.04, -1.0, 0.03, 0.15];
   const ramp = (zLo: number, zHi: number, half: number) =>
     hull([[cx - half, c0, zLo], [cx + half, c0, zLo], [cx - half, c0, zHi], [cx + half, c0, zHi], [cx - half, c1, zLo + z1 - z0], [cx + half, c1, zLo + z1 - z0], [cx - half, c1, zHi + z1 - z0], [cx + half, c1, zHi + z1 - z0]]);
   const rise = (y: number) => z0 + ((z1 - z0) * (c0 - y)) / (c0 - c1);
@@ -187,26 +178,26 @@ export const SAWMILL = model((m) => {
   put(m, "matte", ramp(z0, z0 + 0.017, cw / 2 - 0.01), BELT);
   for (const y of [-0.3, -0.7]) log(m, [cx, y, rise(y) + 0.04], 0.022, 0.2, "y");
   // Sawdust heaped about its foot, on the chips.
-  [[-0.38, -0.7, 0.13, 0.04], [0.05, -0.72, 0.1, 0.03]].forEach(([x, y, r, h], k) => heap(m, "chips", x, y, r, h, 0.016, k + 1, CHIPS));
+  [[-0.52, -0.84, 0.1, 0.04], [-0.06, -0.8, 0.09, 0.03]].forEach(([x, y, r, h], k) => heap(m, "chips", x, y, r, h, 0.016, k + 1, CHIPS));
 
-  // A stack of sawn planks on battens, and logs racked between posts at either end.
+  // A stack of sawn planks on battens, and logs racked between posts.
   for (let layer = 0; layer < 4; layer++) {
-    put(m, "matte", Solid.union([-0.1, 0, 0.1].map((d) => box(-0.6 + d - 0.012, -0.6 + d + 0.012, -0.36, -0.06, 0.012 + layer * 0.03, 0.02 + layer * 0.03))), TIMBER);
-    put(m, "matte", Solid.union(Array.from({ length: 6 }, (_, k) => box(-0.74 + k * 0.047, -0.7 + k * 0.047, -0.37, -0.05, 0.02 + layer * 0.03, 0.042 + layer * 0.03))), PLANK);
+    put(m, "matte", Solid.union([-0.1, 0, 0.1].map((d) => box(-0.66 + d - 0.012, -0.66 + d + 0.012, -0.36, -0.06, 0.012 + layer * 0.03, 0.02 + layer * 0.03))), TIMBER);
+    put(m, "matte", Solid.union(Array.from({ length: 6 }, (_, k) => box(-0.8 + k * 0.047, -0.76 + k * 0.047, -0.37, -0.05, 0.02 + layer * 0.03, 0.042 + layer * 0.03))), PLANK);
   }
-  rack(m, 1.22, -0.95, "y", 0.5, 3, 3);
-  rack(m, -1.25, -1.3, "y", 0.5, 2, 3);
+  rack(m, 0.08, -0.52, "y", 0.5, 2, 3);
 });
 
 /**
- * A woodcutter's, whole, on the back row of its plot (x -1.5 to 1.5, the
- * street at +y): a log cabin under a green roof, a chimney smoking; beside
- * it logs racked high and a stump with the axe in it; trees behind.
+ * A woodcutter's, whole, on the back row of its plot (x -1 to 1, the
+ * street at +y, its loading bay cut at x = 0.5): a log cabin under a green
+ * roof, a chimney smoking; behind the bay logs racked high, and a stump
+ * with the axe in it; trees behind.
  */
 export const WOODCUTTER = model((m) => {
-  const [X0, X1, Y0, Y1, EAVE, RIDGE] = [-1.25, -0.25, -1.4, -0.72, 0.2, 0.42];
+  const [X0, X1, Y0, Y1, EAVE, RIDGE] = [-0.92, -0.08, -1.4, -0.72, 0.2, 0.4];
   // The back row trodden earth, the yard before it the town's paving.
-  ground(m, "earth", [[-1.49, 1.49, -1.49, -0.5]], [0.55, 0.42, 0.3], { round: 0.04 });
+  ground(m, "earth", [[-0.99, 0.99, -1.49, -0.5]], [0.55, 0.42, 0.3], { round: 0.04 });
   // The cabin's walls a pile of logs, their ends past the corners.
   for (let z = 0.024, k = 0; z < EAVE; z += 0.042, k++) {
     log(m, [(X0 + X1) / 2, Y1, z], 0.022, X1 - X0 + (k % 2 ? 0.06 : 0.02), "x");
@@ -217,19 +208,18 @@ export const WOODCUTTER = model((m) => {
   put(m, "matte", barn("x", X0 + 0.01, X1 - 0.01, Y0 + 0.01, Y1 - 0.01, EAVE, RIDGE), BARKED);
   pitched(m, "x", X0, X1, Y0, Y1, EAVE, RIDGE, { finish: "ribs", rgb: WALL, ribs: 16 }, { over: 0.06 });
   const front: Wall = { face: "+y", at: Y1 + 0.02 };
-  put(m, "matte", plate(front, -0.82, -0.68, 0, 0.16, 0, 0.006), DOOR);
-  for (const at of [-1.06, -0.44]) {
+  put(m, "matte", plate(front, -0.57, -0.43, 0, 0.16, 0, 0.006), DOOR);
+  for (const at of [-0.76, -0.24]) {
     put(m, "matte", plate(front, at - 0.06, at + 0.06, 0.08, 0.16, 0, 0.006), TRIM);
     put(m, "glass", plate(front, at - 0.045, at + 0.045, 0.092, 0.148, 0, 0.009), PANE);
   }
   chimney(m, X0 + 0.15, Y0 + 0.16, RIDGE + 0.06, BRICK, { smoke: 0.1 });
   // The wood: two racks of logs, a stump with the axe in it, chips round it.
-  rack(m, 0.35, -1.12, "x", 0.5, 4, 3);
-  rack(m, 1.05, -1.12, "x", 0.5, 4, 2);
-  put(m, "matte", post(0.2, -0.62, 0, 0.06, 0.04, 10), BARKED);
-  put(m, "matte", post(0.2, -0.62, 0.06, 0.002, 0.036, 10), END);
-  put(m, "matte", rod([0.2, -0.62, 0.065], [0.26, -0.6, 0.13], 0.01), TIMBER);
-  put(m, "matte", box(0.19, 0.22, -0.635, -0.605, 0.055, 0.075), STEEL);
-  heap(m, "chips", 0.24, -0.62, 0.12, 0.012, 0, 3, CHIPS);
-  for (const [x, y, s] of [[-1.42, -1.44, 0.7], [1.38, -1.4, 0.8], [0.7, -1.46, 0.6]] as const) tree(m, x, y, s);
+  rack(m, 0.5, -1.12, "x", 0.5, 4, 3);
+  put(m, "matte", post(0.1, -0.62, 0, 0.06, 0.04, 10), BARKED);
+  put(m, "matte", post(0.1, -0.62, 0.06, 0.002, 0.036, 10), END);
+  put(m, "matte", rod([0.1, -0.62, 0.065], [0.16, -0.6, 0.13], 0.01), TIMBER);
+  put(m, "matte", box(0.09, 0.12, -0.635, -0.605, 0.055, 0.075), STEEL);
+  heap(m, "chips", 0.14, -0.62, 0.1, 0.012, 0, 3, CHIPS);
+  for (const [x, y, s] of [[-0.94, -1.46, 0.6], [0.92, -1.42, 0.7]] as const) tree(m, x, y, s);
 });

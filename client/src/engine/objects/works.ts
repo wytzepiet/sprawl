@@ -119,9 +119,9 @@ function sawtoothHall(m: Model, x0: number, x1: number, y0: number, y1: number, 
 }
 
 export const STEELWORKS = model((m) => {
-  ground(m, "dust", [[-1.46, 1.46, -1.96, -0.04]], [0.62, 0.6, 0.58], { z: 0.018, round: 0.03 });
+  ground(m, "dust", [[-0.96, 0.96, -1.96, -0.04]], [0.62, 0.6, 0.58], { z: 0.018, round: 0.03 });
   // The blast furnace: a tapering stack on a base, a ring round its belly, its top hat and downcomer.
-  const [bx, by] = [-0.85, -1.3];
+  const [bx, by] = [-0.68, -1.3];
   put(m, "matte", box(bx - 0.26, bx + 0.26, by - 0.26, by + 0.26, 0, 0.12), CONCRETE);
   put(m, "matte", Solid.cylinder(0.3, 0.2, 0.22, 20).translate([bx, by, 0.12]).add(Solid.cylinder(0.42, 0.22, 0.12, 20).translate([bx, by, 0.42])), [0.36, 0.34, 0.33]);
   put(m, "matte", post(bx, by, 0.4, 0.04, 0.235, 20), [0.6, 0.3, 0.2]);
@@ -133,38 +133,39 @@ export const STEELWORKS = model((m) => {
     put(m, "matte", Solid.cylinder(0.58, 0.1, 0.1, 18).translate([x, y, 0]).add(Solid.sphere(0.1, 18).translate([x, y, 0.58])), [0.7, 0.68, 0.66]);
   }
   // The casting hall, long, its ribbed roof, a glow in its door.
-  const [x0, x1, y0, y1] = [-0.2, 1.4, -1.25, -0.25];
+  const [x0, x1, y0, y1] = [-0.36, 0.92, -1.25, -0.25];
   put(m, "matte", barn("x", x0, x1, y0, y1, 0.32, 0.5), [0.5, 0.36, 0.3]);
   pitched(m, "x", x0, x1, y0, y1, 0.32, 0.5, RIBBED([0.38, 0.4, 0.44]), { over: 0.03 });
   const front: Wall = { face: "+y", at: y1 };
-  put(m, "glass", plate(front, 0.25, 0.55, 0, 0.22, -0.005, 0.002), [1.0, 0.55, 0.2]);
-  put(m, "matte", plate(front, 0.23, 0.57, 0.22, 0.24, 0, 0.012), DARK);
-  for (const x of [0.75, 0.95, 1.15]) window(m, front, x, 0.18, { w: 0.1, h: 0.08 });
+  put(m, "glass", plate(front, -0.25, 0.05, 0, 0.22, -0.005, 0.002), [1.0, 0.55, 0.2]);
+  put(m, "matte", plate(front, -0.27, 0.07, 0.22, 0.24, 0, 0.012), DARK);
+  for (const x of [0.35, 0.65]) window(m, front, x, 0.24, { w: 0.1, h: 0.06 });
   // Two stacks, tall, smoking.
-  for (const [x, y] of [[1.05, -1.6], [1.3, -1.6]]) {
+  for (const [x, y] of [[0.6, -1.62], [0.84, -1.62]]) {
     put(m, "matte", Solid.cylinder(1.05, 0.06, 0.045, 14).translate([x, y, 0]), BRICK);
     put(m, "matte", Solid.union([0.9, 0.98].map((z) => post(x, y, z, 0.03, 0.055, 14))), [0.92, 0.9, 0.86]);
     m.props.push({ kind: "smoke", at: [x, y, 1.05], size: 0.18, high: 0 });
   }
-  lamp(m, -1.4, -0.3, [-1.1, -0.3]);
+  lamp(m, -0.92, -0.3, [-0.7, -0.3]);
 });
 
 export const MACHINE = model((m) => {
-  ground(m, "paving", [[-1.46, 1.46, -1.96, -0.04]], [0.72, 0.71, 0.68], { z: 0.018, round: 0.03 });
-  sawtoothHall(m, -1.35, 0.95, -1.85, -0.3, 0.3, 0.16, 4, [0.36, 0.5, 0.66], [0.6, 0.62, 0.66]);
+  ground(m, "paving", [[-0.96, 0.96, -1.96, -0.04]], [0.72, 0.71, 0.68], { z: 0.018, round: 0.03 });
+  const [x0, x1] = [-0.92, 0.62];
+  sawtoothHall(m, x0, x1, -1.85, -0.3, 0.3, 0.16, 4, [0.36, 0.5, 0.66], [0.6, 0.62, 0.66]);
   const front: Wall = { face: "+y", at: -0.3 };
   // The big door, its frame; the office windows along the rest.
-  put(m, "matte", plate(front, -0.25, 0.35, 0, 0.26, -0.004, 0.003), [0.86, 0.6, 0.2]);
-  put(m, "matte", Solid.union([0.05, 0.11, 0.17, 0.23].map((z) => plate(front, -0.24, 0.34, z, z + 0.008, 0, 0.006))), [0.7, 0.48, 0.14]);
-  for (const x of [-1.15, -0.9, -0.6, 0.55, 0.8]) window(m, front, x, 0.15, { w: 0.14, h: 0.08, bars: 2 });
-  put(m, "matte", plate(front, -1.35, 0.95, 0.26, 0.3, 0, 0.01), [0.95, 0.94, 0.9]);
+  put(m, "matte", plate(front, -0.55, -0.05, 0, 0.26, -0.004, 0.003), [0.86, 0.6, 0.2]);
+  put(m, "matte", Solid.union([0.05, 0.11, 0.17, 0.23].map((z) => plate(front, -0.54, -0.06, z, z + 0.008, 0, 0.006))), [0.7, 0.48, 0.14]);
+  for (const x of [-0.76, 0.06]) window(m, front, x, 0.15, { w: 0.14, h: 0.08, bars: 2 });
+  put(m, "matte", plate(front, x0, x1, 0.26, 0.3, 0, 0.01), [0.95, 0.94, 0.9]);
   // The water tower on its legs, the gate's side.
-  const [tx, ty] = [1.2, -1.45];
+  const [tx, ty] = [0.8, -1.5];
   tower(m, tx, ty, 0.14, 0.11, 0.5, STEEL);
   put(m, "matte", Solid.cylinder(0.2, 0.15, 0.15, 18).translate([tx, ty, 0.5]).add(Solid.cylinder(0.08, 0.16, 0.02, 18).translate([tx, ty, 0.7])), [0.36, 0.5, 0.66]);
   // A crate or two of machines by the door.
-  for (const [x, y] of [[0.55, -0.15], [0.7, -0.15]]) put(m, "matte", box(x - 0.06, x + 0.06, y - 0.06, y + 0.06, 0.018, 0.12), [0.72, 0.58, 0.4]);
-  lamp(m, -1.4, -0.2, [-1.1, -0.2]);
+  for (const [x, y] of [[-0.82, -0.15], [-0.68, -0.15]]) put(m, "matte", box(x - 0.06, x + 0.06, y - 0.06, y + 0.06, 0.018, 0.12), [0.72, 0.58, 0.4]);
+  lamp(m, 0.0, -0.2, [0.12, -0.2]);
 });
 
 export const WELL = model((m) => {
@@ -219,22 +220,21 @@ export const REFINERY = model((m) => {
 export const BAKERY = model((m) => {
   // The bakehouse: brick, a tiled roof, gable to the street; its oven's
   // chimney at the back smoking; the shop window under a striped awning.
-  const [x0, x1, y0, y1, eave, ridge] = [-0.9, 0.55, -1.42, -0.58, 0.3, 0.52];
+  const [x0, x1, y0, y1, eave, ridge] = [-0.92, 0.14, -1.42, -0.58, 0.3, 0.5];
   put(m, "matte", barn("x", x0, x1, y0, y1, eave, ridge), BRICK);
   put(m, "matte", box(x0 - 0.008, x1 + 0.008, y0 - 0.008, y1 + 0.008, 0, 0.03), [0.74, 0.7, 0.63]);
   pitched(m, "x", x0, x1, y0, y1, eave, ridge, TILES, { over: 0.03 });
   const front: Wall = { face: "+y", at: y1 };
-  door(m, front, 0.35, [0.3, 0.45, 0.36], { w: 0.08, h: 0.18, arch: true });
-  put(m, "glass", plate(front, -0.75, 0.15, 0.05, 0.19, -0.004, 0.002), PANE);
-  put(m, "matte", plate(front, -0.77, 0.17, 0.035, 0.05, -0.004, 0.012), CREAM);
+  door(m, front, -0.02, [0.3, 0.45, 0.36], { w: 0.08, h: 0.18, arch: true });
+  put(m, "glass", plate(front, -0.8, -0.14, 0.05, 0.19, -0.004, 0.002), PANE);
+  put(m, "matte", plate(front, -0.82, -0.12, 0.035, 0.05, -0.004, 0.012), CREAM);
   // Loaves behind the glass.
-  for (let k = 0; k < 6; k++) put(m, "matte", plate(front, -0.72 + k * 0.14, -0.62 + k * 0.14, 0.06, 0.09, -0.04, -0.008), [0.82, 0.55, 0.28]);
-  awning(m, front, -0.8, 0.2, 0.24, [[0.82, 0.5, 0.22], [0.97, 0.95, 0.9]], { depth: 0.12, drop: 0.05, stripes: 9, scallops: true });
-  for (const x of [-0.5, 0.1]) window(m, front, x, 0.36, { w: 0.08, h: 0.07, box: [0.42, 0.3, 0.22] });
-  chimney(m, -0.7, -1.25, 0.72, BRICK, { w: 0.1, smoke: 0.12 });
-  // The flour store at the gate's side, its door to the yard.
-  put(m, "matte", barn("y", 0.6, 0.92, -1.4, -0.75, 0.2, 0.3), CREAM);
-  pitched(m, "y", 0.6, 0.92, -1.4, -0.75, 0.2, 0.3, SLATE, { over: 0.02 });
-  door(m, { face: "+y", at: -0.75 }, 0.76, [0.55, 0.38, 0.25], { w: 0.12, h: 0.15 });
-  lamp(m, 0.95, -0.55, [0.7, -0.55]);
+  for (let k = 0; k < 5; k++) put(m, "matte", plate(front, -0.77 + k * 0.125, -0.68 + k * 0.125, 0.06, 0.09, -0.04, -0.008), [0.82, 0.55, 0.28]);
+  awning(m, front, -0.85, -0.09, 0.24, [[0.82, 0.5, 0.22], [0.97, 0.95, 0.9]], { depth: 0.12, drop: 0.05, stripes: 7, scallops: true });
+  for (const x of [-0.6, -0.2]) window(m, front, x, 0.36, { w: 0.08, h: 0.07, box: [0.42, 0.3, 0.22] });
+  chimney(m, -0.7, -1.25, 0.7, BRICK, { w: 0.1, smoke: 0.12 });
+  // The flour store at the gate's side, the loading bay to it.
+  put(m, "matte", barn("y", 0.22, 0.9, -1.4, -0.75, 0.22, 0.34), CREAM);
+  pitched(m, "y", 0.22, 0.9, -1.4, -0.75, 0.22, 0.34, SLATE, { over: 0.02 });
+  lamp(m, 0.95, -0.55, [0.85, -0.55]);
 });

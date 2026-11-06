@@ -666,11 +666,10 @@ mod tests {
         let (x0, y0, x1, y1, _) = rect(&tiles);
         let (w, h) = model::blueprint::plot(BuildingKind::Farm, 0);
         let area = ((x1 - x0 + 1) * (y1 - y0 + 1)) as usize;
-        assert!(area >= tiles.len() && area <= tiles.len() + h as usize, "the land is not the rectangle behind the plot and a sliver beside it");
-        let _ = w;
+        assert!(area >= tiles.len() && area <= tiles.len() + ((w + 1) * h) as usize, "the land is not the rectangle round the plot and a sliver beside it");
         assert!(tiles.len() <= wanted && tiles.len() * 4 >= wanted * 3, "the farm claimed {} tiles of {wanted}", tiles.len());
         assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
-        assert!(y0 == 2 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not behind the plot");
+        assert!(y0 >= 1 && x0 < 10 && x1 >= 10 + w as i32 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not behind the plot");
         assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
         assert_eq!(world.laid, 0);
         // Bounded: a road four tiles behind the plot walls the land in,

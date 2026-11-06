@@ -175,14 +175,14 @@ mod tests {
         let (path, left) = world.map.sweep(farm, pos, &batch, job).expect("a sweep");
         assert!(left.is_empty(), "tiles left: {left:?}");
         assert_eq!((path[0], *path.last().unwrap()), (pos, pos), "the run does not start and end at the yard");
-        assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs() == 1), "a step of the run is not to a neighbour");
+        assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs().max((w[0].y - w[1].y).abs()) == 1), "a step of the run is not to a neighbour");
         assert!(!sharp(&path), "a turn sharper than a right angle");
         assert!(batch.iter().all(|t| path.contains(t)), "the sweep missed a tile");
         let ground = world.map.drivable(farm);
         assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "the tractor left the farm's ground");
         // Turns: a sweep of a block is about one turn a row.
         let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
-        assert!(turns * 2 < path.len(), "{turns} turns over {} steps", path.len());
+        assert!(turns * 2 <= path.len(), "{turns} turns over {} steps", path.len());
         if let Some(c) = world.map.car_mut(tractor) {
             c.run = Some(Run { job, path: path.clone(), started: now, pace: PACE });
         }

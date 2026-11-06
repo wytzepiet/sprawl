@@ -75,7 +75,7 @@ fn drive_ways() -> &'static [[Option<park::ways::Place>; 2]; 2] {
 /// the gate's middle, of `n`. A car's bay keeps `DOCK_CLEAR` past the
 /// outer ones, where a truck's nose swings round as it backs in.
 const DOCK_PITCH: f64 = 0.3;
-const DOCK_CLEAR: f64 = 0.45;
+const DOCK_CLEAR: f64 = 0.4;
 fn dock_at(k: usize, n: usize) -> f64 {
     (k as f64 - (n as f64 - 1.0) / 2.0) * DOCK_PITCH
 }
@@ -1187,7 +1187,7 @@ mod tests {
         let mut at: Vec<[f64; 2]> = world.lot_mut(shop).unwrap().spots.iter().skip(docks).map(|s| s.pose.at).collect();
         at.sort_by(|a, b| a[0].total_cmp(&b[0]));
         assert_eq!(at.len(), model::blueprint::blueprint(BuildingKind::Shop).bays(), "a bay for each customer, no more: {at:?}");
-        for (bay, x) in at.iter().zip([2.63, 2.9, 4.1, 4.37]) {
+        for (bay, x) in at.iter().zip([2.41, 2.68, 2.95]) {
             assert!((bay[0] - x).abs() < 1e-9 && (bay[1] - (0.5 + SQUARE)).abs() < 1e-9, "a bay at {bay:?}");
         }
         let car = |world: &mut Map| world.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);

@@ -55,10 +55,10 @@ pub struct Blueprint {
 }
 
 impl Blueprint {
-    /// Docks at its front: one for each of its trucks, and one for each
-    /// truck that may wait to load, two at most.
+    /// Docks at its front: one for each of its own lorries, which rest in
+    /// them, and one more for lorries come to load, taking turns at it.
     pub fn docks(&self) -> usize {
-        (self.lorries as usize + self.queue as usize).min(2)
+        self.lorries as usize + (self.queue as usize).min(1)
     }
 
     /// Bays at its kerb: its workers' cars and its customers'.
@@ -110,7 +110,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     };
     let rows = vec![
         (House, Blueprint { body: (1, 1), makes: None, every: 0, takes: &[], seats: 0, lorries: 0, queue: 0, customers: 0, yard: 0, ground: Ground::Any, forklifts: 1, farm: false, loud: false }),
-        (Shop, Blueprint { body: (2, 1), makes: None, every: 0, takes: &[], seats: 0, lorries: 2, queue: 0, customers: 4, yard: 0, ground: Ground::Any, forklifts: 1, farm: false, loud: false }),
+        (Shop, Blueprint { body: (2, 1), makes: None, every: 0, takes: &[], seats: 0, lorries: 2, queue: 0, customers: 3, yard: 0, ground: Ground::Any, forklifts: 1, farm: false, loud: false }),
         (Fishery, maker((2, 1), Fish, 7 * SECOND, &[], 0, Ground::Shore)),
         (Woodcutter, maker((1, 1), Logs, 8 * SECOND, &[], 0, Ground::Forest)),
         (Sawmill, Blueprint { loud: true, ..maker((2, 2), Planks, 7 * SECOND, &[(Logs, 1)], 1, Ground::Any) }),
@@ -147,17 +147,25 @@ pub const CRATE: f64 = 1.0;
 pub const FACINGS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
 /// How many tiles of frontage a building needs before its street: its
-/// docks side by side at its gate, a truck backed into each, room either
-/// side of them for a truck to swing its nose round as it backs in, and
-/// its square kerb bays out from them, a bay's width apart, within a fifth
-/// of a tile of each end (`DOCK_PITCH`, `DOCK_CLEAR`, `SQUARE_PITCH`,
+/// docks side by side at its gate, the middle tile of its front, or the
+/// second of two; a truck backed into each, room either side of them for
+/// a truck to swing its nose round as it backs in; and its square kerb
+/// bays out from them either way, a bay's width apart, within a fifth of
+/// a tile of each end (`DOCK_PITCH`, `DOCK_CLEAR`, `SQUARE_PITCH`,
 /// `WALL_INSET` in `map/lots.rs`).
 pub fn frontage(bays: usize, docks: usize) -> u8 {
     if bays + docks == 0 {
         return 0;
     }
-    let docks = if docks > 0 { docks as f64 * 0.3 + 2.0 * 0.35 } else { 0.0 };
-    (bays as f64 * 0.27 + docks + 0.4).ceil() as u8
+    let fit = |room: f64| if room < -1e-9 { 0 } else { (room / 0.27 + 1e-9).floor() as usize + 1 };
+    (1..=8u8)
+        .find(|&w| {
+            let g = (w / 2) as f64 + 0.5;
+            let d0 = if docks > 0 { (docks - 1) as f64 * 0.15 + 0.4 } else { -0.135 };
+            let docked = docks == 0 || g + (docks as f64) * 0.15 <= w as f64;
+            docked && fit(g - d0 - 0.2) + fit(w as f64 - 0.2 - g - d0) >= bays
+        })
+        .unwrap_or(8)
 }
 
 /// Whether a kind has a front: a gate in the middle of the side toward
@@ -195,9 +203,10 @@ mod tests {
     /// shop with its customers' too.
     #[test]
     fn sizes_follow_what_they_front() {
-        assert_eq!(size(BuildingKind::Fishery), (3, 1));
-        assert_eq!(size(BuildingKind::Sawmill), (3, 2));
+        assert_eq!(size(BuildingKind::Fishery), (2, 1));
+        assert_eq!(size(BuildingKind::Woodcutter), (2, 1));
+        assert_eq!(size(BuildingKind::Sawmill), (2, 2));
         assert_eq!(size(BuildingKind::House), (1, 1));
-        assert_eq!(size(BuildingKind::Shop), (3, 1));
+        assert_eq!(size(BuildingKind::Shop), (2, 1));
     }
 }

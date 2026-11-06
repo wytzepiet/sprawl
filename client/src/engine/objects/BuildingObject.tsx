@@ -35,17 +35,17 @@ import type { Building, GameObjectEntry, Lift, Pose } from "../../generated";
  *  buckets' name, its model, which way round, and where its front wall
  *  stands in it (y), set on its plot's front edge.
  *  A house is one of a few by its id, as if at random, so a street of
- *  them is mixed; a house and a farm every other one the other way round. */
+ *  them is mixed, every other one the other way round. Anything else
+ *  with its gate on its +x, where its loading bay is cut. */
 function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1, number] | null {
   const odd = id % 2 ? 1 : -1;
   if (kind === "House") {
     const k = (Math.imul(id, 0x9e3779b1) >>> 7) % HOUSES.length;
     return [`house${k}`, HOUSES[k], odd, 0.5];
   }
-  // A shop's door at the end its lunch table stands, its goods before its window.
-  if (kind === "Shop") return ["shopHall", SHOP_HALL, -1, -0.5];
+  if (kind === "Shop") return ["shopHall", SHOP_HALL, gate, -0.5];
   if (kind === "Fishery") return ["fishery", FISHERY, gate, -0.5];
-  if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, odd, -0.5];
+  if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, gate, -0.5];
   if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate, -0.5];
   if (kind === "ClayPit") return ["clayPit", CLAY_PIT, gate, -0.5];
   if (kind === "SandPit") return ["sandPit", SAND_PIT, gate, -0.5];
@@ -139,9 +139,13 @@ export function mountBuilding(
   // Its model, whole, on its plot (`kit.ts`); the town grid leaves it.
   // Its loading bay notched into its front at its gate, a truck's width
   // and a little for each dock (`NOTCH` in `lots.rs`).
+  // The gate is the middle tile of the front, or of two the one on the
+  // gate's side, the model's +x.
   const docks = data.door ? BLUEPRINTS[data.kind].docks : 0;
   const plain = wholeOf(data.kind, entry.id, gate);
-  const whole: typeof plain = plain && docks ? [`${plain[0]}_bay${docks}`, plain[1].notched(docks * DOCK_PITCH / 2, plain[3]), plain[2], plain[3]] : plain;
+  const across = dx === 0 ? Math.max(...xs) - Math.min(...xs) + 1 : Math.max(...ys) - Math.min(...ys) + 1;
+  const at = across % 2 === 0 ? 0.5 : 0;
+  const whole: typeof plain = plain && docks ? [`${plain[0]}_bay${docks}_${at}`, plain[1].notched(at, docks * DOCK_PITCH / 2, plain[3]), plain[2], plain[3]] : plain;
   // Its front wall on its plot's front edge, the pavement before it.
   const deep = dx === 0 ? Math.max(...ys) - Math.min(...ys) + 1 : Math.max(...xs) - Math.min(...xs) + 1;
   const out = whole ? deep / 2 - whole[3] : 0;
@@ -173,7 +177,7 @@ export function mountBuilding(
   const lunch = data.kind === "Shop"
     ? (() => {
         const w = dx === 0 ? bw : bh, d = dx === 0 ? bh : bw;
-        const [a, o] = [w / 2 - 0.1, d / 2 - INSET / 2];
+        const [a, o] = [gate * (w / 2 - 0.1), d / 2 - INSET / 2];
         const at = (name: string, size: number[], colour: Rgb, across: number, z: number) => put(name, size, colour, [mx, my], [dx, dy], across, o, z);
         let out: ReturnType<typeof put>[] = [];
         return ctx.beforeRender(() => {

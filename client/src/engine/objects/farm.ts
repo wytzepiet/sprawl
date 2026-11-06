@@ -1,19 +1,17 @@
 import type { RGB } from "../rgb";
 import { Solid } from "../solid";
 import { theme } from "../theme";
-import { box, cone, drum, fence, gate, ground, hull, lamp, lying, model, pitched, post, put, rod, shrub, slope, tree, window, PANE, type Cover, type Model, type V, type Wall } from "./kit";
+import { box, cone, drum, fence, gate, ground, hull, lamp, model, post, put, rod, shrub, slope, tree, window, type Cover, type Model, type V, type Wall } from "./kit";
 
 /**
- * A farm, whole, on the back row of its plot (x -1.5 to 1.5, the street
- * at +y, its yard before it as the shop's): its ground on z = 0. Its
- * fields round it are the town grid's (`field.ts`), the tractor out to
- * them by the gate in the middle of the back (`fields.rs`).
+ * A farm, whole, on the back row of its plot (x -1 to 1, the street at
+ * +y, its loading bay cut at x = 0.5): its ground on z = 0. Its fields
+ * round it are the town grid's (`field.ts`), the tractor out to them
+ * through the yard behind the bay and the gate in the back (`fields.rs`).
  *
  * - On the left the barn, red, under a green gambrel roof: its double
  *   doors braced white, its hay loft's door over them, a weathervane; two
- *   red silos beside it, domed; square bales before the shed.
- * - On the right the machine shed, open timber on posts, the red
- *   tractor's twin and a trailer in it.
+ *   red silos beside it, domed; square bales by the bay.
  * - Earth over it, the town's grass in its corners, a rail fence round
  *   the back, its gates swung open.
  */
@@ -26,9 +24,6 @@ const DARK: RGB = [0.4, 0.29, 0.2];
 const STRAW: RGB = [0.92, 0.77, 0.4];
 const EARTH: RGB = [0.72, 0.62, 0.48];
 const DOME: RGB = [0.86, 0.87, 0.87];
-const TYRE: RGB = [0.2, 0.2, 0.21];
-const TRACTOR: RGB = [0.78, 0.25, 0.2];
-const TRAILER: RGB = [0.36, 0.56, 0.32];
 const LAWN = [theme.land.r, theme.land.g, theme.land.b] as RGB;
 
 /** The barn: red walls, its gambrel roof's two pitches each side, its
@@ -71,63 +66,32 @@ function gambrel(m: Model, x0: number, x1: number, y0: number, y1: number, eave:
   put(m, "matte", Solid.union([post(mid, vy, ridge, 0.1, 0.005, 6), box(mid - 0.035, mid + 0.035, vy - 0.003, vy + 0.003, ridge + 0.075, ridge + 0.08), box(mid - 0.003, mid + 0.003, vy - 0.035, vy + 0.035, ridge + 0.075, ridge + 0.08)]), DARK);
 }
 
-/** A tractor at (x, y) facing +y, the town's red, and its trailer behind
- *  it in green. */
-function tractor(m: Model, x: number, y: number) {
-  put(m, "matte", box(x - 0.045, x + 0.045, y - 0.05, y + 0.08, 0.04, 0.09).add(box(x - 0.045, x + 0.045, y - 0.07, y + 0.0, 0.09, 0.17)), TRACTOR);
-  put(m, "matte", box(x - 0.04, x + 0.04, y - 0.066, y + 0.004, 0.11, 0.16), PANE);
-  put(m, "matte", box(x - 0.05, x + 0.05, y - 0.075, y + 0.008, 0.165, 0.178), TRACTOR);
-  put(m, "matte", Solid.union([
-    lying([x - 0.055, y - 0.04, 0.055], 0.055, 0.03, "x"), lying([x + 0.055, y - 0.04, 0.055], 0.055, 0.03, "x"),
-    lying([x - 0.05, y + 0.07, 0.032], 0.032, 0.022, "x"), lying([x + 0.05, y + 0.07, 0.032], 0.032, 0.022, "x"),
-  ]), TYRE);
-  put(m, "matte", post(x + 0.025, y + 0.06, 0.09, 0.05, 0.006, 6), TYRE);
-}
-
 export const FARM = model((m) => {
-  ground(m, "earth", [[-1.49, 1.49, -1.49, -0.5]], EARTH, { z: 0.015 });
-  ground(m, "lawn", [[-1.49, -1.0, -1.49, -0.5], [0.32, 0.6, -1.49, -0.8], [1.22, 1.49, -1.49, -0.5]], LAWN, { z: 0.025, round: 0.08 });
+  ground(m, "earth", [[-0.99, 0.99, -1.49, -0.5]], EARTH, { z: 0.015 });
+  ground(m, "lawn", [[-0.99, -0.9, -1.49, -0.5], [0.9, 0.99, -1.49, -0.5]], LAWN, { z: 0.025, round: 0.06 });
 
   // The barn on the left, the silos beside it.
-  gambrel(m, -0.95, -0.17, -1.4, -0.62, 0.22, 0.42, 0.56);
-  for (const [x, y, r, h] of [[-1.24, -1.25, 0.14, 0.62], [-1.26, -0.86, 0.12, 0.5]]) {
+  gambrel(m, -0.62, 0.0, -1.4, -0.62, 0.22, 0.42, 0.56);
+  for (const [x, y, r, h] of [[-0.8, -1.24, 0.13, 0.62], [-0.82, -0.88, 0.1, 0.48]]) {
     put(m, "matte", drum(x, y, r, h, 0), RED);
     put(m, "matte", Solid.union([0.18, 0.36, 0.54].filter((z) => z < h).map((z) => post(x, y, z, 0.014, r + 0.004, 24))), WHITE);
     put(m, "matte", Solid.sphere(r + 0.01, 20).scale([1, 1, 0.55]).translate([x, y, h]).add(post(x, y, h - 0.01, 0.02, r + 0.01, 24)), DOME);
     put(m, "matte", post(x, y, h + r * 0.5, 0.03, 0.02, 8), DOME);
   }
-  put(m, "matte", Solid.union([
-    ...[-1, 1].map((s) => box(-1.115, -1.105, -1.25 + s * 0.028 - 0.005, -1.25 + s * 0.028 + 0.005, 0, 0.64)),
-    ...Array.from({ length: 8 }, (_, k) => box(-1.115, -1.108, -1.28, -1.22, 0.06 + k * 0.075, 0.066 + k * 0.075)),
-  ]), WHITE);
   const bale = (x: number, y: number, z: number) => box(x - 0.045, x + 0.045, y - 0.032, y + 0.032, z, z + 0.055);
-  put(m, "matte", Solid.union([bale(0.0, -0.66, 0.025), bale(0.0, -0.59, 0.025), bale(0.1, -0.66, 0.025), bale(0.1, -0.59, 0.025), bale(0.05, -0.625, 0.08)]), STRAW);
-  for (const x of [-0.7, -0.62, -0.42, -0.34]) shrub(m, x, -0.57, 0.028);
+  put(m, "matte", Solid.union([bale(0.74, -0.66, 0.025), bale(0.74, -0.59, 0.025), bale(0.84, -0.66, 0.025), bale(0.84, -0.59, 0.025), bale(0.79, -0.625, 0.08)]), STRAW);
+  for (const x of [-0.45, -0.37, -0.17, -0.09]) shrub(m, x, -0.57, 0.028);
 
-  // The machine shed on the right: posts and beams, its back boarded, a
-  // green roof; the tractor and its trailer in it.
-  const [sx0, sx1, sy0, sy1, se, sr] = [0.56, 1.18, -1.4, -0.82, 0.21, 0.31];
-  put(m, "matte", Solid.union([
-    box(sx0, sx1, sy0, sy0 + 0.02, 0, se),
-    ...[sx0, (sx0 + sx1) / 2, sx1 - 0.025].flatMap((x) => [box(x, x + 0.025, sy1 - 0.025, sy1, 0, se), box(x, x + 0.025, sy0, sy0 + 0.025, 0, se)]),
-    box(sx0, sx1, sy1 - 0.025, sy1, se - 0.025, se),
-    ...[sx0, sx1 - 0.025].map((x) => box(x, x + 0.025, sy0, sy1, se - 0.025, se)),
-  ]), TIMBER);
-  put(m, "matte", Solid.union([sx0, sx1 - 0.025].map((x) => rod([x + 0.012, sy1 - 0.012, se - 0.07], [x + 0.012 + (x < 0.8 ? 0.07 : -0.07), sy1 - 0.012, se - 0.01], 0.014))), TIMBER);
-  pitched(m, "x", sx0, sx1, sy0, sy1, se, sr, GREEN, { over: 0.05 });
-  tractor(m, 0.72, -1.12);
-  put(m, "matte", box(0.92, 1.08, -1.32, -0.96, 0.04, 0.12).subtract(box(0.93, 1.07, -1.31, -0.97, 0.06, 0.13)), TRAILER);
-  put(m, "matte", Solid.union([lying([0.915, -1.14, 0.04], 0.04, 0.02, "x"), lying([1.085, -1.14, 0.04], 0.04, 0.02, "x")]), TYRE);
-  put(m, "matte", rod([1.0, -0.96, 0.06], [1.0, -0.9, 0.04], 0.012), TRAILER);
-  tree(m, 0.42, -1.25, 0.55);
-  tree(m, 1.36, -0.9, 0.7);
-  lamp(m, 0.42, -0.76, [0.48, -0.76]);
-  cone(m, 0.4, -1.1, 0.06, 0.24);
+  // The yard behind the loading bay is the tractor's way out to the
+  // fields; a tree, a lamp and a cone at its sides.
+  tree(m, 0.84, -1.2, 0.55);
+  lamp(m, 0.12, -0.76, [0.18, -0.76]);
+  cone(m, 0.84, -0.92, 0.06, 0.24);
 
-  // The rail fence round the back, open at its middle for the tractor,
-  // its gates swung open.
-  fence(m, [[1.47, -0.52], [1.47, -1.47], [0.3, -1.47]], TIMBER);
-  gate(m, 0.3, -1.47, 0.14, -70, TIMBER);
-  fence(m, [[-0.3, -1.47], [-1.47, -1.47], [-1.47, -0.52]], TIMBER);
-  gate(m, -0.3, -1.47, 0.14, -110, TIMBER);
+  // The rail fence round the back, open behind the yard for the
+  // tractor, its gates swung open.
+  fence(m, [[0.97, -0.52], [0.97, -1.47], [0.85, -1.47]], TIMBER);
+  gate(m, 0.85, -1.47, 0.14, -70, TIMBER);
+  fence(m, [[0.15, -1.47], [-0.97, -1.47], [-0.97, -0.52]], TIMBER);
+  gate(m, 0.15, -1.47, 0.14, -110, TIMBER);
 });

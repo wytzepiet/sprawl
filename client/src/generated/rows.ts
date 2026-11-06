@@ -5,19 +5,19 @@ import type { Good } from "./Good";
 /** The game's half of each kind's row (`blueprint.rs`). */
 export const ROWS: Record<BuildingKind, { size: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; bays: number; docks: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {
   House: { size: [1, 1], makes: null, every: 0, takes: {}, seats: 0, bays: 0, docks: 0, lorries: 0, forklifts: 1, farm: false, loud: false },
-  Shop: { size: [3, 1], makes: null, every: 0, takes: {}, seats: 0, bays: 4, docks: 2, lorries: 2, forklifts: 1, farm: false, loud: false },
-  Fishery: { size: [3, 1], makes: "Fish", every: 7000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: false, loud: false },
-  Woodcutter: { size: [3, 1], makes: "Logs", every: 8000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: false, loud: false },
-  Sawmill: { size: [3, 2], makes: "Planks", every: 7000, takes: { Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
-  Farm: { size: [3, 1], makes: "Wheat", every: 9000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: true, loud: false },
-  Bakery: { size: [3, 1], makes: "Bread", every: 8000, takes: { Wheat: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: false },
-  ClayPit: { size: [3, 1], makes: "Clay", every: 9000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: false, loud: false },
-  Brickworks: { size: [3, 2], makes: "Bricks", every: 9000, takes: { Clay: 1, Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
-  Workshop: { size: [3, 2], makes: "Furniture", every: 11000, takes: { Planks: 2 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
-  SandPit: { size: [3, 1], makes: "Sand", every: 9000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: false, loud: false },
-  Glassworks: { size: [3, 2], makes: "Glass", every: 10000, takes: { Sand: 1, Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
-  SheepFarm: { size: [3, 1], makes: "Wool", every: 10000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: false, loud: false },
-  Tailor: { size: [3, 1], makes: "Clothes", every: 9000, takes: { Wool: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: false },
+  Shop: { size: [2, 1], makes: null, every: 0, takes: {}, seats: 0, bays: 3, docks: 2, lorries: 2, forklifts: 1, farm: false, loud: false },
+  Fishery: { size: [2, 1], makes: "Fish", every: 7000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Woodcutter: { size: [2, 1], makes: "Logs", every: 8000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Sawmill: { size: [2, 2], makes: "Planks", every: 7000, takes: { Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  Farm: { size: [2, 1], makes: "Wheat", every: 9000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: true, loud: false },
+  Bakery: { size: [2, 1], makes: "Bread", every: 8000, takes: { Wheat: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: false },
+  ClayPit: { size: [2, 1], makes: "Clay", every: 9000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Brickworks: { size: [2, 2], makes: "Bricks", every: 9000, takes: { Clay: 1, Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  Workshop: { size: [2, 2], makes: "Furniture", every: 11000, takes: { Planks: 2 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  SandPit: { size: [2, 1], makes: "Sand", every: 9000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Glassworks: { size: [2, 2], makes: "Glass", every: 10000, takes: { Sand: 1, Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  SheepFarm: { size: [2, 1], makes: "Wool", every: 10000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Tailor: { size: [2, 1], makes: "Clothes", every: 9000, takes: { Wool: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: false },
 };
 
 /** A forklift's lift of one crate (`map::HANDLE_MS`). */

@@ -64,12 +64,13 @@ export interface Built {
   finishes: Partial<Record<Finish, Shape>>;
   props: ModelProp[];
   trees: [number, number, number][];
-  notched(half: number, wall: number): Built;
+  notched(at: number, half: number, wall: number): Built;
 }
 
 /** What is cut out of everything a model puts while it is built: its
- *  loading bay, x and y from and to. */
-let cutting: { solid: Manifold; x: number; y: number } | null = null;
+ *  loading bay, its middle across, how far either side, and from where
+ *  out. */
+let cutting: { solid: Manifold; at: number; x: number; y: number } | null = null;
 
 /** How deep a loading bay reaches into its building behind the front
  *  wall: a docked truck's tail at its door (`NOTCH_BACK` in
@@ -79,31 +80,31 @@ const ROLLER: RGB = [0.42, 0.44, 0.47];
 const TRIM: RGB = [0.3, 0.31, 0.33];
 
 /** A model, built by `build` and every solid it made let go. Notched, its
- *  front wall at y = `wall`, a loading bay `half` either side of x = 0 is
+ *  front wall at y = `wall`, a loading bay `half` either side of x = `at` is
  *  cut out of it, unroofed, from the street back `BAY_DEEP`, a roller
  *  door at its back: where a truck backs in to be loaded. */
 export const model = (build: (m: Model) => void): Built => {
   const made = new Map<string, Built>();
-  const make = (cut?: [number, number]): Built =>
+  const make = (cut?: [number, number, number]): Built =>
     solids(() => {
       const m: Model = { parts: {}, props: [], trees: [] };
       if (cut) {
-        const [half, wall] = cut;
-        cutting = { solid: box(-half, half, wall - BAY_DEEP, wall + 1, -0.5, 5), x: half, y: wall - BAY_DEEP };
+        const [at, half, wall] = cut;
+        cutting = { solid: box(at - half, at + half, wall - BAY_DEEP, wall + 1, -0.5, 5), at, x: half, y: wall - BAY_DEEP };
       }
       try {
         build(m);
       } finally {
         cutting = null;
       }
-      if (cut) shutter(m, { face: "+y", at: cut[1] - BAY_DEEP }, 0, 2 * cut[0] - 0.04, 0.17, ROLLER, TRIM);
+      if (cut) shutter(m, { face: "+y", at: cut[2] - BAY_DEEP }, cut[0], 2 * cut[1] - 0.04, 0.17, ROLLER, TRIM);
       return {
         finishes: Object.fromEntries(Object.entries(m.parts).map(([k, parts]) => [k, shape(parts)])),
-        props: m.props.filter((p) => !cut || Math.abs(p.at[0]) > cut[0] || p.at[1] < cut[1] - BAY_DEEP),
-        trees: m.trees.filter(([x, y]) => !cut || Math.abs(x) > cut[0] + 0.05 || y < cut[1] - BAY_DEEP),
-        notched: (half, wall) => {
-          const key = `${half},${wall}`;
-          return made.get(key) ?? (made.set(key, make([half, wall])), made.get(key)!);
+        props: m.props.filter((p) => !cut || Math.abs(p.at[0] - cut[0]) > cut[1] || p.at[1] < cut[2] - BAY_DEEP),
+        trees: m.trees.filter(([x, y]) => !cut || Math.abs(x - cut[0]) > cut[1] + 0.05 || y < cut[2] - BAY_DEEP),
+        notched: (at, half, wall) => {
+          const key = `${at},${half},${wall}`;
+          return made.get(key) ?? (made.set(key, make([at, half, wall])), made.get(key)!);
         },
       };
     });
@@ -114,19 +115,19 @@ export const model = (build: (m: Model) => void): Built => {
  *  it is. Glass is its own finish whatever it is put in. Out of either,
  *  the loading bay being cut, if one is. */
 export function put(m: Model, finish: Finish, it: Manifold | MeshGeometry, rgb: RGB) {
-  const geo = "positions" in it ? (cutting ? outside(it, cutting.x, cutting.y) : it) : mesh(cutting ? it.subtract(cutting.solid) : it);
+  const geo = "positions" in it ? (cutting ? outside(it, cutting.at, cutting.x, cutting.y) : it) : mesh(cutting ? it.subtract(cutting.solid) : it);
   if (geo.indices.length) (m.parts[finish] ??= []).push([geo, [0, 0, 0], rgb]);
 }
 
 /** A mesh with the triangles over the loading bay taken out: those whose
- *  middle is within `x` of x = 0, in front of `y`. */
-function outside(g: MeshGeometry, x: number, y: number): MeshGeometry {
+ *  middle is within `x` of x = `at`, in front of `y`. */
+function outside(g: MeshGeometry, at: number, x: number, y: number): MeshGeometry {
   const p = g.positions;
   const indices: number[] = [];
   for (let i = 0; i < g.indices.length; i += 3) {
     const [a, b, c] = [g.indices[i] * 3, g.indices[i + 1] * 3, g.indices[i + 2] * 3];
     const [mx, my] = [(p[a] + p[b] + p[c]) / 3, (p[a + 1] + p[b + 1] + p[c + 1]) / 3];
-    if (Math.abs(mx) < x && my > y) continue;
+    if (Math.abs(mx - at) < x && my > y) continue;
     indices.push(g.indices[i], g.indices[i + 1], g.indices[i + 2]);
   }
   return { ...g, indices };
