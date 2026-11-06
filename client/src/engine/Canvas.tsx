@@ -16,10 +16,12 @@ import {
   enablePbrMaterialPluginVertexData,
   enablePixelTextureMipmaps,
   enableSurfaceResizeObserver,
+  isGpuTimingSupported,
   onBeforeRender,
   registerSceneWithShadowSupport,
   renderFrame,
   resizeEngine,
+  setGpuTimingEnabled,
   type EngineContext as Engine,
   type SceneContext,
 } from "@babylonjs/lite";
@@ -72,6 +74,31 @@ const MAX_DEVICE_RATIO = 2;
  *  six million of them, four times a phone's, and runs hot for it. Here it
  *  is drawn at about 1.4 instead, the flat colours no worse for it. */
 const MAX_PIXELS = 3e6;
+/** And less again while the GPU cannot keep up, judged as the view moves
+ *  over the middle of the last `JUDGED` frames, to a pixel to the CSS pixel
+ *  at the least. Where the GPU's own time can be read, a step down when it
+ *  is over `GPU_MS` and up when a step up would still be under it, a ratio's
+ *  pixels being its square. Where not, by the gaps between frames: down
+ *  when they come later than `LATE_MS`, those after a long task left out,
+ *  which is the main thread's and no fault of the GPU; up after keeping
+ *  time `RETRY_MS`, but never back to a ratio it was late at. A slow phone
+ *  draws softer and keeps its frames and its battery; a fast GPU never
+ *  knows. A step up must still be well under (`UP_SHARE` of `GPU_MS`), so
+ *  it does not step back down a moment later.
+ *
+ *  A new ratio resizes the canvas, which clears it, black until the GPU
+ *  has drawn the next frame: while it is behind, a second or more. So a
+ *  ratio judged is drawn at only once the view has stood still `REST_MS`,
+ *  the GPU no longer behind, and `SWITCH_MS` after the last. */
+const JUDGED = 120;
+const GPU_MS = 12;
+const UP_SHARE = 0.75;
+const REST_MS = 500;
+const SWITCH_MS = 30_000;
+const LATE_MS = 22;
+const STEP = 0.8;
+const RETRY_MS = 10_000;
+
 /** Frames a second while the view moves: a 120Hz display shows the town no
  *  better than a 60Hz one, for twice the shading. */
 const MOVING_FPS = 60;
@@ -159,6 +186,31 @@ export default function Canvas(props: ParentProps) {
     // Held while something outside draws the frames itself (`cost.ts`).
     let held = false;
     let running = true;
+    // The ratio drawn at, as the frames have kept time at it (`JUDGED`).
+    let [ratio, ceiling, keptSince, longEnded] = [Infinity, Infinity, 0, 0];
+    // And the ratio the canvas is at, and when it last changed.
+    let [shown, switched] = [Infinity, -Infinity];
+    const timed = isGpuTimingSupported(engine);
+    if (timed) setGpuTimingEnabled(engine, true);
+    else if (PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+      new PerformanceObserver((list) => list.getEntries().forEach((e) => (longEnded = Math.max(longEnded, e.startTime + e.duration)))).observe({ type: "longtask" });
+    }
+    const samples: number[] = [];
+    const judge = (now: number, delta: number, cap: number) => {
+      // Nothing judged while a ratio waits to be drawn at: it is not what the frames are drawn at.
+      if (ratio !== shown) return void (samples.length = 0);
+      const drawn = Math.min(cap, ratio);
+      if (!timed && now - longEnded < 2 * delta) return;
+      samples.push(timed ? engine.gpuFrameTimeMs : delta);
+      if (samples.length < JUDGED) return;
+      const middle = [...samples].sort((a, b) => a - b)[JUDGED / 2];
+      samples.length = 0;
+      const up = Math.min(cap, drawn / STEP);
+      if (middle > (timed ? GPU_MS : LATE_MS)) {
+        if (drawn > 1) [ceiling, ratio] = [drawn, Math.max(1, drawn * STEP)];
+        keptSince = now;
+      } else if (drawn < cap && (timed ? middle * (up / drawn) ** 2 < GPU_MS * UP_SHARE : now - keptSince > RETRY_MS && up < ceiling)) [ratio, keptSince] = [up, now];
+    };
     const where = () => {
       const c = scene.camera;
       return c ? `${c.worldMatrixVersion},${c.fov}` : "";
@@ -168,19 +220,19 @@ export default function Canvas(props: ParentProps) {
       requestAnimationFrame(frame);
       if (held) return;
       if (where() !== seen) lastMoved = now;
-      const fps = now - lastMoved < MOVING_LINGER_MS ? MOVING_FPS : STILL_FPS;
+      const moving = now - lastMoved < MOVING_LINGER_MS;
+      const fps = moving ? MOVING_FPS : STILL_FPS;
       if (now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
       lastFrame = now;
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
-      // Fixed for the window: a new ratio resizes the canvas, which clears it,
-      // black until the GPU has drawn again, a second or more when behind.
-      engine.surfaces[0].maxDevicePixelRatio = Math.min(MAX_DEVICE_RATIO, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
-      const size = `${el.width}x${el.height}`;
+      const cap = Math.min(MAX_DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
+      if (moving) judge(now, delta, cap);
+      const caught = timed ? engine.gpuFrameTimeMs < GPU_MS : delta < LATE_MS * 2;
+      if (ratio !== shown && now - lastMoved > REST_MS && now - switched > SWITCH_MS && caught) [shown, switched] = [ratio, now];
+      engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, shown);
       resizeEngine(engine);
-      // To catch a black flash in the act (temporary).
-      if (size !== `${el.width}x${el.height}`) console.warn(`canvas ${size} -> ${el.width}x${el.height}, css ${el.clientWidth}x${el.clientHeight}`);
       renderFrame(engine, delta, page);
       after.run();
       seen = where();

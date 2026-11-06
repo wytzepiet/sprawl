@@ -5,6 +5,7 @@ import {
   createRenderTask,
   createShaderMaterial,
   createSurfaceRenderTargetTexture,
+  onRenderTargetTextureResize,
   removeMeshFromTask,
   setMeshVisible,
   setShaderTexture,
@@ -87,7 +88,8 @@ export interface Outline {
  * scene's frame graph, which records its tasks then.
  */
 export function createOutline(engine: EngineContext, scene: SceneContext): Outline {
-  const { rt, texture } = createSurfaceRenderTargetTexture(engine, { lbl: "outline", format: "rgba8unorm", dFormat: "depth24plus", samples: 1, size: engine.surfaces[0] });
+  const mask = createSurfaceRenderTargetTexture(engine, { lbl: "outline", format: "rgba8unorm", dFormat: "depth24plus", samples: 1, size: engine.surfaces[0] });
+  const { rt, texture } = mask;
   const task = createRenderTask({ name: "outline", rt, clrColor: { r: 0, g: 0, b: 0, a: 0 }, cs: true, autoMirror: false }, engine, scene);
   addTaskAtStart(scene, task);
   task.executionEnabled = false;
@@ -106,6 +108,10 @@ export function createOutline(engine: EngineContext, scene: SceneContext): Outli
     depthCompare: "always",
   });
   setShaderTexture(material, "mask", texture);
+  // Set again when the canvas is resized and the mask with it: the quad's
+  // binding held the old one, destroyed, and every frame drawn with the
+  // outline on was thrown away whole, the screen black until it went.
+  onRenderTargetTextureResize(mask, () => setShaderTexture(material, "mask", texture));
   setShaderUniform(material, "width", WIDTH * Math.min(devicePixelRatio, 2));
   const quad = meshOf(engine, "outline", { positions: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
   quad.material = material;
