@@ -15,7 +15,7 @@ pub mod pathfinding;
 pub mod roads;
 pub mod segments;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use fixed::{HashMap, HashSet};
 
 use model::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, TerrainChunk};
@@ -227,13 +227,13 @@ impl Map {
         let entries: Vec<_> = self.objects.roads()
             .filter_map(|e| {
                 if let GameObject::RoadNode(ref node) = e.object {
-                    Some((e.id, node.outgoing.clone()))
+                    Some((e.id, node.outgoing.clone(), node.joined))
                 } else {
                     None
                 }
             })
             .collect();
-        for (id, outgoing) in &entries {
+        for (id, outgoing, _) in &entries {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
                 let lanes = if self.is_wide(*id, *neighbor) { 2 } else { 1 };
@@ -241,7 +241,23 @@ impl Map {
                 self.network.link(*id, *neighbor, len);
             }
         }
-        self.mark_joined(entries.iter().map(|(id, _)| *id));
+        // A save keeps which nodes were joined, not which was the way out:
+        // each network that was joined gets its way out back at its first
+        // node, the oldest, which a new town's lane is. A save from before
+        // this kept none joined at all: its oldest node's network is the town's.
+        let none = !entries.iter().any(|(_, _, joined)| *joined);
+        let oldest = entries.iter().map(|(id, ..)| *id).min();
+        let mut ways_out: BTreeMap<crate::network::ComponentId, EntityId> = BTreeMap::new();
+        for (id, _, joined) in &entries {
+            if let (true, Some(c)) = (*joined || (none && Some(*id) == oldest), self.network.component_of(*id)) {
+                let first = ways_out.entry(c).or_insert(*id);
+                *first = (*first).min(*id);
+            }
+        }
+        for id in ways_out.into_values() {
+            self.network.set_exit(id, true);
+        }
+        self.mark_joined(entries.iter().map(|(id, ..)| *id));
     }
 
     /// Take a car off every edge deque along its route. Not just the edge it
