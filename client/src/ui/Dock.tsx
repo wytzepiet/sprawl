@@ -32,7 +32,7 @@ const cx = (j: number) => 30 + SLOT * j;
 const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> = {
   select: { head: InspectHead, body: InspectBody },
   roads: { head: () => <RoadsHead info={(k) => info({ road: k })} />, body: () => <></> },
-  demolish: { head: () => <Box pad={{ x: 16, top: 16, bottom: 14 }}><Text size={13} soft>Tap a road or a building to take it down; drag along a road to cut it.</Text></Box>, body: () => <></> },
+  demolish: { head: () => <Box pad={{ x: 16, top: 16, bottom: 14 }}><Text size={15} soft>Tap a road or a building to take it down; drag along a road to cut it.</Text></Box>, body: () => <></> },
   build: { head: BuildHead, body: BuildBody },
 };
 
@@ -141,7 +141,7 @@ export default function Dock() {
                   <Show when={tab()} keyed>{(t) => <Fade>{SHEETS[t].body()}</Fade>}</Show>
                 </Box>
               </Box>
-              <Box at={{ left: 16, right: 16, bottom: BAR + bezel() + DROP }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24) * ink()} />
+              <Box at={{ left: 16, right: 16, bottom: BAR + bezel() + DROP }} h={0.5} fill="ink/0.16" opacity={Math.min(1, h() / 24) * ink()} />
             </Show>
           </Ink>
           {/* The tabs, fixed along its foot. */}
@@ -158,7 +158,7 @@ export default function Dock() {
                     {/* What is in hand and not yet placed, counted on the hammer. */}
                     <Show when={t === "build" && !held() && inHandAll() > 0}>
                       <Box at={{ right: 2, top: 2 }} minW={18} h={18} round={9} pad={{ x: 5 }} fill="#FF453A" align="center" justify="center">
-                        <Text size={11} weight={700} ink="white">{inHandAll()}</Text>
+                        <Text num size={12} ink="white">{inHandAll()}</Text>
                       </Box>
                     </Show>
                   </Press>

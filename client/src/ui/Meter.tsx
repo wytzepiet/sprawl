@@ -30,7 +30,7 @@ export default function Meter() {
   return (
     <Ink layer="bezel" at={{ right: -DROP, top: -DROP }} w={wide() ? undefined : view().w / 2 + DROP + 30} h={DROP + bezel() + CORNER} round={ROUND} pad={{ right: DROP + bezel() + 14, left: 10, top: DROP + bezel() }} dir="row" align="center" justify="end" gap={8}>
       <Show when={wide()}>
-        <Text size={12} weight={600} soft>{STANDING[town().status] ?? ""}</Text>
+        <Text size={13} weight={600} soft>{STANDING[town().status] ?? ""}</Text>
       </Show>
       <Box w={28} h={28} align="center" justify="center">
         <Icon at={{ left: 0, top: 0 }} d={RING} view={56} size={28} stroke={4.5} ink="ink/0.16" />
@@ -39,11 +39,13 @@ export default function Meter() {
         </Show>
         <Icon d={PERSON} size={12} ink="ink/0.8" />
       </Box>
-      <Text serif size={20}>{town().people}</Text>
+      <Text num size={17}>{town().people}</Text>
       <Box w={6} />
       <Icon d={ROAD} size={14} ink="ink/0.6" />
-      <Text serif size={17}>{town().roads}</Text>
-      <Text size={11} soft>road</Text>
+      <Box dir="row" align="baseline" gap={4}>
+        <Text num size={17}>{town().roads}</Text>
+        <Text size={13} soft>road</Text>
+      </Box>
     </Ink>
   );
 }

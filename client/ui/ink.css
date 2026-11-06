@@ -1,8 +1,8 @@
-/* The UI's faces (`public/fonts`): Inter for words, Nunito for numbers. */
+/* The UI's face: San Francisco where the device has it (Apple's), else
+   Inter (`public/fonts`), drawn after it. */
 @font-face { font-family: Inter; font-weight: 500; src: url(/fonts/Inter-500.ttf); }
 @font-face { font-family: Inter; font-weight: 600; src: url(/fonts/Inter-600.ttf); }
 @font-face { font-family: Inter; font-weight: 700; src: url(/fonts/Inter-700.ttf); }
-@font-face { font-family: Nunito; font-weight: 700; src: url(/fonts/Nunito-700.ttf); }
 
 /* Over the whole screen, letting through to the town what nothing on it
    takes (`index.tsx`, `common`); white on black. */
@@ -16,8 +16,11 @@
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  font: 500 14px/1.25 Inter, system-ui, sans-serif;
+  font: 500 15px/1.25 -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif;
   color: #fff;
+  /* White on black, drawn by greys rather than coloured fringes: thin and sharp. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
 }
 .ink * { box-sizing: border-box; }
@@ -32,6 +35,8 @@
 .r > .t { flex-shrink: 1; min-width: 0; }
 .t { overflow-wrap: break-word; }
 .t.one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A number: every figure as wide, so a count ticking over stands still. */
+.t.n { font-variant-numeric: tabular-nums; font-weight: 600; }
 .t.some { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* A corner: a squircle where the page can draw one, reaching further to

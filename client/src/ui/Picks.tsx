@@ -90,23 +90,26 @@ export default function Picks() {
       <Box at={{ left: 0, right: 0, top: 0, bottom: 0 }} fill="#00000033" align="center" justify="end" pad={{ bottom: 96 }}>
         <Pop>
           <Ink layer="pick" round={ROUND} pad={{ x: 18, top: 18, bottom: 18 }} gap={14} w={narrow() ? view().w - 32 : undefined}>
-            <Box gap={3}>
-              <Text size={19} weight={700}>The town is growing</Text>
-              <Text size={13.5} soft>{town().people} people. Pick one to build with.</Text>
+            <Box gap={2}>
+              <Box dir="row" align="baseline" gap={6}>
+                <Text num size={40} weight={700} lead={1.05}>{town().people}</Text>
+                <Text size={20} weight={600} soft>people</Text>
+              </Box>
+              <Text size={15} soft>The town is growing. Pick one to build with.</Text>
             </Box>
             <Box dir={narrow() ? "col" : "row"} gap={10}>
               <For each={town().offer}>
                 {(o, i) => {
                   const l = look(o);
                   return (
-                    <Press w={narrow() ? undefined : 168} round={22} pad={14} gap={10} fill="ink/0.07" onTap={() => send({ type: "Pick", data: i() })} dir={narrow() ? "row" : "col"} align={narrow() ? "center" : "start"}>
+                    <Press w={narrow() ? undefined : 168} round={22} pad={14} gap={10} fill="ink/0.1" onTap={() => send({ type: "Pick", data: i() })} dir={narrow() ? "row" : "col"} align={narrow() ? "center" : "start"}>
                       <Box w={56} h={56} round={16} fill={l.color} align="center" justify="center">
                         <Icon d={l.glyph} size={30} ink="white" />
                       </Box>
                       <Box gap={3} grow={narrow() ? 1 : undefined}>
-                        <Text size={15} weight={700}>{l.label}</Text>
-                        <Text size={12.5} soft lead={1.35}>{l.about}</Text>
-                        <Show when={need(o)}>{(w) => <Text size={12.5} weight={600} ink="#FF453A">{w()}</Text>}</Show>
+                        <Text size={17} weight={600}>{l.label}</Text>
+                        <Text size={13} soft lead={1.35}>{l.about}</Text>
+                        <Show when={need(o)}>{(w) => <Text size={13} weight={600} ink="#FF453A">{w()}</Text>}</Show>
                       </Box>
                     </Press>
                   );

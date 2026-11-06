@@ -64,7 +64,7 @@ export default function Ring() {
           <Pop at={{ left: r.x - 64, top: r.y - 80 }} w={52} h={52}>
             <Ink layer="ring" w={52} h={52} round={26} align="center" justify="center">
               <Press w={52} h={52} round={26} align="center" justify="center" onTap={() => (setRing(null), select(r.id))}>
-                <Text serif size={24}>i</Text>
+                <Text num size={24}>i</Text>
               </Press>
             </Ink>
           </Pop>

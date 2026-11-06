@@ -114,7 +114,7 @@ function Level(props: Props) {
         <Press w={28} h={28} round={14} align="center" justify="center" onTap={props.back}>
           <Icon d={BACK} size={18} ink="ink/0.72" />
         </Press>
-        <Text serif size={24}>{props.level.title}</Text>
+        <Text num size={24}>{props.level.title}</Text>
       </Box>
       <For each={props.level.notes}>{(n) => <Text size={13} soft lead={1.35}>{n}</Text>}</For>
       <Box gap={4} pad={{ top: 6 }}>
@@ -253,14 +253,14 @@ function Verdict(props: Props) {
           </Show>
           <Show when={t().phase === "Jammed"}>
             <Text size={12} weight={600} ink="#C2361F">Jammed</Text>
-            <Text serif size={24}>{t().message}</Text>
+            <Text num size={24}>{t().message}</Text>
             <Box dir="row">
               <Btn big onTap={() => props.line()?.build()}>Back to building</Btn>
             </Box>
           </Show>
           <Show when={t().phase === "Done"}>
             <Text size={12} weight={600} soft>{t().par === null ? "Flow" : "Efficiency"}</Text>
-            <Text serif size={56} lead={1}>
+            <Text num size={56} lead={1}>
               {t().efficiency.toFixed(1)}
               <Text size={28}>%</Text>
             </Text>

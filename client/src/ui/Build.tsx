@@ -28,16 +28,16 @@ export function BuildHead() {
       when={held()}
       fallback={
         <Box pad={{ x: 16, top: 14, bottom: 10 }}>
-          <Text size={15} weight={600}>{n() ? `${n()} to build` : "Nothing in hand"}</Text>
+          <Text size={17} weight={600}>{n() ? `${n()} to build` : "Nothing in hand"}</Text>
           <Show when={!n()}>
-            <Text size={12} soft>The town gives you more as it grows.</Text>
+            <Text size={13} soft>The town gives you more as it grows.</Text>
           </Show>
         </Box>
       }
     >
       <Box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
-        <Box h={44} round={16} align="center" justify="center" stroke={[2, over() ? BAD : "ink/0.2"]}>
-          <Text size={13} weight={600} ink={over() ? BAD : "ink/0.6"}>Drop here to put it back</Text>
+        <Box h={50} round={25} align="center" justify="center" fill={over() ? `${BAD}33` : "ink/0.1"}>
+          <Text size={15} weight={600} ink={over() ? BAD : "ink/0.6"}>Drop here to put it back</Text>
         </Box>
       </Box>
     </Show>
@@ -55,13 +55,13 @@ export function BuildBody() {
       <Box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
         <For each={town().hand.filter(([, n]) => n > 0)}>
           {([kind, n]) => (
-            <Box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+            <Box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.08" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
               <Picture kind={kind} />
               <Box dir="row" align="center" gap={4}>
                 <Text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</Text>
                 <Info onTap={() => info({ kind })} />
               </Box>
-              <Text size={12} soft>×{n}</Text>
+              <Text num size={13} soft>×{n}</Text>
             </Box>
           )}
         </For>
@@ -90,7 +90,7 @@ function Page(p: About) {
   return (
     <Box pad={{ bottom: 14 }} gap={12}>
       <PageHead>
-        <Text size={17} weight={700} grow={1}>{name}</Text>
+        <Text size={17} weight={600} grow={1}>{name}</Text>
       </PageHead>
       <Box dir="row" align="center" gap={12} pad={{ x: 12 }}>
         {"kind" in p ? (
@@ -101,14 +101,14 @@ function Page(p: About) {
           </Box>
         )}
         <Box grow={1} gap={8}>
-          <Text size={14} soft lead={1.45}>{about}</Text>
-          <Show when={"kind" in p && does(p.kind)}>{(d) => <Text size={13} soft>{d()}</Text>}</Show>
+          <Text size={15} lead={1.4}>{about}</Text>
+          <Show when={"kind" in p && does(p.kind)}>{(d) => <Text size={13} soft lead={1.35}>{d()}</Text>}</Show>
         </Box>
       </Box>
       <Show when={may()} fallback={<Box pad={{ x: 12 }}><Text size={13} soft>{"kind" in p ? "None in hand: the town gives more as it grows." : "Pick it when the town grows."}</Text></Box>}>
         <Box pad={{ x: 12 }}>
-          <Press h={44} round={16} align="center" justify="center" fill="ink/0.85" onTap={take}>
-            <Text size={14} weight={600} ink="glass">{"kind" in p ? "Build" : "Take"}</Text>
+          <Press h={50} round={25} align="center" justify="center" fill={"kind" in p ? BLUEPRINTS[p.kind].color : road(p.road).color} onTap={take}>
+            <Text size={17} weight={600} ink="white">{"kind" in p ? "Build" : "Take"}</Text>
           </Press>
         </Box>
       </Show>

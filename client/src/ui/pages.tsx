@@ -54,9 +54,9 @@ interface Shown {
 /** A page's head: the way back, and what the page is. */
 export function PageHead(props: { children: JSX.Element }) {
   return (
-    <Box dir="row" align="center" gap={10} pad={{ left: 8, right: 16, top: 12, bottom: 10 }}>
-      <Press w={36} h={36} round={18} align="center" justify="center" onTap={pop}>
-        <Line d="M15 5l-7 7 7 7" size={20} width={2.6} />
+    <Box dir="row" align="center" gap={10} pad={{ left: 14, right: 16, top: 16, bottom: 10 }}>
+      <Press w={30} h={30} round={15} align="center" justify="center" fill="ink/0.14" onTap={pop}>
+        <Line d="M15 5l-7 7 7 7" size={15} width={3} ink="ink/0.7" />
       </Press>
       {props.children}
     </Box>

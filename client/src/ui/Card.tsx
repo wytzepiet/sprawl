@@ -117,7 +117,7 @@ function BuildingLines(props: { b: Building; id: number }) {
                     return (
                       <Row label={GOODS[w.good].label}>
                         <Bar value={left()} color={left() < 0.3 ? BAD : GOOD} />
-                        <Text size={12} soft>{w.by !== null ? "on its way" : why(props.b, props.id, w.good)}</Text>
+                        <Text size={13} soft>{w.by !== null ? "on its way" : why(props.b, props.id, w.good)}</Text>
                       </Row>
                     );
                   }}
@@ -147,7 +147,7 @@ function BuildingLines(props: { b: Building; id: number }) {
             {([good, s]) => (
               <Row label={GOODS[good].label}>
                 <Bar value={s.level / Math.max(1, s.cap)} color={s.level < 1 ? BAD : GOODS[good].color} />
-                <Text size={12} soft>{`${Math.floor(s.level)} / ${s.cap}`}</Text>
+                <Text num size={13} soft>{`${Math.floor(s.level)} / ${s.cap}`}</Text>
               </Row>
             )}
           </For>
@@ -178,13 +178,13 @@ export function Header(props: { title: string; sub?: string; icon?: JSX.Element;
     <Box dir="row" align="center" gap={10} pad={{ x: 16, top: 14, bottom: 10 }}>
       {props.icon}
       <Box grow={1} gap={2}>
-        <Text size={16} weight={600} lines={1}>{props.title}</Text>
+        <Text size={17} weight={600} lines={1}>{props.title}</Text>
         <Show when={props.sub}>
-          <Text size={12} soft lines={1}>{props.sub}</Text>
+          <Text size={13} soft lines={1}>{props.sub}</Text>
         </Show>
       </Box>
-      <Press w={28} h={28} round={14} align="center" justify="center" onTap={props.onClose ?? (() => select(null))}>
-        <Icon d={CLOSE} size={14} stroke={2.4} ink="ink/0.6" />
+      <Press w={30} h={30} round={15} align="center" justify="center" fill="ink/0.14" onTap={props.onClose ?? (() => select(null))}>
+        <Icon d={CLOSE} size={12} stroke={3} ink="ink/0.7" />
       </Press>
     </Box>
   );

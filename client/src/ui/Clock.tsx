@@ -39,8 +39,8 @@ export default function Clock() {
   };
   const time = () => (
     <Box dir="row" align="center" gap={6}>
-      <Text size={12} weight={600} soft>Day {Math.max(1, town().day)}</Text>
-      <Text serif size={19} w={52}>{clock(timeOfDay())}</Text>
+      <Text size={13} weight={600} soft>Day {Math.max(1, town().day)}</Text>
+      <Text num size={17}>{clock(timeOfDay())}</Text>
     </Box>
   );
   return (
@@ -51,7 +51,7 @@ export default function Clock() {
         <For each={HOURS}>
           {(hour) => (
             <Press w={28} h={28} round={14} align="center" justify="center" onTap={() => runTo(hour)}>
-              <Text size={11} weight={600} ink="ink/0.6">{String(hour).padStart(2, "0")}</Text>
+              <Text num size={12} ink="ink/0.7">{String(hour).padStart(2, "0")}</Text>
             </Press>
           )}
         </For>

@@ -67,8 +67,8 @@ export interface BoxProps extends Common {
   pad?: number | { x?: number; y?: number; top?: number; right?: number; bottom?: number; left?: number };
   /** A row too wide for its room goes on in another line, `gap` below. */
   wrap?: boolean;
-  /** Across the way it runs. */
-  align?: "start" | "center" | "end" | "stretch";
+  /** Across the way it runs; a row's words on one baseline, `baseline`. */
+  align?: "start" | "center" | "end" | "stretch" | "baseline";
   /** Along it. */
   justify?: "start" | "center" | "end" | "between";
   fill?: string;
@@ -96,8 +96,8 @@ export interface InkProps extends BoxProps {
 export interface TextProps extends Common {
   size?: number;
   weight?: 500 | 600 | 700;
-  /** The numbers' face. */
-  serif?: boolean;
+  /** A number: figures all as wide, a little heavier. */
+  num?: boolean;
   ink?: string;
   /** The ink, softened. */
   soft?: boolean;
@@ -135,7 +135,7 @@ export function paint(c: string | undefined): string | undefined {
 }
 
 const px = (v: number | undefined) => (v === undefined ? undefined : `${v}px`);
-const FLEX = { start: "flex-start", center: "center", end: "flex-end", stretch: "stretch", between: "space-between" } as const;
+const FLEX = { start: "flex-start", center: "center", end: "flex-end", stretch: "stretch", between: "space-between", baseline: "baseline" } as const;
 
 /** Top, right, bottom, left: a side named, else its axis, else none. */
 const pads = (p: BoxProps["pad"]) =>
@@ -276,15 +276,14 @@ export function Text(props: TextProps) {
     ...common(props, false),
     "flex-shrink": props.w === undefined ? undefined : "0",
     "font-size": px(props.size),
-    // A weight or the face named sets the face; else it is the words' round it.
-    "font-family": props.serif ? "Nunito" : props.weight ? "Inter" : undefined,
-    "font-weight": props.serif ? "700" : props.weight ? String(props.weight) : undefined,
-    color: paint(props.ink ?? (props.soft ? "ink/0.72" : undefined)),
+    "font-weight": props.weight ? String(props.weight) : undefined,
+    // Softened as Apple's secondary words are: a cool grey, not a dim white.
+    color: props.ink ? paint(props.ink) : props.soft ? "rgba(235,235,245,0.6)" : undefined,
     "line-height": props.lead === undefined ? undefined : String(props.lead),
     "text-align": props.align,
     "-webkit-line-clamp": props.lines && props.lines > 1 ? String(props.lines) : undefined,
   });
-  const cls = () => `t${props.lines === 1 ? " one" : props.lines ? " some" : ""}`;
+  const cls = () => `t${props.num ? " n" : ""}${props.lines === 1 ? " one" : props.lines ? " some" : ""}`;
   return (
     <span ref={(el) => hook(el, props)} class={cls()} style={style()}>
       {props.children}

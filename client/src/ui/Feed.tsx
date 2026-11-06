@@ -33,8 +33,8 @@ function NewsCard(props: { news: News }) {
         <Icon d={SUN} size={20} ink="white" />
       </Box>
       <Box grow={1} gap={2}>
-        <Text size={14.5} weight={600} lines={1}>{props.news.text}</Text>
-        <Text size={12.5} soft lines={1}>{props.news.sub}</Text>
+        <Text size={15} weight={600} lines={1}>{props.news.text}</Text>
+        <Text size={13} soft lines={1}>{props.news.sub}</Text>
       </Box>
     </Box>
   );

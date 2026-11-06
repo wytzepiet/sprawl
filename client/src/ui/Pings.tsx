@@ -118,7 +118,7 @@ function One(props: { ping: Ping }) {
                 </div>
                 <Show when={props.ping.label(props.ping.n)}>
                   {(l) => (
-                    <div style={{ position: "absolute", left: `${D + 3}px`, top: "6px", "white-space": "nowrap", font: "700 13px system-ui, sans-serif", color: "white", "text-shadow": "0 1px 3px #000a" }}>{l()}</div>
+                    <div style={{ position: "absolute", left: `${D + 3}px`, top: "6px", "white-space": "nowrap", font: "600 13px -apple-system, BlinkMacSystemFont, Inter, sans-serif", color: "white", "text-shadow": "0 1px 3px #000a" }}>{l()}</div>
                   )}
                 </Show>
               </div>

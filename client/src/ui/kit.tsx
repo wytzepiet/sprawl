@@ -62,12 +62,12 @@ export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?:
   const lit = (i: number) => Math.max(0, 1 - Math.abs(at() - i)) * Math.max(0, Math.min(1, shown()));
   return (
     <Box pad={{ x: 12, top: 14, bottom: 12 }}>
-      <Box dir="row" h={38} round={19} pad={3} fill="ink/0.09" onSize={(ww) => setW(ww)}>
-        <Box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="ink/0.2" opacity={Math.max(0, Math.min(1, shown()))} />
+      <Box dir="row" h={38} round={19} pad={3} fill="#7676803d" onSize={(ww) => setW(ww)}>
+        <Box at={{ left: 3 + at() * seg(), top: 3 }} w={seg()} h={32} round={16} fill="#636366" shadow opacity={Math.max(0, Math.min(1, shown()))} />
         <For each={props.tabs}>
           {(t, i) => (
             <Box grow={1} h={32} align="center" justify="center" onTap={() => props.pick(t)}>
-              <Text size={13} weight={600} ink={`ink/${(0.55 + 0.45 * lit(i())).toFixed(3)}`}>{t[0].toUpperCase() + t.slice(1)}</Text>
+              <Text size={13} weight={600} ink={`ink/${(0.6 + 0.4 * lit(i())).toFixed(3)}`}>{t[0].toUpperCase() + t.slice(1)}</Text>
             </Box>
           )}
         </For>
@@ -79,8 +79,8 @@ export function Tabs<T extends string>(props: { tabs: readonly T[]; on: T; lit?:
 /** A little i on a tile: a tap opens what it is. */
 export function Info(props: { at?: BoxProps["at"]; onTap: () => void }) {
   return (
-    <Press at={props.at} w={18} h={18} round={9} align="center" justify="center" fill="ink/0.08" onTap={props.onTap}>
-      <Text serif size={11.5} weight={600} ink="ink/0.6">i</Text>
+    <Press at={props.at} w={18} h={18} round={9} align="center" justify="center" fill="ink/0.14" onTap={props.onTap}>
+      <Text size={11} weight={700} ink="ink/0.7">i</Text>
     </Press>
   );
 }
@@ -116,8 +116,8 @@ export function Appear(props: BoxProps) {
 }
 
 /**
- * A button on the glass: `big` is the one thing a card is for, solid in a
- * colour; plain is a pill rimmed in ink.
+ * A button on the black, a capsule: `big` is the one thing a card is for,
+ * solid in a colour; plain is a grey one, its words in the colour.
  */
 export function Btn(props: { onTap: () => void; children: JSX.Element; color?: string; big?: boolean; disabled?: boolean }) {
   return (
@@ -125,15 +125,14 @@ export function Btn(props: { onTap: () => void; children: JSX.Element; color?: s
       dir="row"
       align="center"
       gap={6}
-      h={props.big ? 44 : 30}
-      pad={{ x: props.big ? 20 : 12 }}
-      round={22}
-      fill={props.big ? props.color ?? SEA : undefined}
-      stroke={props.big ? undefined : [1.5, "ink/0.18"]}
+      h={props.big ? 50 : 30}
+      pad={{ x: props.big ? 22 : 13 }}
+      round={props.big ? 25 : 15}
+      fill={props.big ? props.color ?? SEA : "ink/0.14"}
       opacity={props.disabled ? 0.4 : 1}
       onTap={() => !props.disabled && props.onTap()}
     >
-      <Text size={props.big ? 15 : 12.5} weight={600} ink={props.big ? "white" : props.color}>
+      <Text size={props.big ? 17 : 13} weight={600} ink={props.big ? "white" : props.color}>
         {props.children}
       </Text>
     </Press>
@@ -225,19 +224,22 @@ export interface Link {
 /** A part of a card under a line saying what it is, ruled off the part above. */
 export function Section(props: { title: string; children: JSX.Element }) {
   return (
-    <Box pad={{ x: 16, y: 10 }} gap={4}>
-      <Box at={{ left: 16, top: 0, right: 16 }} h={1} fill="ink/0.08" />
-      <Text size={12} weight={600} soft>{props.title}</Text>
+    <Box pad={{ x: 16, y: 12 }} gap={6}>
+      <Rule at={{ left: 16, top: 0, right: 16 }} />
+      <Text size={13} weight={600} soft>{props.title}</Text>
       {props.children}
     </Box>
   );
 }
 
+/** A hairline between parts: half a pixel where the screen has them. */
+export const Rule = (props: { at: BoxProps["at"] }) => <Box at={props.at} h={0.5} fill="ink/0.16" />;
+
 /** A label and its value, on one line. */
 export function Row(props: { label: string; children: JSX.Element }) {
   return (
-    <Box dir="row" align="center" justify="between" gap={8} minH={22}>
-      <Text size={13.5} soft lines={1}>{props.label}</Text>
+    <Box dir="row" align="center" justify="between" gap={8} minH={24}>
+      <Text size={15} lines={1}>{props.label}</Text>
       <Box dir="row" align="center" gap={6}>{props.children}</Box>
     </Box>
   );
@@ -258,9 +260,9 @@ export function Bar(props: { value: number; color?: string; w?: number; h?: numb
 /** A line you can go to: a tap opens its card. */
 export function To(props: { link: Link | null | undefined; fallback?: string }) {
   return (
-    <Show when={props.link} fallback={<Text size={13.5} soft>{props.fallback ?? "—"}</Text>}>
+    <Show when={props.link} fallback={<Text size={15} soft>{props.fallback ?? "—"}</Text>}>
       {(l) => (
-        <Text size={13.5} weight={600} lines={1} onTap={() => select(l().id)}>
+        <Text size={15} weight={600} lines={1} onTap={() => select(l().id)}>
           {l().label}
         </Text>
       )}
@@ -271,9 +273,9 @@ export function To(props: { link: Link | null | undefined; fallback?: string }) 
 /** The eye: the camera to it, and after it as it goes. */
 export function Follow(props: { id: number; fallback?: number }) {
   return (
-    <Press dir="row" align="center" gap={4} h={24} pad={{ x: 8 }} round={12} stroke={[1.5, "ink/0.15"]} onTap={() => setFollowing(getEntity(props.id)?.position || !props.fallback ? props.id : props.fallback)}>
-      <Line d={EYE} size={12} width={2.4} ink="ink/0.6" />
-      <Text size={11} weight={600} soft>follow</Text>
+    <Press dir="row" align="center" gap={4} h={26} pad={{ x: 10 }} round={13} fill="ink/0.14" onTap={() => setFollowing(getEntity(props.id)?.position || !props.fallback ? props.id : props.fallback)}>
+      <Line d={EYE} size={13} width={2.4} ink="ink/0.7" />
+      <Text size={12} weight={600} ink="ink/0.7">follow</Text>
     </Press>
   );
 }

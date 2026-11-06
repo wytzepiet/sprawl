@@ -50,8 +50,8 @@ export const lastRoad = createRoot(() => {
 export function RoadsHead(props: { info: (k: RoadKind) => void }) {
   return (
     <Box pad={{ x: 12, top: 14, bottom: 12 }} gap={10}>
-    <Box dir="row" align="center" gap={6}>
-      <Text size={13} weight={600}>{town().roads}</Text>
+    <Box dir="row" align="baseline" gap={5}>
+      <Text num size={17}>{town().roads}</Text>
       <Text size={13} soft>tiles of road left</Text>
     </Box>
     <Box dir="row" gap={6}>
@@ -59,10 +59,10 @@ export function RoadsHead(props: { info: (k: RoadKind) => void }) {
         {(r) => {
           const on = () => inHand() === r.id;
           return (
-            <Press grow={1} h={60} round={16} gap={4} align="center" justify="center" fill={on() ? r.color : "ink/0.05"} onTap={() => (on() ? setTool(null) : take(r.id))}>
+            <Press grow={1} h={60} round={16} gap={4} align="center" justify="center" fill={on() ? r.color : "ink/0.08"} onTap={() => (on() ? setTool(null) : take(r.id))}>
               <Icon d={r.glyph} size={20} ink={on() ? "white" : "ink/0.72"} />
               <Box dir="row" align="center" gap={4}>
-                <Text size={12.5} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</Text>
+                <Text size={13} weight={600} ink={on() ? "white" : "ink/0.72"}>{r.label}</Text>
                 <Info onTap={() => props.info(r.id)} />
               </Box>
             </Press>
