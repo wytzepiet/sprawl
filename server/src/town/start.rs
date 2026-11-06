@@ -21,13 +21,13 @@ pub fn found(world: &mut World, now: GameTime) {
     let Some((at, end)) = shore(&mut world.map) else { return };
     world.town.start = Some(GridCoord { x: (at.x + end.x) / 2, y: (at.y + end.y) / 2 });
     super::standing(world);
-    // Two cottages a little inland, dry land all round, apart.
+    // Two cottages a little inland, open grass all round, apart.
     let mut homes: Vec<GridCoord> = Vec::new();
     'out: for r in 5..14 {
         for i in 0..8 * r {
             let (dx, dy) = ring(r, i);
             let p = GridCoord { x: end.x + dx, y: end.y + dy };
-            let dry = (-2..=2).all(|ex| (-2..=2).all(|ey| matches!(world.map.terrain.get(&(p.x + ex, p.y + ey)), Some(land::TerrainType::Grass | land::TerrainType::Forest))));
+            let dry = (-2..=2).all(|ex| (-2..=2).all(|ey| world.map.terrain.get(&(p.x + ex, p.y + ey)) == Some(&land::TerrainType::Grass)));
             if dry && homes.iter().all(|h| (h.x - p.x).abs().max((h.y - p.y).abs()) >= 3) && super::homes::house(world, p, now).is_some() {
                 homes.push(p);
                 if homes.len() == 2 {
@@ -38,7 +38,8 @@ pub fn found(world: &mut World, now: GameTime) {
     }
 }
 
-/// A short street from the fishery's yard straight inland, laid free, so
+/// A short street from the fishery's yard straight inland over open
+/// grass, never cut through a wood, laid free, so
 /// the first shop has somewhere to stand: its far end.
 fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
     let b = map.building(fishery)?;
@@ -48,7 +49,7 @@ fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
     let mut path = Vec::new();
     for k in 1..=LANE {
         let p = GridCoord { x: m.x + k * dx, y: m.y + k * dy };
-        let dry = matches!(map.terrain.get(&(p.x, p.y)), Some(land::TerrainType::Grass | land::TerrainType::Forest));
+        let dry = map.terrain.get(&(p.x, p.y)) == Some(&land::TerrainType::Grass);
         if !dry || map.occupied.contains_key(&(p.x, p.y)) {
             break;
         }

@@ -35,6 +35,8 @@ const MIGRATIONS: &[Migration] = &[
     // Fronts narrowed to two tiles, a dock each and one to load at; towns
     // begin beside a wood.
     None,
+    // Towns begin on open grass by the wood, not in it.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
