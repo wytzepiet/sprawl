@@ -202,7 +202,7 @@ const easing = new Map<number, { drive: Drive; x: number; v: number; then: numbe
 /** A car gone, not mounted again: what was kept for it across updates. */
 export const forgetCar = (id: number) => (easing.delete(id), forgetDrive(id));
 
-/** A trip on the roads, driven as `driver.ts` steers it, at the distance
+/** A trip on the roads, driven as `driver.ts` pins it to its way, at the distance
  *  the trip's physics puts it, eased: the drawn distance chases it as a
  *  spring does, fed the server's own speed, so on a steady road it is
  *  exactly there and a change of pedal comes on over half a second, not

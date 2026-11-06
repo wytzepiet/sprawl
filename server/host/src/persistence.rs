@@ -37,6 +37,9 @@ const MIGRATIONS: &[Migration] = &[
     None,
     // Towns begin on open grass by the wood, not in it.
     None,
+    // A trip's parking legs are curves from pose to pose, not a driver's
+    // moves: a trip under way in an old save cannot be read.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

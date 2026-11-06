@@ -59,7 +59,7 @@ A building, a vehicle, a box that has no flat drawing is not finished.
   harbour's park, each dock and its box.
 - **Vehicles where the 3D view has them.** Their poses come from
   `engine/objects/motion.ts`, which `CarObject.tsx` places its meshes by
-  too: a trip driven as `driver.ts` steers it, a run, the ferry's voyage,
+  too: a trip driven as `driver.ts` pins it, a run, the ferry's voyage,
   the tug's shunt, the deck's slots, a lorry's box straight behind it
   when parked. The flat view takes the server's distance as it is; the
   3D one eases a change of pedal in over half a second, the one

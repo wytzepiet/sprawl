@@ -34,19 +34,15 @@ drawn as road and gone with it (`SPOT_OUT`, `LANE`, and `DRIVE_OUT`,
 `DRIVE_LANE` in the client's `dressing.ts`). The driveway as a kind of
 road went 2026-10-04.
 
-## 3. The yard
+## 3. Docks
 
-A depot, a farm and a harbour keep a yard, laid alike (`park`): a lane
-straight in from a gate in the middle of its front, and a row of docks
-either side, a docked lorry's cab facing the lane and its box behind it.
-A lorry drives in to a dock's mouth, swings across the lane away from it
-as it pulls up `PAST` beyond (`SWING`), and backs in round a wide arc,
-on a way planned from where it stands (`reverse`); it leaves forward, up
-the lane to the gate. A yard is one lorry moving at a time: one turning
-in or pulling out holds the yard's door (`World::stretch`), so one coming
-waits at the gate and one leaving waits in its dock. A lorry takes a
-dock, its own depot's included, and anything else at a yard stops at the
-door; with every dock taken, the lorry's trip waits and tries again. A harbour's docks are on one side of its lane, its quay's pad on the other.
+A maker's front has its docks notched into the wall at its gate
+(`dock_bays`): a box truck goes on past its dock along the street,
+stops, and backs into it in one curve, its tail to the loading door and
+its nose on the pavement; it pulls out forward, either way along the
+street. One lorry moves at a front at a time: one turning in or pulling
+out holds the front's door (`World::stretch`). With every dock taken,
+the lorry's trip waits and tries again.
 
 ## 4. Kerb bays
 
@@ -61,11 +57,10 @@ street runs all along one of its sides (`World::fit`: "No street along a
 whole side, for its parking"). A bay is the building's it fronts, so bays
 share out with no rule; the client paves the same (`town/surface.ts`).
 
-A square bay is turned into at the tightest a car turns (0.45) from the
-road's middle, and backed out round the same arc. A car coming the other
-way parks on the far kerb as on a quiet street, across the road, facing
-against the traffic there, and leaves forward the way it faces; its
-booking says which way it took the bay (`Window::side`). Staff park in
+A car turns into a square bay nose first, from the lane beside it or
+from across the road, in one curve, and backs out onto either lane in
+another; its booking says which way it came and which it leaves by
+(`Window::side`, `Window::exit`). Staff park in
 bays too, and what the bays do not hold stops at the door. A visitor's
 tap at a kind without vehicles seats seven at once (`blueprint::seats`).
 
@@ -90,10 +85,16 @@ A trip carries the stretches of its route driven backwards
 a vehicle stops on the node where its gear changes, stands `CUSP_MS`,
 and pulls away the other way, and a trip ends with a stop on its last
 node, not an arrival at speed. Backing is a walking pace
-(`REVERSE_SPEED`). The client's drive (`driver.ts`) fits each part
-between cusps from where the vehicle stood to where it will stand, with
-no jump leaving, at a cusp or parking; `bun run jolt` counts what still
-jumps.
+(`REVERSE_SPEED`).
+
+Every leg between the street and a place to stand is one curve, a cubic
+Bézier from pose to pose (`model::Manoeuvre`), the same for every place
+of a kind and never searched for, so every place has every way. The
+client pins each vehicle to its way (`driver.ts`): its middle on it,
+pointing along it, nothing steered. Until 2026-11-06 the server planned
+each manoeuvre as a driver's moves, kept clear of what stood round it,
+and the client steered a lead axle along the route; that made realistic
+turns and a steady trickle of loops, slides and places with no way in.
 
 ## 7. Giving way at a lot
 
