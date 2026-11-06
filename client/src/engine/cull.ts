@@ -63,6 +63,12 @@ export class Culler {
     setMeshVisible(mesh, shown);
   }
 
+  /** Whether a point is in what is drawn: the view, a margin past it. */
+  sees(x: number, y: number) {
+    const [v0, w0, v1, w1] = this.view;
+    return x >= v0 && x <= v1 && y >= w0 && y <= w1;
+  }
+
   private meets([x0, y0, x1, y1]: Area) {
     const [v0, w0, v1, w1] = this.view;
     return x1 >= v0 && x0 <= v1 && y1 >= w0 && y0 <= w1;

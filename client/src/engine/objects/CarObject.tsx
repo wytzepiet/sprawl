@@ -180,7 +180,14 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   // for one, every time.
   const light = (m: Moment, lift: number) => look.light !== undefined && beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
   if (moving) light(first.m, first.lift);
+  // Out of view, worked out only now and then, enough to see it come in
+  // from the view's margin: a big town's cars are mostly elsewhere.
+  let worked = 0;
   const stop = moving || first.m.bed || car.role === "Ferry" ? ctx.beforeRender(() => {
+    const at = carPoses.get(id);
+    const clock = performance.now();
+    if (at && !ctx.cull.sees(at[0], at[1]) && clock - worked < OUT_OF_VIEW_MS) return;
+    worked = clock;
     const { m, lift } = now();
     if (!m) return;
     load(m, lift, simNow());
@@ -257,6 +264,9 @@ function liftOf(t: Car["trip"] & {}): (dist: number) => number {
     return heightAlong(heights, k + f) * HALF_LEVEL;
   };
 }
+
+/** How often a vehicle out of view is worked out. */
+const OUT_OF_VIEW_MS = 400;
 
 /** How quickly the drawn distance closes on the physics', per second, and
  *  the step it is eased in. */
