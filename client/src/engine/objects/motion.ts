@@ -57,7 +57,7 @@ export function travelled(t: Trip, now: number): [number, number] {
   return a > 0 && dt > until ? [p + CRUISE * (dt - until), CRUISE] : [p, v];
 }
 
-/** The rig a vehicle steers as: a lorry's cab and its flatbed, or a car. */
+/** How a vehicle is pinned to its way: a lorry, or a car. */
 const rigOf = (car: Car): Rig => (car.role === "Truck" ? LORRY_RIG : CAR_RIG);
 
 /** Each vehicle's drive, kept while its trip's route and lanes are the

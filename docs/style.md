@@ -224,7 +224,9 @@ The order for the sessions after this one:
    too tight for a car to turn: a driveway two-thirds of a tile from
    the street, a ring's spots; the kerb bays to come want room. The 0.45 above may be the wrong
    number: 5.5 m is a turning circle at the outer wheel, kerb to kerb,
-   and the middle of a car turns at about 4 m, 0.33.
+   and the middle of a car turns at about 4 m, 0.33. Since 2026-11-06
+   nothing is steered: a vehicle is pinned to its drawn way, and a
+   parking leg is one curve (`parking.md` §6), simple over real.
 5. **The canon**: its first entries are in (§The canon); a first
    rebuild of one of them from the guides alone shows whether they carry
    it.

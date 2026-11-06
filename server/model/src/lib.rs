@@ -532,26 +532,48 @@ pub struct Pose {
     pub heading: f64,
 }
 
-/// One gear's drive of a parking plan: backwards or not, the wheel
-/// turning evenly from one curvature to another (positive to the left),
-/// so far (`park::Move`).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Move {
-    pub back: bool,
-    pub from: f64,
-    pub to: f64,
-    pub length: f64,
-}
-
-/// An edge of a trip driven by a parking plan, the edge from `route[edge]`
-/// on: the moves driven from `from`, the rear axle (`park::ways`).
+/// An edge of a trip between the street and a place to stand, the edge
+/// from `route[edge]` on: the vehicle's middle from one pose to the other
+/// along one smooth curve, leaving and arriving the way it moves, forward
+/// or backing (`back`). Nothing about it is steered: what the server
+/// measures, the client draws (`driver.ts`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Manoeuvre {
     pub edge: usize,
     pub from: Pose,
-    pub moves: Vec<Move>,
+    pub to: Pose,
+    pub back: bool,
+}
+
+impl Manoeuvre {
+    /// How many pieces the curve is drawn in (`STEPS` in `driver.ts`).
+    pub const STEPS: usize = 24;
+
+    /// The curve, a cubic Bézier: from `from` along the way it moves, to
+    /// `to` along the way it moves, each end's arm two fifths of the
+    /// chord, so a quarter turn is near a quarter circle.
+    pub fn points(&self) -> Vec<[f64; 2]> {
+        let (a, b) = (self.from.at, self.to.at);
+        let arm = 0.4 * (b[0] - a[0]).hypot(b[1] - a[1]);
+        let way = |h: f64| if self.back { h + std::f64::consts::PI } else { h };
+        let (h0, h1) = (way(self.from.heading), way(self.to.heading));
+        let c0 = [a[0] + h0.cos() * arm, a[1] + h0.sin() * arm];
+        let c1 = [b[0] - h1.cos() * arm, b[1] - h1.sin() * arm];
+        (0..=Self::STEPS)
+            .map(|i| {
+                let t = i as f64 / Self::STEPS as f64;
+                let u = 1.0 - t;
+                let (w0, w1, w2, w3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+                [w0 * a[0] + w1 * c0[0] + w2 * c1[0] + w3 * b[0], w0 * a[1] + w1 * c0[1] + w2 * c1[1] + w3 * b[1]]
+            })
+            .collect()
+    }
+
+    /// How long it is, as drawn.
+    pub fn length(&self) -> f64 {
+        self.points().windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum()
+    }
 }
 
 /// A good: what a yard, a shelf or a crate holds, and what a family

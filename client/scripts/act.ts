@@ -88,7 +88,7 @@ const game = await connect({
     for (const op of msg.data.ops) {
       if (op.op !== "Upsert" || op.data.object.kind !== "Car" || !op.data.object.data.trip) continue;
       const { role, trip } = op.data.object.data;
-      const t: Recorded = { car: op.data.id, role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing, cusps: trip.cusps, total_route_length: trip.total_route_length, leaves: trip.leaves, stands: trip.stands, manoeuvres: trip.manoeuvres };
+      const t: Recorded = { car: op.data.id, role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing, cusps: trip.cusps, total_route_length: trip.total_route_length, manoeuvres: trip.manoeuvres };
       trips.set(`${t.car}:${JSON.stringify(t.route)}`, t);
     }
   },

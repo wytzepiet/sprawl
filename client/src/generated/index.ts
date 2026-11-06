@@ -25,7 +25,6 @@ export type * from "./Job";
 export type * from "./LevelState";
 export type * from "./Lift";
 export type * from "./Manoeuvre";
-export type * from "./Move";
 export type * from "./News";
 export type * from "./Offer";
 export type * from "./Operation";
