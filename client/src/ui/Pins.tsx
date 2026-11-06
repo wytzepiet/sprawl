@@ -1,6 +1,8 @@
 import { Box, Icon, Text } from "~ui";
 import { For, Show, createMemo } from "solid-js";
-import { reached, signed } from "../state/gameObjects";
+import { reached, signed, signedOne } from "../state/gameObjects";
+
+const same = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 import { now } from "../state/town";
 import { select } from "../state/selection";
 import { PATIENCE_MS } from "../generated/rows";
@@ -16,12 +18,19 @@ import type { Building, Want } from "../generated";
  * opens the card.
  */
 export default function Pins() {
-  const wanting = createMemo(() => signed().filter((e) => (e.object.data as Building).home?.wants.length));
-  const cut = createMemo(() => signed().filter((e) => !reached(e)));
+  // By id: a building the server sends again is a new entry, and pins
+  // keyed by it were taken down and put up again, blinking, each time.
+  const wanting = createMemo(() => signed().filter((e) => (e.object.data as Building).home?.wants.length).map((e) => e.id), [], { equals: same });
+  const cut = createMemo(() => signed().filter((e) => !reached(e)).map((e) => e.id), [], { equals: same });
+  // As it was last, for the moment between its going and its pin's.
+  const building = (id: number) => {
+    let last = signedOne(id)!.object.data as Building;
+    return () => (last = (signedOne(id)?.object.data as Building | undefined) ?? last);
+  };
   return (
     <>
-      <For each={wanting()}>{(e) => <Over id={e.id} building={() => e.object.data as Building} />}</For>
-      <For each={cut()}>{(e) => <NoRoad id={e.id} building={() => e.object.data as Building} />}</For>
+      <For each={wanting()}>{(id) => <Over id={id} building={building(id)} />}</For>
+      <For each={cut()}>{(id) => <NoRoad id={id} building={building(id)} />}</For>
     </>
   );
 }

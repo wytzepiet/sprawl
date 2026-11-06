@@ -46,6 +46,11 @@ export function signed(): GameObjectEntry[] {
   signsVersion();
   return [...signedEntries.values()];
 }
+/** One building carrying a sign, as it is now: read on the signs' version. */
+export function signedOne(id: number): GameObjectEntry | undefined {
+  signsVersion();
+  return signedEntries.get(id);
+}
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
 /** Told of each building as it changes: what it was, if it was seen,
