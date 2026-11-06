@@ -1,16 +1,16 @@
-//! The blueprints' game columns, and the loads the sim moves them in, for
-//! the client: written beside its generated types.
+//! The blueprints' game columns, for the client: written beside its
+//! generated types.
 
 #[cfg(test)]
 mod tests {
-    use model::blueprint::blueprint;
+    use model::blueprint::{blueprint, size};
     use model::BuildingKind;
 
     /// The game's half of each row, written where the client reads it,
-    /// beside ts-rs's types (`.cargo/config.toml`): what a kind is built
-    /// from, its footprint and yard, its quay; a good's package; what a
-    /// lorry and a van carry; a depot's lorries. `blueprints.ts` keeps
-    /// only the look.
+    /// beside ts-rs's types (`.cargo/config.toml`): its size,
+    /// what it makes and from what, its seats, its bays at the kerb and docks
+    /// at its front, and its vehicles. `blueprints.ts`
+    /// keeps only the look.
     #[test]
     fn the_client_reads_the_rows() {
         let Ok(dir) = std::env::var("TS_RS_EXPORT_DIR") else { return };
@@ -20,30 +20,27 @@ mod tests {
              import type { BuildingKind } from \"./BuildingKind\";\n\
              import type { Good } from \"./Good\";\n\n\
              /** The game's half of each kind's row (`blueprint.rs`). */\n\
-             export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {\n",
+             export const ROWS: Record<BuildingKind, { size: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; bays: number; docks: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {\n",
         );
         for kind in BuildingKind::ALL {
             let b = blueprint(kind);
-            let materials: Vec<_> = b.materials.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
-            let materials = if materials.is_empty() { "{}".into() } else { format!("{{ {} }}", materials.join(", ")) };
+            let takes: Vec<_> = b.takes.iter().map(|(g, n)| format!("{g:?}: {n}")).collect();
+            let takes = if takes.is_empty() { "{}".into() } else { format!("{{ {} }}", takes.join(", ")) };
             let makes = b.makes.map_or("null".into(), |g| format!("\"{g:?}\""));
-            ts += &format!("  {kind:?}: {{ materials: {materials}, size: {}, lot: {}, quay: {}, makes: {makes}, forklifts: {} }},\n", pair(b.size), pair(b.lot), b.quay, b.forklifts);
+            ts += &format!(
+                "  {kind:?}: {{ size: {}, makes: {makes}, every: {}, takes: {takes}, seats: {}, bays: {}, docks: {}, lorries: {}, forklifts: {}, farm: {}, loud: {} }},\n",
+                pair(size(kind)),
+                b.every,
+                b.seats,
+                b.bays(),
+                b.docks(),
+                b.lorries,
+                b.forklifts,
+                b.farm,
+                b.loud
+            );
         }
-        let packages: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: {}", g.per_package())).collect();
-        ts += &format!("}};\n\n/** Units a package of each good holds (`Good::per_package`). */\nexport const PER_PACKAGE: Record<Good, number> = {{ {} }};\n", packages.join(", "));
-        let names: Vec<_> = crate::market::GOODS.iter().map(|g| format!("{g:?}: [\"{}\", \"{}\"]", g.package().0, g.package().1)).collect();
-        ts += &format!("\n/** What a package of each good is called, one and several (`Good::package`). */\nexport const PACKAGE: Record<Good, [string, string]> = {{ {} }};\n", names.join(", "));
-        ts += &format!(
-            "\n/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */\nexport const LOAD = {};\nexport const VAN_LOAD = {};\nexport const HANDLE_MS = {};\n",
-            crate::haul::LOAD,
-            crate::economy::VAN_LOAD,
-            map::HANDLE_MS
-        );
-        ts += &format!(
-            "\n/** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */\nexport const LORRY_PRICE = {};\nexport const MORE_LORRIES = {};\n",
-            crate::haul::LORRY_PRICE,
-            crate::haul::MORE_LORRIES
-        );
+        ts += &format!("}};\n\n/** A forklift's lift of one crate (`map::HANDLE_MS`). */\nexport const HANDLE_MS = {};\n\n/** How long a family waits for what it wants before it leaves (`town::homes::PATIENCE_MS`). */\nexport const PATIENCE_MS = {};\n", map::HANDLE_MS, crate::town::homes::PATIENCE_MS);
         std::fs::write(std::path::Path::new(&dir).join("rows.ts"), ts).unwrap();
     }
 }

@@ -1,6 +1,6 @@
 import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
-import { CAB, TRAILER } from "./roadGeometry";
+import { CAB, TRUCK } from "./roadGeometry";
 import type { RGB } from "../rgb";
 import type { Sail, Pose } from "../../generated";
 
@@ -14,12 +14,13 @@ export type Shape = MeshGeometry & { colors: number[] };
 export type Part = [MeshGeometry, [number, number, number], RGB];
 
 /** Parts as one shape, each a geometry moved to `at` and painted a shade
- *  of what the bucket's colour is multiplied by. */
+ *  of what the bucket's colour is multiplied by, mapped as it was. */
 export function shape(parts: Part[]): Shape {
-  const out: Shape = { positions: [], normals: [], indices: [], colors: [] };
+  const out: Shape = { positions: [], normals: [], indices: [], colors: [], uvs: [] };
   for (const [g, [x, y, z], [r, gr, b]] of parts) {
     const base = out.positions.length / 3;
     for (let i = 0; i < g.positions.length; i += 3) out.positions.push(g.positions[i] + x, g.positions[i + 1] + y, g.positions[i + 2] + z), out.colors.push(r, gr, b, 1);
+    out.uvs!.push(...(g.uvs ?? Array<number>((g.positions.length / 3) * 2).fill(0)));
     out.normals.push(...g.normals);
     out.indices.push(...g.indices.map((k) => k + base));
   }
@@ -57,13 +58,12 @@ const WHITE: RGB = [1, 1, 1];
 export const CHASSIS: RGB = [0.28, 0.29, 0.31];
 
 /**
- * A flatbed: what a lorry's cab pulls, TRAILER long and wide, and a
- * van's body behind its cab, shorter: a deck on a dark chassis, low
+ * A flatbed: a lorry's or a van's body behind its cab, TRUCK wide: a deck on a dark chassis, low
  * dropsides and a headboard behind the cab; the packages on it open to
  * the sky (`goods.ts`). Its colours its own: its bucket is white. Its
  * middle on the origin, ahead +y, its base on z = 0.
  */
-const { w: W, l: L } = TRAILER;
+const W = TRUCK.w;
 const BED = 0.045;
 const WALL = 0.02;
 /** The deck's top, where what it carries stands. */
@@ -79,14 +79,12 @@ function flatbed(l: number): Shape {
     side(W - 2 * WALL, WALL, 0, (l - WALL) / 2, 0.16),
   ]);
 }
-/** The lorry's flatbed, and the van's, `VAN_BED` long (`motion.ts`). */
-export const LORRY_BED = { key: "bed_lorry", geo: flatbed(L) };
-export const vanBed = (l: number) => ({ key: "bed_van", geo: flatbed(l) });
+/** A flatbed `l` long (`bedLength` in `motion.ts`). */
+export const bedShape = (l: number) => ({ key: `bed_${l.toFixed(3)}`, geo: flatbed(l) });
 
-/** A lorry's tractor, CAB long: the cab-over cab at the front, `CAB_BLOCK`
- *  of it, its windows a dark band under the roof; behind it the chassis
- *  bare, the rear wheels either side and the fifth wheel on it where the
- *  hitch is (`LORRY_RIG`), under a box's nose. Its middle on the origin,
+/** A lorry's or a van's cab end, CAB long: the cab-over cab at the front,
+ *  `CAB_BLOCK` of it, its windows a dark band under the roof; behind it
+ *  the chassis, its front wheels either side, under the flatbed. Its middle on the origin,
  *  ahead +y, its base on z = 0; the bucket's colour is the cab's. */
 export const CAB_BLOCK = 0.095;
 const TYRE: RGB = [0.12, 0.12, 0.13];
@@ -94,7 +92,6 @@ const [CAB_FRONT, HITCH] = [CAB.l / 2, -CAB.l / 3];
 export const LORRY_SHAPE = shape([
   [box(CAB.w - 0.05, CAB.l, 0.03), [0, 0, 0.03], CHASSIS],
   [box(CAB.w, 0.055, 0.05), [0, HITCH, 0.025], TYRE],
-  [box(CAB.w - 0.06, 0.07, 0.012), [0, HITCH, 0.05], [0.2, 0.2, 0.22]],
   [box(CAB.w, CAB_BLOCK, CAB.h - 0.07), [0, CAB_FRONT - CAB_BLOCK / 2, 0.02 + (CAB.h - 0.07) / 2], WHITE],
   [box(CAB.w - 0.006, CAB_BLOCK - 0.006, 0.04), [0, CAB_FRONT - CAB_BLOCK / 2, CAB.h - 0.03], [0.22, 0.25, 0.3]],
   [box(CAB.w, CAB_BLOCK, 0.012), [0, CAB_FRONT - CAB_BLOCK / 2, CAB.h - 0.006], WHITE],

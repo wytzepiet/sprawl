@@ -1,4 +1,4 @@
-/* The page's faces, the GPU's UI's own (`public/fonts`). */
+/* The interchange's map of levels' faces (`public/fonts`); the UI's are in `ui/ink.css`. */
 @font-face { font-family: Quicksand; font-weight: 500; src: url(/fonts/Quicksand-500.ttf); }
 @font-face { font-family: Quicksand; font-weight: 600; src: url(/fonts/Quicksand-600.ttf); }
 @font-face { font-family: Fraunces; src: url(/fonts/Fraunces-400.ttf); }
@@ -6,6 +6,8 @@
 html, body {
   font-family: Quicksand, system-ui, sans-serif;
   margin: 0;
+  /* Black past the canvas, as the bezel is: what Safari shows round it and tints its bars with. */
+  background: #000;
   padding: 0;
   overflow: hidden;
   width: 100%;

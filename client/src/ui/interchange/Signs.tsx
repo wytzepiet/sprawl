@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Text } from "~ui";
 import { createSignal, Index, Show } from "solid-js";
 import { follow } from "../../engine/spring";
 import { gateColour } from "../../interchange/demand";
@@ -40,8 +40,8 @@ export default function Signs(props: { state: () => LevelState | null; hint: (h:
       <Show when={edge()}>
         {(e) => (
           <>
-            <box at={{ left: e().x - FAR, top: e().y - FAR }} w={e().w + 2 * FAR} h={e().h + 2 * FAR} stroke={[FAR, FOG]} />
-            <box at={{ left: e().x, top: e().y }} w={e().w} h={e().h} stroke={[1.5, EDGE]} />
+            <Box at={{ left: e().x - FAR, top: e().y - FAR }} w={e().w + 2 * FAR} h={e().h + 2 * FAR} stroke={[FAR, FOG]} />
+            <Box at={{ left: e().x, top: e().y }} w={e().w} h={e().h} stroke={[1.5, EDGE]} />
           </>
         )}
       </Show>
@@ -63,7 +63,7 @@ function Sign(props: { gate: LevelState["gates"][number]; colour: string; hint: 
   return (
     <Show when={at()}>
       {(p) => (
-        <box
+        <Box
           at={{ left: Math.round(p().sx - size().w / 2), top: Math.round(p().sy - size().h / 2) }}
           align="center"
           scale={scale()}
@@ -71,17 +71,17 @@ function Sign(props: { gate: LevelState["gates"][number]; colour: string; hint: 
           onPress={(down) => props.gate.ins && setHeld(down ? props.gate.label : null)}
           onHover={(over) => props.hint(over ? [`Gate ${props.gate.label}`, props.gate.ins ? "Hold to see where its cars go" : "Cars leave the map here"] : null)}
         >
-          <box w={32} h={32} round={7} fill={props.colour} stroke={[2.5, "white"]} shadow align="center" justify="center">
-            <text size={16} weight={700} ink="white">{props.gate.label}</text>
-          </box>
-          <box w={3} h={8} fill="#4a4f55" />
-          <box h={16} round={8} pad={{ x: 6 }} justify="center" fill="#2f3d38d9">
-            <text size={10} weight={600} ink="white">{io()}</text>
-          </box>
+          <Box w={32} h={32} round={7} fill={props.colour} stroke={[2.5, "white"]} shadow align="center" justify="center">
+            <Text size={16} weight={700} ink="white">{props.gate.label}</Text>
+          </Box>
+          <Box w={3} h={8} fill="#4a4f55" />
+          <Box h={16} round={8} pad={{ x: 6 }} justify="center" fill="#2f3d38d9">
+            <Text size={10} weight={600} ink="white">{io()}</Text>
+          </Box>
           <Show when={props.gate.waiting > 1}>
-            <text size={11} weight={600} ink={props.gate.waiting > 5 ? "#C2361F" : "#B7791F"}>{props.gate.waiting} waiting</text>
+            <Text size={11} weight={600} ink={props.gate.waiting > 5 ? "#C2361F" : "#B7791F"}>{props.gate.waiting} waiting</Text>
           </Show>
-        </box>
+        </Box>
       )}
     </Show>
   );

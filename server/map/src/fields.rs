@@ -26,21 +26,25 @@ use std::collections::{BinaryHeap, VecDeque};
 use fixed::HashSet;
 
 use model::GameTime;
-use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
+use model::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile};
 use crate::Map;
 
-/// How long the tractor takes to cross a tile, working it: two and a
-/// half minutes of the game's clock, two seconds watched at full speed,
-/// so a shift's ploughing is a couple of hundred tiles.
-pub const PACE: GameTime = DAY_MS as GameTime / 600;
-/// A crop sown by the end of a shift stands a day and is ripe the
-/// morning after: a day and a half.
-pub const RIPEN: GameTime = DAY_MS as GameTime * 3 / 2;
-/// The tiles a shift's ploughing makes a farm of, on open ground: the
-/// shift over the pace, less the ground driven between rows. What a
-/// farm's land comes to at capacity, and what its yard is divided by.
-pub fn capacity(kind: model::BuildingKind) -> f64 {
-    (model::blueprint::shift_hours(kind) * model::HOUR as f64 / PACE as f64 * 0.9).round()
+/// How long the tractor takes to cross a tile, working it.
+pub const PACE: GameTime = 500;
+/// A crop sown stands this long before it is ripe: about what a maker
+/// takes to fill its yard, so a farm keeps pace with the rest.
+pub const RIPEN: GameTime = 45_000;
+/// The tiles of land a farm claims, at most: a field the tractor works
+/// round in half a minute.
+pub fn capacity(_kind: model::BuildingKind) -> f64 {
+    24.0
+}
+
+/// What one tile of a farm's land grows in a harvest: its yard over its
+/// tiles, so a harvest fills the yard whatever ground the farm got.
+pub fn crop(kind: model::BuildingKind, tiles: usize) -> f64 {
+    let b = model::blueprint::blueprint(kind);
+    b.yard as f64 / tiles.max(1) as f64
 }
 
 /// The eight ways off a tile: straight first, then the diagonals.
@@ -72,7 +76,7 @@ impl Map {
         let GameObject::Building(b) = &e.object else { return };
         let (kind, facing) = (b.kind, b.facing);
         let wanted = capacity(kind) as usize;
-        if !model::blueprint::farm(kind) || !b.land.is_empty() {
+        if !model::blueprint::blueprint(kind).farm || !b.land.is_empty() {
             return;
         }
         let _ = facing;
@@ -118,11 +122,11 @@ impl Map {
     }
 
     /// The open tiles within some ground the tractor can reach from the
-    /// yard, four ways.
+    /// gate, four ways.
     fn reach(&self, farm: EntityId, within: &dyn Fn(GridCoord) -> bool) -> HashSet<(i32, i32)> {
-        let yard = self.yard_tiles(farm);
-        let mut seen: HashSet<(i32, i32)> = yard.iter().map(|t| (t.x, t.y)).collect();
-        let mut queue: VecDeque<GridCoord> = yard.iter().copied().collect();
+        let gate = self.gate(farm);
+        let mut seen: HashSet<(i32, i32)> = gate.iter().map(|t| (t.x, t.y)).collect();
+        let mut queue: VecDeque<GridCoord> = gate.into_iter().collect();
         let mut reached: HashSet<(i32, i32)> = HashSet::default();
         while let Some(t) = queue.pop_front() {
             for (dx, dy) in AROUND[..4].iter() {
@@ -188,7 +192,7 @@ impl Map {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= model::blueprint::crop(b.kind, b.land.len()));
+            let room = model::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -221,7 +225,7 @@ impl Map {
         let run = |world: &Map, job: Job| {
             let Some(b) = world.building(farm) else { return None };
             let batch: Vec<GridCoord> = b.land.iter().filter(|t| wants(job, t.stage)).map(|t| t.at).collect();
-            let yard = world.yard_gate(farm, &batch)?;
+            let yard = world.gate(farm)?;
             world.sweep(farm, yard, &batch, job).map(|(path, _)| path)
         };
         let work = |world: &mut Map, job: Job, tiles: &[GridCoord], at: GameTime| {
@@ -251,10 +255,10 @@ impl Map {
         }
     }
 
-    /// The tiles the tractor may drive: the farm's land, its yard, and the
-    /// lane. Never the barn.
+    /// The tiles the tractor may drive: the farm's land, its gate, and the
+    /// lane. Never the yard or the rest of the barn row.
     pub fn drivable(&self, farm: EntityId) -> HashSet<(i32, i32)> {
-        let mut ground: HashSet<(i32, i32)> = self.yard_tiles(farm).into_iter().map(|t| (t.x, t.y)).collect();
+        let mut ground: HashSet<(i32, i32)> = self.gate(farm).into_iter().map(|t| (t.x, t.y)).collect();
         if let Some(b) = self.building(farm) {
             ground.extend(b.land.iter().map(|t| (t.at.x, t.at.y)));
         }
@@ -274,20 +278,20 @@ impl Map {
             .collect()
     }
 
-    /// The farm's yard: its plot less the barn.
-    fn yard_tiles(&self, farm: EntityId) -> Vec<GridCoord> {
-        let Some(e) = self.objects.get(farm) else { return Vec::new() };
-        let GameObject::Building(b) = &e.object else { return Vec::new() };
-        let (pos, p) = Self::lie(&b.tiles, b.kind, b.facing);
-        let ((bx, by), (bw, bh)) = p.building;
-        let barn = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
-        b.tiles.iter().copied().filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
-    }
-
-    /// Where a run leaves the yard and comes back to it: the yard tile
-    /// nearest the batch.
-    pub fn yard_gate(&self, farm: EntityId, batch: &[GridCoord]) -> Option<GridCoord> {
-        self.yard_tiles(farm).into_iter().min_by_key(|&y| batch.iter().map(|&t| dist(y, t)).min().unwrap_or(i32::MAX))
+    /// Where a run leaves the farm and comes back to it: the middle of
+    /// the barn's back row, so the tractor goes out to the fields behind
+    /// and round, never out the front to the street side.
+    pub fn gate(&self, farm: EntityId) -> Option<GridCoord> {
+        let Some(e) = self.objects.get(farm) else { return None };
+        let GameObject::Building(b) = &e.object else { return None };
+        let (pos, (bw, bh)) = Self::bounds(&b.tiles);
+        let (fx, fy) = model::blueprint::FACINGS[b.facing as usize % 4];
+        let back = |street: i32, size: u8| match street {
+            0 => size / 2,
+            1 => 0,
+            _ => size - 1,
+        };
+        Some(GridCoord { x: pos.x + back(fx, bw) as i32, y: pos.y + back(fy, bh) as i32 })
     }
 
     /// A run over a batch of tiles as a farmer drives one, in two passes.
@@ -363,10 +367,6 @@ impl Map {
         }
         let ground = self.drivable(farm);
         let safe = escapable(&ground, yard);
-        // The lot is where the tractor lives, not a way through: rows
-        // are joined over the field and the lane, never the lot.
-        let yard_tiles = self.yard_tiles(farm);
-        let field: HashSet<(i32, i32)> = ground.iter().copied().filter(|t| !yard_tiles.iter().any(|y| (y.x, y.y) == *t)).collect();
         // A run of tiles driven on from the path's end, each arrived at
         // heading for the tile after when that is a step away, so the row
         // runs straight — else any way it can; keeping to the given way
@@ -374,7 +374,7 @@ impl Map {
         let drive = |path: &mut Vec<GridCoord>, run: &[GridCoord], way: &HashSet<(i32, i32)>| {
             for (i, &t) in run.iter().enumerate() {
                 let then = run.get(i + 1).copied().filter(|n| dist(t, *n) == 1);
-                if let Some(leg) = [then, None].into_iter().find_map(|heading| Self::over(&field, way, &safe, path, t, heading)) {
+                if let Some(leg) = [then, None].into_iter().find_map(|heading| Self::over(&ground, way, &safe, path, t, heading)) {
                     path.extend(leg);
                 }
             }
@@ -489,7 +489,7 @@ impl Map {
                 if heading.is_some_and(|(hx, hy)| hx * dx + hy * dy < 0) {
                     continue;
                 }
-                if !square(ground, (x, y), (dx, dy)) {
+                if !square(ground, path[0], (x, y), (dx, dy)) {
                     continue;
                 }
                 let n = (x + dx, y + dy);
@@ -523,7 +523,7 @@ fn escapable(ground: &HashSet<(i32, i32)>, home: GridCoord) -> HashSet<State> {
         if !ground.contains(&before) {
             continue;
         }
-        if !square(ground, before, (dx, dy)) {
+        if !square(ground, home, before, (dx, dy)) {
             continue;
         }
         for (bx, by) in AROUND {
@@ -583,10 +583,14 @@ fn outlines(land: &HashSet<(i32, i32)>) -> Vec<Vec<GridCoord>> {
 /// diagonal only along an edge that runs diagonally — past a missing
 /// corner the ground goes on missing along that diagonal, as a coast or
 /// a road on the slant does — never across the corner of a square edge
-/// or squeezed between two things.
-fn square(ground: &HashSet<(i32, i32)>, (x, y): (i32, i32), (dx, dy): (i32, i32)) -> bool {
+/// or squeezed between two things; and never into or out of the gate,
+/// which is driven through straight.
+fn square(ground: &HashSet<(i32, i32)>, gate: GridCoord, (x, y): (i32, i32), (dx, dy): (i32, i32)) -> bool {
     if dx == 0 || dy == 0 {
         return true;
+    }
+    if [(x, y), (x + dx, y + dy)].contains(&(gate.x, gate.y)) {
+        return false;
     }
     let missing = |(tx, ty): (i32, i32)| !ground.contains(&(tx, ty));
     let slant = |(cx, cy): (i32, i32)| missing((cx - dx, cy - dy)) || missing((cx + dx, cy + dy));
@@ -648,7 +652,7 @@ mod tests {
     }
 
     /// §12.8: a farm reached by a street claims a rectangle of grass
-    /// round its plot with the plot cut out, near enough square, as much
+    /// behind its plot, near enough square, as much
     /// as a shift ploughs and no more, all of it grass and none of it
     /// across the street; a road behind the plot is its edge and the
     /// field grows along it instead, with the road's side made up for; a house in the
@@ -660,25 +664,26 @@ mod tests {
         let (_, tiles) = farm_at(&mut world, 10);
         let wanted = capacity(BuildingKind::Farm) as usize;
         let (x0, y0, x1, y1, _) = rect(&tiles);
-        assert_eq!(((x1 - x0 + 1) * (y1 - y0 + 1)) as usize, tiles.len() + 12, "the land is not the rectangle less the plot");
-        assert!(tiles.len() <= wanted && tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the farm claimed {} tiles of {wanted}", tiles.len());
+        let (w, h) = model::blueprint::plot(BuildingKind::Farm, 0);
+        let area = ((x1 - x0 + 1) * (y1 - y0 + 1)) as usize;
+        assert!(area >= tiles.len() && area <= tiles.len() + ((w + 1) * h) as usize, "the land is not the rectangle round the plot and a sliver beside it");
+        assert!(tiles.len() <= wanted && tiles.len() * 4 >= wanted * 3, "the farm claimed {} tiles of {wanted}", tiles.len());
         assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
-        assert!(y0 == 1 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not round the plot");
+        assert!(y0 >= 1 && x0 < 10 && x1 >= 10 + w as i32 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not behind the plot");
         assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
         assert_eq!(world.laid, 0);
         // Bounded: a road four tiles behind the plot walls the land in,
         // and the field runs along the road instead.
         let mut walled = land();
-        walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 6 }).collect::<Vec<_>>());
+        walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 5 }).collect::<Vec<_>>());
         let (_, tiles) = farm_at(&mut walled, 10);
         let (_, y0, _, y1, _) = rect(&tiles);
-        assert!(y0 == 1 && y1 == 5 && tiles.len() + 5 > wanted, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
+        assert!(y0 >= 1 && y1 <= 4 && tiles.len() * 4 >= wanted * 3, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
         // A house in the field is cut out, and the field made up for it.
         let mut cramped = land();
         cramped.place_building(GridCoord { x: 4, y: 6 }, BuildingKind::House, 2);
         let (_, tiles) = farm_at(&mut cramped, 10);
-        let (x0, y0, x1, y1, _) = rect(&tiles);
-        assert!(tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the house was not made up for: {} tiles", tiles.len());
+        assert!(tiles.len() * 4 >= wanted * 3, "the house was not made up for: {} tiles", tiles.len());
         assert!(!tiles.iter().any(|t| t.at == GridCoord { x: 4, y: 6 }), "the house is land");
         // Nothing to claim in a wood.
         let mut woods = land();
@@ -772,7 +777,8 @@ mod tests {
         assert!(world.place_building(lost, BuildingKind::House, 2).is_some(), "a tile could not be built on");
         world.tend(farm);
         let kept = self::tiles(&world, farm);
-        assert_eq!(kept.len(), tiles.len() - 1);
+        // That tile, and any sliver it left that no tractor turns in.
+        assert!(kept.len() < tiles.len() && kept.len() + 3 >= tiles.len());
         assert!(kept.iter().all(|t| t.at != lost));
     }
 

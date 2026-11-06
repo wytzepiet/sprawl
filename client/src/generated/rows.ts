@@ -3,32 +3,25 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Good } from "./Good";
 
 /** The game's half of each kind's row (`blueprint.rs`). */
-export const ROWS: Record<BuildingKind, { materials: Partial<Record<Good, number>>; size: [number, number]; lot: [number, number]; quay: boolean; makes: Good | null; forklifts: number }> = {
-  House: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Apartment: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Shop: { materials: { Timber: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Office: { materials: { Timber: 12, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Factory: { materials: { Timber: 16, Stone: 8 }, size: [2, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  GasStation: { materials: { Timber: 8, Stone: 4 }, size: [1, 1], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Supermarket: { materials: { Timber: 16, Stone: 12 }, size: [2, 2], lot: [0, 0], quay: false, makes: null, forklifts: 1 },
-  Depot: { materials: { Timber: 12 }, size: [2, 2], lot: [3, 2], quay: false, makes: null, forklifts: 1 },
-  Farm: { materials: { Timber: 8 }, size: [3, 2], lot: [2, 2], quay: false, makes: "Crates", forklifts: 1 },
-  Harbour: { materials: {}, size: [3, 0], lot: [3, 2], quay: true, makes: null, forklifts: 3 },
-  Sawmill: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Timber", forklifts: 1 },
-  Quarry: { materials: { Timber: 8 }, size: [2, 2], lot: [2, 2], quay: false, makes: "Stone", forklifts: 1 },
+export const ROWS: Record<BuildingKind, { size: [number, number]; makes: Good | null; every: number; takes: Partial<Record<Good, number>>; seats: number; bays: number; docks: number; lorries: number; forklifts: number; farm: boolean; loud: boolean }> = {
+  House: { size: [1, 1], makes: null, every: 0, takes: {}, seats: 0, bays: 0, docks: 0, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Shop: { size: [2, 1], makes: null, every: 0, takes: {}, seats: 0, bays: 3, docks: 2, lorries: 2, forklifts: 1, farm: false, loud: false },
+  Fishery: { size: [2, 1], makes: "Fish", every: 7000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Woodcutter: { size: [2, 1], makes: "Logs", every: 8000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Sawmill: { size: [2, 2], makes: "Planks", every: 7000, takes: { Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  Farm: { size: [2, 1], makes: "Wheat", every: 9000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: true, loud: false },
+  Bakery: { size: [2, 1], makes: "Bread", every: 8000, takes: { Wheat: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: false },
+  ClayPit: { size: [2, 1], makes: "Clay", every: 9000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Brickworks: { size: [2, 2], makes: "Bricks", every: 9000, takes: { Clay: 1, Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  Workshop: { size: [2, 2], makes: "Furniture", every: 11000, takes: { Planks: 2 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  SandPit: { size: [2, 1], makes: "Sand", every: 9000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Glassworks: { size: [2, 2], makes: "Glass", every: 10000, takes: { Sand: 1, Logs: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: true },
+  SheepFarm: { size: [2, 1], makes: "Wool", every: 10000, takes: {}, seats: 2, bays: 2, docks: 1, lorries: 0, forklifts: 1, farm: false, loud: false },
+  Tailor: { size: [2, 1], makes: "Clothes", every: 9000, takes: { Wool: 1 }, seats: 2, bays: 2, docks: 2, lorries: 1, forklifts: 1, farm: false, loud: false },
 };
 
-/** Units a package of each good holds (`Good::per_package`). */
-export const PER_PACKAGE: Record<Good, number> = { Timber: 4, Stone: 4, Crates: 25, Fuel: 10 };
+/** A forklift's lift of one crate (`map::HANDLE_MS`). */
+export const HANDLE_MS = 1200;
 
-/** What a package of each good is called, one and several (`Good::package`). */
-export const PACKAGE: Record<Good, [string, string]> = { Timber: ["bundle of timber", "bundles of timber"], Stone: ["pallet of stone", "pallets of stone"], Crates: ["crate of food", "crates of food"], Fuel: ["pallet of fuel drums", "pallets of fuel drums"] };
-
-/** Packages a lorry and a van carry (`haul::LOAD`, `economy::VAN_LOAD`), and a forklift's lift (`world::HANDLE_MS`). */
-export const LOAD = 5;
-export const VAN_LOAD = 3;
-export const HANDLE_MS = 1500;
-
-/** What another lorry costs from the world, and the most a depot may run (`haul.rs`). */
-export const LORRY_PRICE = 40;
-export const MORE_LORRIES = 3;
+/** How long a family waits for what it wants before it leaves (`town::homes::PATIENCE_MS`). */
+export const PATIENCE_MS = 150000;

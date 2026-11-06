@@ -31,6 +31,7 @@ fn new_seed() -> u32 {
 /// saved.
 fn island(world: &mut World) {
     world.map.terrain = land::terrain::generate(world.map.terrain_seed);
+    world.map.deposits = land::terrain::deposits(world.map.terrain_seed, &world.map.terrain);
     println!("terrain: {} tiles from seed {}", world.map.terrain.len(), world.map.terrain_seed);
     let started = std::time::Instant::now();
     world.map.raise_mountains();
@@ -52,6 +53,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let (mut world, sim_time) = if fixtures.is_some() { (World::new(), map::fixtures::NOON) } else { load_world(&mut db) };
     if let Some(dir) = &fixtures {
         map::fixtures::build(&mut world.map, Path::new(dir));
+        world.town.boundless();
     } else {
         if world.map.objects.is_empty() {
             world.map.terrain_seed = new_seed();
@@ -98,6 +100,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             }
         }
 
+        // A town's clock runs while someone is there to see it.
+        if !game.watched() {
+            continue;
+        }
         let started = Instant::now();
         let wakes = game.tick();
         // A tick that overruns is the clock falling behind the wall, and every
@@ -128,8 +134,7 @@ fn inspect(game: &mut Game, query: Debug) -> String {
     let (world, now) = (&mut game.world, game.now);
     let v = match query {
         Debug::Lot(id) => world.map.inspect_lot(id, now),
-        Debug::Town => sprawl::economy::town(world, now),
-        Debug::Sea => sprawl::haul::inspect(world, now),
+        Debug::Town => serde_json::to_value(world.town.view(&world.map)).unwrap_or_default(),
         Debug::Map { x, y, r } => map::fixtures::draw(&world.map, x, y, r).into(),
     };
     serde_json::to_string_pretty(&v).unwrap_or_default()
@@ -143,38 +148,34 @@ fn load_world(db: &mut persistence::Db) -> (World, GameTime) {
     let mut world = if entries.is_empty() {
         World::new()
     } else {
-        // What the city has served, and what the mayor has, outlive a
-        // restart; a fresh world keeps its stake.
+        // The town, its hand and its picks, outlives a restart.
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
-        world.gdp = meta.gdp;
-        world.treasury = meta.treasury;
-        if !meta.missions.is_empty() {
-            world.missions.list = meta.missions;
-        }
-        world.market = meta.market;
+        world.town = meta.town;
         world
     };
-    // SPRAWL_ALL: a bottomless treasury, to test any building.
+    // SPRAWL_ALL: road without end and every tool.
     if std::env::var("SPRAWL_ALL").is_ok() {
-        world.treasury = 1_000_000.0;
+        world.town.boundless();
     }
     (world, sim_time)
 }
 
 /// The objects changed since the last save, and the rest of the world as
-/// it stands, saved even when no object changed: a paused town's coins
+/// it stands, saved even when no object changed: a paused town's hand
 /// and clock are worth keeping too.
 fn persist(world: &mut World, db: &mut persistence::Db, sim_time: GameTime) {
     let (changed, removed) = world.map.objects.drain_persist_dirty();
-    let changed: Vec<_> = changed.iter().filter_map(|&id| world.map.objects.get(id)).filter(|e| persistence::kept(e)).collect();
+    let home = |e: &model::GameObjectEntry| match e.object {
+        model::GameObject::Car(ref c) => world.map.objects.get(c.owner).and_then(|o| o.position),
+        _ => None,
+    };
+    let changed: Vec<_> = changed.iter().filter_map(|&id| world.map.objects.get(id)).filter_map(|e| persistence::kept(e, home(e))).collect();
+    let changed: Vec<_> = changed.iter().collect();
     let meta = persistence::Meta {
         next_id: world.map.objects.next_id(),
         terrain_seed: world.map.terrain_seed,
         sim_time,
-        gdp: world.gdp,
-        treasury: world.treasury,
-        missions: world.missions.list.clone(),
-        market: world.market.clone(),
+        town: world.town.clone(),
     };
     db.save(&changed, &removed, &meta);
     if !changed.is_empty() || !removed.is_empty() {

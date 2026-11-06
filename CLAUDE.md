@@ -105,12 +105,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   stops delivering shows here before it shows in play.
 - **The opening, end to end:** `cargo test the_opening` plays it: the
   starter pack lands, the lorry fetches, a house waits for its timber,
-  its settlers come on the next ferry, a box bought at the market, a
-  box sold is paid for.
+  its settlers come on the next ferry, and the cement a block of flats
+  wants and the town has none of is bought by itself and paid for.
   In a running game, `curl localhost:4801/sea` is the border and the
-  market as the server has it, and `bun run act buy|sell|send|order|cancel`
-  work them by hand;
-  `bun run act missions` lists the town's missions (`docs/missions.md`).
+  market as the server has it, deals and all; the town trades by itself
+  (`market.rs`). `bun run act research` says what is open and being learned,
+  `research Farm` sets the labs to it (`docs/core.md`).
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.
@@ -180,9 +180,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
   vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
   first after a change to what moves; `look` is for light and material.
-  `bun run jolt 6,80,12 20` samples every vehicle round a tile as the
-  client places it, fifty times a second for twenty, and counts each
-  jump, snap, flip and lurch, with the clock and the place.
+  `bun run jolt 6,80,12 20` samples every vehicle and forklift round a
+  tile as the client places it, fifty times a second for twenty, and
+  counts each jump, snap, flip and lurch, with the clock and the place.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.
@@ -216,6 +216,16 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   in Firebase Test Lab (`bench/android`, five free a day, Chrome 122), the
   summary and the phones' screens in the run's page. Compare GPU ms and
   draws between runs: a desktop card holds 60 fps where a phone will not.
+- **A building's model:** a building drawn whole (house, shop, depot,
+  farm, sawmill, quarry) is built of the kit's parts
+  (`client/src/engine/objects/kit.ts`: walls, roofs, windows, doors,
+  awnings, fences, hedges, lamps, trees, and the ground in the town's own
+  grass, paving, earth, dust, rock and gravel), one file a kind, from its
+  reference (`/mnt/project-files/refresh/refs/`). `bun run model house`
+  draws every model a file exports, from the game's camera and from near,
+  on a CPU in a few seconds, no browser: `.dev/model/<file>-<NAME>.png`
+  (`--ref <img>` beside it, `--side -1` mirrored). Finishes' looks are
+  faked there; their coats are `finishes.ts`'s.
 - **Building something that is seen:** read `docs/style.md` first: the
   verdicts so far, how to check a new thing, and where to find real
   examples. In a cloud session Overpass may not answer; the main

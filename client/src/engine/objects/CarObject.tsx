@@ -8,10 +8,10 @@ import { carShape, ROUNDING } from "./carShape";
 import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import { running as runs } from "./field";
-import { CAR, ROAD_Z, TRAILER, VAN } from "./roadGeometry";
-import { BED_TOP, DECK_Z, FERRY_SHAPE, LORRY_BED, LORRY_SHAPE, vanBed } from "./sea";
+import { CAR, ROAD_Z, VAN } from "./roadGeometry";
+import { BED_TOP, DECK_Z, FERRY_SHAPE, LORRY_SHAPE, bedShape } from "./sea";
 import type { Drive } from "./driver";
-import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, type Moment, onBed, PALETTE, travelled, VAN_BED } from "./motion";
+import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, type Moment, onBed, PALETTE, travelled, bedLength } from "./motion";
 import { itemOf } from "./goods";
 import { liftsOf, onVehicle } from "./pads";
 import type { Car, GameObjectEntry, Good, Pose } from "../../generated";
@@ -47,8 +47,8 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
 /** A bucket of a vehicle's shape in its colour, its material lacquered
  *  and its edges rounded tight (a lit bucket's is the town's,
  *  `InstancePool`); its key. */
-export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT): string {
-  pool.ensureBucket(key, geo, colour, true, true, undefined, [coat]);
+export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true): string {
+  pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat]);
   const bucket = pool.finish(key)!;
   bucket.bevel.width = ROUNDING;
   lacquer(bucket.material, "car");
@@ -85,8 +85,10 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
 }
 
 /** A shape with colours of its own (`sea.ts`, `goods.ts`) standing at a
- *  pose, its base at `z`. It is the world's: no building's look is on it. */
-export const placeShape = (pool: InstancePool, { key, geo }: { key: string; geo: MeshGeometry }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE) }], p, z);
+ *  pose, its base at `z`, in its own finish or a vehicle's paint, casting
+ *  a shadow unless it lies too flat to. It is
+ *  the world's: no building's look is on it. */
+export const placeShape = (pool: InstancePool, { key, geo, coat, cast }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs
@@ -128,8 +130,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const moving = !!(car.trip || car.run || car.sail);
   const look = bodyOf(pool, id, car, !moving);
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
-  const bedLength = car.role === "Van" ? VAN_BED : TRAILER.l;
-  const bed = first.m.bed ? placeShape(pool, car.role === "Van" ? vanBed(VAN_BED) : LORRY_BED, first.m.bed, GROUND + first.lift) : null;
+  const bedL = bedLength(car.role);
+  const bed = first.m.bed ? placeShape(pool, bedShape(bedL), first.m.bed, GROUND + first.lift) : null;
   // What stands on its deck, each what and where it is: at the berth the
   // harbour's forklifts change it (`deckSeen`).
   const deck: { key: string; it: ReturnType<typeof place> }[] = [];
@@ -162,8 +164,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     let same = 0;
     while (same < aboard.length && same < want.length && aboard[same].good === want[same]) same++;
     for (const { it } of aboard.splice(same)) it.remove();
-    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedLength, k), GROUND + lift + BED_TOP) });
-    if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedLength, k), lift));
+    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedL, k), GROUND + lift + BED_TOP) });
+    if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedL, k), lift));
   };
   load(first.m, first.lift, simNow());
   carPoses.set(id, first.m.body.at);

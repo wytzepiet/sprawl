@@ -23,6 +23,34 @@ No outlines: shapes are told apart by colour and light alone (2026-10-02).
 European blocks and American suburbs both have a place
 (strokes make rows or detached houses).
 
+## Seven rules for anything new
+
+Agreed with the mayor on 2026-10-27, for whoever builds a thing and whoever
+reviews it. They are guides, not law. Taste that none of them settles
+goes to the mayor; a reviewer doesn't guess it.
+
+1. **Realism is the baseline; leave it for a reason.** Start from what
+   the real thing does, and write down each place the game leaves it and
+   why: fun, legibility, the look. The terraced mountains aren't real
+   mountains, but they serve the world's layers. Forklifts that phase to
+   their load and back had no reason, so they were a bug; a fast forklift
+   that still drives would have been fine. Realism can be checked, which
+   is why it's the baseline.
+2. **Nothing teleports, snaps or flips.** `bun run jolt` counts it.
+3. **If we took it out, what would the player miss?** Name it: a want,
+   a problem it fixes or creates, a choice it adds. "Nothing" means it
+   goes. The job needn't be obvious: take the bishop out of chess and you
+   lose diagonal play.
+4. **Never done.** A solution should turn out to make the next problem.
+5. **Show, don't tell**, within reason. Text carries a number or a
+   meaning, never decoration.
+6. **Light and normals before colour.** They are usually the stronger
+   tool, and they give the toy look. The grass has plenty of colour
+   variation as well and looks great, so this isn't a ban.
+7. **It runs on a phone in the end.** A thing that is truly cool gets
+   made to fit the budget, not cut. `bun run cost` runs once a
+   milestone, not on every change.
+
 ## The verdicts
 
 Each a rule, why, and when it was given. New verdicts go here.

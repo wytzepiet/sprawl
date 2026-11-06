@@ -13,6 +13,7 @@ const PALETTE: TerrainPalette = {
   Sea: { r: theme.water.r * 0.85, g: theme.water.g * 0.85, b: theme.water.b * 0.9 },
   Beach: theme.beach,
   Grass: theme.land,
+  Clay: theme.clay,
   Forest: theme.forest,
   Mountain: theme.mountain,
 };

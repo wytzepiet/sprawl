@@ -1,8 +1,8 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink } from "~ui";
 import { createEffect, createMemo, createSignal, For, onCleanup, untrack, type Accessor } from "solid-js";
 import { createStore } from "solid-js/store";
 import { follow, LOOSE } from "../engine/spring";
-import type { JSX } from "~ui/jsx-runtime";
+import type { JSX } from "solid-js";
 
 /** How far each card behind shows under the one in front, folded; how
  *  many show; and the room between cards spread out, more than the
@@ -113,7 +113,7 @@ export function Stack<T>(props: {
   const [tallness] = follow(() => Math.min(tall(), props.room), { feel: LOOSE });
 
   return (
-    <box h={tallness()} onScroll={(dy) => props.open && roll(dy)}>
+    <Box h={tallness()} onScroll={(dy) => props.open && roll(dy)}>
       {/* The front card last, so it is drawn, and glazed, over the rest. */}
       <For each={[...cards()].reverse()}>
         {(c) => {
@@ -130,7 +130,7 @@ export function Stack<T>(props: {
           const [ink] = follow(() => at().ink, { rest: 0.001 });
           const [tall] = follow(() => at().h, { feel: LOOSE });
           return (
-            <glass
+            <Ink
               layer={`${props.glass}:${c.key}`}
               round={props.round}
               at={{ left: 0, right: 0, top: 0 }}
@@ -142,13 +142,13 @@ export function Stack<T>(props: {
               opacity={Math.max(0, Math.min(1, o()))}
               clip
             >
-              <box opacity={Math.max(0, Math.min(1, ink()))} onSize={(_, hh) => height[c.key] !== hh && setHeight(c.key, hh)}>
+              <Box opacity={Math.max(0, Math.min(1, ink()))} onSize={(_, hh) => height[c.key] !== hh && setHeight(c.key, hh)}>
                 {untrack(() => props.children(c.item, depth))}
-              </box>
-            </glass>
+              </Box>
+            </Ink>
           );
         }}
       </For>
-    </box>
+    </Box>
   );
 }

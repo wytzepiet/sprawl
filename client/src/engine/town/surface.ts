@@ -1,28 +1,27 @@
 import type { BuildingKind, GridCoord } from "../../generated";
-import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
+import { BLUEPRINTS, FACINGS, fronted, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, SIDES, townOf, type Flow, type RoadView, type Tile, type Town } from "./grid";
-import { isYard } from "./mass";
 import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
-import { area, defaultJoins, ease, EIGHT, footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
+import { area, defaultJoins, ease, EIGHT, footprints, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
 import type { P } from "../geometry";
 
 /**
  * The town's ground is two surfaces. Pavement is the base: every road,
- * building and yard stands on paved ground. Asphalt is cut into it
- * wherever a vehicle goes, a kerb's step down: the roads, a house's
- * drive, a yard's gate and the yard itself, the docks, quay and apron
- * of a harbour, and the bays at the kerb where the game parks. A vehicle
+ * and building stands on paved ground. Asphalt is cut into it wherever a
+ * vehicle goes, a kerb's step down: the roads, a house's drive, a
+ * front's docks, notched into its wall and out across the pavement, and
+ * the bays at the kerb where the game parks. A vehicle
  * never stands on pavement.
  *
  * Which ground is asphalt is one rule, a tile at a time, from the tile
  * and its neighbours, as everything the look draws is (`surfacesAt`): a
  * tile's asphalt is its arms (a road's links, and the drives between a
- * street and the doors that open onto it) and its rectangles (a yard's
- * tile, a row of bays), as one outline, its corners rounded in and out.
+ * street and the doors that open onto it) and its rectangles (a front's
+ * docks, a row of bays), as one outline, its corners rounded in and out.
  * Where a piece runs on into the next tile's, it is carried over the
  * seam, so the tiles' outlines meet as one; everywhere else its edge is
  * a kerb. The pavement is cut to it (`kerbLines.ts`), the road tiles are
- * drawn from it (`roads.ts`), so a road flows into a yard as one shape.
+ * drawn from it (`roads.ts`), so a road flows into a dock as one shape.
  */
 
 /** An arm of a tile's asphalt: the way it goes, whether it is carried on
@@ -63,19 +62,35 @@ const ROUND = 0.05;
 const RUN = 0.1;
 /** How far short of that an island between lanes parting ends. */
 const TIP = 0.02;
-/** How far a yard reaches under its building's wall: past it, so its
- *  asphalt meets the wall, where the docks are. */
-const UNDER = INSET + 0.02;
-/** The strip of pavement left round a yard, a kerb and a little. */
-const EDGE = 0.1;
-
 /** Which way a tile's drive goes to its street, if it has one: a house's
- *  door, or the gate of a yard, its door tile (`Town.door`, the
- *  server's). Any other building's door is a door, not a drive: its cars
- *  are at the kerb. */
+ *  door (`Town.door`, the server's). Any other building's door is a door,
+ *  not a drive: its cars are at the kerb, its trucks at its docks. */
 export function drive(town: Town, c: number, r: number): [number, number] | undefined {
+  return town.tile(c, r).kind === "House" ? town.door?.(c, r) : undefined;
+}
+
+/** How far from the street's middle line a docked truck's notch reaches
+ *  back into its building: its tail at the loading door (`DOCK` and the
+ *  truck's half length in `lots.rs`), and a little. */
+const NOTCH_BACK = 0.72;
+
+/** A front's docks, side by side at its gate, each `DOCK_PITCH` wide: the
+ *  way from its gate to its street, if this is a gate, and how far either
+ *  side of the gate's middle they reach. */
+function docksOf(town: Town, c: number, r: number): { way: [number, number]; half: number } | undefined {
   const t = town.tile(c, r);
-  return t.kind === "House" || isYard(t) ? town.door?.(c, r) : undefined;
+  const way = t.gate ? town.door?.(c, r) : undefined;
+  if (!way || (way[0] && way[1])) return undefined;
+  return { way, half: (BLUEPRINTS[t.kind as BuildingKind].docks * DOCK_PITCH) / 2 };
+}
+
+/** A band of a tile's asphalt out from its middle along (fx, fy), from
+ *  `a0` to `a1`, `half` either side across; run on over the seam out that
+ *  way if `run`. */
+function band([fx, fy]: [number, number], a0: number, a1: number, half: number, run: boolean): Rect {
+  const [lo, hi] = [0.5 + Math.min(fx * a0, fx * a1, fy * a0, fy * a1), 0.5 + Math.max(fx * a0, fx * a1, fy * a0, fy * a1)];
+  const bit = !run ? 0 : fx < 0 ? 1 : fy < 0 ? 2 : fx > 0 ? 4 : 8;
+  return fx ? [lo, 0.5 - half, hi, 0.5 + half, bit] : [0.5 - half, lo, 0.5 + half, hi, bit];
 }
 
 /** A street tile the street runs straight through along (ux, uy): its
@@ -86,13 +101,11 @@ function straight(town: Town, c: number, r: number, ux: number, uy: number) {
   return links.length === 2 && town.linked(c, r, c + ux, r + uy) && town.linked(c, r, c - ux, r - uy);
 }
 
-/** Kerb bays as the server lays them (`lots.rs`): along the kerb, a car's
- *  middle this far from its street's middle line and this far apart; nose
- *  in, this far out, its tail at the road's edge, and this far apart;
- *  within the building's walls. A bay's asphalt reaches past its car by
- *  `ROOM` all round, so a car stands wholly on it. */
-const KERB = 0.305;
-const ALONG_PITCH = 0.42;
+/** Kerb bays as the server lays them (`lots.rs`): square to the kerb, a
+ *  car's middle this far out from its street's middle line, its end at the
+ *  road's edge, and this far apart; within the building's walls. A bay's
+ *  asphalt reaches past its car by `ROOM` all round, so a car stands
+ *  wholly on it. */
 const SQUARE = 0.37;
 const SQUARE_PITCH = 0.27;
 const ROOM = 0.02;
@@ -101,7 +114,7 @@ const ROOM = 0.02;
 const BAY_INSET = 0.2;
 
 /** How many bays a side `len` tiles long holds (`bays_along`). */
-const baysAlong = (len: number, square: boolean) => Math.max(0, Math.floor((len - 2 * BAY_INSET) / (square ? SQUARE_PITCH : ALONG_PITCH) + 1e-9));
+const baysAlong = (len: number) => Math.max(0, Math.floor((len - 2 * BAY_INSET) / SQUARE_PITCH + 1e-9));
 
 /** A car's bay at the kerb: where its middle is, which way it faces
  *  (radians from +x, y down), and the street tile it is before, the way
@@ -110,54 +123,59 @@ interface Bay {
   x: number;
   y: number;
   angle: number;
-  square: boolean;
   road: [number, number];
   side: [number, number];
   a: number;
 }
 
+/** Docks side by side at a gate, and how far a car's bay keeps past the
+ *  outer ones (`DOCK_PITCH`, `DOCK_CLEAR` in `lots.rs`). */
+const DOCK_PITCH = 0.3;
+const DOCK_CLEAR = 0.4;
+
 /**
  * A building's bays at the kerb, as the server lays them (`kerb_bays`):
- * as many as its long side holds, on the side its door opens onto first,
+ * as many as its blueprint asks, on the side its door opens onto first,
  * then on the sides with a street all along them, the fullest first, until
- * it has them; along each side evenly within its walls, each where the
- * street runs straight past: nose in, or along the kerb before flats.
+ * it has them; each where the street runs straight past. Along a side
+ * evenly about its middle, or, on a front's gate's side, out either way
+ * from the gate's docks, clear of where a truck swings in.
  */
-export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number]): Bay[] {
-  const square = kind !== "Apartment";
-  const need = baysAlong(Math.max(...BLUEPRINTS[kind].size), square);
-  const pitch = square ? SQUARE_PITCH : ALONG_PITCH;
+export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number], gate?: GridCoord): Bay[] {
+  const { bays: need, docks } = BLUEPRINTS[kind];
   const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
   const sides = FACINGS.map(([dx, dy]) => {
     const run = sideOf(tiles, [dx, dy]);
     const [ux, uy] = [Math.abs(dy), Math.abs(dx)];
     const whole = run.every((t, i) => street(t.x + dx, t.y + dy) && (i === 0 || town.linked(run[i - 1].x + dx, run[i - 1].y + dy, t.x + dx, t.y + dy)));
-    const n = baysAlong(run.length, square);
+    const ours = !!door && door[0] === dx && door[1] === dy;
+    const g = ours && gate ? run.findIndex((t) => t.x === gate.x && t.y === gate.y) : -1;
+    const len = run.length;
+    let at: number[];
+    if (g < 0) {
+      const n = Math.min(baysAlong(len), need);
+      at = Array.from({ length: n }, (_, i) => len / 2 + (i - (n - 1) / 2) * SQUARE_PITCH);
+    } else {
+      const d0 = (Math.max(0, docks - 1) * DOCK_PITCH) / 2 + DOCK_CLEAR;
+      at = Array.from({ length: 8 * len }, (_, k) => g + 0.5 + (k % 2 ? -1 : 1) * (d0 + Math.floor(k / 2) * SQUARE_PITCH))
+        .filter((u) => u >= BAY_INSET && u <= len - BAY_INSET)
+        .slice(0, need);
+    }
     const bays: Bay[] = [];
-    for (let i = 0; i < n; i++) {
-      const u = run.length / 2 + (i - (n - 1) / 2) * pitch;
-      const k = Math.min(Math.floor(u), run.length - 1);
+    for (const u of at) {
+      const k = Math.min(Math.floor(u), len - 1);
       const a = u - k - 0.5;
       const [c, r] = [run[k].x + dx, run[k].y + dy];
       if (!straight(town, c, r, ux, uy)) continue;
-      if (!square) {
-        const s = a >= 0 ? 1 : -1;
-        if (!straight(town, c + s * ux, r + s * uy, ux, uy)) continue;
-      }
-      const out = square ? SQUARE : KERB;
-      bays.push({
-        x: c + 0.5 + ux * a - dx * out, y: r + 0.5 + uy * a - dy * out,
-        angle: square ? Math.atan2(-dy, -dx) : Math.atan2(uy, ux),
-        square, road: [c, r], side: [-dx, -dy], a,
-      });
+      bays.push({ x: c + 0.5 + ux * a - dx * SQUARE, y: r + 0.5 + uy * a - dy * SQUARE, angle: Math.atan2(-dy, -dx), road: [c, r], side: [-dx, -dy], a });
     }
-    return { other: !door || door[0] !== dx || door[1] !== dy, broken: !whole, bays };
+    return { other: !ours, broken: !whole, bays };
   });
   sides.sort((p, q) => +p.other - +q.other || +p.broken - +q.broken || q.bays.length - p.bays.length);
   const bays: Bay[] = [];
   for (const side of sides) {
     if (bays.length >= need) break;
-    bays.push(...side.bays);
+    bays.push(...side.bays.slice(0, need - bays.length));
   }
   return bays;
 }
@@ -176,15 +194,18 @@ export function baysAt(town: Town, c: number, r: number): Bay[] {
       // The building's tiles, and its door, wherever on it.
       const tiles: GridCoord[] = [{ x: c + sx, y: r + sy }];
       let door: [number, number] | undefined;
+      let gate: GridCoord | undefined;
       for (let i = 0; i < tiles.length; i++) {
-        door ??= town.door?.(tiles[i].x, tiles[i].y);
+        const d = town.door?.(tiles[i].x, tiles[i].y);
+        if (d && !door) [door, gate] = [d, tiles[i]];
         for (const [dx, dy] of EIGHT) {
           const [x, y] = [tiles[i].x + dx, tiles[i].y + dy];
           const n = town.tile(x, y);
           if (n.id === t.id && n.kind === t.kind && !tiles.some((q) => q.x === x && q.y === y)) tiles.push({ x, y });
         }
       }
-      bays = baysOf(town, tiles, t.kind as BuildingKind, door && (!door[0] || !door[1]) ? door : undefined);
+      const square = door && (!door[0] || !door[1]) ? door : undefined;
+      bays = baysOf(town, tiles, t.kind as BuildingKind, square, square && fronted(t.kind as BuildingKind) ? gate : undefined);
       mine.set(t.id, bays);
     }
     out.push(...bays.filter((b) => b.road[0] === c && b.road[1] === r));
@@ -196,13 +217,13 @@ export function baysAt(town: Town, c: number, r: number): Bay[] {
  *  past the bays' far edge, along the tile as far as its bays go, run on
  *  into the next tile where the row goes on there. */
 function bayRect(town: Town, c: number, r: number, bays: Bay[]): Rect {
-  const { side: [sx, sy], square } = bays[0];
+  const { side: [sx, sy] } = bays[0];
   const [ux, uy] = [Math.abs(sy), Math.abs(sx)];
-  const half = (square ? CAR.w : CAR.l) / 2 + ROOM;
+  const half = CAR.w / 2 + ROOM;
   const on = (s: number) => baysAt(town, c + s * ux, r + s * uy).some((b) => b.side[0] === sx && b.side[1] === sy);
   const lo = on(-1) ? -0.5 - RUN : Math.min(...bays.map((b) => b.a)) - half;
   const hi = on(1) ? 0.5 + RUN : Math.max(...bays.map((b) => b.a)) + half;
-  const out = (square ? SQUARE + CAR.l / 2 : KERB + CAR.w / 2) + ROOM;
+  const out = SQUARE + CAR.l / 2 + ROOM;
   // Out: from the middle toward the side.
   const [a0, a1] = [Math.min(0, sx * out, sy * out), Math.max(0, sx * out, sy * out)];
   const [x0, x1, y0, y1] = ux ? [0.5 + lo, 0.5 + hi, 0.5 + a0, 0.5 + a1] : [0.5 + a0, 0.5 + a1, 0.5 + lo, 0.5 + hi];
@@ -220,7 +241,9 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
   // A drive, from its door back to the street, carried over to it.
   const gate = drive(town, c, r);
   if (gate) ways.push([gate[0], gate[1], true, "d"]);
-  if (isYard(t)) rects.push(yardRect(town, c, r));
+  // A front's docks: notched into its wall, run on out to the street.
+  const docks = docksOf(town, c, r);
+  if (docks) rects.push(band(docks.way, 1 - NOTCH_BACK, 0.5, docks.half, true));
   if (t.kind !== "road") return ways.length || rects.length ? [{ through: false, ways, rects }] : [];
   const views: RoadView[] = town.roadsOn?.(c, r) ?? [
     {
@@ -238,6 +261,11 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       const back = drive(town, c + dc, r + dr);
       if (back && back[0] === -dc && back[1] === -dr) own.push([dc, dr, !through, "d"]);
     }
+    // Out across the pavement to the docks of a front before it.
+    for (const [sx, sy] of SIDES) {
+      const d = docksOf(town, c + sx, r + sy);
+      if (d && d.way[0] === -sx && d.way[1] === -sy) rects.push(band([sx, sy], 0, 0.5, d.half, true));
+    }
     const bays = baysAt(town, c, r);
     for (const [sx, sy] of SIDES) {
       const mine = bays.filter((b) => b.side[0] === sx && b.side[1] === sy);
@@ -245,26 +273,6 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
     }
     return { through, light, ways: own, rects };
   });
-}
-
-/** A yard's tile, all asphalt, as the server's lot is, its lorries' lane
- *  running to its very ends: run on into the yard's tiles beside it, under
- *  its building's wall where it meets the building, and everywhere else
- *  short of the tile's edge by a kerb's strip of pavement: so before its
- *  street the sidewalk runs on between it and the road, its gate across
- *  it, and where it meets open ground or water its corners stay on the
- *  pavement's rounded ones. */
-function yardRect(town: Town, c: number, r: number): Rect {
-  const t = town.tile(c, r);
-  // x0, y0, x1, y1: how far each side is out past the tile's edge, and
-  // whether it runs on.
-  const reach = [[-1, 0], [0, -1], [1, 0], [0, 1]].map(([dc, dr]): [number, boolean] => {
-    const n = town.tile(c + dc, r + dr);
-    if (isBuilt(n) && n.kind === t.kind && n.id === t.id) return isYard(n) ? [RUN, true] : [UNDER, true];
-    return [-EDGE, false];
-  });
-  const on = reach.reduce((m, [, run], i) => m | (run ? 1 << i : 0), 0);
-  return [-reach[0][0], -reach[1][0], 1 + reach[2][0], 1 + reach[3][0], on];
 }
 
 /** The key a surface's shape is known by: the same parts, the same shape. */

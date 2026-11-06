@@ -28,10 +28,7 @@ import {
 import { theme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
-import { createGlass, light } from "./glass";
-import { createPaint, root } from "~ui/paint";
-import { dirt } from "~ui";
-import { createHand } from "~ui/hand";
+import { createStudio } from "./studio";
 
 export type EngineContext = {
   engine: Engine;
@@ -133,8 +130,7 @@ export default function Canvas(props: ParentProps) {
 
   const initCanvas = async (el: HTMLCanvasElement) => {
     // Multisampled only where pixels are big enough to show their edges.
-    // The swapchain a copy source: the UI's glass reads what lies under it (`glass.ts`).
-    const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO, msaaSamples: devicePixelRatio < 2 ? 4 : 1, copySource: true });
+    const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO, msaaSamples: devicePixelRatio < 2 ? 4 : 1 });
     const stopResizing = enableSurfaceResizeObserver(engine.surfaces[0]);
     const scene = createSceneContext(engine);
     const land = theme.land;
@@ -150,8 +146,6 @@ export default function Canvas(props: ParentProps) {
     onBeforeRender(scene, () => {
       before.run();
       cull.update();
-      // What the UI pins to the map was placed just now, for this frame's camera.
-      glass.read();
     });
 
     // The children set the scene up — the camera, the sun and its shadows,
@@ -164,11 +158,11 @@ export default function Canvas(props: ParentProps) {
     setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered, prepare: (work) => preparing.push(work) });
     await Promise.all(preparing);
     await registerSceneWithShadowSupport(scene);
-    // The UI the GPU draws (`ui/`), and the hand on it.
-    const paint = createPaint(engine, light);
-    const glass = createGlass(engine, scene, paint);
-    const stopHand = createHand(el, paint.hits, glass.touchAt);
     setRegistered(true);
+    // The build menu's pictures, taken off the page once the town is in.
+    const stopStudio = createStudio(engine);
+    // The page's canvas alone: the studio's is drawn when it takes a picture.
+    const page = [engine.surfaces[0]] as const;
 
     // Ticks that come much sooner than a frame are skipped. Ticks jitter,
     // a fraction early or late: one counts if three quarters of a frame
@@ -206,13 +200,12 @@ export default function Canvas(props: ParentProps) {
     };
     const where = () => {
       const c = scene.camera;
-      return c ? `${c.worldMatrixVersion},${c.fov},${glass.key()},${paint.key()}` : "";
+      return c ? `${c.worldMatrixVersion},${c.fov}` : "";
     };
     const frame = (now: number) => {
       if (!running) return;
       requestAnimationFrame(frame);
       if (held) return;
-      glass.read();
       if (where() !== seen) lastMoved = now;
       const moving = now - lastMoved < MOVING_LINGER_MS;
       const fps = moving ? MOVING_FPS : STILL_FPS;
@@ -225,7 +218,7 @@ export default function Canvas(props: ParentProps) {
       if (moving) judge(now, delta, cap);
       engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, ratio);
       resizeEngine(engine);
-      renderFrame(engine, delta);
+      renderFrame(engine, delta, page);
       after.run();
       seen = where();
       if (seen !== was) lastMoved = now;
@@ -237,7 +230,7 @@ export default function Canvas(props: ParentProps) {
     requestAnimationFrame(frame);
 
     if (import.meta.env.DEV) {
-      (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => ((root.props.opacity = 0), dirt.paint++) };
+      (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => (document.querySelectorAll<HTMLElement>(".ink").forEach((e) => (e.style.display = "none")), true) };
     }
     // The bench ends on it (`PerfReport.tsx`).
     if (import.meta.env.DEV || run) {
@@ -248,7 +241,7 @@ export default function Canvas(props: ParentProps) {
 
     stop = () => {
       running = false;
-      stopHand();
+      stopStudio();
       stopResizing();
       disposeEngine(engine);
     };

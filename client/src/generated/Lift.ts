@@ -2,10 +2,9 @@
 import type { Good } from "./Good";
 
 /**
- * A forklift's run at a building's pad: `n` packages of a good lifted
- * one at a time between the pad and a vehicle standing at it (`car`, a
- * lorry, a van, a ferry), onto it or off it, the first from `start`, one
- * every `every` ms, by the building's forklift `k`. The client plays it
- * (docs/plan-goods.md §Pads and handling).
+ * A forklift's run at a building's pad: `n` crates of a good lifted
+ * one at a time between the pad and a vehicle standing at it, onto it or
+ * off it, the first from `start`, one every `every` ms, by the building's
+ * forklift `k`. The client plays it.
  */
 export type Lift = { car: number, good: Good, n: number, onto: boolean, start: number, every: number, k: number, };

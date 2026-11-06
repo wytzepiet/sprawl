@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { CAR_RIG, driveTrip, LORRY_RIG, type Drive } from "./driver";
+import { CAR_RIG, driveTrip, LORRY_RIG, planned, type Drive } from "./driver";
+import type { Manoeuvre } from "../../generated";
 import type { P } from "../geometry";
 import { drawnPath } from "./drawnPath";
 import { LANE_OFFSET } from "./roadGeometry";
@@ -11,11 +12,9 @@ function jolts(d: Drive, ds = 0.005) {
   let prev = d.at(0);
   for (let s = ds; s <= d.length; s += ds) {
     const p = d.at(s);
-    for (const [a, b] of [[prev.body, p.body], [prev.trailer, p.trailer]] as const) {
-      if (!a || !b) continue;
-      move = Math.max(move, Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]) / ds);
-      turn = Math.max(turn, Math.abs(Math.atan2(Math.sin(b.heading - a.heading), Math.cos(b.heading - a.heading))) / ds);
-    }
+    const [a, b] = [prev.body, p.body];
+    move = Math.max(move, Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]) / ds);
+    turn = Math.max(turn, Math.abs(Math.atan2(Math.sin(b.heading - a.heading), Math.cos(b.heading - a.heading))) / ds);
     prev = p;
   }
   return { move, turn };
@@ -39,8 +38,6 @@ test("backing a lorry into a dock: no jump, no snap, and it ends where it stands
   const end = d.at(d.length);
   expect(Math.hypot(end.body.at[0] - dock.at[0], end.body.at[1] - dock.at[1])).toBeLessThan(1e-6);
   expect(Math.cos(end.body.heading - dock.heading)).toBeCloseTo(1, 6);
-  // Its box straight behind it, in the dock.
-  expect(Math.cos(end.trailer!.heading - dock.heading)).toBeCloseTo(1, 6);
   // At the cusp it is where the server has it: at the stop point.
   const cusp = d.at(3.0).body;
   expect(Math.hypot(cusp.at[0] - 2.95, cusp.at[1] - 0.5)).toBeLessThan(0.15);
@@ -128,23 +125,21 @@ test("whatever the way, a vehicle keeps to it: near it, as far as it, and never 
       }
       return best;
     };
-    let [travel, stray, box] = [0, 0, 0];
+    let [travel, stray] = [0, 0];
     let prev = d.at(0);
     for (let s = 0.01; s <= d.length; s += 0.01) {
       const p = d.at(s);
       const step = Math.hypot(p.body.at[0] - prev.body.at[0], p.body.at[1] - prev.body.at[1]);
       travel += step;
       stray = Math.max(stray, off(p.body.at));
-      if (p.trailer && prev.trailer) box = Math.max(box, Math.hypot(p.trailer.at[0] - prev.trailer.at[0], p.trailer.at[1] - prev.trailer.at[1]));
       // A hundredth of a tile on, the body never more than two and a half.
       expect(step).toBeLessThan(0.025);
       prev = p;
     }
-    // Never a jump of its box; never further from its way than a little
-    // over a lane; never further driven than the way is long, and a bit
-    // for the nose swinging out of its corners:
-    // a driver who lost the way and went round a loop would be all three.
-    expect(box).toBeLessThan(0.04);
+    // Never further from its way than a little over a lane; never further
+    // driven than the way is long, and a bit for the nose swinging out of
+    // its corners: a driver who lost the way and went round a loop would
+    // be both.
     expect(stray).toBeLessThan(0.35);
     expect(travel).toBeLessThan(1.15 * d.length + 0.15);
   }
@@ -164,4 +159,69 @@ test("a car changing lanes steers across, round no corner, and no jump", () => {
   expect(turned).toBeGreaterThan(0.05);
   // And smoothly: never more than a step's worth sideways between steps.
   for (let s = 2; s < 6; s += 0.02) expect(Math.abs(y(s + 0.02) - y(s))).toBeLessThan(0.02);
+});
+
+/** The most a vehicle's rear axle moves sideways, of how far it moves,
+ *  over any hundredth of a tile: wheels roll, they do not slide. */
+function slide(d: Drive, axle: number) {
+  const at = (s: number) => {
+    const b = d.at(s).body;
+    return { x: b.at[0] - Math.cos(b.heading) * axle, y: b.at[1] - Math.sin(b.heading) * axle, h: b.heading };
+  };
+  let [worst, prev] = [0, at(0)];
+  for (let s = 0.01; s <= d.length; s += 0.01) {
+    const p = at(s);
+    const [dx, dy, h] = [p.x - prev.x, p.y - prev.y, (p.h + prev.h) / 2];
+    const [side, on] = [Math.abs(-Math.sin(h) * dx + Math.cos(h) * dy), Math.abs(Math.cos(h) * dx + Math.sin(h) * dy)];
+    if (side + on > 0.003) worst = Math.max(worst, side / (side + on));
+    prev = p;
+  }
+  return worst;
+}
+
+test("into a drive, a kerb bay, and out of one, the wheels roll and never slide", () => {
+  // Off the street into a house's drive, nose first; round into a square
+  // bay at the kerb; and backed out of one, round into the lane the way it
+  // is going: as the server lays them (`kerb_bays`).
+  const drive = { route_positions: [[4.5, 0.5], [3.5, 0.5], [2.5, 0.5], [1.5, 0.5], [0.5, 0.5], [0.61, 1.03]] as P[], from_lot: 0, to_lot: 1, backing: [] as [number, number][], stands: { at: [0.61, 1.03] as P, heading: Math.PI / 2 } };
+  const bay = { route_positions: [[61.5, 0.5], [62.5, 0.5], [63.5, 0.5], [63.3, 0.4], [63.775, 0.46], [63.94, 0.625], [64, 0.85], [64, 0.87]] as P[], from_lot: 0, to_lot: 5, backing: [] as [number, number][], stands: { at: [64, 0.87] as P, heading: Math.PI / 2 } };
+  const out = { route_positions: [[11.635, 0.87], [11.575, 0.825], [11.41, 0.66], [11.185, 0.6], [12.5, 0.5], [13.5, 0.5], [14.5, 0.5], [15.5, 0.5]] as P[], from_lot: 4, to_lot: 0, backing: [[0, 3]] as [number, number][], leaves: { at: [11.635, 0.87] as P, heading: Math.PI / 2 } };
+  for (const t of [drive, bay, out]) {
+    const d = driveTrip(t, CAR_RIG)!;
+    expect(slide(d, CAR_RIG.axle)).toBeLessThan(0.1);
+    expect(jolts(d).move).toBeLessThan(2.5);
+    const stands = "stands" in t && t.stands;
+    if (stands) {
+      const at = d.at(d.length).body;
+      expect(Math.hypot(at.at[0] - stands.at[0], at.at[1] - stands.at[1])).toBeLessThan(1e-6);
+    }
+  }
+});
+
+test("a truck backed into its dock by its plan drives it exactly, its wheels rolling", () => {
+  // As the server lays it (`lots::dock_bays`, `park::ways::square`): from
+  // its lane, backed round a quarter turn at full lock into the notch,
+  // and straight back to the door.
+  const lock = 1 / 0.36;
+  const into: Manoeuvre[] = [
+    { edge: 1, from: { at: [5, 0.6], heading: 0 }, moves: [
+      { back: true, from: 0, to: lock, length: 0.05 }, { back: true, from: lock, to: lock, length: (Math.PI / 2) * 0.36 - 0.05 },
+      { back: true, from: lock, to: 0, length: 0.05 }, { back: true, from: 0, to: 0, length: 0.15 },
+    ] },
+  ];
+  const plan = planned(into[0]);
+  // Backed, the rear axle moves the way it points.
+  for (let i = 1; i < plan.length; i++) {
+    const [p, q] = [plan[i - 1], plan[i]];
+    expect(Math.abs(Math.sin(Math.atan2(q.cab.y - p.cab.y, q.cab.x - p.cab.x) - q.cab.heading))).toBeLessThan(0.05);
+  }
+  // Driven as a trip, ending where the plan does.
+  const middle = (e: (typeof plan)[number]): P => [e.cab.x + Math.cos(e.cab.heading) * LORRY_RIG.axle, e.cab.y + Math.sin(e.cab.heading) * LORRY_RIG.axle];
+  const last = plan[plan.length - 1];
+  const stands = { at: middle(last), heading: last.cab.heading };
+  const t = { route_positions: [[2, 0.6], middle(plan[0]), stands.at] as P[], from_lot: 0, to_lot: 1, backing: [[1, 2]] as [number, number][], stands, manoeuvres: into };
+  const d = driveTrip(t, LORRY_RIG)!;
+  const end = d.at(d.length);
+  expect(Math.hypot(end.body.at[0] - stands.at[0], end.body.at[1] - stands.at[1])).toBeLessThan(1e-6);
+  expect(slide(d, LORRY_RIG.axle)).toBeLessThan(0.1);
 });

@@ -16,4 +16,9 @@ at: GridCoord, tiles: Array<GridCoord>, facing: number,
 /**
  * The tile its drive runs onto, and the street it runs from.
  */
-door: Door | null, why: string | null, };
+door: Door | null, why: string | null, 
+/**
+ * For a maker of what the land gives, how much of it is in reach,
+ * up to one (`Map::in_reach`): what it will make against its best.
+ */
+ground: number | null, };

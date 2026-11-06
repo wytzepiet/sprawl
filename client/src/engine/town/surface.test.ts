@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseTown, type Town } from "./grid";
-import { facts } from "./facts";
 import { dress } from "./dressing";
 import { asphalt, pavement } from "./surface";
 import { CAR } from "../objects/roadGeometry";
@@ -52,7 +51,7 @@ describe("asphalt and pavement", () => {
     for (const name of ["06-shops", "17-driveways", "12-diagonal", "24-yards"]) {
       const t = fixture(name);
       const on = onAsphalt(t);
-      const cars = dress(t, facts(t)).cars;
+      const cars = dress(t).cars;
       expect(cars.length).toBeGreaterThan(0);
       for (const c of cars) {
         // The wheels: a little in from the car's corners.
@@ -65,27 +64,4 @@ describe("asphalt and pavement", () => {
     }
   });
 
-  test("a yard is asphalt, a strip of pavement between it and its street, its gate across it", () => {
-    const t = town(["......", "======", ".DDD..", ".DDD..", ".DDD..", ".DDD..", "......"]);
-    const on = onAsphalt(t);
-    // The yard, to the hall's wall, where the docks are.
-    expect(on([2.5, 2.5])).toBe(true);
-    expect(on([2.5, 4.1])).toBe(true);
-    // The sidewalk before it, but for its gate.
-    const gate = t.door!(1, 2) ? 1 : t.door!(2, 2) ? 2 : 3;
-    expect(t.door!(gate, 2)).toEqual([0, -1]);
-    for (const c of [1, 2, 3]) expect(on([c + 0.5, 1.9])).toBe(c === gate);
-    // Its gate is the middle of its front, and its lorries stand on it.
-    expect(gate).toBe(2);
-    const { docks } = dress(t, facts(t));
-    expect(docks.length).toBe(8);
-    expect(docks.every((d) => [0.05, 0.6].every((out) => on([d.x + Math.cos(d.angle) * out, d.y + Math.sin(d.angle) * out])))).toBe(true);
-  });
-
-  test("a harbour is asphalt through, its docks, quay and apron, a quay of pavement at the water", () => {
-    const t = town(["~~~~~", "~~~~~", ".PPP.", ".PPP.", ".PPP.", "====="]);
-    const on = onAsphalt(t);
-    for (const [x, y] of [[2.5, 2.5], [1.5, 3.5], [3.5, 4.5]]) expect(on([x, y])).toBe(true);
-    expect(on([2.5, 2.05])).toBe(false);
-  });
 });

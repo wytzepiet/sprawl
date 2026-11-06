@@ -3,7 +3,7 @@
 
 use fixed::{HashMap, HashSet};
 use crate::game::ClientId;
-use model::{ChunkBounds, Clock, EntityId, GameObjectEntry, Lump, Operation, OwnerId, ServerMessage, StateUpdate};
+use model::{ChunkBounds, Clock, EntityId, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
 use land::ChunkCoord;
 use map::chunk_of;
 use crate::world::World;
@@ -20,17 +20,13 @@ pub(crate) struct ClientState {
 }
 
 /// Every update carries the ambient world state alongside its ops, so a client
-/// never has to ask for the island's extent separately: this, its ops and
-/// lumps empty.
+/// never has to ask for the island's extent or the town separately: this,
+/// its ops empty.
 pub fn state_update(world: &World, clk: Clock) -> StateUpdate {
     StateUpdate {
         ops: Vec::new(),
-        lumps: Vec::new(),
         clock: clk,
-        growth: crate::economy::growth(world, clk.now),
-        sea: crate::haul::sea(world),
-        missions: world.missions.shown(clk.now),
-        neighbours: crate::orders::neighbours(world),
+        town: world.town.view(&world.map),
         island: ChunkBounds { min_cx: land::terrain::CHUNKS_MIN, min_cy: land::terrain::CHUNKS_MIN, max_cx: land::terrain::CHUNKS_MAX, max_cy: land::terrain::CHUNKS_MAX },
     }
 }
@@ -48,9 +44,9 @@ impl<'a> Shared<'a> {
         Shared { world, clk, built: None }
     }
 
-    pub(crate) fn update(&mut self, ops: Vec<Operation>, lumps: Vec<Lump>) -> ServerMessage {
+    pub(crate) fn update(&mut self, ops: Vec<Operation>) -> ServerMessage {
         let (world, clk) = (self.world, self.clk);
-        ServerMessage::Update(StateUpdate { ops, lumps, ..self.built.get_or_insert_with(|| state_update(world, clk)).clone() })
+        ServerMessage::Update(StateUpdate { ops, ..self.built.get_or_insert_with(|| state_update(world, clk)).clone() })
     }
 }
 
@@ -112,7 +108,7 @@ pub(crate) fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        outbox.push((client_id, shared.update(ops, vec![])));
+        outbox.push((client_id, shared.update(ops)));
     }
 }
 
@@ -135,13 +131,12 @@ pub(crate) fn flush_dirty(
             .into_iter()
             .filter(|(id, ..)| !removed.contains(id))
             .collect();
-    // Money that landed, for whoever is looking at where it landed.
-    let lumps: Vec<(ChunkCoord, Lump)> = std::mem::take(&mut world.lumps)
-        .into_iter()
-        .filter_map(|s| Some((chunk_of(world.map.objects.get(s.building)?.position?), s)))
-        .collect();
+    // The town as its mayor sees it, to everyone, when it changed.
+    let town = world.town.view(&world.map);
+    let stirred = world.shown.as_ref() != Some(&town);
+    world.shown = Some(town);
 
-    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && lumps.is_empty() {
+    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && !stirred {
         return;
     }
 
@@ -195,10 +190,8 @@ pub(crate) fn flush_dirty(
                 ops.push(Operation::Delete(*id));
             }
         }
-        let lumps: Vec<Lump> = lumps.iter().filter(|(c, _)| cs.known_chunks.contains(c)).map(|(_, s)| *s).collect();
-
-        if !ops.is_empty() || !lumps.is_empty() {
-            outbox.push((client_id, shared.update(ops, lumps)));
+        if !ops.is_empty() || stirred {
+            outbox.push((client_id, shared.update(ops)));
         }
     }
 }

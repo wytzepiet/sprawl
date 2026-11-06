@@ -3,8 +3,8 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Door } from "./Door";
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
+import type { Home } from "./Home";
 import type { Lift } from "./Lift";
-import type { Package } from "./Package";
 import type { Stock } from "./Stock";
 import type { Tile } from "./Tile";
 
@@ -21,41 +21,33 @@ tiles: Array<GridCoord>,
  */
 facing: number, 
 /**
- * Its stocks, by good: the shelf of what it serves or keeps — meals,
- * tanks, a farm's crates — drawn down by visits and loads and filled
- * by a delivery or its own land. Empty shelves serve nothing. A save
- * from before a stock existed gets it issued at load
- * (`economy::open`).
+ * Its goods, by good: a maker's yard of what it made and what it
+ * takes, a shop's shelves, in whole crates on its pad.
  */
 stocks: { [key in Good]?: Stock }, 
 /**
- * Still going up: each material delivered toward it, of what its
- * row takes (`blueprint::Blueprint::materials`). A site has no door
- * for anyone but the vans bringing its materials; all in, it stands.
- */
-site: { [key in Good]?: Stock } | null, 
-/**
- * A harbour's quay: the packages standing on it, off the ferry for
- * the town or brought by a lorry for the ferry (`map/sea.rs`),
- * each in a slot of the pad the client lays out, in order.
- */
-pad: Array<Package>, 
-/**
- * A harbour's slots going out, booked and not yet loaded: a package
- * each, its good, partner and price, for the first depot's lorry
- * with the good to fill (`haul::lorry_wake`).
- */
-outgoing: Array<Package>, 
-/**
- * Its forklifts' work: each a run of packages lifted between its pad
- * and a vehicle standing at it, one at a time (`World::lift`). The
+ * Its forklifts' work: each a run of crates lifted between its pad
+ * and a vehicle standing at it, one at a time (`Map::lift`). The
  * server moves the goods as a run starts; the client plays it.
  */
 lifts: Array<Lift>, 
 /**
- * Lorries bought for it beyond the one its row comes with.
+ * A house's family: who lives here and what they want.
  */
-lorries: number, 
+home: Home | null, 
+/**
+ * A maker's seats: the cars of the workers who hold them, whether at
+ * their post or on the road to it.
+ */
+crew: Array<number>, 
+/**
+ * Of the crew, how many are at their post now: what it works at.
+ */
+present: number, 
+/**
+ * How far through the crate it is making, 0 to 1.
+ */
+work: number, 
 /**
  * A farm's land: the grass it claimed when a street reached it, each
  * tile at a stage of the cycle the tractor drives it through
@@ -64,14 +56,11 @@ lorries: number,
 land: Array<Tile>, 
 /**
  * Where the tractor last drove: one run's path, which the client
- * draws the field along, corners and all. Every run works the same
- * ground, so the last run's path is the field. Redrawn by the next.
+ * draws the field along.
  */
 ruts: Array<GridCoord>, 
 /**
  * Where it is driven into: one of its tiles, and the street tile
- * beside it the drive runs from. The drive is the building's, not a
- * road: drawn as one, driven by the cars of its lot, and gone with it.
- * Kept when the street goes, and good again if it comes back.
+ * beside it the drive runs from.
  */
 door: Door | null, };

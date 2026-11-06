@@ -13,7 +13,7 @@ export const CHUNK_SIZE = 32;
 export const CHUNK_SKIRT = 2;
 export const CHUNK_STRIDE = CHUNK_SIZE + CHUNK_SKIRT * 2;
 
-export type TerrainPalette = Record<TerrainType, Rgb>;
+export type TerrainPalette = Record<Ground, Rgb>;
 
 /** One mesh's vertex data. All transferable. */
 export interface MeshBuffers {
@@ -66,7 +66,8 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
 export const WATER_Z = -0.7;
 export const BEACH_Z = -0.66;
 
-const ELEVATION: Record<TerrainType, number> = {
+const ELEVATION: Record<Ground, number> = {
+  Clay: 0,
   Sea: WATER_Z,
   Water: WATER_Z,
   Beach: 0,
@@ -87,14 +88,16 @@ const ELEVATION: Record<TerrainType, number> = {
  * its edge meets ground lying lower it rounds over onto it, but not where
  * it meets ground `level` with it, as the wood floor meets the grass.
  */
-export const LAYERS: { grounds: TerrainType[]; beside?: TerrainType[]; level: TerrainType[]; parts?: boolean; z: number }[] = [
+export const LAYERS: { grounds: Ground[]; beside?: Ground[]; level: Ground[]; parts?: boolean; z: number }[] = [
   // And under the land beside a beach, so the beach runs on under the
   // cliff and shows only where the land stops short of the water: one
   // shore, not a blob. Not under the rest of the land, where a cliff falls
   // straight into the water.
-  { grounds: ["Beach"], beside: ["Grass", "Forest", "Mountain"], level: ["Grass", "Forest", "Mountain"], z: BEACH_Z },
-  { grounds: ["Grass", "Forest", "Mountain"], level: [], z: 0 },
-  { grounds: ["Grass", "Forest"], level: [], z: 0.002 },
+  { grounds: ["Beach"], beside: ["Grass", "Forest", "Mountain", "Clay"], level: ["Grass", "Forest", "Mountain", "Clay"], z: BEACH_Z },
+  { grounds: ["Grass", "Forest", "Mountain", "Clay"], level: [], z: 0 },
+  { grounds: ["Grass", "Forest", "Clay"], level: [], z: 0.002 },
+  // Clay, ochre, its edge frayed into the grass round it.
+  { grounds: ["Clay"], level: [], parts: true, z: 0.003 },
   // Its edge frays into the grass, as the grass's does: onto the open
   // land and at a mountain's foot alike.
   { grounds: ["Forest"], level: [], parts: true, z: 0.004 },
@@ -520,12 +523,13 @@ function grow(src: Float32Array, length: number): Float32Array<ArrayBuffer> {
 // so the server only sends types. `corners[i]` needs the 3x3 neighbourhood;
 // `cornerMask` needs the neighbours' corners, so it reaches two tiles out.
 
-export type TypeAt = (x: number, y: number) => TerrainType | undefined;
+export type TypeAt = (x: number, y: number) => Ground | undefined;
 
 /** Which terrain type wins when two differing neighbours meet at a corner. */
-const CORNER_PRIORITY: Record<TerrainType, number> = {
+const CORNER_PRIORITY: Record<Ground, number> = {
   Beach: 4,
   Grass: 3,
+  Clay: 3,
   Forest: 2,
   Mountain: 1,
   Water: 0,
@@ -534,7 +538,7 @@ const CORNER_PRIORITY: Record<TerrainType, number> = {
 
 /** Does `a` take a corner from `b`? Every pair has one answer, ties
  *  settled by name, so two kinds never both claim a corner. */
-const wins = (a: TerrainType, b: TerrainType) =>
+const wins = (a: Ground, b: Ground) =>
   CORNER_PRIORITY[a] > CORNER_PRIORITY[b] || (CORNER_PRIORITY[a] === CORNER_PRIORITY[b] && a > b);
 
 /** For each corner [BL, BR, TR, TL], the two cardinal neighbours to check. */
@@ -555,7 +559,7 @@ const EDGE_CHECKS: [[number, number, number], [number, number, number]][] = [
 ];
 
 /** Corner overlays for one tile, or nulls where the corner is square. */
-function cornersAt(x: number, y: number, typeAt: TypeAt): (TerrainType | null)[] {
+function cornersAt(x: number, y: number, typeAt: TypeAt): (Ground | null)[] {
   const mine = typeAt(x, y);
   if (mine === undefined) return [null, null, null, null];
 
@@ -581,7 +585,7 @@ function cornersAt(x: number, y: number, typeAt: TypeAt): (TerrainType | null)[]
 function cornerMask(
   x: number,
   y: number,
-  corners: (TerrainType | null)[],
+  corners: (Ground | null)[],
   sampler: TerrainSampler,
 ): number {
   let mask = 0;
@@ -596,13 +600,16 @@ function cornerMask(
 
 export interface TerrainSampler {
   typeAt: TypeAt;
-  cornersOf(x: number, y: number): (TerrainType | null)[];
+  cornersOf(x: number, y: number): (Ground | null)[];
 }
 
-/** Wire encoding, in the server's TerrainType::to_byte order. */
-export const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Sea"];
+/** Wire encoding, in the server's Ground::to_byte order. */
+/** The ground as the client draws it: the land's types, and clay where a
+ *  deposit lies under the grass (`TerrainChunk.deposits`), dug by a clay pit. */
+export type Ground = TerrainType | "Clay";
+export const TYPE_BY_BYTE: Ground[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Sea", "Clay"];
 
-const NO_CORNERS: (TerrainType | null)[] = [null, null, null, null];
+const NO_CORNERS: (Ground | null)[] = [null, null, null, null];
 
 /**
  * Every tile reads its own corners and, for the mask, its neighbours' — so
@@ -616,7 +623,7 @@ export function createSampler(
   originX: number,
   originY: number,
 ): TerrainSampler {
-  const cache = new Array<(TerrainType | null)[] | undefined>(stride * stride);
+  const cache = new Array<(Ground | null)[] | undefined>(stride * stride);
 
   const typeAt: TypeAt = (x, y) => {
     const ix = x - originX;
@@ -704,12 +711,12 @@ class ChunkSink {
   }
 }
 
-const isWater = (type: TerrainType) => type === "Sea" || type === "Water";
+const isWater = (type: Ground) => type === "Sea" || type === "Water";
 
 /** A tile's rounded corners, each its ground and its curve's variant. */
 interface Curved {
   index: number;
-  type: TerrainType;
+  type: Ground;
   variant: number;
 }
 function curvedCorners(x: number, y: number, sampler: TerrainSampler): (Curved | null)[] {
@@ -738,7 +745,7 @@ function cutBase(corners: ({ index: number; variant: number } | null)[]): MeshGe
  *  corner's where its curve reaches along the edge, else the tile's own.
  *  A corner's curve meets its first edge (A) at the edge's start corner,
  *  its second (B) at the end's, halfway along or, extended, all the way. */
-function edgeGround(type: TerrainType, corners: (Curved | null)[], i: number): [TerrainType, TerrainType] {
+function edgeGround(type: Ground, corners: (Curved | null)[], i: number): [Ground, Ground] {
   const [start, end] = [corners[i], corners[(i + 1) % 4]];
   const whole = (c: Curved | null, extended: number, continues: number) => !!c && !!(c.variant & extended) && !(c.variant & continues);
   return [start?.type ?? (whole(end, 8, 2) ? end!.type : type), end?.type ?? (whole(start, 4, 1) ? start!.type : type)];
@@ -904,7 +911,7 @@ export function outlineOf(key: string): OutlineLine[] {
  *  losing, so it parts there, as a wood does either side of a road cut
  *  through it on the diagonal. */
 const [IN, PARTS, OUT] = [TYPE_BY_BYTE.indexOf("Beach"), TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass")];
-const isIn = (type: TerrainType | null | undefined) => type === "Beach" || type === "Forest";
+const isIn = (type: Ground | null | undefined) => type === "Beach" || type === "Forest";
 
 /** A tile's eight neighbours. */
 const AROUND = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
@@ -922,7 +929,7 @@ function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, 
     const { grounds, level } = LAYERS[l];
     const map = maps[l];
     // How ground out of the layer lies to it.
-    const outside = (type: TerrainType | undefined): Lies => (type && level.includes(type) ? "=" : "-");
+    const outside = (type: Ground | undefined): Lies => (type && level.includes(type) ? "=" : "-");
     const curved = curvedCorners(x, y, map);
     const mine = [0, 1, 2, 3].map((i) => edgeGround(map.typeAt(x, y)!, curved, i));
     const theirs = EDGE_DIRS.map(([dx, dy], i) => {
@@ -965,7 +972,7 @@ const NO_COLOUR: Rgb = { r: 0, g: 0, b: 0 };
 /** The water: a square under every tile with water at or beside it, the
  *  land's own outline drawn over it (`LAYERS`), the sea's a shade deeper. */
 function layWater(sink: ChunkSink, x: number, y: number, lx: number, ly: number, real: TerrainSampler, palette: TerrainPalette): void {
-  let water: TerrainType | null = null;
+  let water: Ground | null = null;
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       const type = real.typeAt(x + dx, y + dy);
@@ -1021,7 +1028,7 @@ function distances(inside: Uint8Array, side: number): Float32Array {
 
 /** Which texels of a chunk and `reach` round it, `SHORE_DENSITY` to a tile,
  *  are `land` as drawn, or past the chunk's edge of a kind that is. */
-function landMask(land: TerrainBuffers, sampler: TerrainSampler, originX: number, originY: number, reach: number, is: (t: TerrainType) => boolean): Uint8Array {
+function landMask(land: TerrainBuffers, sampler: TerrainSampler, originX: number, originY: number, reach: number, is: (t: Ground) => boolean): Uint8Array {
   const d = SHORE_DENSITY;
   const side = (CHUNK_SIZE + 2 * reach) * d;
   const mask = fillTriangles(land.positions, land.indices.subarray(0, land.indexCount), -reach, -reach, d, side, side, new Uint8Array(side * side));
@@ -1053,7 +1060,7 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
   return inner((k) => far[k] / (SHORE_REACH * SHORE_DENSITY), SHORE_REACH);
 }
 
-const isLandTop = (t: TerrainType) => t === "Grass" || t === "Forest" || t === "Mountain";
+const isLandTop = (t: Ground) => t === "Grass" || t === "Forest" || t === "Mountain" || t === "Clay";
 
 /** How far each point of a chunk lies out from the land's lip, its edge
  *  at its own height wandering along the slate, `SHORE_DENSITY` to a tile,
@@ -1421,7 +1428,7 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
         continue;
       }
       const t = sampler.typeAt(x, y);
-      if (t !== "Grass" && t !== "Forest") continue;
+      if (t !== "Grass" && t !== "Forest" && t !== "Clay") continue;
       const flat = (...points: Point[]) => out.polygon(points, FOOT_Z);
       if (rock(x - 1, y)) flat([x, y], [x + FOOT, y], [x + FOOT, y + 1], [x, y + 1]);
       if (rock(x + 1, y)) flat([x + 1 - FOOT, y], [x + 1, y], [x + 1, y + 1], [x + 1 - FOOT, y + 1]);
@@ -1469,7 +1476,7 @@ export function buildChunk(
     originY - CHUNK_SKIRT,
   );
 
-  const touches = (k: number, kinds: TerrainType[]) => {
+  const touches = (k: number, kinds: Ground[]) => {
     const [x, y] = [k % CHUNK_STRIDE, Math.floor(k / CHUNK_STRIDE)];
     return AROUND.some(([dx, dy]) => {
       const [nx, ny] = [x + dx, y + dy];

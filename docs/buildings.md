@@ -3,8 +3,8 @@
 Status: draft, 2026-10-10, for the player to correct. Built so far:
 house, apartment, shop, office, factory, gas station, supermarket, the
 general depot (`Depot`: crates 200, fuel 100, timber 60, stone 60, a
-lorry and two vans, and up to three more lorries bought from the world at
-40 coins each), the farm, the sawmill and the quarry (each four hands
+lorry and two vans, and up to five more lorries or vans bought from the
+world at 40 coins each), the farm, the sawmill and the quarry (each four hands
 working the ground within five tiles, the forest for timber, the
 mountain for stone: half a unit an hour each with thirty tiles of it in
 reach, nothing in the open; a yard of six boxes) and the ferry harbour.
@@ -20,7 +20,6 @@ and how much (`Blueprint::materials`, which a draft's bill reads):
 | House | 4 | |
 | Apartment | 12 | 8 |
 | Shop | 4 | |
-| Office | 10 | 6 |
 | Factory | 14 | 8 |
 | Gas station | 6 | 4 |
 | Supermarket | 16 | 10 |
@@ -143,7 +142,8 @@ stops the line, in sight.
 
 ## Goes
 
-- **Office and factory**, once the chains supply the jobs.
+- **Factory**, once the chains supply the jobs. The office went when the
+  town began to trade by itself.
 - **The port** as built, the depot with a ship of the world's: replaced by
   the ferry harbour and the container port.
 - **The edge**, where a road leaves the map: the harbour is the only door.

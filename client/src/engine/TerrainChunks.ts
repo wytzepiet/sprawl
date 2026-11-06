@@ -12,6 +12,7 @@ import {
   CHUNK_SKIRT,
   CHUNK_STRIDE,
   TYPE_BY_BYTE,
+  type Ground,
   type ChunkGeometry,
   type MeshBuffers,
 } from "./objects/terrainGeometry";
@@ -20,7 +21,6 @@ import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
 import { grove, plant, showGrove, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
-import type { TerrainType } from "../generated";
 
 import { groundCover } from "./view";
 
@@ -82,7 +82,7 @@ export class TerrainChunks {
   ) {
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
     // Each layer of the land its colour, bottom up (`LAYERS`).
-    this.ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
+    this.ground.paint([theme.beach, theme.rock, theme.land, theme.clay, theme.forest]);
 
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
@@ -99,22 +99,24 @@ export class TerrainChunks {
    * without consulting its neighbours -- no cross-chunk dependency, and the
    * shared skirt keeps the seams consistent.
    */
-  setChunk(cx: number, cy: number, tiles: Uint8Array, heights: Uint8Array): void {
+  setChunk(cx: number, cy: number, tiles: Uint8Array, heights: Uint8Array, deposits: Uint8Array): void {
     const key = `${cx},${cy}`;
-    this.tiles.set(key, tiles);
+    // Grass over a deposit of clay is drawn as clay (`Ground`).
+    const [grass, clay] = [TYPE_BY_BYTE.indexOf("Grass"), TYPE_BY_BYTE.indexOf("Clay")];
+    this.tiles.set(key, deposits.length ? tiles.map((b, k) => (deposits[k] && b === grass ? clay : b)) : tiles);
     this.heights.set(key, heights);
     this.invalidate(key);
   }
 
 
   /** Whether a tile of land has water beside it. */
-  private ashore(x: number, y: number, typeAt: (x: number, y: number) => TerrainType | undefined): boolean {
-    const wet = (t: TerrainType | undefined) => t === "Sea" || t === "Water";
+  private ashore(x: number, y: number, typeAt: (x: number, y: number) => Ground | undefined): boolean {
+    const wet = (t: Ground | undefined) => t === "Sea" || t === "Water";
     return !wet(typeAt(x, y)) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wet(typeAt(x + dx, y + dy)));
   }
 
   /** The ground on a tile, if its chunk has arrived. */
-  typeAt(x: number, y: number): TerrainType | undefined {
+  typeAt(x: number, y: number): Ground | undefined {
     const [cx, cy] = [floorDiv(x, CHUNK_SIZE), floorDiv(y, CHUNK_SIZE)];
     const tiles = this.tiles.get(`${cx},${cy}`);
     if (!tiles) return undefined;

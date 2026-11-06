@@ -28,21 +28,14 @@ export default defineConfig({
   // tears the engine down under the rest, or builds on state the swap left
   // behind, and the game goes blank. A reload costs a second and is always
   // right; the server holds the game, so the page comes back as it was.
-  //
-  // The UI (`src/ui/`) is drawn by the GPU: compiled for Solid's universal
-  // renderer, its elements made by `ui/node.ts` rather than the page.
-  plugins: [
-    solidPlugin({ hot: false, exclude: [/src\/ui\/.*\.tsx$/] }),
-    solidPlugin({ hot: false, include: [/src\/ui\/.*\.tsx$/], solid: { generate: "universal", moduleName: "~ui" } }),
-    profiling,
-  ],
+  plugins: [solidPlugin({ hot: false }), profiling],
   resolve: {
     alias: [
       { find: /^@babylonjs\/lite$/, replacement: `${lite}src/index.ts` },
       // A few of Lite's insides, until it exports them: its text's layout, atlas and shader.
       { find: /^@babylonjs\/lite\/src\/(.*)$/, replacement: `${lite}src/$1.ts` },
-      { find: /^~ui$/, replacement: fileURLToPath(new URL("./ui/node.ts", import.meta.url)) },
-      { find: /^~ui\/(.*)$/, replacement: fileURLToPath(new URL("./ui/", import.meta.url)) + "$1" },
+      // The UI's ink (`ui/`): what the cards are made of, knowing nothing of the game.
+      { find: /^~ui$/, replacement: fileURLToPath(new URL("./ui/index.tsx", import.meta.url)) },
     ],
   },
   server: {
@@ -61,6 +54,9 @@ export default defineConfig({
       "/perf": { target: `http://${server}` },
     },
   },
+  // Manifold finds its wasm beside its script (`new URL(…, import.meta.url)`),
+  // which pre-bundling would move away from it.
+  optimizeDeps: { exclude: ["manifold-3d"], esbuildOptions: { target: "esnext" } },
   build: {
     target: "esnext",
   },

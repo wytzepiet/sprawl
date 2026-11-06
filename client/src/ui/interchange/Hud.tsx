@@ -1,4 +1,4 @@
-/** @jsxImportSource ~ui */
+import { Box, Ink, Text, Icon } from "~ui";
 import { createSignal, For, Show } from "solid-js";
 import type { LevelState, Tool } from "../../generated";
 import type { LevelConnection } from "../../interchange/connection";
@@ -80,26 +80,26 @@ export default function Hud(props: Props) {
       <Signs state={props.state} hint={setHint} />
       <Level {...props} />
       <Verdict {...props} />
-      <box at={{ left: 0, right: 0, bottom: 24 }} align="center" gap={10}>
+      <Box at={{ left: 0, right: 0, bottom: 24 }} align="center" gap={10}>
         <Show when={told()}>
           {(t) => (
-            <glass layer="toast" round={18} pad={{ x: 16, y: 8 }}>
-              <text size={13}>{t()}</text>
-            </glass>
+            <Ink layer="toast" round={18} pad={{ x: 16, y: 8 }}>
+              <Text size={13}>{t()}</Text>
+            </Ink>
           )}
         </Show>
         <Show when={said()}>
           {(h) => (
-            <glass layer="hint" round={16} pad={{ x: 14, y: 6 }} maxW={720}>
-              <text size={13} lines={2} align="center">
-                <text weight={600}>{h()[0]}</text>
-                <text soft> · {h()[1]}</text>
-              </text>
-            </glass>
+            <Ink layer="hint" round={16} pad={{ x: 14, y: 6 }} maxW={720}>
+              <Text size={13} lines={2} align="center">
+                <Text weight={600}>{h()[0]}</Text>
+                <Text soft> · {h()[1]}</Text>
+              </Text>
+            </Ink>
           )}
         </Show>
         <Palette {...props} hint={setHint} />
-      </box>
+      </Box>
     </>
   );
 }
@@ -109,69 +109,69 @@ function Level(props: Props) {
   const s = () => props.state();
   const reset = () => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" });
   return (
-    <glass layer="level" at={{ left: 24, top: 24 }} w={288} round={24} pad={{ x: 20, y: 16 }} gap={6}>
-      <box dir="row" align="center" gap={12}>
+    <Ink layer="level" at={{ left: 24, top: 24 }} w={288} round={24} pad={{ x: 20, y: 16 }} gap={6}>
+      <Box dir="row" align="center" gap={12}>
         <Press w={28} h={28} round={14} align="center" justify="center" onTap={props.back}>
-          <icon d={BACK} size={18} ink="ink/0.72" />
+          <Icon d={BACK} size={18} ink="ink/0.72" />
         </Press>
-        <text serif size={24}>{props.level.title}</text>
-      </box>
-      <For each={props.level.notes}>{(n) => <text size={13} soft lead={1.35}>{n}</text>}</For>
-      <box gap={4} pad={{ top: 6 }}>
+        <Text serif size={24}>{props.level.title}</Text>
+      </Box>
+      <For each={props.level.notes}>{(n) => <Text size={13} soft lead={1.35}>{n}</Text>}</For>
+      <Box gap={4} pad={{ top: 6 }}>
         <For each={s()?.wants ?? []}>
           {(w) => (
-            <box dir="row" align="center" justify="between" gap={8}>
-              <box dir="row" align="center" gap={6}>
+            <Box dir="row" align="center" justify="between" gap={8}>
+              <Box dir="row" align="center" gap={6}>
                 <Badge colour={gateColour(s()!, w.from)}>{w.from}</Badge>
-                <icon d={TO} size={13} ink="ink/0.72" />
+                <Icon d={TO} size={13} ink="ink/0.72" />
                 <Badge colour={gateColour(s()!, w.to)}>{w.to}</Badge>
-                <text size={13} soft>{w.per_min} cars/min</text>
-              </box>
-              <Show when={s()?.phase !== "Build"} fallback={<text size={13} ink={w.joined ? "#2E7D4F" : "#C2361F"}>{w.joined ? "joined" : "no road"}</text>}>
-                <text size={13}>{w.delivered}/{w.due}</text>
+                <Text size={13} soft>{w.per_min} cars/min</Text>
+              </Box>
+              <Show when={s()?.phase !== "Build"} fallback={<Text size={13} ink={w.joined ? "#2E7D4F" : "#C2361F"}>{w.joined ? "joined" : "no road"}</Text>}>
+                <Text size={13}>{w.delivered}/{w.due}</Text>
               </Show>
-            </box>
+            </Box>
           )}
         </For>
-      </box>
-      <box h={1} fill="ink/0.1" />
-      <box dir="row" align="end" justify="between">
-        <text size={12} weight={600} soft>Asphalt</text>
-        <text size={20} weight={600}>
+      </Box>
+      <Box h={1} fill="ink/0.1" />
+      <Box dir="row" align="end" justify="between">
+        <Text size={12} weight={600} soft>Asphalt</Text>
+        <Text size={20} weight={600}>
           {s()?.cost ?? 0}
           <Show when={s()?.par != null}>
-            <text size={14} weight={500} soft> / {s()?.par} par</text>
+            <Text size={14} weight={500} soft> / {s()?.par} par</Text>
           </Show>
-        </text>
-      </box>
-      <text size={11} soft lead={1.35}>
+        </Text>
+      </Box>
+      <Text size={11} soft lead={1.35}>
         V look · drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · PgUp PgDn height · Z undo · Space test · right-drag to pan · F flag something wrong
-      </text>
-      <box dir="row" gap={8} pad={{ top: 4 }}>
+      </Text>
+      <Box dir="row" gap={8} pad={{ top: 4 }}>
         <Btn onTap={() => copyReplay(props.line(), props.level.name)}>Copy replay</Btn>
         <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
           <Btn onTap={reset}>Start over</Btn>
         </Show>
-      </box>
-    </glass>
+      </Box>
+    </Ink>
   );
 }
 
 /** A gate's label, in its colour. */
 function Badge(props: { children: string; colour: string }) {
   return (
-    <box w={20} h={20} round={10} fill={props.colour} align="center" justify="center">
-      <text size={11} weight={700} ink="white">{props.children}</text>
-    </box>
+    <Box w={20} h={20} round={10} fill={props.colour} align="center" justify="center">
+      <Text size={11} weight={700} ink="white">{props.children}</Text>
+    </Box>
   );
 }
 
 /** A button's key, small in its corner. */
 function KeyCap(props: { children: string }) {
   return (
-    <box at={{ right: -2, top: -2 }} h={14} round={5} pad={{ x: 4 }} justify="center" fill="ink/0.12">
-      <text size={9} weight={700}>{props.children}</text>
-    </box>
+    <Box at={{ right: -2, top: -2 }} h={14} round={5} pad={{ x: 4 }} justify="center" fill="ink/0.12">
+      <Text size={9} weight={700}>{props.children}</Text>
+    </Box>
   );
 }
 
@@ -179,20 +179,20 @@ function KeyCap(props: { children: string }) {
 function Button(props: { on: boolean; d: string; cap?: string; hint: [string, string]; say: (h: [string, string] | null) => void; onTap: () => void }) {
   return (
     <Press w={44} h={44} round={22} align="center" justify="center" fill={props.on ? "ink" : undefined} onTap={props.onTap} onHover={(over) => props.say(over ? props.hint : null)}>
-      <icon d={props.d} size={20} ink={props.on ? "glass" : "ink/0.72"} />
+      <Icon d={props.d} size={20} ink={props.on ? "glass" : "ink/0.72"} />
       <Show when={props.cap}>{(k) => <KeyCap>{k()}</KeyCap>}</Show>
     </Press>
   );
 }
 
-const Rule = () => <box w={1} h={24} fill="ink/0.15" />;
+const Rule = () => <Box w={1} h={24} fill="ink/0.15" />;
 
 /** The road palette, the pen's height, and the test. */
 function Palette(props: Props & { hint: (h: [string, string] | null) => void }) {
   const s = () => props.state();
   const height = (over: boolean) => props.hint(over ? ["Height", "the end of the road you last drew becomes the slope up or down (PgUp, PgDn); greyed where it can't be one"] : null);
   return (
-    <glass layer="bar" dir="row" align="center" gap={6} h={56} round={28} pad={6}>
+    <Ink layer="bar" dir="row" align="center" gap={6} h={56} round={28} pad={6}>
       {/* The empty hand: the roads as they are, no building. */}
       <Button on={tool() === null} d={SELECT} cap="V" hint={["Look", "the roads as they are, every level solid, nothing in hand"]} say={props.hint} onTap={() => setTool(null)} />
       <Rule />
@@ -212,31 +212,31 @@ function Palette(props: Props & { hint: (h: [string, string] | null) => void }) 
         onTap={() => setPriority(!priority())}
         onHover={(over) => props.hint(over ? ["Priority", "whoever joins or crosses a road drawn with it gives way. Draw along a road to give it priority, or take it"] : null)}
       >
-        <box w={18} h={18}>
-          <icon at={{ left: 0, top: 0 }} d={DIAMOND} size={18} ink={priority() ? "glass" : "ink/0.72"} />
-          <icon at={{ left: 0, top: 0 }} d={DIAMOND_IN} size={18} ink={priority() ? "#E0B443" : "ink/0.72"} />
-        </box>
-        <text size={13} weight={600} ink={priority() ? "glass" : "ink/0.72"}>Priority</text>
+        <Box w={18} h={18}>
+          <Icon at={{ left: 0, top: 0 }} d={DIAMOND} size={18} ink={priority() ? "glass" : "ink/0.72"} />
+          <Icon at={{ left: 0, top: 0 }} d={DIAMOND_IN} size={18} ink={priority() ? "#E0B443" : "ink/0.72"} />
+        </Box>
+        <Text size={13} weight={600} ink={priority() ? "glass" : "ink/0.72"}>Priority</Text>
         <KeyCap>P</KeyCap>
       </Press>
       <Rule />
       {/* The pen's height: the road drawn after a change climbs to it. */}
-      <box dir="row" align="center" gap={2}>
+      <Box dir="row" align="center" gap={2}>
         <Press w={28} h={36} round={14} align="center" justify="center" opacity={climb().down ? 1 : 0.25} onTap={() => climb().down?.()} onHover={height}>
-          <icon d={DOWN} size={14} ink="ink/0.72" />
+          <Icon d={DOWN} size={14} ink="ink/0.72" />
         </Press>
-        <text w={56} size={13} weight={600} align="center">{pen() === 0 ? "Ground" : `Level ${pen()}`}</text>
+        <Text w={56} size={13} weight={600} align="center">{pen() === 0 ? "Ground" : `Level ${pen()}`}</Text>
         <Press w={28} h={36} round={14} align="center" justify="center" opacity={climb().up ? 1 : 0.25} onTap={() => climb().up?.()} onHover={height}>
-          <icon d={UP} size={14} ink="ink/0.72" />
+          <Icon d={UP} size={14} ink="ink/0.72" />
         </Press>
-      </box>
+      </Box>
       <Show when={s()?.phase === "Build" || s()?.phase === "Test"}>
         <Rule />
         <Show when={s()?.phase === "Build"} fallback={<Btn big onTap={() => props.line()?.finish()}>Skip to the end</Btn>}>
           <Btn big onTap={() => props.line()?.test()}>Test</Btn>
         </Show>
       </Show>
-    </glass>
+    </Ink>
   );
 }
 
@@ -245,36 +245,36 @@ function Verdict(props: Props) {
   return (
     <Show when={props.state()?.phase !== "Build" ? props.state() : null}>
       {(t) => (
-        <glass layer="verdict" at={{ right: 24, top: 24 }} w={288} round={24} pad={{ x: 20, y: 16 }} gap={8}>
+        <Ink layer="verdict" at={{ right: 24, top: 24 }} w={288} round={24} pad={{ x: 20, y: 16 }} gap={8}>
           <Show when={t().phase === "Test"}>
-            <text size={12} weight={600} soft>Testing</text>
+            <Text size={12} weight={600} soft>Testing</Text>
             <Bar value={t().test_ms / t().test_total_ms} w={248} />
-            <text size={13} soft>Flow so far {flowOf(t())}</text>
+            <Text size={13} soft>Flow so far {flowOf(t())}</Text>
           </Show>
           <Show when={t().phase === "Jammed"}>
-            <text size={12} weight={600} ink="#C2361F">Jammed</text>
-            <text serif size={24}>{t().message}</text>
-            <box dir="row">
+            <Text size={12} weight={600} ink="#C2361F">Jammed</Text>
+            <Text serif size={24}>{t().message}</Text>
+            <Box dir="row">
               <Btn big onTap={() => props.line()?.build()}>Back to building</Btn>
-            </box>
+            </Box>
           </Show>
           <Show when={t().phase === "Done"}>
-            <text size={12} weight={600} soft>{t().par === null ? "Flow" : "Efficiency"}</text>
-            <text serif size={56} lead={1}>
+            <Text size={12} weight={600} soft>{t().par === null ? "Flow" : "Efficiency"}</Text>
+            <Text serif size={56} lead={1}>
               {t().efficiency.toFixed(1)}
-              <text size={28}>%</text>
-            </text>
-            <box>
-              <Row label="Flow"><text size={13.5}>{flowOf(t())}</text></Row>
-              <Row label="Asphalt"><text size={13.5}>{t().par === null ? `${t().cost}` : `${t().cost} for a par of ${t().par}`}</text></Row>
-              <Show when={best(props.level.name)}>{(b) => <Row label="Your best"><text size={13.5}>{b().toFixed(1)}%</text></Row>}</Show>
-            </box>
-            <box dir="row" gap={8} pad={{ top: 4 }}>
+              <Text size={28}>%</Text>
+            </Text>
+            <Box>
+              <Row label="Flow"><Text size={13.5}>{flowOf(t())}</Text></Row>
+              <Row label="Asphalt"><Text size={13.5}>{t().par === null ? `${t().cost}` : `${t().cost} for a par of ${t().par}`}</Text></Row>
+              <Show when={best(props.level.name)}>{(b) => <Row label="Your best"><Text size={13.5}>{b().toFixed(1)}%</Text></Row>}</Show>
+            </Box>
+            <Box dir="row" gap={8} pad={{ top: 4 }}>
               <Btn onTap={() => props.line()?.build()}>Improve</Btn>
               <Btn big onTap={props.next}>Next level</Btn>
-            </box>
+            </Box>
           </Show>
-        </glass>
+        </Ink>
       )}
     </Show>
   );

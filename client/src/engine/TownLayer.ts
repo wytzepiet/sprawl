@@ -1,4 +1,5 @@
-import { addToScene, type Mesh } from "@babylonjs/lite";
+import { addToScene, markMaterialUboDirty, type MaterialPlugin, type Mesh } from "@babylonjs/lite";
+import { night } from "./lights";
 import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
@@ -13,7 +14,7 @@ import { areaOf, CHUNK, grow, kerbed, MARGIN, turned, widen, type Bounds, type C
 import type { TownApi } from "./townWorker";
 import { theme } from "./theme";
 import type { Look } from "./objects/look";
-import { BLUEPRINTS, yardOf } from "../blueprints";
+import { BLUEPRINTS, gateOf } from "../blueprints";
 import { KERB_Z, LAYER_ORDER } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
@@ -27,7 +28,7 @@ import { RoadTiles } from "./roads";
 import { grove, plant, showGrove, uproot, type Grove } from "./trees";
 import { clearProps, placeProps, showProps } from "./props";
 import type { Part } from "./merged";
-import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Placing } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType, Placing } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
 
 /** How many roads one tile may hold: the ground's two side by side, and
@@ -80,6 +81,18 @@ interface Gathered {
  * half round onto the map. Kerbs are
  * rounded from each sheet's own kerb texture (`kerbs.ts`).
  */
+/** The masses' windows, the glass their vertices mark (`town/roof.ts`):
+ *  lit from within as the night comes on, a lamp's warm colour, dimmer. */
+export const WINDOW_GLOW = [0.9, 0.58, 0.28];
+const WINDOWS: MaterialPlugin = {
+  name: "Windows",
+  priority: 230,
+  getUniforms: () => ({ ubo: [{ name: "windowGlow", type: "f32" }] }),
+  writeUbo: (data, offsets) => void (data[offsets.get("windowGlow")! / 4] = night.on),
+  getCustomCode: (stage) =>
+    stage === "fragment" ? { CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color += vec3f(${WINDOW_GLOW.join(", ")}) * material.windowGlow * (1. - input.vColor.a);` } : null,
+};
+
 export class TownLayer {
   /** Each chunk's meshes, by chunk, and the chunks to draw again. */
   private chunks = new Map<string, Shown>();
@@ -113,6 +126,7 @@ export class TownLayer {
   private masses: TownMaterial;
   private pieces = new Map<string, TownMaterial>();
   private stopTints: () => void;
+  private stopGlow: () => void;
 
   constructor(
     private ctx: EngineContext,
@@ -124,7 +138,11 @@ export class TownLayer {
     this.tints = new Tints(ctx.engine);
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
-    this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
+    this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF, WINDOWS]), "building", bevel);
+    let glow = -1;
+    this.stopGlow = ctx.beforeRender(() => {
+      if (night.on !== glow) markMaterialUboDirty(this.masses), (glow = night.on);
+    });
     this.roads = new RoadTiles(ctx.engine, ctx.scene);
     const { r, g, b } = theme.paved;
     this.concrete = new Decks(ctx.engine, ctx.scene, casters, rgb(r, g, b));
@@ -159,6 +177,11 @@ export class TownLayer {
    *  drawn again. */
   recolour(e: GameObjectEntry) {
     if (this.tints.has(e.id)) this.tints.set(e.id, this.colourOf(e));
+  }
+
+  /** Whether all asked for is drawn and shown. */
+  get settled() {
+    return this.frame === null && !this.drawing && !this.stale.size && !this.dirty.size;
   }
 
   /** Something built changed on this tile: the road there and round it
@@ -209,18 +232,17 @@ export class TownLayer {
         const b = e.object.data as Building;
         g.byId.set(e.id, e);
         if (b.door) g.doors.push([b.door.tile.x, b.door.tile.y, b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
-        // A site is its ground, paved, until it stands (`BuildingObject`).
-        const yard = yardTiles(b.tiles, b.kind, b.facing);
+        const gate = gateOf(b.tiles, b.kind, b.facing);
         for (const t of b.tiles) {
-          g.buildings.push([t.x, t.y, e.id, b.site ? "paved" : b.kind, yard.has(`${t.x},${t.y}`)]);
+          g.buildings.push([t.x, t.y, e.id, b.kind, t.x === gate?.x && t.y === gate.y]);
           grow(g.built, t.x, t.y);
         }
       }
     });
     if (held) {
-      const yard = yardTiles(held.tiles, held.kind, held.facing);
+      const gate = gateOf(held.tiles, held.kind, held.facing);
       for (const t of held.tiles) {
-        g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
+        g.buildings.push([t.x, t.y, HELD, held.kind, t.x === gate?.x && t.y === gate.y]);
         grow(g.built, t.x, t.y);
       }
       if (held.door) g.doors.push([held.door.tile.x, held.door.tile.y, held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
@@ -415,8 +437,8 @@ export class TownLayer {
     // Every building's door, by its tile: the way on the map to its street.
     const doors = new Map<string, [number, number]>();
     const raise = (id: number, { tiles, kind, facing, site }: Pick<Building, "tiles" | "kind" | "facing"> & { site?: unknown }) => {
-      const yard = site ? new Set<string>() : yardTiles(tiles, kind, facing);
-      for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
+      const gate = site ? null : gateOf(tiles, kind, facing);
+      for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, gate: t.x === gate?.x && t.y === gate.y });
     };
     this.entities((e) => {
       if (e.object.kind === "RoadNode" && e.position) {
@@ -511,13 +533,13 @@ export class TownLayer {
       giveBevel(engine, mesh, geo);
       const colour = p.colour ?? WHITE;
       mesh.material = p.name === "mass" ? this.masses : paved ? this.pavement(colour, kerbs) : this.pieceMaterial(p.name, colour);
-      if (p.name === "mass" || paved) mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
+      if (p.name !== "lines") mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
       mesh.position.x = ox;
       mesh.position.y = oy;
       mesh.receiveShadows = true;
       this.ctx.cull.keep(mesh, area);
       addToScene(scene, mesh);
-      if (p.name === "mass") this.casters.add(mesh);
+      if (p.name === "mass" || p.name === "hedges") this.casters.add(mesh);
       meshes.push(mesh);
     }
     const { matrices, colors } = trees;
@@ -564,13 +586,12 @@ export class TownLayer {
     this.roads.dispose();
     this.concrete.dispose();
     this.stopTints();
+    this.stopGlow();
     this.worker.terminate();
     this.heldWorker.terminate();
   }
 }
 
-/** A building's yard, as the server lays its lot out, by tile. */
-const yardTiles = (tiles: GridCoord[], kind: BuildingKind, facing: number) => new Set((yardOf(tiles, kind, facing) ?? []).map((t) => `${t.x},${t.y}`));
 
 
 /** The chunk a tile is on. */

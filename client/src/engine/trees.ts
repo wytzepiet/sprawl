@@ -4,6 +4,7 @@ import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { merged, type Kind as Kind2, type Part } from "./merged";
 import { lacquer } from "./bevel";
+import type { Theme } from "./theme";
 import { BROAD_LAYERS, COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS, SIDES } from "./crowns";
 import recipe from "./crowns.ts?raw";
 import { bakedTexture, whenBaked } from "./bakeCache";
@@ -308,4 +309,31 @@ export function showGrove(ctx: EngineContext, g: Grove, shown: boolean) {
   g.shown = shown;
   const piles = merged(ctx, undefined);
   for (const p of g.parts) piles.show(p, shown);
+}
+
+/** A tree a model plants (`objects/model.ts`): where it stands on the
+ *  map, how big, of a forest tree's, and which of the theme's crowns, 0
+ *  dark to 2 light. */
+export interface Planted {
+  at: [number, number];
+  scale: number;
+  shade: number;
+}
+
+/** Trees of the town's own standing where a model puts them, planted as
+ *  a grove of their own; what takes them away again. */
+export function stand(ctx: EngineContext, trees: Planted[], theme: Theme, casters: Casters | undefined): () => void {
+  // In the town's piles (`merged.ts`), from the corner of the stand.
+  const [ox, oy] = [Math.floor(Math.min(...trees.map((t) => t.at[0]))), Math.floor(Math.min(...trees.map((t) => t.at[1])))];
+  const g = grove("town", [ox, oy]);
+  const matrices = new Float32Array(trees.length * 16), colors = new Float32Array(trees.length * 4);
+  trees.forEach(({ at: [x, y], scale, shade }, i) => {
+    const w = 0.35 * scale, rgb = theme.crowns[shade];
+    // Turned about, as the town's are (`town/draw.ts`), so their light
+    // falls the same way.
+    matrices.set([-w, 0, 0, 0, 0, -w, 0, 0, 0, 0, w, 0, x - ox, y - oy, 0, 1], i * 16);
+    colors.set([rgb.r, rgb.g, rgb.b, 1], i * 4);
+  });
+  plant(ctx, g, matrices, colors, casters);
+  return () => uproot(ctx, g, casters);
 }

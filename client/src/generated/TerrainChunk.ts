@@ -18,4 +18,9 @@ tiles: Uint8Array,
  * a tile, a row of x at a time from a tile short of its corner, each
  * two bytes, low first, in `UNIT`s of a tile. Empty off the mountains.
  */
-heights: Uint8Array, };
+heights: Uint8Array, 
+/**
+ * What lies under each tile, as `tiles` is laid out: 0 nothing, else
+ * `Deposit::to_byte`. Empty where nothing lies under the chunk.
+ */
+deposits: Uint8Array, };

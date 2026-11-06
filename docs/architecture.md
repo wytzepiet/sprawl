@@ -80,12 +80,15 @@ instance pool, one bucket per material, so a city is a handful of draw
 calls. Cars extrapolate along their routes every frame with the server's
 own kinematics; buildings and roads are remounted only when they change.
 
-The UI is drawn by the GPU into the same frame (2026-10-19): Solid's
-universal renderer keeps a tree of boxes, glass, text and icons
-(`client/ui/`, imported as `~ui`), laid out by a small flexbox, its text
-and icons outlines in one glyph atlas, its glass the frame's own
-(`engine/glass.ts`). The game's UI is written in those elements
-(`client/src/ui/`, every `.tsx` there compiled for them). What is
+The UI is the page's, over the canvas (2026-10-27, "Ink"): black on the
+game, written in four elements (`client/ui/`, imported as `~ui`): a box,
+laid out as flexbox; a text; an icon, an SVG path; and a pane of the
+black. Panes of one layer inside a `Melt` run together like liquid, a
+smooth union of their squircles drawn on its canvas under what is in
+it (`ui/melt.ts`): the bezel round the game, and what grows out of it.
+The hand on it is `ui/hand.ts`: a press on the UI never reaches the
+town, and a building dragged off the build menu is the town's from
+there. The game's UI is written in those elements (`client/src/ui/`). What is
 pinned to the map is placed before each frame through the scene's
 projection, after the camera has moved. The tools are one sheet at the
 bottom, its tabs fixed along its foot and the shown tab grown up out of
@@ -96,8 +99,8 @@ its buildings, the ferry's new deals, the stock's every depot's shelves
 as one; with nothing to show, it is the bar alone. A building's own ring, its card and taking it down, opens on a
 long press or a right click. The clock and the level are along the top.
 There is no undo button: what was built lately, taken down, gives back
-what it cost (`undo::raze`, `undo::recoup`). The interchange's panels are the GPU's too
-(`ui/interchange/`); only its map of levels is the page's.
+what it cost (`undo::raze`, `undo::recoup`). The interchange's panels are written in them too
+(`ui/interchange/`).
 
 ## Deployment
 

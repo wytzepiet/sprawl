@@ -1,8 +1,9 @@
 import { isBuilt, type Town } from "./grid";
-import type { Facts } from "./facts";
+import { BLUEPRINTS } from "../../blueprints";
+import type { BuildingKind } from "../../generated";
 import { formOf } from "./mass";
 import { HALF_W } from "../objects/roadGeometry";
-import { INSET } from "./footprint";
+import { defaultJoins, INSET } from "./footprint";
 import { baysAt, drive, SIDEWALK } from "./surface";
 import type { P } from "../geometry";
 
@@ -21,6 +22,8 @@ import type { P } from "../geometry";
  *
  * - Street lamps stand where the road's edge runs (`lamps`).
  *
+ * - A hedge runs round a home's or a shop's plot (`hedges`).
+ *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
  */
@@ -31,16 +34,6 @@ export interface Tree {
   scale: number;
   /** Which of the theme's crowns, 0 dark to 2 light. */
   shade: number;
-}
-
-/** A lorry bay at a yard's dock: where a docked box's tail is, the way
- *  out of it to the lane (radians from +x, y down), and whether a lorry
- *  stands in it. */
-export interface Dock {
-  x: number;
-  y: number;
-  angle: number;
-  lorry: boolean;
 }
 
 /** A parked car: where its middle is, which way it points (radians from
@@ -61,23 +54,18 @@ export interface Lamp {
   hy: number;
 }
 
+/** A hedge: the line it runs along, end to end. */
+export type Hedge = [P, P];
+
 export interface Dressing {
   trees: Tree[];
+  hedges: Hedge[];
   lamps: Lamp[];
   cars: Car[];
-  docks: Dock[];
-  /** The lines between the bays of yards, painted on their asphalt. */
-  yardLines: P[][];
+  /** The lines between a front's docks, painted on their asphalt. */
+  dockLines: P[][];
 }
 
-/** A yard's park as the server lays it (`lots::park`): rows of docks in
- *  from the yard's back up the lane, a docked cab out from the lane's
- *  middle, a side of the yard too narrow for a box without docks, and
- *  how far out a docked box's tail is: the cab, the coupling and the box. */
-const DOCK_ROWS = [0.55, 0.85, 1.15, 1.45];
-const DOCK_OUT = 0.9;
-const DOCK_REACH = 1.4;
-const TAIL = DOCK_OUT + 0.49;
 
 /** A number in [0, 1) that is the same for the same tile and salt. */
 function hash(c: number, r: number, salt: number) {
@@ -86,7 +74,7 @@ function hash(c: number, r: number, salt: number) {
   return ((s ^ (s >>> 16)) >>> 0) / 4294967296;
 }
 
-export function dress(town: Town, facts: Facts): Dressing {
+export function dress(town: Town): Dressing {
   const trees: Tree[] = [];
   const at = (c: number, r: number) => (town.at ? town.at(c, r) : [c, r]);
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
@@ -117,13 +105,50 @@ export function dress(town: Town, facts: Facts): Dressing {
     const [xs, ys] = [q.map((p) => p[0]), q.map((p) => p[1])];
     return t.x > Math.min(...xs) - 0.1 && t.x < Math.max(...xs) + 0.1 && t.y > Math.min(...ys) - 0.1 && t.y < Math.max(...ys) + 0.1;
   });
-  const lorries = docks(town, facts);
+
   return {
     trees: trees.filter((t) => !onDrive(t)),
+    hedges: hedges(town),
     lamps: lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })),
     cars: [...park(town), ...drives.cars],
-    docks: lorries.docks, yardLines: lorries.lines,
+    dockLines: dockLines(town),
   };
+}
+
+/** A hedge's thickness. */
+export const HEDGE_THICK = 0.08;
+
+/** Down each edge of a home's or a shop's plot that meets open ground or
+ *  a building it is not joined to: never along a road, and where a road
+ *  runs past its end, stopped at the front wall, the front strip left
+ *  open. Between two such plots, once, on the line between them; against
+ *  anything else, inside its own. */
+function hedges(town: Town): Hedge[] {
+  const joined = town.joins ?? defaultJoins(town);
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const plot = (c: number, r: number) => {
+    const t = town.tile(c, r);
+    return isBuilt(t) && formOf(t).family === "street";
+  };
+  const out: Hedge[] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (!plot(c, r)) continue;
+      for (const [dc, dr] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        const [nc, nr] = [c + dc, r + dr];
+        const n = town.tile(nc, nr);
+        if ((n.kind !== "open" && !isBuilt(n)) || joined(c, r, nc, nr) || joined(nc, nr, c, r)) continue;
+        const shared = plot(nc, nr);
+        if (shared && dc + dr < 0) continue;
+        const into = shared ? 0.5 : 0.5 - HEDGE_THICK / 2;
+        const [mx, my] = [c + 0.5 + dc * into, r + 0.5 + dr * into];
+        const [px, py] = [-dr, dc];
+        const end = (s: number) => (road(c + px * s, r + py * s) || road(nc + px * s, nr + py * s) ? 0.5 - INSET : 0.5);
+        out.push([[mx - px * end(-1), my - py * end(-1)], [mx + px * end(1), my + py * end(1)]]);
+      }
+    }
+  }
+  return out;
 }
 
 /** How far out from a road's middle a lamp stands: on the pavement, just
@@ -248,41 +273,33 @@ function driveways(town: Town): { strips: P[][]; cars: Car[] } {
   return { strips, cars };
 }
 
-/** A yard's docks, as the server lays its park (`lots::park`): a lane
- *  straight in from the gate, the door's tile, to the yard's back, and off
- *  it, on each side the yard reaches far enough, rows of docks, the lines
- *  between them painted, some with a lorry. */
-function docks(town: Town, facts: Facts): { docks: Dock[]; lines: P[][] } {
-  const out: Dock[] = [], lines: P[][] = [];
+/** Docks side by side at a gate (`DOCK_PITCH` in `lots.rs`); how far
+ *  from the street's middle line the notch's back wall stands, and the
+ *  road's edge (`DOCK`, `NOTCH_BACK` in `surface.ts`). */
+const DOCK_PITCH = 0.3;
+const NOTCH_BACK = 0.72;
+const ROAD_EDGE = 0.24;
+
+/** A front's docks, as the server lays them (`lots::dock_bays`): side by
+ *  side at its gate, square to the street, a truck's tail in its notch at
+ *  the loading door, its nose at the road's edge; the lines either side
+ *  of each painted on the asphalt, from the door out across the pavement. */
+function dockLines(town: Town): P[][] {
+  const lines: P[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      // A harbour's docks are on one side of its lane, the quay's pad on
-      // the other (`Berth::park`).
-      const fill = facts.yard(c, r);
-      const way = fill === "docks" || fill === "park" ? town.door?.(c, r) : undefined;
+      const way = town.tile(c, r).gate ? town.door?.(c, r) : undefined;
       if (!way || (way[0] && way[1])) continue;
-      // In toward the street (fx, fy), and across (px, py); the yard's
-      // tiles of this building, counted in from the gate and across.
+      // Out toward the street (fx, fy), and across (px, py).
       const [fx, fy] = way, [px, py] = [-fy, fx];
-      const id = town.tile(c, r).id;
-      const ours = (k: number, j: number) => facts.yard(c + fx * k + px * j, r + fy * k + py * j) === fill && town.tile(c + fx * k + px * j, r + fy * k + py * j).id === id;
-      const run = (k: number, j: number, n = 0): number => (ours(k * (n + 1), j * (n + 1)) ? run(k, j, n + 1) : n);
-      const deep = run(-1, 0) + 1;
-      // The back of the yard, behind the lane's middle: `at(s, side)` is
-      // `s` in from it and `side` across.
-      const [ox, oy] = [c + 0.5 - fx * (deep - 0.5), r + 0.5 - fy * (deep - 0.5)];
-      const at = (s: number, side: number): P => [ox + fx * s + px * side, oy + fy * s + py * side];
-      for (const side of (fill === "park" ? [1] : [1, -1]).filter((j) => run(0, j) + 0.5 >= DOCK_REACH)) {
-        const [nx, ny] = [px * side, py * side];
-        for (const s of [...DOCK_ROWS.map((s) => s - 0.15), DOCK_ROWS[DOCK_ROWS.length - 1] + 0.15]) lines.push(strip(ox, oy, fx, fy, s - 0.008, s + 0.008, nx, ny, 0.45, TAIL));
-        for (const s of DOCK_ROWS) {
-          const [x, y] = at(s, side * TAIL);
-          out.push({ x, y, angle: Math.atan2(-ny, -nx), lorry: hash(Math.round(x * 100), Math.round(y * 100), 17) < 0.6 });
-        }
+      const n = BLUEPRINTS[town.tile(c, r).kind as BuildingKind]?.docks ?? 0;
+      for (let k = 0; k <= n; k++) {
+        const o = (k - n / 2) * DOCK_PITCH;
+        lines.push(strip(c + 0.5, r + 0.5, px, py, o - 0.008, o + 0.008, fx, fy, 1 - NOTCH_BACK, 1 - ROAD_EDGE));
       }
     }
   }
-  return { docks: out, lines };
+  return lines;
 }
 
 /** A strip along the line from (x0, y0) along (ux, uy) for `len`, on the

@@ -92,7 +92,9 @@ mod tests {
 
     /// Grass, and a street along y = 0.
     fn street() -> World {
-        World::from(map::Map::meadow(-6..20, -6..6).street(-6..20))
+        let mut world = World::from(map::Map::meadow(-6..20, -6..6).street(-6..20));
+        world.town.allowance = 1_000;
+        world
     }
 
     fn area(x0: i32, y0: i32, x1: i32, y1: i32) -> Area {
@@ -151,25 +153,21 @@ mod tests {
         assert_eq!(fits, vec![at(0, -1), at(0, 1)]);
     }
 
-    /// A harbour with its back on the sea, placed round the tile beside
-    /// that fits; on a lake, refused, and said why.
+    /// A fishery with its back on the water, its front to the street;
+    /// inland, refused, and said why.
     #[test]
-    fn a_harbour_finds_the_sea() {
-        let coast = |water| {
-            let mut world = World::new();
-            for y in -10..20 {
-                for x in -5..25 {
-                    world.map.terrain.insert((x, y), if y >= 2 { water } else { TerrainType::Grass });
-                }
+    fn a_fishery_finds_the_shore() {
+        let mut world = World::from(map::Map::meadow(-5..25, -10..1));
+        world.map.place_road_path(&(-5..25).map(|x| at(x, -2)).collect::<Vec<_>>());
+        for y in 0..20 {
+            for x in -5..25 {
+                world.map.terrain.insert((x, y), TerrainType::Sea);
             }
-            world
-        };
-        let sea = coast(TerrainType::Sea);
-        let p = sea.map.placing(BuildingKind::Harbour, at(9, 3), None);
-        assert_eq!((p.at, p.facing, p.why), (at(9, 2), 0, None));
-        assert_eq!(sea.map.placing(BuildingKind::Harbour, at(9, 1), Some(2)).why.as_deref(), Some("No quay: it stands half on the sea, its back on the water"));
-        let lake = coast(TerrainType::Water);
-        assert_eq!(lake.map.placing(BuildingKind::Harbour, at(9, 2), None).why.as_deref(), Some("A lake: the ferry comes only by sea"));
+        }
+        let p = world.map.placing(BuildingKind::Fishery, at(9, -1), Some(0));
+        assert_eq!(p.why, None, "{p:?}");
+        let inland = world.map.placing(BuildingKind::Fishery, at(9, -7), Some(2));
+        assert_eq!(inland.why.as_deref(), Some("Its back to the water: its boat goes out from the shore"));
     }
 }
 #[cfg(test)]

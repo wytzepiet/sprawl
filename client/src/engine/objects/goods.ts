@@ -1,7 +1,6 @@
 import { boxGeometry as box } from "./buildings";
-import { barrel, prism, shape, type Part, type Shape } from "./sea";
+import { prism, shape, type Part, type Shape } from "./sea";
 import type { RGB } from "../rgb";
-import type { P } from "../geometry";
 import type { Good } from "../../generated";
 
 /**
@@ -9,89 +8,86 @@ import type { Good } from "../../generated";
  * each, the unit the game trades and carries (docs/plan-goods.md), every
  * one of a good the same height and look, so a pad is counted at a glance
  * and a good known by its shape before its colour. A bundle of timber,
- * three logs by three, strapped; a crate of food, open, its produce
- * showing; a pallet of stone, two layers of blocks; a pallet of fuel,
- * four drums. Each a square ITEM across, its middle on the origin, its
+ * its ends pale, strapped; a crate of bread, open, its loaves showing; a
+ * pallet of stone; a pallet of fuel, four drums; a big bag of grain;
+ * cement in paper sacks; ore heaped in a skip and coal in a tray; steel
+ * beams, strapped; a machine in a closed crate; crude in a caged tank. Each a square ITEM across, its middle on the origin, its
  * base on z = 0; its colours its own, its bucket white.
  */
 export const ITEM = 0.084;
-const H = ITEM / 2;
 
 const BARK: RGB = [0.6, 0.42, 0.26];
 const END: RGB = [0.89, 0.76, 0.56];
 const STRAP: RGB = [0.23, 0.23, 0.23];
 const WOOD: RGB = [0.79, 0.6, 0.36];
-const SLAT: RGB = [0.65, 0.48, 0.26];
-const PRODUCE: RGB = [0.42, 0.62, 0.3];
+const PRODUCE: RGB = [0.8, 0.54, 0.27];
 const PALLET: RGB = [0.7, 0.54, 0.35];
 const BLOCK: RGB = [0.84, 0.82, 0.76];
-const DRUM: RGB = [0.8, 0.31, 0.23];
-const LID: RGB = [0.62, 0.24, 0.18];
+const BAG: RGB = [0.92, 0.84, 0.6];
+const SACK: RGB = [0.78, 0.79, 0.78];
+const SKIP: RGB = [0.27, 0.42, 0.62];
+const ORE: RGB = [0.62, 0.3, 0.18];
+const STEEL: RGB = [0.47, 0.55, 0.64];
+const CASE: RGB = [0.72, 0.58, 0.4];
+const BATTEN: RGB = [0.5, 0.38, 0.24];
 
-/** A round thing standing, `r` across and `h` high: an octagon, upright. */
-const upright = (r: number, h: number) => prism(Array.from({ length: 8 }, (_, k): P => [r * Math.cos((k + 0.5) * Math.PI / 4), r * Math.sin((k + 0.5) * Math.PI / 4)]), h);
+/** A block `w` across, `l` deep and `h` high, its base on z = 0: its top
+ *  and four sides, 12 triangles. A package is a few pixels on screen, so
+ *  each is a block or two in its colours, its shape what tells it: what
+ *  the eye cannot pick out at that size is not drawn. */
+const block = (w: number, l: number, h: number) => prism([[w / 2, -l / 2], [w / 2, l / 2], [-w / 2, l / 2], [-w / 2, -l / 2]], h);
 const BOARD = 0.01;
-const pallet: Part = [box(ITEM, ITEM, BOARD), [0, 0, BOARD / 2], PALLET];
+const pallet: Part = [block(ITEM, ITEM, BOARD), [0, 0, 0], PALLET];
 
-/** Nine logs, three by three, lying along y, their ends pale, and two
- *  straps round them. */
-function timber(): Shape {
-  const r = ITEM / 6;
-  const R = r / Math.cos(Math.PI / 8);
-  const logs: Part[] = [];
-  for (let row = 0; row < 3; row++)
-    for (let col = 0; col < 3; col++) {
-      const at: [number, number, number] = [(col - 1) * 2 * r, 0, r + row * 2 * r];
-      logs.push([barrel(R, ITEM - 0.004), at, BARK]);
-      for (const s of [-1, 1]) logs.push([barrel(R * 0.82, 0.003), [at[0], s * (ITEM / 2 - 0.0035), at[2]], END]);
-    }
-  const straps = [-1, 1].map((s): Part => [box(ITEM + 0.002, 0.006, 6 * r + 0.002), [0, s * ITEM / 4, 3 * r], STRAP]);
-  return shape([...logs, ...straps]);
-}
-
-/** An open crate: four walls of boards, a dark band round its top, and
- *  its produce heaped a little in it. */
-function crate(): Shape {
-  const h = 0.058, wall = 0.007;
-  const inner = ITEM - 2 * wall;
-  return shape([
-    [box(ITEM, ITEM, BOARD), [0, 0, BOARD / 2], SLAT],
-    ...[-1, 1].flatMap((s): Part[] => [
-      [box(ITEM, wall, h), [0, s * (H - wall / 2), h / 2], WOOD],
-      [box(wall, inner, h), [s * (H - wall / 2), 0, h / 2], WOOD],
-      [box(ITEM + 0.001, wall + 0.001, 0.008), [0, s * (H - wall / 2), h - 0.012], SLAT],
-      [box(wall + 0.001, inner, 0.008), [s * (H - wall / 2), 0, h - 0.012], SLAT],
-    ]),
-    [box(inner, inner, h - 0.012), [0, 0, (h - 0.012) / 2], PRODUCE],
-    ...[[-1, -1], [1, 1], [-1, 1], [1, -1]].map(([a, b]): Part => [box(inner / 2.4, inner / 2.4, 0.008), [a * inner / 4.5, b * inner / 4.5, h - 0.008], PRODUCE]),
-  ]);
-}
-
-/** A pallet of cut stone: two layers of four blocks. */
-function stone(): Shape {
-  const b = ITEM / 2 - 0.003;
-  const blocks: Part[] = [];
-  for (let layer = 0; layer < 2; layer++)
-    for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) blocks.push([box(b, b, b), [x * (b / 2 + 0.0015), y * (b / 2 + 0.0015), BOARD + b / 2 + layer * (b + 0.001)], BLOCK]);
-  return shape([pallet, ...blocks]);
-}
-
-/** A pallet of fuel: four drums, a lid on each a shade darker. */
-function drums(): Shape {
-  const r = ITEM / 4 - 0.002, h = 0.052;
-  return shape([pallet, ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].flatMap(([x, y]): Part[] => [
-    [upright(r, h), [x * ITEM / 4, y * ITEM / 4, BOARD], DRUM],
-    [upright(r * 0.9, 0.003), [x * ITEM / 4, y * ITEM / 4, BOARD + h], LID],
-  ])]);
-}
+/** A bundle of timber: logs' bark, their pale ends either side, a strap. */
+const timber = (): Shape => shape([
+  [block(ITEM - 0.004, ITEM - 0.006, ITEM), [0, 0, 0], BARK],
+  ...[-1, 1].map((s): Part => [block(ITEM - 0.008, 0.003, ITEM - 0.004), [0, s * (ITEM / 2 - 0.0015), 0.002], END]),
+  [block(ITEM, 0.006, ITEM + 0.001), [0, 0, 0], STRAP],
+]);
+/** An open crate of bread: its walls, the loaves showing over them. */
+const crate = (): Shape => shape([
+  [block(ITEM, ITEM, 0.05), [0, 0, 0], WOOD],
+  [block(ITEM - 0.012, ITEM - 0.012, 0.058), [0, 0, 0], PRODUCE],
+]);
+/** A pallet of cut stone, two layers of blocks as one. */
+const stone = (): Shape => shape([pallet, [block(ITEM - 0.004, ITEM - 0.004, ITEM - 0.006), [0, 0, BOARD], BLOCK]]);
+/** A big bag of grain on a pallet. */
+const bigBag = (): Shape => shape([pallet, [block(ITEM - 0.008, ITEM - 0.008, 0.06), [0, 0, BOARD], BAG]]);
+/** A pallet of cement: three layers of paper sacks, each across the one below. */
+const sacks = (): Shape => shape([pallet, ...[0, 1, 2].map((layer): Part => [layer % 2 ? block(ITEM - 0.004, ITEM - 0.01, 0.016) : block(ITEM - 0.01, ITEM - 0.004, 0.016), [0, 0, BOARD + layer * 0.017], SACK])]);
+/** Lumps heaped in a bin: the bin `h` high, the heap rising out of it. */
+const heaped = (wall: RGB, lump: RGB, h: number): Shape => shape([
+  [block(ITEM, ITEM, h), [0, 0, 0], wall],
+  [block(ITEM - 0.01, ITEM - 0.01, h + 0.006), [0, 0, 0], lump],
+  [block((ITEM - 0.01) * 0.6, (ITEM - 0.01) * 0.6, h + 0.016), [0.003, -0.002, 0], lump],
+]);
+/** Steel beams in two layers on bearers, a strap round each end. */
+const beams = (): Shape => shape([
+  [block(ITEM - 0.008, ITEM, 0.046), [0, 0, 0.008], STEEL],
+  ...[-1, 1].map((s): Part => [block(ITEM - 0.004, 0.006, 0.055), [0, s * ITEM / 3, 0], STRAP]),
+]);
+/** A machine in a closed crate, a batten across its lid. */
+const crated = (): Shape => shape([
+  [block(ITEM - 0.004, ITEM - 0.004, 0.07), [0, 0, 0], CASE],
+  [block(ITEM - 0.004, 0.008, 0.072), [0, 0, 0], BATTEN],
+]);
 
 /** Each good's package, and how high it stands: a stack of them is as
  *  high as so many. */
 export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
-  Timber: { key: "item_Timber", geo: timber(), h: ITEM },
-  Crates: { key: "item_Crates", geo: crate(), h: 0.058 },
-  Stone: { key: "item_Stone", geo: stone(), h: BOARD + 2 * (ITEM / 2 - 0.003) + 0.001 },
-  Fuel: { key: "item_Fuel", geo: drums(), h: BOARD + 0.055 },
+  Fish: { key: "item_Fish", geo: crate(), h: 0.058 },
+  Logs: { key: "item_Logs", geo: timber(), h: ITEM },
+  Planks: { key: "item_Planks", geo: beams(), h: 0.008 + 2 * 0.023 },
+  Wheat: { key: "item_Wheat", geo: bigBag(), h: BOARD + 0.06 },
+  Bread: { key: "item_Bread", geo: crate(), h: 0.058 },
+  Clay: { key: "item_Clay", geo: heaped(SKIP, ORE, 0.05), h: 0.05 },
+  Bricks: { key: "item_Bricks", geo: stone(), h: BOARD + 2 * (ITEM / 2 - 0.003) + 0.001 },
+  Furniture: { key: "item_Furniture", geo: crated(), h: 0.07 },
+  Sand: { key: "item_Sand", geo: sacks(), h: BOARD + 3 * 0.017 },
+  Glass: { key: "item_Glass", geo: crated(), h: 0.07 },
+  Wool: { key: "item_Wool", geo: bigBag(), h: BOARD + 0.06 },
+  Clothes: { key: "item_Clothes", geo: crate(), h: 0.058 },
 };
 
 /** A good's package to place: in a bucket of its own where it stands

@@ -290,11 +290,48 @@ pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
     (CHUNKS_MIN..=CHUNKS_MAX).flat_map(|cy| (CHUNKS_MIN..=CHUNKS_MAX).map(move |cx| ChunkCoord { cx, cy })).flat_map(|c| chunk(seed, c)).collect()
 }
 
+/// What lies under the land of a seed (`Deposit`): clay, in patches of
+/// the grass a few tiles to a few dozen across.
+pub fn deposits(seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> HashMap<(i32, i32), crate::Deposit> {
+    use crate::Deposit;
+    let clay = Simplex::new(seed.wrapping_add(40));
+    const PATCH: f64 = 0.06;
+    let mut out = HashMap::default();
+    let mut tiles: Vec<_> = terrain.iter().collect();
+    tiles.sort_by_key(|(p, _)| **p);
+    for (&(x, y), &t) in tiles {
+        let (fx, fy) = (x as f64, y as f64);
+        let d = match t {
+            TerrainType::Grass if clay.get([fx * PATCH, fy * PATCH]) > 0.55 => Some(Deposit::Clay),
+            _ => None,
+        };
+        if let Some(d) = d {
+            out.insert((x, y), d);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use fixed::HashSet;
 
     use super::*;
+
+    /// Every seed's map has ore, coal and oil somewhere, and not
+    /// everywhere: a few hundred tiles of each at most a share of the land.
+    /// `--nocapture` prints how much of each lies within reach of home.
+    #[test]
+    #[ignore]
+    fn clay_lies_near_every_home() {
+        for seed in 0..8 {
+            let land = generate(seed);
+            let under = deposits(seed, &land);
+            let near = under.keys().filter(|&&(x, y)| x * x + y * y < 60 * 60).count();
+            println!("seed {seed}: clay {} ({near} near home)", under.len());
+            assert!(near > 0, "seed {seed} has no clay near home");
+        }
+    }
 
     /// Not an assertion: a picture, for whoever runs this with --ignored
     /// --nocapture. The whole map of `SPRAWL_SEED` (or 7), sixteen tiles

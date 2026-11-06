@@ -1,28 +1,19 @@
-/** @jsxImportSource ~ui */
-import { For, Show, createEffect, createMemo, createRoot, createSignal, on } from "solid-js";
-import { BLUEPRINTS } from "../blueprints";
-import { select, setFollowing, setSubject } from "../state/selection";
-import { card, getEntity } from "../state/gameObjects";
-import { now } from "../state/sea";
-import { DepotPanel } from "./Depot";
-import { SitePanel } from "./Site";
-import { BAD, Bar, GDP, GOOD, Press, Row, Section, To, type Link } from "./kit";
-import type { JSX } from "~ui/jsx-runtime";
-import type { Building, BuildingCard, CarCard, CarRole, ResidentCard } from "../generated";
+import { Box, Ink, Text, Icon, type BoxProps } from "~ui";
+import { For, Show, createEffect, createRoot, createSignal } from "solid-js";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { select } from "../state/selection";
+import { selected } from "../state/selection";
+import { eachEntity, getEntity, reached } from "../state/gameObjects";
+import { now } from "../state/town";
+import { BAD, Bar, GOOD, Press, Row, Section, ROUND } from "./kit";
+import { PATIENCE_MS } from "../generated/rows";
+import type { JSX } from "solid-js";
+import type { Building, Car, CarRole, Good, Stock } from "../generated";
 
 const CLOSE = "M6 6l12 12M18 6L6 18";
 
 createRoot(() => {
-  // A resident is not on the map; where they are is.
-  createEffect(on(card, (c) => {
-    if (c?.kind !== "resident") return;
-    const at = c.at?.id ?? null;
-    setSubject(at);
-    setFollowing((f) => (f === c.id || (at !== null && f !== null) ? at : f));
-  }));
-
-  // `#1234` in the address is a card to open on arrival: a thing you can
-  // point someone at.
+  // `#1234` in the address is a card to open on arrival.
   const fromHash = () => {
     const id = Number(location.hash.slice(1));
     if (id) select(id);
@@ -31,49 +22,43 @@ createRoot(() => {
   window.addEventListener("hashchange", fromHash);
 });
 
-/** The client's own record of a building, read again with the sea. */
-const buildingOf = (id: number) => {
+/** What is selected, as the client has it now: read again four times a second. */
+const thing = () => {
   now();
-  const e = getEntity(id);
-  return e?.object.kind === "Building" ? (e.object.data as Building) : null;
+  const id = selected();
+  const e = id === null ? undefined : getEntity(id);
+  if (!e) return null;
+  if (e.object.kind === "Building") return { kind: "building" as const, b: e.object.data as Building };
+  if (e.object.kind === "Car") return { kind: "car" as const, c: e.object.data as Car };
+  return null;
 };
 
-/**
- * The card for whatever was tapped, as the select tab's sheet: its head
- * the thing's name and where it is, peeking over the dock; drawn up,
- * who is in it, where it is going, what it owes, each line a thing on the
- * map you can go to; and, for a depot and a site, what the mayor does
- * there.
- */
+const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry" };
+
+/** The card's head: the thing's name, and what it is doing. */
 export function InspectHead() {
   return (
-    <Show when={card()}>
-      {(c) => {
+    <Show when={thing()}>
+      {(t) => {
         const head = () => {
-          const k = c();
-          switch (k.kind) {
-            case "resident":
-              return { title: k.name, sub: k.at ? `at ${k.at.label}` : "off the map" };
-            case "car": {
-              const what = ROLE[k.role];
-              return { title: k.rider ? `${k.rider.label}'s ${what.toLowerCase()}` : what, sub: k.trip ? `to ${k.trip.to.label}` : k.parked_at ? `parked at ${k.parked_at.label}` : k.role === "Ferry" ? "of the harbour" : "parked out of sight" };
-            }
-            case "building": {
-              const bp = BLUEPRINTS[k.building_kind];
-              const site = buildingOf(k.id)?.site;
-              return {
-                title: site ? `${bp.label} · a site` : bp.label,
-                sub: k.reached ? (site ? "going up as its materials land" : undefined) : "no road reaches it",
-                icon: (
-                  <box w={36} h={36} round={18} fill={bp.color} opacity={site ? 0.65 : 1} align="center" justify="center">
-                    <icon d={bp.glyph} size={19} ink="white" />
-                  </box>
-                ),
-              };
-            }
-            case "gone":
-              return { title: "Gone", sub: "Nothing stands here any more" };
+          const x = t();
+          if (x.kind === "car") {
+            const owner = getEntity(x.c.owner);
+            const of = owner?.object.kind === "Building" ? BLUEPRINTS[(owner.object.data as Building).kind].label : null;
+            return { title: of ? `${of}'s ${ROLE[x.c.role].toLowerCase()}` : ROLE[x.c.role], sub: x.c.trip ? "on the road" : "parked" };
           }
+          const bp = BLUEPRINTS[x.b.kind];
+          const h = x.b.home;
+          const idle = bp.seats > 0 && x.b.present === 0;
+          return {
+            title: h ? `${["", "Cottage", "House", "Townhouse", "Apartment"][h.level] ?? bp.label}` : bp.label,
+            sub: h ? (h.wants.length ? `wants ${h.wants.map((w) => GOODS[w.good].label.toLowerCase()).join(", ")}` : "content") : idle ? "nobody at work" : bp.makes ? `makes ${GOODS[bp.makes].label.toLowerCase()}` : undefined,
+            icon: (
+              <Box w={36} h={36} round={18} fill={bp.color} align="center" justify="center">
+                <Icon d={bp.glyph} size={19} ink="white" />
+              </Box>
+            ),
+          };
         };
         return <Header title={head().title} sub={head().sub} icon={(head() as { icon?: JSX.Element }).icon} />;
       }}
@@ -81,116 +66,88 @@ export function InspectHead() {
   );
 }
 
+/** Its lines: a house's wants and growth, a maker's crew and yard, a shop's shelves. */
 export function InspectBody() {
-  /** The building whose card is open, by id alone: what the mayor works
-   *  with on it is made once, not again with every refresh. */
-  const building = createMemo(() => {
-    const c = card();
-    return c?.kind === "building" ? c.id : null;
-  });
   return (
-    <Show when={card()}>
-      {(c) => (
-        <>
-          <Show when={c().kind === "resident"}>{ResidentLines(c() as ResidentCard)}</Show>
-          <Show when={c().kind === "car"}>{CarLines(c() as CarCard)}</Show>
-          <Show when={building()} keyed>
-            {(id) => <BuildingLines id={id} card={() => card() as BuildingCard} />}
-          </Show>
-        </>
-      )}
+    <Show when={thing()?.kind === "building" && thing()}>
+      {(t) => <BuildingLines b={(t() as { b: Building }).b} id={selected()!} />}
     </Show>
   );
 }
 
-/** A pane of glass where it lies, at most as tall as its room; what is
- *  taller scrolls under the wheel or a finger. */
-export function Pane(props: { children: JSX.Element; layer: string; at: JSX.Box["at"]; w?: number; room: number }) {
-  const [tall, setTall] = createSignal(0);
-  const [scroll, setScroll] = createSignal(0);
-  const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - props.room, scroll() + by)));
-  createEffect(() => tall() <= props.room && setScroll(0));
-  return (
-    <glass layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={22} clip onScroll={roll}>
-      <box y={-scroll()} pad={{ bottom: 6 }} onSize={(_, h) => setTall(h)}>
-        {props.children}
-      </box>
-    </glass>
-  );
+/** How far a family drives to a shop (`town::homes::REACH`). */
+const REACH = 26;
+
+/** Why a want is not met yet, as near as the client can tell: the link
+ *  in the chain that is missing, so the mayor knows what to build. */
+export function why(home: Building, homeId: number, good: Good): string {
+  const entry = getEntity(homeId);
+  if (!entry || !reached(entry)) return "no road to the house";
+  const at = home.tiles[0];
+  let shop: Building | null = null, best = Infinity, maker = false, crewed = false;
+  eachEntity((e) => {
+    if (e.object.kind !== "Building") return;
+    const b = e.object.data as Building;
+    if (BLUEPRINTS[b.kind].makes === good) [maker, crewed] = [true, crewed || b.present > 0];
+    if (b.kind !== "Shop" || !reached(e)) return;
+    const d = Math.max(Math.abs(b.tiles[0].x - at.x), Math.abs(b.tiles[0].y - at.y));
+    if (d <= REACH && d < best) [shop, best] = [b, d];
+  });
+  const name = GOODS[good].label.toLowerCase();
+  if (!shop) return "no shop within reach";
+  if (!maker) return `nobody makes ${name}`;
+  if (((shop as Building).stocks[good]?.level ?? 0) < 1) return crewed ? `the shop is out of ${name}` : `nobody at work making ${name}`;
+  return "on the shelf: the car goes soon";
 }
 
-export function Header(props: { title: string; sub?: string; icon?: JSX.Element; onClose?: () => void }) {
-  return (
-    <box dir="row" align="center" gap={10} pad={{ x: 16, top: 14, bottom: 10 }}>
-      {props.icon}
-      <box grow={1} gap={2}>
-        <text size={16} weight={600} lines={1}>{props.title}</text>
-        <Show when={props.sub}>
-          <text size={12} soft lines={1}>{props.sub}</text>
-        </Show>
-      </box>
-      <Press w={28} h={28} round={14} align="center" justify="center" onTap={props.onClose ?? (() => select(null))}>
-        <icon d={CLOSE} size={14} stroke={2.4} ink="ink/0.6" />
-      </Press>
-    </box>
-  );
-}
+const stocks = (s: { [key in Good]?: Stock }) => Object.entries(s) as [Good, Stock][];
 
-function ResidentLines(c: ResidentCard) {
+function BuildingLines(props: { b: Building; id: number }) {
+  const bp = () => BLUEPRINTS[props.b.kind];
   return (
     <>
-      <Section title="Where">
-        <Row label="Now"><To link={c.at} fallback="off the map" /></Row>
-        <Row label="Home"><To link={c.home} /></Row>
-        <Row label="Work"><To link={c.work} fallback="no job" /></Row>
-        <Row label="Car"><To link={c.car} /></Row>
-      </Section>
-      <Section title={`Needs, since ${c.since}`}>
-        <For each={c.needs}>
-          {(b) => (
-            <box dir="row" align="center" gap={8} minH={22}>
-              <text w={64} size={13.5} weight={c.selected === b.need ? 600 : undefined} soft={c.selected !== b.need}>{b.need}</text>
-              <Bar value={b.full} color={c.selected === b.need ? GDP : "#A8A29E"} />
-              <box grow={1} />
-              <Show when={b.option} fallback={<text size={12} soft>nothing found</text>}>
-                {(id) => <To link={{ id: id(), label: "→ option", kind: "building" }} />}
-              </Show>
-            </box>
-          )}
-        </For>
-      </Section>
-    </>
-  );
-}
-
-const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry" };
-
-function CarLines(c: CarCard) {
-  return (
-    <>
-      <Section title="Who">
-        <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
-        <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
-        <For each={c.stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full < 0.2 ? BAD : GOOD} /></Row>}</For>
-      </Section>
-      <Show when={c.trip}>
-        {(t) => (
-          <Section title="Trip">
-            <Row label="To"><To link={t().to} /></Row>
-            <Row label="Due"><text size={13.5}>{t().due}</text></Row>
-            <Show when={t().late_s > 0}>
-              <Row label="Lost to traffic"><text size={13.5}>{Math.round(t().late_s)} s</text></Row>
+      <Show when={props.b.home}>
+        {(h) => (
+          <>
+            <Show when={h().wants.length > 0}>
+              <Section title="Wants">
+                <For each={h().wants}>
+                  {(w) => {
+                    const left = () => 1 - Math.min(1, (now() - w.since) / PATIENCE_MS);
+                    return (
+                      <Row label={GOODS[w.good].label}>
+                        <Bar value={left()} color={left() < 0.3 ? BAD : GOOD} />
+                        <Text size={12} soft>{w.by !== null ? "on its way" : why(props.b, props.id, w.good)}</Text>
+                      </Row>
+                    );
+                  }}
+                </For>
+              </Section>
             </Show>
-          </Section>
+            <Show when={h().growing}>
+              {(g) => (
+                <Section title="Growing">
+                  <For each={stocks(g())}>{([good, s]) => <Row label={GOODS[good].label}><Bar value={s.level / Math.max(1, s.cap)} color={GOODS[good].color} /></Row>}</For>
+                </Section>
+              )}
+            </Show>
+          </>
         )}
       </Show>
-      <Show when={c.answering.length > 0}>
-        <Section title="Answering">
-          <For each={c.answering}>
-            {(a) => (
-              <Row label={a.what}>
-                <To link={a.at} />
-                <text size={12} soft>since {a.since}</text>
+      <Show when={bp().seats > 0}>
+        <Section title="Crew">
+          <Row label={`${props.b.present} of ${bp().seats} at work`}>
+            <Bar value={props.b.work} color={GOODS[bp().makes ?? "Logs"]?.color} />
+          </Row>
+        </Section>
+      </Show>
+      <Show when={!props.b.home && stocks(props.b.stocks).length > 0}>
+        <Section title={bp().seats > 0 ? "Yard" : "Shelves"}>
+          <For each={stocks(props.b.stocks)}>
+            {([good, s]) => (
+              <Row label={GOODS[good].label}>
+                <Bar value={s.level / Math.max(1, s.cap)} color={s.level < 1 ? BAD : GOODS[good].color} />
+                <Text size={12} soft>{`${Math.floor(s.level)} / ${s.cap}`}</Text>
               </Row>
             )}
           </For>
@@ -200,61 +157,35 @@ function CarLines(c: CarCard) {
   );
 }
 
-/** Links, one a line. */
-const Links = (props: { each: Link[] }) => <For each={props.each}>{(l) => <box minH={22} justify="center"><To link={l} /></box>}</For>;
-
-/**
- * A building's card: made once for the building, its lines read from the
- * card as it refreshes. What the mayor does here comes first: a site's
- * materials, a depot's lorries and stock.
- */
-function BuildingLines(props: { id: number; card: () => BuildingCard }) {
-  const c = props.card;
-  const kind = () => c().building_kind;
-  /** Still going up: the client's own record of the site. */
-  const site = createMemo(() => buildingOf(props.id)?.site ?? null);
-  const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
+/** A pane where it lies, at most as tall as its room; what is taller
+ *  scrolls under the wheel or a finger. */
+export function Pane(props: { children: JSX.Element; layer: string; at: BoxProps["at"]; w?: number; room: number }) {
+  const [tall, setTall] = createSignal(0);
+  const [scroll, setScroll] = createSignal(0);
+  const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - props.room, scroll() + by)));
+  createEffect(() => tall() <= props.room && setScroll(0));
   return (
-    <>
-      <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
-      <Show when={!site() && kind() === "Depot"}>
-        <DepotPanel id={props.id} lorries={lorries()} />
-      </Show>
-      <Show when={kind() !== "Depot" && c().stocks.length > 0}>
-        <Section title="Stocks">
-          <For each={c().stocks}>{(s) => <Row label={s.what}><Bar value={s.full} color={s.full <= 0 ? BAD : GOOD} /></Row>}</For>
-        </Section>
-      </Show>
-      <Show when={c().here.length > 0}>
-        <Section title={`Here now · ${c().here.length}`}>
-          <For each={c().here}>{(h) => <Row label={h.doing ?? ""}><To link={h.who} /></Row>}</For>
-        </Section>
-      </Show>
-      <Show when={c().household.length > 0}>
-        <Section title={`Lives here · ${c().household.length}`}>
-          <Links each={c().household} />
-        </Section>
-      </Show>
-      <Show when={c().staff.length > 0}>
-        <Section title={`Works here · ${c().staff.filter((s) => s.present).length} of ${c().staff.length} in`}>
-          <For each={c().staff}>{(s) => <box minH={22} justify="center" opacity={s.present ? 1 : 0.5}><To link={s.who} /></box>}</For>
-        </Section>
-      </Show>
-      <Show when={c().fleet.length > 0 && kind() !== "Harbour"}>
-        <Section title="Fleet">
-          <Links each={c().fleet} />
-        </Section>
-      </Show>
-      <Show when={!site() && c().calls.length > 0}>
-        <Section title="Calls">
-          <For each={c().calls}>{(k) => <Row label={`${k.what} since ${k.since}`}><To link={k.answered_by} fallback="waiting" /></Row>}</For>
-        </Section>
-      </Show>
-      <Show when={c().served.some((s) => s.hours_today > 0)}>
-        <Section title="Served today">
-          <For each={c().served.filter((s) => s.hours_today > 0)}>{(s) => <Row label={s.need}><text size={13.5}>{s.hours_today.toFixed(1)} h</text></Row>}</For>
-        </Section>
-      </Show>
-    </>
+    <Ink layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={ROUND} clip onScroll={roll}>
+      <Box y={-scroll()} pad={{ bottom: 6 }} onSize={(_, h) => setTall(h)}>
+        {props.children}
+      </Box>
+    </Ink>
+  );
+}
+
+export function Header(props: { title: string; sub?: string; icon?: JSX.Element; onClose?: () => void }) {
+  return (
+    <Box dir="row" align="center" gap={10} pad={{ x: 16, top: 14, bottom: 10 }}>
+      {props.icon}
+      <Box grow={1} gap={2}>
+        <Text size={16} weight={600} lines={1}>{props.title}</Text>
+        <Show when={props.sub}>
+          <Text size={12} soft lines={1}>{props.sub}</Text>
+        </Show>
+      </Box>
+      <Press w={28} h={28} round={14} align="center" justify="center" onTap={props.onClose ?? (() => select(null))}>
+        <Icon d={CLOSE} size={14} stroke={2.4} ink="ink/0.6" />
+      </Press>
+    </Box>
   );
 }

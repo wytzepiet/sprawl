@@ -22,8 +22,21 @@ CREATE TABLE IF NOT EXISTS meta (id INTEGER PRIMARY KEY CHECK (id = 0), data TEX
 type Migration = Option<fn(&mut [Value], &mut Value)>;
 
 const MIGRATIONS: &[Migration] = &[
-    // Saves from before the stamp are version 0, and already today's.
-    Some(|_, _| {}),
+    // Every save from before the town began again (docs/game.md): a town
+    // of picks and wants, with nothing of the old economy left to keep.
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    // Lots became fronts: a building is its body alone, its trucks rigid.
+    None,
+    // Fronts narrowed to two tiles, a dock each and one to load at; towns
+    // begin beside a wood.
+    None,
+    // Towns begin on open grass by the wood, not in it.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
@@ -36,19 +49,13 @@ pub struct Meta {
     /// So a restart continues the day rather than snapping the world back
     /// to midnight.
     pub sim_time: u64,
-    /// GDP to date: the level.
-    pub gdp: f64,
-    /// The mayor's coins.
-    pub treasury: f64,
-    /// The town's missions, open and finished, in order.
-    pub missions: Vec<model::missions::Mission>,
-    /// The market's prices, their week and the orders waiting.
-    pub market: sprawl::market::Market,
+    /// The town: its hand, its road, its picks and its days.
+    pub town: sprawl::town::Town,
 }
 
 impl Default for Meta {
     fn default() -> Self {
-        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, gdp: 0.0, treasury: 0.0, missions: Vec::new(), market: Default::default() }
+        Meta { next_id: 1, terrain_seed: 0, sim_time: 0, town: Default::default() }
     }
 }
 
@@ -139,13 +146,24 @@ impl Db {
     }
 }
 
-/// Whether an object is worth saving. A journey is not — a trip's route
+/// What of an object is worth saving. A journey is not — a trip's route
 /// references live world state, and a run or a voyage is timed by wakes
-/// that die with the process, so a restart ends all of them anyway. The parked car is; a save mid-journey keeps the
-/// version last seen parked, and the driver self-heals home, or the
-/// shelves the ship was fetching for call again.
-pub fn kept(entry: &GameObjectEntry) -> bool {
-    !matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some())
+/// that die with the process, so a restart ends all of them anyway. The
+/// parked car is; a save mid-journey keeps the version last seen parked,
+/// and the driver self-heals home. A depot's van or lorry on its way is
+/// saved at `home`, its depot's tile, with what it carries and its errand,
+/// and goes on from there: what it took is never lost, or found again
+/// where it was.
+pub fn kept(entry: &GameObjectEntry, home: Option<model::GridCoord>) -> Option<GameObjectEntry> {
+    let GameObject::Car(ref c) = entry.object else { return Some(entry.clone()) };
+    if c.trip.is_none() && c.run.is_none() && c.sail.is_none() {
+        return Some(entry.clone());
+    }
+    if !matches!(c.role, model::CarRole::Van | model::CarRole::Truck) || c.run.is_some() || c.sail.is_some() {
+        return None;
+    }
+    let car = model::Car { trip: None, spot: None, ..c.clone() };
+    Some(GameObjectEntry { id: entry.id, object: GameObject::Car(car), position: home })
 }
 
 #[cfg(test)]
@@ -178,8 +196,8 @@ mod tests {
         let scratch = Scratch::new("journey");
         let mut db = Db::open(&scratch.0);
         let mut save = |e: GameObjectEntry| {
-            let saved: Vec<_> = Some(&e).into_iter().filter(|e| kept(e)).collect();
-            db.save(&saved, &[], &Meta::default());
+            let saved: Vec<_> = kept(&e, None).into_iter().collect();
+            db.save(&saved.iter().collect::<Vec<_>>(), &[], &Meta::default());
         };
         let quay = GridCoord { x: 5, y: 5 };
         let mut ship = Car::new(1, CarRole::Ferry);
@@ -192,17 +210,15 @@ mod tests {
         assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none()));
     }
 
-    /// The rest of the world outlives a restart as it stood, the town's
-    /// missions with their steps and the market's week among it, whether or not an object
-    /// changed with it; and a reset leaves nothing to load.
+    /// The rest of the world outlives a restart as it stood, the town
+    /// among it, whether or not an object changed with it; and a reset
+    /// leaves nothing to load.
     #[test]
     fn the_world_beside_its_objects_is_saved() {
         let scratch = Scratch::new("meta");
-        let mut missions = sprawl::missions::Missions::default().list;
-        missions[0].steps[1].done = true;
-        missions[0].finished = Some(7);
-        let market = serde_json::from_str(r#"{"hour":3,"at":{"Timber":0.5},"push":{"Timber":0.1},"history":{"Timber":[1.0,1.5,2.0]},"orders":[]}"#).unwrap();
-        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, gdp: 1.25, treasury: 99.5, missions, market };
+        let mut town = sprawl::town::Town::default();
+        town.allowance = 77;
+        let meta = Meta { next_id: 40, terrain_seed: 7, sim_time: 12_345, town };
         let mut db = Db::open(&scratch.0);
         db.save(&[], &[], &meta);
         let (_, loaded) = Db::open(&scratch.0).load();
@@ -225,8 +241,12 @@ mod tests {
         db.save(&[], &[], &meta);
         db.conn.pragma_update(None, "user_version", 0).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();
-        assert_eq!(loaded.next_id, 40, "a save from before the stamp was not kept");
-        assert_eq!(version(&db), SAVE_VERSION);
+        // Kept, if every step from it keeps; else started over.
+        let kept = MIGRATIONS.iter().all(Option::is_some);
+        assert_eq!(loaded.next_id, if kept { 40 } else { 1 }, "a save from before the stamp was {}", if kept { "not kept" } else { "kept past a step that starts over" });
+        if kept {
+            assert_eq!(version(&db), SAVE_VERSION);
+        }
         assert!(backup(0).exists());
         db.conn.pragma_update(None, "user_version", SAVE_VERSION + 1).unwrap();
         let (_, loaded) = Db::open(&scratch.0).load();

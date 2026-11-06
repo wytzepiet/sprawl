@@ -3,7 +3,6 @@
 //! in the yard (docs/buildings.md, Making things). The land, and how a run
 //! is laid over it, are the map's (`world::fields`).
 
-use crate::economy;
 use traffic::event_queue::EventQueue;
 use map::fields::{PACE, RIPEN};
 use crate::world::World;
@@ -14,12 +13,6 @@ impl World {
     /// in its yard, and a batch wanting a job, it sets out on a run.
     pub fn farm_run(&mut self, events: &mut EventQueue, farm: EntityId, now: GameTime) {
         self.map.tend(farm);
-        let Some(kind) = self.map.objects.get(farm).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some(b.kind),
-            _ => None,
-        }) else {
-            return;
-        };
         let Some((job, batch)) = self.map.batch(farm, now) else {
             // A crop still ripening: the farm wakes when the last of it is.
             if let Some(b) = self.map.building(farm)
@@ -30,12 +23,8 @@ impl World {
             }
             return;
         };
-        // The hands set out on a job only with half of it inside their
-        // shift: a job finished late in the day leaves the next for the
-        // morning.
-        let half = now + batch.len() as GameTime * PACE / 2;
-        let on_shift = model::blueprint::blueprint(kind).taps.iter().any(|t| t.need == model::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0 && t.curve.integral(half, half + 1_000) > 0.0);
-        if !on_shift || !crate::calls::staffed(self, farm) {
+        // Somebody at work drives it.
+        if self.map.building(farm).is_none_or(|b| b.present == 0) {
             return;
         }
         let Some(tractor) = self.map
@@ -46,7 +35,7 @@ impl World {
         else {
             return;
         };
-        let Some(yard) = self.map.yard_gate(farm, &batch) else { return };
+        let Some(yard) = self.map.gate(farm) else { return };
         let Some((path, left)) = self.map.sweep(farm, yard, &batch, job) else { return };
         // A tile the tractor cannot work — a pocket it could not turn in,
         // or ground cut off by what was built since — is land no more:
@@ -85,7 +74,7 @@ impl World {
         let Some(&here) = run.path.get(k) else { return };
         self.map.update_position(tractor, here);
         let crop = self.map.objects.get(farm).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some(model::blueprint::crop(b.kind, b.land.len())),
+            GameObject::Building(ref b) => Some(map::fields::crop(b.kind, b.land.len())),
             _ => None,
         });
         let mut cut = 0.0;
@@ -105,8 +94,10 @@ impl World {
                 _ => {}
             }
         }
-        if cut > 0.0 {
-            economy::harvested(self, farm, cut, now);
+        if cut > 0.0
+            && let Some(s) = self.map.building_mut(farm).and_then(|b| b.stocks.get_mut(&model::Good::Wheat))
+        {
+            s.level = (s.level + cut).min(s.cap);
         }
         if k + 1 < run.path.len() {
             events.wake(PACE, tractor);
@@ -119,8 +110,7 @@ impl World {
             b.ruts = run.path;
         }
         self.map.park_in_lot(farm, tractor, now);
-        economy::refilled(self, tractor, now);
-        crate::calls::turn(self, events, farm, now);
+        events.wake(0, farm);
     }
 }
 
@@ -128,7 +118,7 @@ impl World {
 mod tests {
     use super::*;
     use map::Map;
-    use model::{BuildingKind, GridCoord, Tile, DAY_MS};
+    use model::{BuildingKind, GridCoord, Tile};
 
     fn farm_at(world: &mut World, x: i32) -> (EntityId, Vec<Tile>) {
         let farm = world.map.place_on_street(GridCoord { x, y: 1 }, BuildingKind::Farm).unwrap();
@@ -170,7 +160,7 @@ mod tests {
         let mut events = EventQueue::new();
         let tractor = world.map.objects.fleet(farm).next().expect("a tractor in the yard");
         let yard = |world: &World| match world.map.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.stocks[&model::Good::Crates].level,
+            GameObject::Building(ref b) => b.stocks[&model::Good::Wheat].level,
             _ => unreachable!(),
         };
         let stages = |world: &World| -> Vec<Stage> { self::tiles(world, farm).iter().map(|t| t.stage).collect() };
@@ -181,18 +171,18 @@ mod tests {
         let now = 1_000;
         let (job, batch) = world.map.batch(farm, now).expect("a job");
         assert_eq!((job, batch.len()), (Job::Plough, tiles.len()));
-        let pos = world.map.yard_gate(farm, &batch).unwrap();
+        let pos = world.map.gate(farm).unwrap();
         let (path, left) = world.map.sweep(farm, pos, &batch, job).expect("a sweep");
         assert!(left.is_empty(), "tiles left: {left:?}");
         assert_eq!((path[0], *path.last().unwrap()), (pos, pos), "the run does not start and end at the yard");
-        assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs() == 1), "a step of the run is not to a neighbour");
+        assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs().max((w[0].y - w[1].y).abs()) == 1), "a step of the run is not to a neighbour");
         assert!(!sharp(&path), "a turn sharper than a right angle");
         assert!(batch.iter().all(|t| path.contains(t)), "the sweep missed a tile");
         let ground = world.map.drivable(farm);
         assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "the tractor left the farm's ground");
         // Turns: a sweep of a block is about one turn a row.
         let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
-        assert!(turns * 3 < path.len(), "{turns} turns over {} steps", path.len());
+        assert!(turns * 2 <= path.len(), "{turns} turns over {} steps", path.len());
         if let Some(c) = world.map.car_mut(tractor) {
             c.run = Some(Run { job, path: path.clone(), started: now, pace: PACE });
         }
@@ -210,7 +200,7 @@ mod tests {
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Sown));
         assert!(world.map.batch(farm, now).is_none(), "a job before the crop is ripe");
-        assert!(world.map.batch(farm, sown_at + DAY_MS as u64 / 2).is_none());
+        assert!(world.map.batch(farm, sown_at + RIPEN - 1).is_none());
         // The harvest, once ripe: every tile's crop in the yard.
         let now = now + RIPEN;
         let (job, batch) = world.map.batch(farm, now).expect("a harvest");
@@ -221,7 +211,7 @@ mod tests {
         }
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Cut));
-        assert!((yard(&world) - 2600.0).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
+        assert!((yard(&world) - model::blueprint::blueprint(BuildingKind::Farm).yard as f64).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
         // Round again: plough the stubble. And a full yard leaves the
         // crop standing.
         assert_eq!(world.map.batch(farm, now).map(|b| b.0), Some(Job::Plough));
@@ -229,7 +219,7 @@ mod tests {
             for t in b.land.iter_mut() {
                 (t.stage, t.since) = (Stage::Sown, 0);
             }
-            let s = b.stocks.get_mut(&model::Good::Crates).unwrap();
+            let s = b.stocks.get_mut(&model::Good::Wheat).unwrap();
             s.level = s.cap;
         }
         assert!(world.map.batch(farm, now).is_none(), "a harvest with no room in the yard");

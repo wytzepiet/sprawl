@@ -36,7 +36,7 @@ export interface Snapshot {
   /** The chunks to draw. */
   todo: string[];
   /** Every built tile: x, y, its building, the building's kind, and
-   *  whether it is the building's yard. */
+   *  whether it is the building's gate. */
   buildings: [number, number, number, Tile["kind"], boolean][];
   /** Every road tile: x, y, its node, whether a road rather than a street,
    *  and the nodes it leads to and from. */
@@ -133,7 +133,7 @@ export function drawChunks(s: Snapshot): Drawing {
   const WATER: Tile = { kind: "water", storeys: 0 };
   const WOOD: Tile = { kind: "wood", storeys: 0 };
   const tiles = new Map<string, Tile>();
-  for (const [x, y, id, kind, yard] of s.buildings) tiles.set(`${x},${y}`, { kind, storeys: storeysOf(kind as never), id, yard });
+  for (const [x, y, id, kind, gate] of s.buildings) tiles.set(`${x},${y}`, { kind, storeys: storeysOf(kind as never), id, gate });
   const roads = new Map<string, { id: number; road: boolean; outgoing: number[]; incoming: number[] }>();
   for (const [x, y, id, road, outgoing, incoming] of s.roads) {
     roads.set(`${x},${y}`, { id, road, outgoing, incoming });

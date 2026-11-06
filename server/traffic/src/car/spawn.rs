@@ -27,6 +27,15 @@ pub fn start_trip(
         Some(GameObject::Car(c)) => c.spot,
         _ => None,
     };
+    // Out of a square bay, backed out the way it is going: a way that
+    // passes the other side's exit leaves by it instead, not away from it
+    // to turn back.
+    if let Some((side, exit)) = world.map.other_exit(car_id)
+        && let Some(here) = world.map.way_out(car_id).and_then(|o| o.last().copied())
+        && world.map.ways_to(dest_building, here).is_some_and(|w| w.street.contains(&exit))
+    {
+        world.map.leave_by(car_id, side);
+    }
     let out = world.map.way_out(car_id).unwrap_or_default();
     depart(world, events, car_id, out, leaves, from_node, dest_building, now, until)
 }
@@ -51,12 +60,14 @@ pub fn depart(
     };
     let backs_out = world.map.backs_out(car_id);
     let leaving = world.map.stretch(car_id);
+    let planned_out = if out.len() > 1 { world.map.manoeuvres_out(car_id) } else { Vec::new() };
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.map.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
 
     // Don't pull out under a car blocking the start of the road.
     let first_edge = match out.len() {
+        0 | 1 if ways.street.len() < 2 => return false,
         0 | 1 => (ways.street[0], ways.street[1]),
         _ => (out[0], out[1]),
     };
@@ -73,7 +84,8 @@ pub fn depart(
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.map.stretch(car_id)];
-    let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, stretches, leaves, now);
+    let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvres_in(car_id, route.len())).collect();
+    let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, manoeuvres, stretches, leaves, now);
     set_off(world, events, car_id, trip);
     true
 }
@@ -92,11 +104,12 @@ pub(crate) fn trip(
     from_lot: usize,
     to_lot: usize,
     backing: Vec<[usize; 2]>,
+    manoeuvres: Vec<model::Manoeuvre>,
     stretches: [Vec<EntityId>; 2],
     leaves: Option<model::Pose>,
     now: GameTime,
 ) -> Trip {
-    let segment_lengths = world.map.compute_segment_lengths(&route, from_lot, to_lot, &backing);
+    let segment_lengths = world.map.compute_segment_lengths(&route, from_lot, to_lot, &backing, &manoeuvres);
     let along = along(&segment_lengths);
     let total_len: f64 = segment_lengths.iter().sum();
     // The lot's edges are the ones into and out of it: as many at each end
@@ -113,7 +126,8 @@ pub(crate) fn trip(
         lanes: world.map.lanes_for(&route),
         from_lot,
         to_lot,
-        cusps: cusps(&backing, &along),
+        cusps: cusps(&backing, &manoeuvres, &along),
+        manoeuvres,
         leaves,
         stands: world.map.pose_held(car_id),
         backing,
@@ -134,6 +148,8 @@ pub(crate) fn trip(
         stretches,
         shift: None,
         signal: None,
+        stood: None,
+        ghost: None,
     }
 }
 
@@ -148,15 +164,6 @@ pub(crate) fn set_off(world: &mut Traffic, events: &mut EventQueue, car_id: Enti
     }
     let Some(GameObject::Car(c)) = world.map.objects.get_mut(car_id).map(|e| &mut e.object) else { return };
     c.trip = Some(trip);
-    let owner = c.owner;
-
-    // The driver's `at` points at the car for the whole ride; arrival points
-    // it at the destination.
-    if let Some(entry) = world.map.objects.get_mut(owner)
-        && let GameObject::Resident(ref mut r) = entry.object
-    {
-        r.at = Some(car_id);
-    }
 
     world.map.register_car_route(car_id, &route);
     if let Some(seg) = world.map.edges.get_mut(&first_edge)
@@ -208,7 +215,7 @@ pub fn drive_through(world: &mut Traffic, events: &mut EventQueue, car_id: Entit
         })
         .map_or(CRUISE_SPEED, |v| v.min(CRUISE_SPEED));
     let end = route[route.len() - 1];
-    let trip = Trip { speed, ..trip(world, car_id, end, route, 0, 0, Vec::new(), [Vec::new(), Vec::new()], None, now) };
+    let trip = Trip { speed, ..trip(world, car_id, end, route, 0, 0, Vec::new(), Vec::new(), [Vec::new(), Vec::new()], None, now) };
     set_off(world, events, car_id, trip);
     true
 }
@@ -227,23 +234,15 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
     v
 }
 
-/// A manoeuvre within a lot, by a way given, all of it lot nodes, its last
-/// `backs` edges backed: a lorry from one dock of a yard to another.
-pub fn manoeuvre(world: &mut Traffic, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<model::Pose>, now: GameTime) -> bool {
-    let n = route.len();
-    if !matches!(world.map.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n) {
-        return false;
-    }
-    // Lot nodes all: the first two its way out, the rest its way in.
-    let trip = trip(world, car_id, building, route, 2, n - 2, vec![[n - 1 - backs, n - 1]], [Vec::new(), Vec::new()], leaves, now);
-    set_off(world, events, car_id, trip);
-    true
-}
-
-/// How far along the route each change of gear is, as its physics measures
-/// it: where a vehicle stops and pulls away the other way.
-pub fn cusps(backing: &[[usize; 2]], along: &[f64]) -> Vec<f64> {
-    map::geometry::parts(backing, along.len()).iter().skip(1).map(|&(i, _)| along[i]).collect()
+/// How far along the route, as its physics measures it, each stretch the
+/// client draws on its own starts: at each change of gear, and at each end
+/// of a parking move, so a vehicle stops where the server has it stop.
+pub fn cusps(backing: &[[usize; 2]], manoeuvres: &[model::Manoeuvre], along: &[f64]) -> Vec<f64> {
+    let n = along.len();
+    let mut cuts: Vec<usize> = backing.iter().flatten().copied().chain(manoeuvres.iter().flat_map(|m| [m.edge, m.edge + 1])).filter(|&k| k > 0 && k + 1 < n).collect();
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.into_iter().map(|k| along[k]).collect()
 }
 
 /// How far along a route each node of it is, from its segments' lengths:
@@ -268,9 +267,9 @@ mod tests {
     fn a_car_backs_out_of_its_driveway() {
         let mut map = Map::meadow(-4..40, -4..8).street(-4..40);
         let mut streets = crate::intersection::IntersectionRegistry::new();
-        let mut world = Traffic { map: &mut map, streets: &mut streets, arrived: Vec::new() };
+        let mut world = Traffic { map: &mut map, streets: &mut streets };
         let house = world.map.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
-        let depot = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Depot).unwrap();
+        let depot = world.map.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Sawmill).unwrap();
         let car = world.map.insert_at(GameObject::Car(model::Car::new(0, Default::default())), None);
         let ways = world.map.ways_to(house, world.map.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
         let (way, _) = world.map.way_in(house, car, &ways, 0, GameTime::MAX).unwrap();
@@ -292,6 +291,6 @@ mod tests {
             Some(GameObject::Car(c)) => c.trip.clone().unwrap(),
             _ => unreachable!(),
         };
-        assert_eq!(trip.backing, vec![[0, 1]], "the first edge backwards, the rest forward");
+        assert_eq!(trip.backing.first(), Some(&[0, 1]), "the first edge backwards");
     }
 }

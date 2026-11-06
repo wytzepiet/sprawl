@@ -11,15 +11,17 @@
 //!
 //! ```text
 //! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
-//! :  paved (a yard or a car park; grass to the server, drawn by `bun run plan`)
+//! %  grass over clay
+//! :  paved (a car park; grass to the server, drawn by `bun run plan`)
 //! =  street    #  road (a through route)
-//! H house  A apartment  S shop  O office  F factory  G gas station
-//! M supermarket  D depot  P harbour  W sawmill  Q quarry  B farm
-//! d  (any letter small) that building's yard, as `/map` writes the game's
+//! H house  S shop  F fishery  L woodcutter  W sawmill  B farm  K bakery
+//! C clay pit  R brickworks  Q workshop  A sand pit  G glassworks
+//! E sheep farm  Y tailor
+//! d  (any letter small) that building's gate: its front faces the street
+//!    beyond it
 //! ```
 //!
-//! A building's letters are its tiles, on grass, but a harbour's beside
-//! the sea, which stand on it: a kind bigger than a tile is one
+//! A building's letters are its tiles: a kind bigger than a tile is one
 //! building as far as its letter runs, of whatever shape, which the hand
 //! cannot place but the look must draw; a house is a house a tile. Lines starting with `#` are the fixture's
 //! description; the first is its title. Lines starting with `@`, and
@@ -31,8 +33,7 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 
-use model::blueprint::blueprint;
-use model::{BuildingKind, GameObject, Good, GridCoord, Package};
+use model::{BuildingKind, GameObject, GridCoord};
 use land::TerrainType;
 use crate::Map;
 
@@ -58,23 +59,25 @@ fn building(c: char) -> Option<BuildingKind> {
     use BuildingKind::*;
     Some(match c.to_ascii_uppercase() {
         'H' => House,
-        'A' => Apartment,
         'S' => Shop,
-        'O' => Office,
-        'F' => Factory,
-        'G' => GasStation,
-        'M' => Supermarket,
-        'D' => Depot,
-        'P' => Harbour,
+        'F' => Fishery,
+        'L' => Woodcutter,
         'W' => Sawmill,
-        'Q' => Quarry,
         'B' => Farm,
+        'K' => Bakery,
+        'C' => ClayPit,
+        'R' => Brickworks,
+        'Q' => Workshop,
+        'A' => SandPit,
+        'G' => Glassworks,
+        'E' => SheepFarm,
+        'Y' => Tailor,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDPWQB".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HSFLWBKCRQAGEY".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -107,7 +110,6 @@ pub fn build(world: &mut Map, dir: &Path) {
         placed.push(Placed { name, title, x: x0, y: 0, w, h });
         x0 += w + GAP;
     }
-    finish_sites(world);
     till_farms(world);
     stock_yards(world);
     println!("fixtures: built {} from {}", placed.len(), dir.display());
@@ -126,15 +128,14 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
     let at = |col: i32, row: i32| GridCoord { x: x0 + w - 1 - col, y: -row };
     let char_at = |col: i32, row: i32| rows.get(row as usize).and_then(|r| r.get(col as usize)).copied().unwrap_or('.');
 
-    // A harbour stands half on the water: its tiles beside the sea are
-    // built out over it.
-    let sea = |col: i32, row: i32| [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dc, dr)| char_at(col + dc, row + dr) == '≈');
     for row in -GAP..h + GAP {
         for col in -GAP..w + GAP {
             let p = at(col, row);
             let c = char_at(col, row);
-            let g = if building(c) == Some(BuildingKind::Harbour) && sea(col, row) { TerrainType::Sea } else { ground(c) };
-            world.terrain.insert((p.x, p.y), g);
+            world.terrain.insert((p.x, p.y), ground(c));
+            if c == '%' || (building(c) == Some(BuildingKind::ClayPit)) {
+                world.deposits.insert((p.x, p.y), land::Deposit::Clay);
+            }
         }
     }
 
@@ -174,7 +175,7 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
             }
             let mut run = vec![(col, row)];
             let mut i = 0;
-            while i < run.len() && model::blueprint::plot(kind, 0).size != (1, 1) {
+            while i < run.len() && model::blueprint::plot(kind, 0) != (1, 1) {
                 let (c, r) = run[i];
                 for (dc, dr) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                     let n = (c + dc, r + dr);
@@ -185,15 +186,14 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
                 i += 1;
             }
             let tiles: Vec<GridCoord> = run.iter().map(|&(c, r)| at(c, r)).collect();
-            let quay = model::blueprint::blueprint(kind).quay;
-            // Its yard where its small letters are, as `/map` writes
-            // a game's; else toward the first street it has.
-            let mut marked: Vec<GridCoord> = run.iter().filter(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r)).collect();
-            marked.sort_by_key(|t| (t.x, t.y));
-            let yard = |f: u8| Map::yard_of(&tiles, kind, f).map(|mut y| { y.sort_by_key(|t| (t.x, t.y)); y });
+            // Its gate where its small letter is, as `/map` writes a
+            // game's, toward a street (a plot a tile deep has its gate on
+            // both long sides); else toward the first street it has.
+            let marked = run.iter().find(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r));
+            let streets = |f: &u8| world.driveway_for(&tiles, kind, *f).is_some();
             let facing = (0..4)
-                .find(|&f| !marked.is_empty() && yard(f).as_ref() == Some(&marked))
-                .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())))
+                .filter(streets)
+                .find(|&f| marked.is_none() || Map::gate_of(&tiles, kind, f) == marked)
                 .unwrap_or(2);
             if !world.may_stand_on(&tiles, kind, facing) {
                 println!("fixtures: {name}: no room for {kind:?} at column {col}, row {row}");
@@ -221,7 +221,6 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
 /// whatever has no files to read.
 pub fn build_text(world: &mut Map, text: &str) {
     lay(world, text, 0, "fixture");
-    finish_sites(world);
 }
 
 /// When fixtures stand still: noon, on the third day, so a field sown
@@ -257,8 +256,6 @@ fn till_farms(world: &mut Map) {
     }
 }
 
-/// A town written by hand stands as written: no site waits for its
-/// materials.
 /// Every shelf and yard part full, as a town in use keeps them: what
 /// the look shows of a pad is its goods (docs/plan-goods.md), a share
 /// of each stock the same for the same building every time.
@@ -271,28 +268,12 @@ fn stock_yards(world: &mut Map) {
                 s.level = (s.cap * (0.3 + 0.65 * share)).floor();
             }
         }
-        // A harbour's quay, a ferry's worth landed on it.
-        if world.building(id).is_some_and(|b| blueprint(b.kind).quay) {
-            for (good, n) in [(Good::Timber, 8), (Good::Stone, 5), (Good::Crates, 3), (Good::Fuel, 4)] {
-                for _ in 0..n {
-                    let p = Package { id: world.objects.reserve_id(), good, to: None, outbound: false, order: model::GIFT, partner: None, price: 0.0 };
-                    world.building_mut(id).unwrap().pad.push(p);
-                }
-            }
-        }
-    }
-}
-
-fn finish_sites(world: &mut Map) {
-    let sites: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some())).map(|e| e.id).collect();
-    for id in sites {
-        world.finish(id);
     }
 }
 
 /// The tiles within `r` of a point as a fixture's text, laid out as the map
 /// is seen (+x to the left, +y up), so it reads, and draws, as the game
-/// does. A building is its letter, its lot or yard paved. The first line names the
+/// does. A building is its letter, its gate's small. The first line names the
 /// game's tile at column 0, row 0: a column on is a tile less of x, a row
 /// on a tile less of y.
 pub fn draw(world: &Map, x: i32, y: i32, r: i32) -> String {
@@ -302,20 +283,23 @@ pub fn draw(world: &Map, x: i32, y: i32, r: i32) -> String {
             let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
             let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
-                // A building is its letter on every tile, its yard's in
-                // small letters, where the game lays its lot.
-                (_, Some(GameObject::Building(b))) => match Map::yard_of(&b.tiles, b.kind, b.facing) {
-                    Some(yard) if yard.contains(&GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
+                // A building is its letter on every tile, its gate's a
+                // small one, where its docks are.
+                (_, Some(GameObject::Building(b))) => match b.door {
+                    Some(d) if model::blueprint::fronted(b.kind) && d.tile == (GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
                     _ => letter(b.kind),
                 },
                 (Some(GameObject::RoadNode(n)), _) => if n.road.is_empty() { '=' } else { '#' },
-                _ => match world.terrain.get(&(tx, ty)) {
+                _ => match (world.deposits.get(&(tx, ty)), world.terrain.get(&(tx, ty))) {
+                    (Some(land::Deposit::Clay), _) => '%',
+                    (_, t) => match t {
                     Some(TerrainType::Water) => '~',
                     Some(TerrainType::Sea) => '≈',
                     Some(TerrainType::Forest) => 'T',
                     Some(TerrainType::Beach) => '_',
                     Some(TerrainType::Mountain) => '^',
                     _ => '.',
+                    },
                 },
             });
         }
@@ -348,7 +332,7 @@ mod tests {
                         Some(GameObject::Building(b)) => Some(letter(b.kind)),
                         _ => None,
                     });
-                    if building(c).map(|_| c) != built {
+                    if building(c).map(|_| c.to_ascii_uppercase()) != built {
                         wrong.push(format!("{} col {col} row {row}: {c} built {built:?}", p.name));
                     }
                     let drawn = draw(&world, at.x, at.y, 0).lines().last().and_then(|l| l.chars().next());

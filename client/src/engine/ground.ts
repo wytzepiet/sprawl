@@ -40,9 +40,9 @@ const SIDE = 256;
 const SPAN = 4;
 /** How far the blades' slope tilts the land's facing, how much darker
  *  their deepest creases are, and the clover's colour. */
-const BUMP = 0.45;
-const CREASE = 0.3;
-const CLOVER = [1, 0.97, 0.86];
+export const BUMP = 0.45;
+export const CREASE = 0.3;
+export const CLOVER = [1, 0.97, 0.86];
 /** Grass is mottled, as a field is from the air: its colour lighter and a
  *  touch yellower in places, darker and a touch bluer in others, in broad
  *  patches this many tiles across and small ones this many, by up to this
@@ -103,6 +103,9 @@ const LOOKS = [
   // Grass rounds over onto the rock more tightly, half as far, and stops
   // short of the cliff, as the wood floor does.
   { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0, matte: 0 },
+  // Clay through the turf: bare earth, frayed into the grass round it,
+  // unmottled, which would warm it to brick.
+  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 0, slate: 0, matte: 0 },
   // The wood floor frays into the grass, thinning blade by blade, and
   // further in than the grass does: it lies under the trees, not past them.
   // Needle litter in shade: fully matte.
@@ -159,7 +162,7 @@ export function grain(engine: EngineContext): Texture2D {
 
 /** The lawn, an engine's: level until the worker has baked them,
  *  or read back from the last bake (`bakeCache.ts`). */
-const lawn = (engine: EngineContext): Texture2D =>
+export const lawn = (engine: EngineContext): Texture2D =>
   bakedTexture(engine, "lawn", lawnRecipe, [LAWN_SIDE, LAWN_SIDE, () => new Uint8Array(LAWN_SIDE * LAWN_SIDE * 4).map((_, k) => [128, 128, 255, 0][k % 4])], {
     mipmaps: true,
     minFilter: "linear",

@@ -22,9 +22,10 @@ export const HALF_W = ROAD_WIDTH / 2;
 export const CAR = { w: 0.15, l: 0.29, h: 0.125 };
 /** A van: a box a car and a bit long, and tall. */
 export const VAN = { w: 0.17, l: 0.37, h: 0.18 };
-/** A lorry: a cab-over tractor and a semi-trailer, two boxes. */
+/** A lorry: a rigid box truck, a cab-over cab, CAB, and a flatbed on its
+ *  chassis behind (`park::TRUCK`). */
+export const TRUCK = { w: 0.17, l: 0.47, h: 0.22 };
 export const CAB = { w: 0.17, l: 0.17, h: 0.21 };
-export const TRAILER = { w: 0.17, l: 0.46, h: 0.22, axle: 0.37, overhang: 0.025 };
 /** A lane's middle, from the road's: where the server drives it, not
  *  widened with the drawn road. */
 export const LANE_OFFSET = 0.1;

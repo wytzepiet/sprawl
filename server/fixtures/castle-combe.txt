@@ -5,11 +5,11 @@
 .TTTTT....TT............TT...T=TTTTTT.
 .TT.TT.....===..............==TTTTTTT.
 ..T.......=H.........H....==TTTTTTTTT.
-.A.........=H.HH....H...==TTTTTTTTTTT.
-.AA........=HH.......H.=TTTTTTTTTTTTT.
-.AA.........====HH....=TTTTTTTTTTTTTT.
-.AAA......H.HHH.=AAA.=H.TTTTTTTTTTTTT.
-.AA.....HHH......=AA=H..TTTTTTTTTTTT..
+...........=H.HH....H...==TTTTTTTTTTT.
+...........=HH.......H.=TTTTTTTTTTTTT.
+............====HH....=TTTTTTTTTTTTTT.
+..........H.HHH.=....=H.TTTTTTTTTTTTT.
+........HHH......=..=H..TTTTTTTTTTTT..
 ...........H.....H=.=HH..TTTTTTTTTT...
 .................H==..H...TTTTTTTTT...
 .................S.=H....TTTTTTTTTT...

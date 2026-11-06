@@ -1,14 +1,15 @@
 import { BLUEPRINTS, GOODS, middle } from "../blueprints";
 import { theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
-import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
-import { FERRY, deckPose, hull } from "../engine/objects/sea";
-import { carried, colourOf, LIVERY, moment, onBed, PALETTE, type Moment, VAN_BED } from "../engine/objects/motion";
+import { CAB, CAR, ROAD_WIDTH, TRUCK, VAN } from "../engine/objects/roadGeometry";
+import { FERRY, hull } from "../engine/objects/sea";
+import { carried, colourOf, liftSlot, LIVERY, moment, onBed, PALETTE, type Moment, bedLength } from "../engine/objects/motion";
 import { ITEM } from "../engine/objects/goods";
-import { packagesOf, padOf, placeIn } from "../engine/objects/pads";
+import { atPad, ends, packagesOf, padOf, placeIn } from "../engine/objects/pads";
+import { forkliftAt, yardsOf } from "../engine/objects/forklift";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Pose as Stand, Compass, Neighbour } from "../generated";
-import { crest } from "./crest";
+import type { Ground } from "../engine/objects/terrainGeometry";
+import type { Building, Car, GameObjectEntry, Good, RoadNode, Pose as Stand } from "../generated";
 
 /**
  * The game drawn flat, on a 2D canvas, `@napi-rs/canvas`'s in a script
@@ -27,12 +28,6 @@ import { crest } from "./crest";
 export interface World {
   entities(each: (e: GameObjectEntry) => void): void;
   ground(cx: number, cy: number): Uint8Array | undefined;
-  /** The sea's lanes (`Sea.lanes`), drawn faint on the water. */
-  lanes?: Lane[];
-  /** The towns beyond the edge, each a pin on the view's edge its way. */
-  neighbours?: Neighbour[];
-  /** The town a box is marked for, by the box's order. */
-  marked?: (order: number) => Neighbour | undefined;
   now: number;
   dayMs: number;
 }
@@ -56,7 +51,7 @@ const css = (c: Rgb, a = 1) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g *
 const INK = "#1d2330";
 const RED = "#d23c32";
 
-const TERRAIN: Record<TerrainType, Rgb> = { Sea: theme.water, Water: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.rock };
+const TERRAIN: Record<Ground, Rgb> = { Clay: theme.clay, Sea: theme.water, Water: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.rock };
 
 /** A chunk's ground, a pixel a tile, made once for its tiles. */
 function chunkImage(tiles: Uint8Array, sheet: Sheet): unknown {
@@ -77,44 +72,6 @@ function chunkImage(tiles: Uint8Array, sheet: Sheet): unknown {
   return canvas;
 }
 
-/**
- * A lane faint on the water, as the map reserves it (`traffic::sea::lanes`):
- * one way, a thin line with a chevron every few tiles the way it runs; a
- * junction shared both ways, a berth's approach or a strait, dashed and
- * warmer; a crossing, a short bold stroke where the lanes meet.
- */
-function drawLane(g: CanvasRenderingContext2D, lane: Lane, S: number) {
-  const ink = { OneWay: "rgba(255,255,255,0.45)", TwoWay: "rgba(255,196,96,0.7)", Crossing: "rgba(255,120,120,0.7)" }[lane.kind];
-  g.save();
-  g.strokeStyle = ink;
-  g.lineWidth = (lane.kind === "Crossing" ? 4 : 1.5) / S;
-  g.setLineDash(lane.kind === "TwoWay" ? [6 / S, 4 / S] : []);
-  g.beginPath();
-  lane.path.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-  g.stroke();
-  if (lane.kind === "OneWay") {
-    g.setLineDash([]);
-    const every = Math.max(3, 60 / S);
-    let left = every / 2;
-    for (let i = 1; i < lane.path.length; i++) {
-      const [a, b] = [lane.path[i - 1], lane.path[i]];
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      for (let d = left; d < len; d += every) {
-        const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-        const [x, y] = [a[0] + ux * d, a[1] + uy * d];
-        const w = 4 / S;
-        g.beginPath();
-        g.moveTo(x - ux * w - uy * w, y - uy * w + ux * w);
-        g.lineTo(x, y);
-        g.lineTo(x - ux * w + uy * w, y - uy * w - ux * w);
-        g.stroke();
-      }
-      left = (left - len) % every;
-      if (left < 0) left += every;
-    }
-  }
-  g.restore();
-}
 
 /**
  * Draw the world into `g`, `view.w` by `view.h` pixels, with ids and a
@@ -140,7 +97,6 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       const tiles = world.ground(cx, cy);
       if (tiles) g.drawImage(chunkImage(tiles, sheet) as CanvasImageSource, cx * CHUNK_SIZE, cy * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
     }
-  for (const lane of world.lanes ?? []) drawLane(g, lane, S);
 
   const byId = new Map<number, GameObjectEntry>();
   const buildings: [GameObjectEntry, Building][] = [];
@@ -194,11 +150,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     }
   }
 
-  // Packages on a quay marked for a town beyond the edge: its crest on them.
-  const crested: [Stand, Neighbour][] = [];
-  // Buildings: their tiles in their kind's colour, outlined; a site an
-  // outline, filled from the bottom as its timber comes; the drive from
-  // the street to the door.
+  // Buildings: their tiles in their kind's colour, outlined; the drive
+  // from the street to the door.
   for (const [, b] of buildings) {
     if (!b.tiles.some((t) => on(t.x, t.y))) continue;
     const colour = BLUEPRINTS[b.kind].color;
@@ -210,32 +163,16 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       g.lineTo(b.door.tile.x + 0.5, b.door.tile.y + 0.5);
       g.stroke();
     }
-    const share = b.site ? sum(b.site, (s) => s.level) / Math.max(1, sum(b.site, (s) => s.cap)) : 1;
     g.fillStyle = colour;
-    g.globalAlpha = b.site ? 0.15 : 0.55;
+    g.globalAlpha = 0.55;
     for (const t of b.tiles) g.fillRect(t.x, t.y, 1, 1);
-    if (b.site && share > 0) {
-      // From the low edge on the screen, which is the high y.
-      const top = Math.max(...b.tiles.map((t) => t.y)) + 1, low = Math.min(...b.tiles.map((t) => t.y));
-      const cut = top - (top - low) * share;
-      g.globalAlpha = 0.55;
-      for (const t of b.tiles) if (t.y + 1 > cut) g.fillRect(t.x, Math.max(t.y, cut), 1, t.y + 1 - Math.max(t.y, cut));
-    }
     g.globalAlpha = 1;
-    outline(g, b.tiles, colour, 0.06, b.site ? [0.15, 0.1] : []);
+    outline(g, b.tiles, colour, 0.06, []);
     // Its pad: each package in its slot, a stack drawn once.
     const bays = padOf(b).bays;
     for (const bay of bays) {
-      const n = packagesOf(b, bay.good);
+      const n = packagesOf(b, bay.good) + b.lifts.filter((l) => l.good === bay.good).reduce((n, l) => n + atPad(l, world.now), 0);
       for (let i = 0; i < n; i += bay.stack) item(g, placeIn(bay, i)[0], bay.good);
-    }
-    const seen = new Map<Good, number>();
-    for (const p of b.pad) {
-      const i = seen.get(p.good) ?? 0;
-      seen.set(p.good, i + 1);
-      const n = p.outbound ? world.marked?.(p.order) : undefined;
-      const bay = bays.find((y) => y.good === p.good);
-      if (n && bay) crested.push([placeIn(bay, i)[0], n]);
     }
   }
 
@@ -259,25 +196,24 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     vehicle(g, e.id, car, m);
   }
 
-  // Upright, in pixels: the crests on marked boxes; and, over everything,
-  // each town beyond the edge a pin on the view's edge its way, as the map
-  // lies, north up and east to the right, named.
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  for (const [p, n] of crested) crest(g, n, ...screen(p.at[0], p.at[1]), Math.max(4, S * 0.16));
-  const pins = (bottom = view.h) => {
-    const r = Math.max(7, Math.min(view.w, view.h) / 34);
-    const edge: Record<Compass, [number, number, CanvasTextAlign, number, number]> = {
-      North: [view.w / 2, r + 4, "center", 0, r + 9],
-      South: [view.w / 2, bottom - r - 4, "center", 0, -r - 9],
-      East: [view.w - r - 4, view.h / 2, "right", r, r + 9],
-      West: [r + 4, view.h / 2, "left", -r, r + 9],
-    };
-    for (const n of world.neighbours ?? []) {
-      const [px, py, align, dx, dy] = edge[n.toward];
-      crest(g, n, px, py, r);
-      text(`${n.town}${n.writes ? "" : " (silent)"}`, px + dx, py + dy, 11, INK, align);
+  // Forklifts where their runs have them, yellow, and what is in their
+  // forks.
+  for (const [e, b] of buildings) {
+    const pad = padOf(b);
+    if (!b.tiles.some((t) => on(t.x, t.y)) || (!pad.docked && !b.lifts.some((l) => ends(l) > world.now))) continue;
+    for (const { yard, mine } of yardsOf(e.id, b, pad, 0, b.lifts, (l, j) => {
+      const car = cars.find(([c]) => c.id === l.car)?.[1];
+      return car ? liftSlot(l, car, j) : null;
+    })) {
+      const at = forkliftAt(yard, mine, world.now);
+      body(g, at.truck, 0.1, 0.07, "#f0c23b");
+      const good = mine.find((l) => l.start <= world.now && ends(l) > world.now)?.good;
+      if (at.load && good) item(g, at.load.at, good);
     }
-  };
+  }
+
+  // Upright, in pixels.
+  g.setTransform(1, 0, 0, 1, 0, 0);
   const text = (s: string, x: number, y: number, size: number, colour = INK, align: CanvasTextAlign = "center") => {
     g.font = `${size}px sans-serif`;
     g.textAlign = align;
@@ -297,7 +233,6 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       if (!on(mx, my, 0)) continue;
       const [sx, sy] = screen(mx, my);
       text(`${BLUEPRINTS[b.kind].label} #${e.id}`, sx, sy, 11);
-      if (b.site) text(`site ${(Object.entries(b.site) as [Good, Stock][]).map(([g, s]) => `${Math.floor(s.level)}/${s.cap} ${GOODS[g].label}`).join(", ")}`, sx, sy + 12, 10, "#553");
     }
   if (S >= 20)
     for (const [e, car, m] of moments) {
@@ -306,8 +241,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       else text(`${e.id}`, sx, sy - 9, 9, "#334");
     }
   grid(g, view, x0, x1, y0, y1, screen);
-  // The south pin stands over the legend.
-  pins(legend(g, world, cars, byId, view.h));
+  legend(g, world, cars, byId, view.h);
 }
 
 /** An arrow at (x, y) pointing along `angle`, `size` long. */
@@ -366,23 +300,12 @@ export function item(g: CanvasRenderingContext2D, p: Stand, good: Good) {
   body(g, p, ITEM, ITEM, GOODS[good].color, false);
 }
 
-/** A deck's bay, a pallet's in it or not. */
-function dock(g: CanvasRenderingContext2D, p: Stand, colour: string) {
-  g.save();
-  g.translate(p.at[0], p.at[1]);
-  g.rotate(p.heading);
-  g.strokeStyle = colour;
-  g.lineWidth = 0.02;
-  g.setLineDash([0.05, 0.04]);
-  g.strokeRect(-0.25, -0.115, 0.5, 0.23);
-  g.restore();
-}
 
 /** A vehicle by its role, at its moment, with what it carries. */
 function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
   if (m.bed) {
-    const l = car.role === "Van" ? VAN_BED : TRAILER.l;
-    body(g, m.bed, l, TRAILER.w, "#80838a", false);
+    const l = bedLength(car.role);
+    body(g, m.bed, l, TRUCK.w, "#80838a", false);
     carried(car).forEach((good, k) => item(g, onBed(m.bed!, l, k), good));
   }
   switch (car.role) {
@@ -402,11 +325,9 @@ function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
       g.stroke();
       g.restore();
       body(g, m.body, 0.2, FERRY.w, "#3d73a8", false);
-      for (let k = 0; k < 15; k++) dock(g, deckPose(m.body, k), "rgba(40,50,70,0.45)");
-      for (const d of m.deck ?? []) d.good ? item(g, d.at, d.good) : body(g, d.at, CAR.l, CAR.w, css(PALETTE[colourOf(d.settler!)]));
       return;
     }
-    // A van, a small rigid lorry: its cab, and its load on a short flatbed behind.
+    // A lorry or a van, rigid: its cab, and its load on the flatbed behind.
     case "Truck":
     case "Van":
       return body(g, m.body, CAB.l, CAB.w, css(LIVERY.cab));
@@ -450,22 +371,12 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
   const day = world.now / world.dayMs;
   const t = day % 1;
   const clock = `day ${Math.floor(day) + 1}  ${String(Math.floor(t * 24)).padStart(2, "0")}:${String(Math.floor((t * 1440) % 60)).padStart(2, "0")}  (${world.now} ms)`;
-  const hhmm = (ms: number) => {
-    const u = (ms / world.dayMs) % 1;
-    return `${String(Math.floor(u * 24)).padStart(2, "0")}:${String(Math.floor((u * 1440) % 60)).padStart(2, "0")}`;
-  };
-  const ferries = cars.filter(([, c]) => c.role === "Ferry").map(([e, c]) => {
-    const where = c.spot ? `moored, casts off ${hhmm(c.due)}` : c.sail ? `at sea, ${c.sail.ends <= world.now ? "waiting at a junction, " : ""}${c.sail.astern ? "out to the edge" : `berths ${hhmm(c.due)}`}` : `away, berths ${hhmm(c.due)}`;
-    const pallets = c.deck.filter(Boolean).length;
-    const harbour = byId.get(c.owner)?.object.data as Building | undefined;
-    return `ferry #${e.id} ${where}; ${pallets} pallets, ${c.passengers.length} settlers aboard; ${harbour?.pad.length ?? 0} on the quay`;
-  });
   const keys: [string, (x: number, y: number) => void][] = [
     ...(Object.keys(GOODS) as (keyof typeof GOODS)[]).map((good): [string, (x: number, y: number) => void] => [GOODS[good].label, (x, y) => swatch(g, x, y, GOODS[good].color)]),
     ["lorry", (x, y) => swatch(g, x, y, css(LIVERY.cab))],
     ["tractor", (x, y) => swatch(g, x, y, css(LIVERY.tractor))],
   ];
-  const lines = [clock, ...ferries];
+  const lines = [clock];
   g.font = "11px sans-serif";
   const row = keys.reduce((w, [label]) => w + 30 + g.measureText(label).width, 0);
   const [w, h] = [Math.max(row, ...lines.map((s) => g.measureText(s).width)) + 12, 14 * lines.length + 26];
@@ -496,6 +407,3 @@ function swatch(g: CanvasRenderingContext2D, x: number, y: number, fill: string,
   g.lineWidth = line;
   g.strokeRect(x + 0.5, y - 3.5, 14, 7);
 }
-
-/** What a site's materials add up to: delivered, or wanted. */
-const sum = (site: NonNullable<Building["site"]>, f: (s: Stock) => number) => Object.values(site).reduce((a, s) => a + (s ? f(s) : 0), 0);
