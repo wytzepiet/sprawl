@@ -3,8 +3,6 @@ import { news, type News } from "../state/town";
 import { setFollowing } from "../state/selection";
 import { bezel, CORNER, view, wide, ROUND } from "./kit";
 import { Stack } from "./stack";
-import { late, LeavingCard, type Late } from "./Leaving";
-import { createMemo } from "solid-js";
 
 /** Where the feed starts, and the room it leaves below it. */
 const TOP = () => bezel() + CORNER + (wide() ? 14 : 12);
@@ -16,17 +14,13 @@ const SUN = "M12 7a5 5 0 0 1 5 5H7a5 5 0 0 1 5-5zM2 14h20v2H2zM11 2h2v3h-2zM4.2 
  * The feed: what happens to the town as a phone's notifications, top
  * right, or across the top of a phone: who moved in, who left, the dawn.
  * The newest in front, two more peeking under it; each goes by itself.
- * Over them all, while any family is about to leave, the alarm, till
- * none is.
  */
 export default function Feed() {
   const room = () => view().h - TOP() - BELOW();
-  const leaving = createMemo(() => late());
-  const items = (): (News | Late[])[] => [...(leaving().length ? [leaving()] : []), ...[...news()].reverse()];
   return (
     <Box at={wide() ? { right: bezel() + 14, top: TOP() } : { left: bezel() + 10, right: bezel() + 10, top: TOP() }} w={wide() ? 340 : undefined}>
-      <Stack each={items()} key={(n) => (Array.isArray(n) ? "leaving" : `news:${n.key}`)} open={false} room={room()} glass="note" round={ROUND}>
-        {(n) => (Array.isArray(n()) ? <LeavingCard all={n() as Late[]} /> : <NewsCard news={n() as News} />)}
+      <Stack each={[...news()].reverse()} key={(n) => `news:${n.key}`} open={false} room={room()} glass="note" round={ROUND}>
+        {(n) => <NewsCard news={n()} />}
       </Stack>
     </Box>
   );

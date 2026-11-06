@@ -88,7 +88,8 @@ function Over(props: { id: number; building: () => Building }) {
 }
 
 /** A want: its good's disc and glyph, ringed white, the ring filling red
- *  over the family's patience. */
+ *  over the family's patience; the last quarter, the family all but
+ *  gone, it pings, a red ring going out from it again and again. */
 export function Pin(props: { want: Want; onTap: () => void }) {
   const { color, glyph } = GOODS[props.want.good];
   const full = () => Math.min(1, Math.max(0, (now() - props.want.since) / PATIENCE_MS));
@@ -96,6 +97,9 @@ export function Pin(props: { want: Want; onTap: () => void }) {
   const round = 2 * Math.PI * R;
   return (
     <Press w={38} h={38} align="center" justify="center" onTap={props.onTap}>
+      <Show when={full() > 0.75}>
+        <div class="ping" style={{ "border-color": BAD }} />
+      </Show>
       <svg width="38" height="38" viewBox="-19 -19 38 38" style={{ position: "absolute", left: "0", top: "0" }}>
         <circle r="18.5" fill="white" />
         <circle r={R} fill="none" stroke="#0000001f" stroke-width="5" />

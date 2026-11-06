@@ -46,5 +46,9 @@
   .sq { border-radius: calc(var(--r) * 1.8); corner-shape: squircle; }
 }
 
+/* A ring going out from a pin, again and again: look here, now. */
+.ping { position: absolute; inset: 0; border-radius: 50%; border: 3px solid; animation: ping 1.1s ease-out infinite; }
+@keyframes ping { 0% { transform: scale(0.9); opacity: 0.9 } 100% { transform: scale(2.2); opacity: 0 } }
+
 /* A Melt's black, under what is in it. */
 .melt { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
