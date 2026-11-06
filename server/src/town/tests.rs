@@ -44,12 +44,13 @@ fn a_shop_stocked_from_the_fishery_feeds_its_street() {
     assert_eq!(stayed.len(), 5, "a family left");
 }
 
-/// A family nobody brings fish to leaves.
+/// A family that has taken up fish and nobody brings it leaves.
 #[test]
 fn a_family_kept_waiting_leaves() {
     let mut world = street();
     world.town.hand.clear();
     let h = homes::house(&mut world, GridCoord { x: 0, y: -1 }, 0).unwrap();
+    world.map.building_mut(h).unwrap().home.as_mut().unwrap().due.insert(Good::Fish, 0);
     world.town.picked = u32::MAX / 2;
     let mut game = Game::new(world, 0, 1, Box::new(World::new));
     game.run_to(DAY_MS as GameTime * 2);
@@ -72,6 +73,33 @@ fn a_town_begins_by_the_water() {
     assert_eq!(world.map.objects.of_kind(BuildingKind::Fishery).count(), 1);
     assert_eq!(homes(world).len(), 2);
     assert!(world.town.has(BuildingKind::Shop));
+}
+
+/// Nobody wants what no shop has: a street of houses without a fishery
+/// waits for one, and houses take up bread only as loaves reach the
+/// shop's shelf, one family a loaf.
+#[test]
+fn demand_waits_for_supply() {
+    let mut world = street();
+    world.town.hand.clear();
+    world.town.picked = u32::MAX / 2;
+    world.town.start = None;
+    let hs: Vec<EntityId> = [-8, -4, 4, 8].into_iter().map(|x| homes::house(&mut world, GridCoord { x, y: -1 }, 0).unwrap()).collect();
+    let mut game = Game::new(world, 0, 1, Box::new(World::new));
+    game.run_to(DAY_MS as GameTime);
+    assert!(hs.iter().all(|&h| game.world.map.building(h).is_some()), "a family left over fish nobody makes");
+    assert!(homes(&game.world).iter().all(|h| h.wants.is_empty() && h.due.is_empty()));
+    assert!(game.world.town.met.contains(&BuildingKind::Fishery));
+    // Two loaves to spare: two houses take up bread, the others wait on.
+    for &h in &hs {
+        game.world.map.building_mut(h).unwrap().home.as_mut().unwrap().level = 2;
+    }
+    let shop = build(&mut game.world, 12, BuildingKind::Shop);
+    game.world.map.building_mut(shop).unwrap().stocks.insert(Good::Bread, model::Stock { level: 2.0, cap: 4.0 });
+    let now = game.now;
+    game.run_to(now + 60_000);
+    let took = homes(&game.world).iter().filter(|h| h.due.contains_key(&Good::Bread)).count();
+    assert_eq!(took, 2);
 }
 
 /// Wanting what the town has never made brings its chain to hand from
