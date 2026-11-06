@@ -1,4 +1,4 @@
-use crate::car::physics;
+use crate::car::{physics, sweep};
 use crate::car::{nose, tail, ACCELERATION, CUSP_MS, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle, REVERSE_SPEED};
 use model::CRUISE_SPEED;
 use model::Cause;
@@ -1400,8 +1400,10 @@ fn road_ahead(world: &Traffic, h: &Here, trip: &Trip, gates: &Gates, reached: bo
     if turning_in {
         obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::TurningIn));
     }
-    // A car turning off or onto the street ahead: stop short of it.
-    let mut turn_ahead = false;
+    // A car turning off or onto the street ahead: stop short of the way it
+    // has left to drive, if this one's way comes near it, each such car
+    // once.
+    let mut turners: Vec<EntityId> = Vec::new();
     if let Some(limit) = bend(world, &trip.route, ri) {
         obstacles.push((Obstacle::SpeedLimit { distance: entry_ri.max(0.0), speed: limit }, Cause::Bend));
     }
@@ -1411,11 +1413,8 @@ fn road_ahead(world: &Traffic, h: &Here, trip: &Trip, gates: &Gates, reached: bo
     if let Some(g) = gates.at(world, trip, ri).filter(|g| !g.crossing() || !reached).find(|g| !world.streets.has_passage(g.id, car_id)) {
         obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::Junction(g.id)));
     }
-    // A lot's gate held by one pulling out stops whoever would come in
-    // through it, not whoever follows it out.
     if let Some(holder) = held(world, car_id, trip.route[ri]).filter(|_| ri >= trip.from_lot) {
-        obstacles.push((Obstacle::MustStop { distance: line_ri }, Cause::Turn(holder)));
-        turn_ahead = true;
+        turners.push(holder);
     }
 
     // Scan forward nodes
@@ -1434,9 +1433,8 @@ fn road_ahead(world: &Traffic, h: &Here, trip: &Trip, gates: &Gates, reached: bo
             break;
         }
 
-        if let Some(holder) = held(world, car_id, node).filter(|_| !turn_ahead && k >= trip.from_lot) {
-            obstacles.push((Obstacle::MustStop { distance: line_k }, Cause::Turn(holder)));
-            turn_ahead = true;
+        if let Some(holder) = held(world, car_id, node).filter(|o| k >= trip.from_lot && !turners.contains(o)) {
+            turners.push(holder);
         }
         if world.map.lot_nodes.contains_key(&node) {
             obstacles.push((Obstacle::SpeedLimit { distance: (node_dist - trip.segment_lengths[k] - nose(role)).max(0.0), speed: LOT_SPEED }, Cause::Slow));
@@ -1446,6 +1444,11 @@ fn road_ahead(world: &Traffic, h: &Here, trip: &Trip, gates: &Gates, reached: bo
         }
         if let Some(limit) = bend(world, &trip.route, k) {
             obstacles.push((Obstacle::SpeedLimit { distance: entry_k, speed: limit }, Cause::Bend));
+        }
+    }
+    for holder in turners {
+        if let Some(distance) = sweep::short_of(world, trip, role, cur_progress, holder, now) {
+            obstacles.push((Obstacle::MustStop { distance }, Cause::Turn(holder)));
         }
     }
     (obstacles, standing)
@@ -1473,7 +1476,9 @@ fn settle(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, o
     // Waiting for a gap: look again soon. Waiting for someone else to turn
     // needs no looking: they wake whoever is coming once they are clear.
     // Holding short of a merge: nobody wakes it when the other is through.
-    if soon {
+    // Stopped short of one turning across it: it looks again as that one
+    // moves on, for its way left to drive shrinks as it goes.
+    if soon || matches!(cause, Some(Cause::Turn(_))) {
         wake_ms = wake_ms.min(500);
     }
     if let Some(ms) = standing {
