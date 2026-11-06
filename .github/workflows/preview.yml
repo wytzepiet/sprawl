@@ -62,8 +62,7 @@ jobs:
         if: github.event_name == 'push'
         with:
           repository: wytzepiet/Babylon-Lite
-          # Lite's branch of this work, until it is merged into its sprawl.
-          ref: claude/phone-perf
+          ref: sprawl
           path: Babylon-Lite
 
       # The game crate is half the build, and most pushes leave it as it was:
