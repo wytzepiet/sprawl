@@ -48,9 +48,17 @@ export function signed(): GameObjectEntry[] {
 }
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
+/** Told of each building as it changes: what it was, if it was seen,
+ *  and what it is now. */
+type BuildingListener = (before: GameObjectEntry | undefined, after: GameObjectEntry) => void;
+let buildingListener: BuildingListener | null = null;
+export function setBuildingListener(fn: BuildingListener | null) {
+  buildingListener = fn;
+}
 function trackSign(entry: GameObjectEntry | undefined, id: number) {
   const was = signedEntries.has(id);
   const before = signedEntries.get(id);
+  if (entry?.object.kind === "Building") buildingListener?.(before, entry);
   if (before?.position && before.object.kind === "Building") {
     for (const t of keys(before.object.data as Building)) occupiedBy.delete(t);
   }
