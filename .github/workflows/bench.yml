@@ -100,7 +100,10 @@ jobs:
           page=$(jq -n --arg p "$URL/?bench=$WHERE&tab=gpu-$GITHUB_RUN_ID" '$p')
           args="bash -c 'echo $script | base64 -d > /b.sh && bash /b.sh'"
           # The cheapest card that is free, of those that draw like a player's.
-          for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation"; do
+          echo "credit: $(q 'query { myself { clientBalance } }' | jq -r '.data.myself.clientBalance // .errors[0].message // "?"')"
+          for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation" "NVIDIA GeForce RTX 3080" "NVIDIA GeForce RTX 3090" "NVIDIA GeForce RTX 4080" "NVIDIA RTX A4500" "NVIDIA L4"; do
+            # Why a card was not had, said, so a run that finds none says why.
+            curl -s https://api.runpod.io/graphql -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$(jq -n --arg q "query { gpuTypes(input: { id: \"$gpu\" }) { id lowestPrice(input: { gpuCount: 1 }) { stockStatus uninterruptablePrice } } }" '{query: $q}')" | jq -c '.data.gpuTypes[0] // .errors' || true
             id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }, { key: \"SCREEN\", value: \"${{ inputs.screen || '1600x1000@1' }}\" }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
             [ -n "$id" ] && { echo "$gpu: $id"; break; }
           done
