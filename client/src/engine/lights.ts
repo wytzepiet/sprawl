@@ -75,6 +75,7 @@ export function nightLights(ctx: EngineContext, dark: () => number): () => void 
   addClusteredLightContainer(scene, container);
 
   const near: number[] = [];
+  const ahead: [number, number, number, number][] = [];
   let [lit, beamed] = [0, 0];
   const stop = beforeRender(() => {
     const d = dark();
@@ -84,9 +85,13 @@ export function nightLights(ctx: EngineContext, dark: () => number): () => void 
     let [n, b] = [0, 0];
     if (k > 0) {
       const reach = radius + LAMP.range;
-      for (const [x, y, z, heading] of beams.values()) {
+      // The vehicles in view; if more than the slots, the nearest the
+      // middle, so which are lit does not hang on the order they came in.
+      ahead.length = 0;
+      for (const v of beams.values()) if (Math.abs(v[0] - cx) <= reach && Math.abs(v[1] - cy) <= reach) ahead.push(v);
+      if (ahead.length > BEAMS / 2) ahead.sort((p, q) => Math.hypot(p[0] - cx, p[1] - cy) - Math.hypot(q[0] - cx, q[1] - cy));
+      for (const [x, y, z, heading] of ahead) {
         if (b === BEAMS) break;
-        if (Math.abs(x - cx) > reach || Math.abs(y - cy) > reach) continue;
         const [fx, fy] = [Math.cos(heading), Math.sin(heading)];
         for (const side of [-1, 1]) {
           const [sx, sy] = [-fy * side, fx * side];

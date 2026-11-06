@@ -175,6 +175,11 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   if (car.run) runs.set(car.owner, car.run);
   // A vehicle a forklift works looks each frame at what is on it: the
   // building's lifts may be heard after the vehicle's own change.
+  // Lit from the start: a vehicle is mounted again at each word of the
+  // server's on it, and lit only from its first frame its lights went out
+  // for one, every time.
+  const light = (m: Moment, lift: number) => look.light !== undefined && beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
+  if (moving) light(first.m, first.lift);
   const stop = moving || first.m.bed || car.role === "Ferry" ? ctx.beforeRender(() => {
     const { m, lift } = now();
     if (!m) return;
@@ -184,7 +189,7 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     body.move(m.body, lift);
     if (bed && m.bed) bed.move(m.bed, lift);
     carPoses.set(id, m.body.at);
-    if (look.light !== undefined) beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
+    light(m, lift);
   }) : () => {};
   return () => {
     stop();

@@ -1,5 +1,5 @@
 import { Box, Text, Icon, type BoxProps } from "~ui";
-import { createRoot, createSignal, For, onCleanup, Show } from "solid-js";
+import { createRoot, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import { follow, LOOSE, nextFrame } from "../engine/spring";
 import { getEntity } from "../state/gameObjects";
 import { useEngine } from "../engine/Canvas";
@@ -298,10 +298,12 @@ export const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM9 12a3 3 0 
  *  moved, so it is drawn where the town is. */
 export function onMap(at: () => [number, number, number] | null) {
   const { scene, canvas, beforeRender } = useEngine();
-  const [p, set] = createSignal<{ sx: number; sy: number } | null>(null, { equals: (a, b) => a?.sx === b?.sx && a?.sy === b?.sy });
-  onCleanup(beforeRender(() => {
+  // Placed as it is made, not a frame later: until then it would stand nowhere.
+  const where = () => {
     const w = scene.camera && at();
-    set(w ? projector(scene, canvas).at(...w) : null);
-  }));
+    return w ? projector(scene, canvas).at(...w) : null;
+  };
+  const [p, set] = createSignal(untrack(where), { equals: (a, b) => a?.sx === b?.sx && a?.sy === b?.sy });
+  onCleanup(beforeRender(() => set(where())));
   return p;
 }

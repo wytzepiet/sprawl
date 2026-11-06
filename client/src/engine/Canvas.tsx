@@ -83,9 +83,18 @@ const MAX_PIXELS = 3e6;
  *  which is the main thread's and no fault of the GPU; up after keeping
  *  time `RETRY_MS`, but never back to a ratio it was late at. A slow phone
  *  draws softer and keeps its frames and its battery; a fast GPU never
- *  knows. */
-const JUDGED = 60;
+ *  knows. A step up must still be well under (`UP_SHARE` of `GPU_MS`), so
+ *  it does not step back down a moment later.
+ *
+ *  A new ratio resizes the canvas, which clears it, black until the GPU
+ *  has drawn the next frame: while it is behind, a second or more. So a
+ *  ratio judged is drawn at only once the view has stood still `REST_MS`,
+ *  the GPU no longer behind, and `SWITCH_MS` after the last. */
+const JUDGED = 120;
 const GPU_MS = 12;
+const UP_SHARE = 0.75;
+const REST_MS = 500;
+const SWITCH_MS = 30_000;
 const LATE_MS = 22;
 const STEP = 0.8;
 const RETRY_MS = 10_000;
@@ -179,6 +188,8 @@ export default function Canvas(props: ParentProps) {
     let running = true;
     // The ratio drawn at, as the frames have kept time at it (`JUDGED`).
     let [ratio, ceiling, keptSince, longEnded] = [Infinity, Infinity, 0, 0];
+    // And the ratio the canvas is at, and when it last changed.
+    let [shown, switched] = [Infinity, -Infinity];
     const timed = isGpuTimingSupported(engine);
     if (timed) setGpuTimingEnabled(engine, true);
     else if (PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
@@ -186,6 +197,8 @@ export default function Canvas(props: ParentProps) {
     }
     const samples: number[] = [];
     const judge = (now: number, delta: number, cap: number) => {
+      // Nothing judged while a ratio waits to be drawn at: it is not what the frames are drawn at.
+      if (ratio !== shown) return void (samples.length = 0);
       const drawn = Math.min(cap, ratio);
       if (!timed && now - longEnded < 2 * delta) return;
       samples.push(timed ? engine.gpuFrameTimeMs : delta);
@@ -196,7 +209,7 @@ export default function Canvas(props: ParentProps) {
       if (middle > (timed ? GPU_MS : LATE_MS)) {
         if (drawn > 1) [ceiling, ratio] = [drawn, Math.max(1, drawn * STEP)];
         keptSince = now;
-      } else if (drawn < cap && (timed ? middle * (up / drawn) ** 2 < GPU_MS : now - keptSince > RETRY_MS && up < ceiling)) [ratio, keptSince] = [up, now];
+      } else if (drawn < cap && (timed ? middle * (up / drawn) ** 2 < GPU_MS * UP_SHARE : now - keptSince > RETRY_MS && up < ceiling)) [ratio, keptSince] = [up, now];
     };
     const where = () => {
       const c = scene.camera;
@@ -216,7 +229,9 @@ export default function Canvas(props: ParentProps) {
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
       const cap = Math.min(MAX_DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
       if (moving) judge(now, delta, cap);
-      engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, ratio);
+      const caught = timed ? engine.gpuFrameTimeMs < GPU_MS : delta < LATE_MS * 2;
+      if (ratio !== shown && now - lastMoved > REST_MS && now - switched > SWITCH_MS && caught) [shown, switched] = [ratio, now];
+      engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, shown);
       resizeEngine(engine);
       renderFrame(engine, delta, page);
       after.run();
