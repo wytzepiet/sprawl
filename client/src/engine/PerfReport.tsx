@@ -5,6 +5,7 @@ import { useEngine } from "./Canvas";
 import { eye } from "./Camera";
 import { groundCover } from "./view";
 import { PHASES, summarise, type Report } from "./bench";
+import type { CostReport } from "./cost";
 
 const params = new URLSearchParams(location.search);
 /**
@@ -191,6 +192,10 @@ export default function PerfReport() {
     if (phase === PHASES.length) {
       clearInterval(timer);
       setDone(sent);
+      // Then what each kind of thing in the still view costs (`cost.ts`).
+      eye.look(x, y, h);
+      const meter = (window as { sprawlCost?: (rounds: number) => Promise<CostReport> }).sprawlCost;
+      void meter?.(3).then((cost) => fetch("/perf", { method: "POST", body: JSON.stringify({ at: new Date().toISOString(), tab: run, phase: "cost", cost }) }));
     }
   };
   const timer = setInterval(() => void report(), EVERY_MS);

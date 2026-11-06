@@ -1,14 +1,14 @@
 # The bench (client/src/engine/PerfReport.tsx) on hardware that is no one's
 # laptop: real Android phones in Firebase Test Lab, each opening the game's
-# `?bench` in Chrome (bench/android), and an NVIDIA T4 VM in EC2. Their reports
+# `?bench` in Chrome (bench/android), and an NVIDIA GPU on RunPod. Their reports
 # land on that game's /perf; the run's summary prints them.
 #
 # By hand (Actions › Bench), or by a tag from any branch: `git tag
 # bench/<preview slug>/<anything> && git push origin --tags` benches
 # https://<slug>.<preview domain>.
 # Phones: secret GCP_SA_KEY and variable GCP_PROJECT, a Firebase project on
-# the free plan (a few physical runs a day). GPU: secrets AWS_ACCESS_KEY_ID
-# and AWS_SECRET_ACCESS_KEY.
+# the free plan (five physical runs a day). GPU: secret RUNPOD_API_KEY, on
+# prepaid credit.
 name: Bench
 
 on:
@@ -19,16 +19,24 @@ on:
       url:
         description: The game, e.g. https://main.preview.sprawl.nl
         required: true
+      town:
+        description: A test town (server/fixtures) run in the tab, or empty for the game's own world
+        default: '15-city'
       where:
         description: Tile and half-width the camera looks round, x,y,half
-        default: '6,80,15'
+        default: '33,23,20'
+      phones:
+        description: Also on Test Lab's phones (five a day, free)
+        type: boolean
+        default: false
 
 env:
   URL: ${{ inputs.url }}
-  WHERE: ${{ inputs.where || '6,80,15' }}
+  WHERE: ${{ inputs.where || '6,80,15' }}${{ inputs.town && format('&town={0}', inputs.town) || '' }}
 
 jobs:
   phones:
+    if: inputs.phones
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -68,37 +76,45 @@ jobs:
             bun scripts/bench.ts --url "$URL" --read "$tab" | tee -a $GITHUB_STEP_SUMMARY
           done
 
-  # A GPU VM in EC2 (g4dn.xlarge, an NVIDIA T4, about ten cents a run): a
-  # desktop GPU that never throttles, for numbers that compare run to run.
-  # The account is an AWS-run project account: Stockholm only, no spot.
+  # A GPU machine on RunPod, an NVIDIA card, a few cents a run on prepaid
+  # credit: a desktop GPU, ten to thirty times a phone's, that never
+  # throttles, for numbers that compare run to run.
   gpu:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      AWS_DEFAULT_REGION: eu-north-1
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
       - if: github.event_name == 'push'
         run: echo "URL=https://$(echo "${{ github.ref_name }}" | cut -d/ -f2).preview.sprawl.nl" >> $GITHUB_ENV
-      - run: echo "TAB=gpu-t4-$(date +%s)" >> $GITHUB_ENV
-      - name: Run on a GPU VM
+      - name: Run on a RunPod GPU
+        env:
+          KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
           set -euo pipefail
-          ami=$(aws ssm get-parameter --name /aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-22.04/latest/ami-id --query Parameter.Value --output text)
-          sed -e "s#BENCH_URL#$URL/?bench=$WHERE#" -e "s#TAB#$TAB#" bench/gpu-vm.sh > user-data.sh
-          id=$(aws ec2 run-instances --image-id "$ami" --instance-type g4dn.xlarge --count 1 \
-            --instance-initiated-shutdown-behavior terminate --user-data file://user-data.sh \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=sprawl-bench}]' \
-            --query 'Instances[0].InstanceId' --output text)
-          echo "instance $id"
-          for _ in $(seq 100); do
-            [ "$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].State.Name' --output text)" = terminated ] && break
-            sleep 15
+          echo "TAB=gpu-$GITHUB_RUN_ID" >> $GITHUB_ENV
+          q() { curl -sf https://api.runpod.io/graphql -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$(jq -n --arg q "$1" '{query: $q}')"; }
+          script=$(base64 -w0 bench/gpu.sh)
+          page=$(jq -n --arg p "$URL/?bench=$WHERE&tab=gpu-$GITHUB_RUN_ID" '$p')
+          args="bash -c 'echo $script | base64 -d > /b.sh && bash /b.sh'"
+          # The cheapest card that is free, of those that draw like a player's.
+          for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation"; do
+            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
+            [ -n "$id" ] && { echo "$gpu: $id"; break; }
           done
-          aws ec2 terminate-instances --instance-ids "$id" >/dev/null  # in case it outlived the wait
-          aws ec2 get-console-output --instance-id "$id" --latest --output text | tail -60 || true
+          [ -n "${id:-}" ] || { echo "no GPU free"; exit 1; }
+          echo "POD=$id" >> $GITHUB_ENV
+          # Its last report is what each kind costs; fifteen minutes is plenty.
+          for _ in $(seq 90); do
+            curl -s "$URL/perf?tab=gpu-$GITHUB_RUN_ID" | grep -q '"phase":"cost"' && break
+            sleep 10
+          done
+      - name: Delete the GPU machine
+        if: always() && env.POD != ''
+        env:
+          KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          curl -sf https://api.runpod.io/graphql -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+            -d "{\"query\":\"mutation { podTerminate(input: { podId: \\\"$POD\\\" }) }\"}"
       - uses: oven-sh/setup-bun@v2
       - name: What the GPU measured
         run: cd client && bun scripts/bench.ts --url "$URL" --read "$TAB" | tee -a $GITHUB_STEP_SUMMARY

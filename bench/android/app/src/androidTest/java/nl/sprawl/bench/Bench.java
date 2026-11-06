@@ -23,6 +23,8 @@ public class Bench {
     sh(shell, "echo '_ --disable-fre --no-default-browser-check --no-first-run' > /data/local/tmp/chrome-command-line\n"
         + "am set-debug-app --persistent com.android.chrome\n"
         + "am force-stop com.android.chrome\n"
+        // Or Chrome asks for them over the page.
+        + "pm grant com.android.chrome android.permission.POST_NOTIFICATIONS\n"
         + "svc power stayon true\n"
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
     // What the screen showed, for the run's files (bench.yml pulls this folder).

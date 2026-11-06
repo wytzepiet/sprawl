@@ -9,15 +9,19 @@
  *   bun run bench 6,80,8             round that tile, eight tiles each way
  *   --url https://x.preview.sprawl.nl   on that game instead
  *   --t 0.95                         at this time of day (default noon)
+ *   --town 15-city                   on that test town (`server/fixtures`),
+ *                                    run in the tab, not the server's world
  *   --read bench-k3x9a               a run another device made, as its
  *                                    screen showed it at the end
  *   --runs                           the runs that game has, newest last
  */
 import { args, CLIENT, flag, has, launch, word } from "./lib";
-import { summarise, type Report } from "../src/engine/bench";
+import { costLines, summarise, type Report } from "../src/engine/bench";
+import type { CostReport } from "../src/engine/cost";
 
 const url = (word("--url") ?? CLIENT).replace(/\/$/, "");
 const read = word("--read");
+const town = word("--town");
 const t = flag("--t", 0.5);
 const fetchRuns = async (tab?: string): Promise<Report[]> =>
   (await (await fetch(`${url}/perf${tab ? `?tab=${tab}` : ""}`)).text())
@@ -37,7 +41,7 @@ if (!tab) {
   const browser = await launch();
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
   page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
-  await page.goto(`${url}/?t=${t}&bench=${where}&tab=${tab}`);
+  await page.goto(`${url}/?t=${t}&bench=${where}&tab=${tab}${town ? `&town=${town}` : ""}`);
   // Two reports settling and four phases of three, five seconds each.
   for (let n = 0; n < 14; ) {
     await page.waitForTimeout(5000);
@@ -50,7 +54,8 @@ if (!tab) {
   await browser.close();
 }
 
-const reports = await fetchRuns(tab);
+const lines = await fetchRuns(tab);
+const reports = lines.filter((r) => r.phase !== "cost");
 if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
 const [first] = reports;
 console.log(`${tab}: ${first.canvas.join("×")} at ${first.dpr}x, ${first.gpu}\n${first.agent}`);
@@ -75,3 +80,5 @@ for (const s of summarise(reports)) {
   const worst = mine.flatMap((r) => r.long).sort((a, b) => b.ms - a.ms)[0];
   if (worst) console.log(`       longest frame ${worst.ms} ms: ${worst.scripts.slice(0, 3).map((s) => `${s.what} ${s.ms}`).join(", ") || "no script"}`);
 }
+const cost = (lines.find((r) => r.phase === "cost") as unknown as { cost: CostReport } | undefined)?.cost;
+if (cost) console.log(`\n${costLines(cost, "what each kind costs, still").join("\n")}`);

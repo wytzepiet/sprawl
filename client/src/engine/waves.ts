@@ -61,5 +61,20 @@ export function bakeWaves(): Uint8Array {
     data[k + 1] /= most;
     data[k + 2] /= highest;
   }
-  return new Uint8Array(new Float16Array(data).buffer);
+  return new Uint8Array(halves(data).buffer);
+}
+
+/** Numbers as half floats' bits, rounded to nearest, those smaller than
+ *  the least normal half as zero: what `Float16Array` holds, which Chrome
+ *  before 135 lacks (as Test Lab's phones run it). */
+export function halves(data: ArrayLike<number>): Uint16Array {
+  const f = new Float32Array(1);
+  const bits = new Uint32Array(f.buffer);
+  return Uint16Array.from(data, (x) => {
+    f[0] = x;
+    const b = bits[0];
+    const sign = (b >>> 16) & 0x8000;
+    const e = ((b >>> 23) & 0xff) - 112;
+    return e <= 0 ? sign : sign | ((e << 10) + (((b & 0x7fffff) + 0x1000) >>> 13));
+  });
 }
