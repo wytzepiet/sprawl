@@ -1,3 +1,4 @@
+import { perfCount } from "./PerfReport";
 import {
   addTaskAtStart,
   addToScene,
@@ -434,6 +435,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) ||
         since >= EVERY_MS;
       if (due) {
+        perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
         aim(now);
         stillTask.enabled = true;
         main.enabled = false;
