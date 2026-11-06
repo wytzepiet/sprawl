@@ -17,9 +17,9 @@ const POLL_MS: GameTime = 2_000;
 /// shorter than a lorry's in a yard.
 const SOME_MS: [GameTime; 2] = [10_000, 8_000];
 const NONE_MS: [GameTime; 2] = [30_000, 60_000];
-/// Crates a shop's lorry carries, and a maker's.
-const SHOP_LOAD: usize = 8;
-const LOAD: usize = 4;
+/// Crates a lorry carries: what fits on its bed (`onBed` in the client's
+/// `motion.ts`).
+const LOAD: usize = 3;
 /// A worker's shift, and their rest at home between shifts. A maker
 /// loses only the time its workers spend on the road.
 const SHIFT_MS: GameTime = 160_000;
@@ -184,7 +184,7 @@ fn lorry_errand(world: &World, owner: EntityId) -> Option<(EntityId, Vec<Good>)>
         .filter_map(|(&g, s)| {
             let lack = s.short().floor();
             let go = if shop { lack >= (s.cap / 3.0).floor().max(1.0) } else { s.level < s.cap / 2.0 };
-            go.then_some((lack / s.cap.max(1.0), g, (lack as usize).min(if shop { SHOP_LOAD } else { LOAD })))
+            go.then_some((lack / s.cap.max(1.0), g, (lack as usize).min(LOAD)))
         })
         .collect();
     lacks.sort_by(|a, b| b.0.total_cmp(&a.0));
