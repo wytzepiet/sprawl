@@ -37,9 +37,8 @@ type Line = [number, number, number];
  *  room's length, breadth and height; an AC unit's side and height; a
  *  vent's cap across and height. */
 /** A sawtooth shed's stack, in tiles: how far in from the back corner it
- *  stands, which is its breadth, and how high; and how broad its puffs of
- *  smoke grow. */
-const MILL = { stack: 0.09, stackHigh: 0.62, puff: 0.15 } as const;
+ *  stands, which is its breadth, and how high. */
+const MILL = { stack: 0.09, stackHigh: 0.62 } as const;
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
@@ -71,7 +70,7 @@ export interface Prop {
   ty: number;
 }
 /** The props there are, in the order their codes cross from the worker. */
-export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp", "smoke"] as const;
+export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 
 export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {
@@ -126,7 +125,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     return t.id === undefined ? undefined : doors.get(t.id);
   };
   for (const { mass, polygon, outline } of plans(known)) {
-    // Models of their own, their chimneys' smoke and all (`objects/kit.ts`).
+    // Models of their own, chimneys and all (`objects/kit.ts`).
     if (WHOLE.has(mass.tile.kind)) continue;
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
@@ -240,7 +239,6 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       const u1 = Math.max(...all.map(u));
       const on = (a: number, b: number): P => [a * fx - b * fy, a * fy + b * fx];
       prop("stack", on(back + MILL.stack, u1 - MILL.stack), z, MILL.stack, MILL.stackHigh);
-      prop("smoke", on(back + MILL.stack, u1 - MILL.stack), z + MILL.stackHigh, MILL.puff, 0);
     };
     /** Windows and doors on every wall, by rule: a row of windows to a
      *  storey, evenly along the wall within its ends, each glass in a

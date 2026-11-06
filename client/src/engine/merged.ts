@@ -2,6 +2,7 @@ import { addToScene, setThinInstanceColors, setThinInstances, type Mesh } from "
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
+import { live, stale } from "./still";
 
 /**
  * Things of one shape and one material from many chunks, drawn as one mesh
@@ -44,6 +45,9 @@ export interface Kind {
   cast: boolean;
   receive: boolean;
   colored: boolean;
+  /** Whether it moves on its own, a fan turning: drawn every frame over
+   *  the still town, not into it (`still.ts`). */
+  moves?: boolean;
 }
 
 const all = new WeakMap<EngineContext, Merged>();
@@ -107,6 +111,7 @@ class Merged {
     setThinInstances(mesh, new Float32Array(16), 0);
     if (kind.colored) setThinInstanceColors(mesh, new Float32Array(4));
     this.ctx.cull.keep(mesh, [rx * REGION - 2, ry * REGION - 2, (rx + 1) * REGION + 2, (ry + 1) * REGION + 2]);
+    if (kind.moves) live(mesh);
     addToScene(this.ctx.scene, mesh);
     pile = { mesh, parts: new Set(), dirty: false, casts: kind.cast, casting: false, colored: kind.colored };
     this.piles.set(key, pile);
@@ -116,6 +121,7 @@ class Merged {
   /** Each pile changed since the last frame, its instances laid end to end
    *  again: once a frame, however many chunks came and went in it. */
   private flush() {
+    if (this.stale.size) stale();
     for (const pile of this.stale) {
       const shown = [...pile.parts].filter((p) => p.shown);
       const count = shown.reduce((n, p) => n + p.matrices.length / 16, 0);

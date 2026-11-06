@@ -19,6 +19,7 @@ import {
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
+import { live } from "./still";
 import { grove, plant, showGrove, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 
@@ -242,7 +243,7 @@ export class TerrainChunks {
     this.ground.set(key, [ox, oy], geometry.layers);
     // A mesh of what there is, if anything, placed from the chunk's corner
     // or, the mountains' laid where they are on the map, not.
-    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], shadows: { cast: boolean; receive: boolean }) => {
+    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], shadows: { cast: boolean; receive: boolean }, moves = false) => {
       if (!buf.indices.length) return null;
       const mesh = meshOf(engine, `chunk_${key}_${name}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
       mesh.material = material;
@@ -251,6 +252,7 @@ export class TerrainChunks {
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
+      if (moves) live(mesh);
       addToScene(scene, mesh);
       if (shadows.cast) this.casters.add(mesh);
       chunk.meshes.push(mesh);
@@ -260,11 +262,11 @@ export class TerrainChunks {
     const water = waterMaterial(engine, geometry.shore, geometry.cliffField);
     chunk.dispose.push(water.dispose);
     chunk.tick = water.tick;
-    add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true });
+    // The water ripples every frame: it is drawn over the still town, not into it.
+    add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true }, true);
     if (geometry.cliffField) {
       const cliff = cliffMaterial(engine, geometry.cliffField, geometry.shore);
       chunk.dispose.push(cliff.dispose);
-      chunk.tick = () => (water.tick(), cliff.tick());
       add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: true, receive: true });
     }
     if (geometry.peakHeights) {

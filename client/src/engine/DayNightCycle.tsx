@@ -25,6 +25,7 @@ import { groundCover } from "./view";
 import { skyEnvironment, type SkyLight } from "./sky";
 import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
 import { nightLights } from "./lights";
+import { isStill } from "./still";
 
 // ---------------------------------------------------------------------------
 // Time config
@@ -384,9 +385,16 @@ export function daylight(engine: Engine, scene: SceneContext, mapSize: number) {
 
   let lastColorStep = -1;
   let shadowing = true;
+  const luma = (c: Rgb) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   return {
     shadows,
     casters,
+    /** How much of the light on level ground is the sun's: what a shadow
+     *  falling on it takes away. */
+    share: 0,
+    /** The sky's light from straight above: what a matt surface in shade
+     *  shows of its colour. */
+    sky: rgb(1, 1, 1),
     /** Lit for time of day `t`, its shadows over the ground round
      *  (cx, cy), `radius` each way. The sky's colour now, when it changed. */
     at(t: number, cx: number, cy: number, radius: number): Rgb | null {
@@ -402,6 +410,11 @@ export function daylight(engine: Engine, scene: SceneContext, mapSize: number) {
       const light = linearLight(sun.colour, sun.strength);
       sunLight.specular = tuple(light);
       setLightDiffuseColor(sunLight, tuple(light));
+      // The sun's light on the level, against the sky's from all round it.
+      const fromSun = luma(light) * Math.max(0, -dz);
+      this.sky = linearLight(mul(ramp(ambientStops, t, lerp3), SKY_LIGHT), SKY);
+      const fromSky = Math.PI * luma(this.sky);
+      this.share = elev > 0 ? fromSun / Math.max(1e-6, fromSun + fromSky) : 0;
 
       // The sky is redrawn, and the flat things' tint walked over every
       // bucket, only when the quantized time moves: 1/1024 of a day is below
@@ -445,10 +458,13 @@ export default function DayNightLights(props: ParentProps) {
 
   const lit = daylight(engine, scene, shadowMapSize(canvas));
   // What stands still is drawn into the map only when the sun has turned a
-  // little, some six times a second in a two-minute day; what moves, the
-  // cars, is drawn over a copy of that every frame (Lite's static cache).
-  prepare(enableCsmStaticCache(engine, lit.shadows, { refitAngle: 0.008 }));
+  // little, some six times a second in a two-minute day, or it changed;
+  // what moves, the cars, is drawn over a copy of that every frame (Lite's
+  // static cache). Which is which is the still town's (`still.ts`).
+  prepare(enableCsmStaticCache(engine, lit.shadows, { refitAngle: 0.008, still: isStill }));
   setCasters(lit.casters);
+  // The shadows of what moves kept off the still town's picture.
+  ctx.still.sun(lit.shadows, lit);
 
   let lastMinute = -1;
   const stop = beforeRender(() => {

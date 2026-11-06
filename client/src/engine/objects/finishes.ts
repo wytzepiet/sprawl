@@ -11,6 +11,7 @@ import { SPAN as SLATE_SPAN } from "../slate";
 import { WINDOW_GLOW } from "../TownLayer";
 import { FLAT, SPILL, type Built, type Finish } from "./kit";
 import type { Shape } from "./sea";
+import { stale } from "../still";
 
 /**
  * How a model's finishes look (`kit.ts` builds the shapes), each a coat
@@ -116,6 +117,7 @@ export function glow() {
   if (night.on === shown) return;
   shown = night.on;
   for (const m of lit) markMaterialUboDirty(m);
+  stale();
 }
 
 /** How far each course tips the light down its slope and shades its foot. */

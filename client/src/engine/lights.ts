@@ -122,5 +122,8 @@ export function nightLights(ctx: EngineContext, dark: () => number): () => void 
     if (n || b || lit || beamed) markClusteredLightContainerDirty(container);
     [lit, beamed] = [n, b];
   });
+  // The headlights move: kept off the still town's picture, and laid
+  // over it as it is shown (`still.ts`).
+  ctx.still.headlights(container, beamSlots);
   return stop;
 }

@@ -63,7 +63,7 @@ export const SHOP = model((m) => {
   window(m, yard, -0.15, 0.25, { w: 0.06, h: 0.06, frame: WOOD });
   window(m, { face: "+x", at: X1 }, -0.1, 0.25, { w: 0.06, h: 0.06, frame: WOOD });
   window(m, { face: "+x", at: X1 }, 0.1, 0.06, { w: 0.06, h: 0.07, frame: WOOD });
-  chimney(m, X1 - 0.09, -0.3, RIDGE + 0.06, WALL, { smoke: 0.09 });
+  chimney(m, X1 - 0.09, -0.3, RIDGE + 0.06, WALL);
   put(m, "matte", box(X0 + 0.08, X0 + 0.15, -0.26, -0.19, 0.4, 0.5), BAND);
 
   // The sign, hung from a bracket out over the courtyard's way in.
@@ -116,7 +116,7 @@ export const SHOP_HALL = model((m) => {
   put(m, "matte", plate(front, doorAt - 0.14, doorAt + 0.14, 0.24, 0.31, -0.002, 0.02), BAND);
   put(m, "matte", plate(front, doorAt - 0.11, doorAt + 0.11, 0.252, 0.298, -0.002, 0.024), [0.9, 0.86, 0.72]);
   for (const s of [-1, 1]) window(m, { face: s > 0 ? "+x" : "-x", at: s > 0 ? H1 : H0 }, (HY0 + HY1) / 2, 0.08, { w: 0.08, h: 0.08, frame: WOOD });
-  chimney(m, H1 - 0.24, (HY0 + HY1) / 2 - 0.12, HRIDGE + 0.05, WALL, { smoke: 0.09 });
+  chimney(m, H1 - 0.24, (HY0 + HY1) / 2 - 0.12, HRIDGE + 0.05, WALL);
   chimney(m, H0 + 0.3, (HY0 + HY1) / 2 - 0.12, HRIDGE + 0.05, WALL);
   topiary(m, H0 + 0.08, HY1 + 0.1, 0.06);
 });

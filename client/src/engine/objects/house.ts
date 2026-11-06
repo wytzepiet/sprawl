@@ -77,7 +77,7 @@ const cottage = (colour: RGB) => model((m) => {
     window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.37 }, -0.06, 0.055);
     window(m, { face: "-y", at: y0 }, s * 0.18, 0.055);
   }
-  chimney(m, -0.24, -0.09, 0.53, WALL, { smoke: 0.1 });
+  chimney(m, -0.24, -0.09, 0.53, WALL);
   garden(m, y1);
   shed(m, -0.26);
 });
@@ -98,7 +98,7 @@ const dormers = (colour: RGB) => model((m) => {
     window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.36 }, -0.05, 0.055);
     window(m, { face: s > 0 ? "+x" : "-x", at: s * 0.36 }, -0.05, 0.27, { w: 0.05, h: 0.05 });
   }
-  chimney(m, -0.22, -0.13, 0.6, WALL, { smoke: 0.1 });
+  chimney(m, -0.22, -0.13, 0.6, WALL);
   garden(m, y1);
   shed(m, -0.24);
 });
@@ -124,7 +124,7 @@ const corner = (colour: RGB) => model((m) => {
   window(m, { face: "-x", at: wx0 }, -0.05, 0.055);
   window(m, { face: "-x", at: wx0 }, -0.22, 0.055);
   window(m, { face: "+x", at: 0.37 }, -0.07, 0.055);
-  chimney(m, 0.27, -0.12, 0.5, WALL, { smoke: 0.1 });
+  chimney(m, 0.27, -0.12, 0.5, WALL);
   garden(m, Math.min(wy1, gy) - 0.02);
   shed(m, 0.25);
 });

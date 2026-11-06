@@ -18,6 +18,7 @@ import {
 } from "@babylonjs/lite";
 import { townMaterial } from "./material";
 import { meshOf } from "./geometry";
+import { live } from "./still";
 
 /** The line, in pixels, at any zoom. */
 const WIDTH = 2;
@@ -113,7 +114,7 @@ export function createOutline(engine: EngineContext, scene: SceneContext): Outli
   // outline on was thrown away whole, the screen black until it went.
   onRenderTargetTextureResize(mask, () => setShaderTexture(material, "mask", texture));
   setShaderUniform(material, "width", WIDTH * Math.min(devicePixelRatio, 2));
-  const quad = meshOf(engine, "outline", { positions: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
+  const quad = live(meshOf(engine, "outline", { positions: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] }));
   quad.material = material;
   // Last of all, over the fog too.
   quad.renderOrder = Number.MAX_VALUE;

@@ -17,7 +17,6 @@ import {
   enablePixelTextureMipmaps,
   enableSurfaceResizeObserver,
   isGpuTimingSupported,
-  onBeforeRender,
   registerSceneWithShadowSupport,
   renderFrame,
   resizeEngine,
@@ -28,6 +27,7 @@ import {
 import { theme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
+import { createStill, type Still } from "./still";
 import { createStudio } from "./studio";
 
 export type EngineContext = {
@@ -42,6 +42,8 @@ export type EngineContext = {
   cull: Culler;
   /** The outline round what is picked and under the pointer (`outline.ts`). */
   outline: Outline;
+  /** The still town, drawn once and kept, and what moves drawn over it (`still.ts`). */
+  still: Still;
   /** Work the scene waits for before it is registered. */
   prepare(work: Promise<unknown>): void;
   /** Whether the scene is registered: what is drawn is added from then on,
@@ -152,19 +154,16 @@ export default function Canvas(props: ParentProps) {
     const before = hooks();
     const after = hooks();
     const cull = new Culler(scene, el);
-    onBeforeRender(scene, () => {
-      before.run();
-      cull.update();
-    });
 
     // The children set the scene up — the camera, the sun and its shadows,
     // the sky — before it is registered: Lite builds its shaders for what
     // the scene holds then. What is drawn is added once it is, and built as
     // it comes: added while it is being registered, it would be built for
     // what the scene held before.
+    const still = createStill(engine, scene);
     const outline = createOutline(engine, scene);
     const preparing: Promise<unknown>[] = [];
-    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered, prepare: (work) => preparing.push(work) });
+    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, still, registered, prepare: (work) => preparing.push(work) });
     await Promise.all(preparing);
     await registerSceneWithShadowSupport(scene);
     setRegistered(true);
@@ -233,7 +232,11 @@ export default function Canvas(props: ParentProps) {
       if (ratio !== shown && now - lastMoved > REST_MS && now - switched > SWITCH_MS && caught) [shown, switched] = [ratio, now];
       engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, shown);
       resizeEngine(engine);
-      renderFrame(engine, delta, page);
+      // A frame's own work, then its drawings: the still picture's, when one
+      // is due, and the live things'.
+      before.run();
+      cull.update();
+      still.frame(now, () => renderFrame(engine, delta, page));
       after.run();
       seen = where();
       if (seen !== was) lastMoved = now;
@@ -250,7 +253,17 @@ export default function Canvas(props: ParentProps) {
     // The bench ends on it (`PerfReport.tsx`).
     if (import.meta.env.DEV || run) {
       void import("./cost").then(({ costMeter }) => {
-        (window as unknown as { sprawlCost: unknown }).sprawlCost = costMeter(engine, scene, after.run, (h) => (held = h));
+        (window as unknown as { sprawlCost: unknown }).sprawlCost = costMeter(
+          engine,
+          scene,
+          () => {
+            before.run();
+            cull.update();
+            still.frame(performance.now(), () => renderFrame(engine, 16, page), true);
+            after.run();
+          },
+          (h) => (held = h),
+        );
       });
     }
 

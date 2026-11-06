@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
@@ -7,7 +7,6 @@ import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { bakedTexture } from "./bakeCache";
-import { ripples, swashFn } from "./water";
 
 /**
  * The mountains as dark slate: terraces, each layer a flat top on a wall
@@ -204,6 +203,8 @@ const CLIFF_INNER = 0.9;
 /** How far up the cliff's face a wave washes, at most, in tiles of it,
  *  the rock showing wet behind, this much darker, this far again. */
 const ROCK_SWASH = 0.07;
+/** How much of that the sea stands up the rock: as high as it washes on the whole. */
+const ROCK_WASHED = 0.5;
 const ROCK_WET = 0.2;
 const ROCK_WET_REACH = 0.6;
 /** Only where the sea reaches it, the less the wider the beach between:
@@ -241,9 +242,11 @@ N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), the
- *  waves washing up its wall's foot where it stands in the sea, not on a
- *  beach (the water's `shore`, if the chunk has water); its clock ticks
- *  before each frame (`tick`); its textures let go with `dispose`. */
+ *  sea up its wall's foot where it stands in the sea, not on a beach (the
+ *  water's `shore`, if the chunk has water), as high as the waves wash up
+ *  it on the whole: the cliff stands still (`still.ts`), and the sea's own
+ *  foam churns at its foot (`water.ts`); its textures let go with
+ *  `dispose`. */
 export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: Uint8Array | null) {
   const side = CHUNK_SIZE * SHORE_DENSITY;
   const texture = createTexture2DFromPixels(engine, field, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
@@ -256,26 +259,22 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: U
       { name: "vCliffX", type: "vec2f" },
       { name: "vCliffY", type: "vec2f" },
     ],
-    getSamplers: () => ["slate", "cliffField", "cliffRipple", "cliffShore"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: ripples(engine) }, { texture: shores }),
-    getUniforms: () => ({ ubo: [{ name: "cliffTime", type: "f32" }] }),
-    // The water's clock (`water.ts`), so the waves at the foot keep time.
-    writeUbo: (data, offsets) => void (data[offsets.get("cliffTime")! / 4] = (performance.now() / 1000) % 3600),
+    getSamplers: () => ["slate", "cliffField", "cliffShore"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shores }),
     getCustomCode: (stage) =>
       stage === "vertex"
         ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
-            CUSTOM_FRAGMENT_DEFINITIONS: `${SLATE_READ}
-${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}`,
+            CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
-// The sea washing up its wall's foot and over its ledge and back, the
-// ledge lower the nearer its broken edge, foam at the water's edge on it,
-// the rock wet behind.
+// The sea up its wall's foot and over its ledge, as far as the waves
+// wash on the whole, the ledge lower the nearer its broken edge, foam at
+// the water's edge on it, the rock wet behind.
 let cliffSea = select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), ${f(ROCK_SWASH)} * saturate((cliffBreak - cliffFar) / ${f(LEDGE_SINK)}), cliffLedge);
 let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (max(${f(CLIFF_RUN)} - cliffFar, 0.) + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
 let cliffAfloat = min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffSeaward, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
-let cliffReach = ${f(ROCK_SWASH)} * cliffWash(material.cliffTime, input.worldPos.xy) * cliffAfloat;
+let cliffReach = ${f(ROCK_SWASH * ROCK_WASHED)} * cliffAfloat;
 if (cliffSea < cliffReach) { discard; }
 baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));
 let cliffFoam = select(0., cliffAfloat * (1. - smoothstep(0., ${f(LEDGE_FOAM * ROCK_SWASH)}, cliffSea - cliffReach)), cliffLedge);
@@ -284,5 +283,5 @@ townShine = townShine * (1. - cliffFoam);`,
           },
   };
   const material = rock(plugin);
-  return { material, tick: () => markMaterialUboDirty(material), dispose: () => (retire(texture), retire(shores)) };
+  return { material, dispose: () => (retire(texture), retire(shores)) };
 }

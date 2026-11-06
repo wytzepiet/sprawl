@@ -69,7 +69,7 @@ function pithead(m: Model, frame: RGB, house: RGB, roof: Cover, spoil: RGB) {
   door(m, front, 0.5, DARK, { w: 0.09, h: 0.15 });
   for (const s of [-1, 1]) window(m, front, 0.5 + s * 0.2, 0.12, { w: 0.08, h: 0.08 });
   for (const y of [-1.45, -1.15]) window(m, { face: "-x", at: x0 }, y, 0.12, { w: 0.08, h: 0.08 });
-  chimney(m, 0.74, -1.5, 0.52, BRICK, { w: 0.07, smoke: 0.08 });
+  chimney(m, 0.74, -1.5, 0.52, BRICK, { w: 0.07 });
   // What comes up, heaped by the yard, a skip on rails to it.
   heap(m, "gravel", -0.55, -0.45, 0.32, 0.18, 0.018, 3, spoil);
   put(m, "matte", Solid.union([-0.04, 0.04].map((d) => box(-0.43 + d - 0.006, -0.43 + d + 0.006, -1.08, -0.62, 0.018, 0.026))), STEEL);
@@ -94,7 +94,7 @@ export const CEMENT = model((m) => {
   put(m, "matte", kiln(0.09), [0.62, 0.42, 0.3]);
   for (const x of [-0.7, -0.15, 0.4]) put(m, "matte", box(x - 0.04, x + 0.04, -1.8, -1.64, 0, 0.2), CONCRETE);
   // Its stack at the hot end, smoking.
-  chimney(m, -0.86, -1.42, 0.82, CONCRETE, { w: 0.09, smoke: 0.14 });
+  chimney(m, -0.86, -1.42, 0.82, CONCRETE, { w: 0.09 });
   // Two silos and a shed under them.
   silo(m, 0.25, -1.08, 0.17, 0.62, [0.86, 0.85, 0.82]);
   silo(m, 0.68, -1.08, 0.17, 0.62, [0.86, 0.85, 0.82]);
@@ -144,7 +144,6 @@ export const STEELWORKS = model((m) => {
   for (const [x, y] of [[0.6, -1.62], [0.84, -1.62]]) {
     put(m, "matte", Solid.cylinder(1.05, 0.06, 0.045, 14).translate([x, y, 0]), BRICK);
     put(m, "matte", Solid.union([0.9, 0.98].map((z) => post(x, y, z, 0.03, 0.055, 14))), [0.92, 0.9, 0.86]);
-    m.props.push({ kind: "smoke", at: [x, y, 1.05], size: 0.18, high: 0 });
   }
   lamp(m, -0.92, -0.3, [-0.7, -0.3]);
 });
@@ -232,7 +231,7 @@ export const BAKERY = model((m) => {
   for (let k = 0; k < 5; k++) put(m, "matte", plate(front, -0.77 + k * 0.125, -0.68 + k * 0.125, 0.06, 0.09, -0.04, -0.008), [0.82, 0.55, 0.28]);
   awning(m, front, -0.85, -0.09, 0.24, [[0.82, 0.5, 0.22], [0.97, 0.95, 0.9]], { depth: 0.12, drop: 0.05, stripes: 7, scallops: true });
   for (const x of [-0.6, -0.2]) window(m, front, x, 0.36, { w: 0.08, h: 0.07, box: [0.42, 0.3, 0.22] });
-  chimney(m, -0.7, -1.25, 0.7, BRICK, { w: 0.1, smoke: 0.12 });
+  chimney(m, -0.7, -1.25, 0.7, BRICK, { w: 0.1 });
   // The flour store at the gate's side, the loading bay to it.
   put(m, "matte", barn("y", 0.22, 0.9, -1.4, -0.75, 0.22, 0.34), CREAM);
   pitched(m, "y", 0.22, 0.9, -1.4, -0.75, 0.22, 0.34, SLATE, { over: 0.02 });

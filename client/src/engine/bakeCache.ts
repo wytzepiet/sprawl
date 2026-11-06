@@ -1,5 +1,6 @@
 import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "@babylonjs/lite";
 import type { Bake } from "./bakeWorker";
+import { stale } from "./still";
 
 type TextureOptions = Parameters<typeof createTexture2DFromPixels>[4];
 
@@ -54,7 +55,7 @@ export function bakedTexture(engine: EngineContext, name: Bake, recipe: string, 
   let it = made.get(engine);
   if (!it) {
     const texture = createTexture2DFromPixels(engine, placeholder(), width, height, options);
-    it = { texture, ready: baked(name, recipe).then((data) => updateTexture2DFromPixels(engine, texture, data)) };
+    it = { texture, ready: baked(name, recipe).then((data) => (updateTexture2DFromPixels(engine, texture, data), stale())) };
     made.set(engine, it);
   }
   return it.texture;
