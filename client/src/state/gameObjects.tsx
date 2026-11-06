@@ -280,8 +280,11 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
       case "Welcome":
         // A server new to this client, or come back after a restart, that
         // knows nothing of what it held: let it all go, and the camera asks
-        // for its view again.
-        applyOps([...entities.values()].map((e) => ({ op: "Delete", data: e.id })));
+        // for its view again. In line behind what the old server said and
+        // is still landing, or that lands after, over what it says now.
+        void spread((function* () {
+          applyOps([...entities.values()].map((e) => ({ op: "Delete", data: e.id })));
+        })());
         for (const key of ground.keys()) {
           const [cx, cy] = key.split(",").map(Number);
           terrainListener?.unloadChunk({ cx, cy });
