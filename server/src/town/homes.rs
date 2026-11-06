@@ -1,6 +1,9 @@
 //! Families: who moves in where, what they want and how long they wait for
 //! it, and how a house grows. And the shops, which stock what the
-//! families round them want.
+//! families round them want. A family takes up a good only once a shop has
+//! one to spare, so wanting something new, bread off a farm still sowing,
+//! grows as fast as its supply does; and a house grows only once it has
+//! everything its level wants.
 
 use std::collections::BTreeMap;
 
@@ -44,7 +47,9 @@ const DAY_NEED: f64 = 2.5;
 
 // ---- a family's turn -----------------------------------------------------
 
-/// A family's turn: what has come due is wanted, or taken from the pantry;
+/// A family's turn: a good its level wants and it has never had is taken
+/// up, if a shop has one to spare; what has come due is wanted, or taken
+/// from the pantry;
 /// a want waited on past patience moves the family down; one well looked
 /// after asks for what it grows with; and their car, if it is home and
 /// idle, goes for it.
@@ -52,6 +57,7 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     let quiet = !loud_near(world, id);
     let night = dark(now);
     let away = world.map.objects.fleet(id).all(|car| super::errands::at_work(world, car));
+    let spare = &mut world.town.spare;
     let Some(h) = world.map.building_mut(id).and_then(|b| b.home.as_mut()) else { return };
     // At night the clock stops, and while everyone is at work: nothing
     // comes due, and nobody minds the wait.
@@ -68,9 +74,19 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     let level = &LEVELS[h.level as usize];
     let mut met = Vec::new();
     for &(good, every) in level.wants {
-        let Some(&due) = h.due.get(&good) else {
-            h.due.insert(good, now + every / 3);
-            continue;
+        let due = match h.due.get(&good) {
+            Some(&due) => due,
+            None => match spare.get_mut(&good).filter(|n| **n > 0) {
+                Some(n) => {
+                    *n -= 1;
+                    now
+                }
+                // None to spare: the town hears of it, nobody waits.
+                None => {
+                    met.push(good);
+                    continue;
+                }
+            },
         };
         if due > now || h.wants.iter().any(|w| w.good == good) {
             continue;
@@ -87,8 +103,10 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
             }
         }
     }
-    // Well looked after, and quiet: it asks for what it grows with.
-    if h.growing.is_none() && !level.grow.is_empty() && h.fed >= level.after && quiet {
+    // Well looked after, in everything, and quiet: it asks for what it
+    // grows with.
+    let all = level.wants.iter().all(|(g, _)| h.due.contains_key(g));
+    if h.growing.is_none() && !level.grow.is_empty() && h.fed >= level.after && all && quiet {
         h.growing = Some(level.grow.iter().map(|&(g, n)| (g, Stock { level: 0.0, cap: n as f64 })).collect());
         met.extend(level.grow.iter().map(|&(g, _)| g));
     }
@@ -132,7 +150,7 @@ fn down(world: &mut World, events: &mut EventQueue, id: EntityId, good: Good, no
         for w in h.wants.iter_mut() {
             w.since = now;
         }
-        h.due = LEVELS[h.level as usize].wants.iter().map(|&(g, every)| (g, now + every / 2)).collect();
+        h.due = LEVELS[h.level as usize].wants.iter().filter(|(g, _)| h.due.contains_key(g)).map(|&(g, every)| (g, now + every / 2)).collect();
     }
     fit_cars(world, id, now);
     events.wake(TURN_MS, id);
@@ -163,9 +181,6 @@ pub fn unpack(world: &mut World, events: &mut EventQueue, id: EntityId, car: Ent
         h.growing = None;
         h.level += 1;
         h.fed = 0;
-        for &(g, every) in LEVELS[h.level as usize].wants {
-            h.due.entry(g).or_insert(now + every / 3);
-        }
         grown = true;
     }
     if grown {
@@ -198,7 +213,8 @@ fn fit_cars(world: &mut World, id: EntityId, now: GameTime) {
 
 // ---- families moving in ----------------------------------------------------
 
-/// A cottage at a tile, a family in it who will want fish soon.
+/// A cottage at a tile, a family in it who will want fish once there is
+/// some to spare.
 pub fn house(world: &mut World, at: GridCoord, now: GameTime) -> Option<EntityId> {
     if let Some((lo, hi)) = world.town.ground()
         && (at.x < lo.x || at.y < lo.y || at.x > hi.x || at.y > hi.y)
@@ -216,9 +232,8 @@ pub fn house(world: &mut World, at: GridCoord, now: GameTime) -> Option<EntityId
         world.map.remove_building(id);
         return None;
     }
-    let first = now + 20_000 + (world.town.roll() * 20_000.0) as GameTime;
     if let Some(b) = world.map.building_mut(id) {
-        b.home = Some(Home { level: 1, wants: Vec::new(), due: BTreeMap::from([(Good::Fish, first)]), pantry: BTreeMap::new(), growing: None, fed: 0 });
+        b.home = Some(Home { level: 1, wants: Vec::new(), due: BTreeMap::new(), pantry: BTreeMap::new(), growing: None, fed: 0 });
     }
     fit_cars(world, id, now);
     Some(id)
@@ -337,6 +352,21 @@ fn loud_near(world: &World, id: EntityId) -> bool {
         GameObject::Building(ref o) if e.id != id && model::blueprint::blueprint(o.kind).loud => o.tiles.iter().any(|t| mine.iter().any(|m| (m.x - t.x).abs().max((m.y - t.y).abs()) <= 2)),
         _ => false,
     })
+}
+
+/// What the town's shops have to spare of each good: on their shelves,
+/// past what its families already wait on.
+pub fn spare(world: &mut World) {
+    let mut n: BTreeMap<Good, f64> = BTreeMap::new();
+    for e in world.map.objects.iter() {
+        let GameObject::Building(ref b) = e.object else { continue };
+        match &b.home {
+            Some(h) => h.wants.iter().for_each(|w| *n.entry(w.good).or_default() -= 1.0),
+            None if b.kind == BuildingKind::Shop => b.stocks.iter().for_each(|(&g, s)| *n.entry(g).or_default() += s.level.floor()),
+            None => {}
+        }
+    }
+    world.town.spare = n.into_iter().filter(|&(_, v)| v >= 1.0).map(|(g, v)| (g, v as u32)).collect();
 }
 
 // ---- shops ---------------------------------------------------------------

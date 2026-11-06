@@ -101,6 +101,10 @@ pub struct Town {
     /// When each worker may go to work again. Not saved.
     #[serde(skip)]
     rest: BTreeMap<EntityId, GameTime>,
+    /// What the shops have to spare of each good, for families to take up
+    /// (`homes::spare`). Not saved: counted every look.
+    #[serde(skip)]
+    spare: BTreeMap<Good, u32>,
 }
 
 impl Town {
@@ -228,6 +232,7 @@ pub fn building_wake(world: &mut World, events: &mut EventQueue, id: EntityId, n
 /// placed or reached wakes.
 fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
     homes::catchment(world);
+    homes::spare(world);
     standing(world);
     picks::release(world);
     events.wake(LOOK_MS, LOOK);
