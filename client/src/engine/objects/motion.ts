@@ -191,8 +191,8 @@ const aside = (p: Pose, d: number): Pose => ({ at: [p.at[0] - Math.sin(p.heading
 export const carried = (car: Car): Good[] => car.cargo.map((p) => p.good);
 
 /** Where the `k`th package from the front stands on a flatbed at `bed`,
- *  `l` long: in a row down its middle, from the headboard back; five on
- *  a lorry's, three on a van's. */
+ *  `l` long: in a row down its middle, from the headboard back; three on
+ *  a lorry's (`LOAD` in the server's `errands.rs`), with room behind. */
 export const onBed = (bed: Pose, l: number, k: number): Pose => ahead(bed, l / 2 - 0.022 - (k + 0.5) * (ITEM + 0.004));
 
 /** A lorry and a van are rigid, TRUCK and VAN long: a cab at the front,
