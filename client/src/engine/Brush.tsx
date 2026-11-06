@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";
 import { setFade } from "./material";
-import { builtVersion, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
+import { builtVersion, getObjectsAt, guess, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
 import { Pen } from "./pen";
 import type { Area, Building, GridCoord, Tool } from "../generated";
@@ -36,7 +36,7 @@ export function Brush() {
   const dots = new Dots(scene, canvas);
   const stopTick = afterRender(() => dots.frame());
   const { send } = useGame();
-  const pen = new Pen({ roads: roadsAt, tool, want: () => 0, priority, send, lift: () => {} });
+  const pen = new Pen({ roads: roadsAt, tool, want: () => 0, priority, send, lift: () => {}, guess });
   const pick = (e: { clientX: number; clientY: number }) => screenToWorld(scene, canvas, e);
   const tileOf = (e: { clientX: number; clientY: number }) => {
     const w = pick(e);

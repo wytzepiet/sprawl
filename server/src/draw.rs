@@ -43,28 +43,43 @@ type Step = (i32, i32);
 /// round toward +y.
 pub const STEPS: [Step; 8] = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)];
 
+/// How many tiles straight on a drag is told it may go: the hand walks
+/// them without waiting to be told again, and shows them laid before the
+/// game has (`client/src/state/guess.ts`).
+pub const RUN: usize = 6;
+
 /// Where a drag may go on from its last tile (`hint.rs`): for each of the
-/// eight steps, where it would stand on the tile it steps to, as the plan
-/// would lay it now; none where it may not. From where it stands as laid,
-/// or, a drag only pressed, from where it may start.
-pub fn reach(world: &World, owner: OwnerId, stroke: &Stroke) -> Vec<Option<Stand>> {
+/// eight steps, where it would stand on each tile straight on that way, as
+/// far as the plan would lay it now, up to `RUN`; none where it may not
+/// go. From where it stands as laid, or, a drag only pressed, from where it
+/// may start. A run's tiles past the first are planned as if those before
+/// them were laid: a guess, which the drag drawn there settles.
+pub fn reach(world: &World, owner: OwnerId, stroke: &Stroke) -> Vec<Vec<Stand>> {
     let n = stroke.tiles.len();
-    let Some(&last) = stroke.tiles.last() else { return vec![None; 8] };
+    let Some(&last) = stroke.tiles.last() else { return vec![Vec::new(); 8] };
     let laid = world.undo.get(&owner).and_then(|h| h.last()).and_then(|d| match &d.act {
         Act::Drawn { stroke: was, steps } if was.id == stroke.id && steps.len() + 1 == n => steps.last().map(|s| place_of(world, s.nodes[1])),
         _ => None,
     });
     if n > 1 && laid.is_none() {
-        return vec![None; 8];
+        return vec![Vec::new(); 8];
     }
     STEPS
         .iter()
         .map(|&(dx, dy)| {
             let mut on = stroke.clone();
-            on.tiles.push(Spot { at: GridCoord { x: last.at.x + dx, y: last.at.y + dy }, want: last.want });
-            let tiles: Vec<GridCoord> = on.tiles.iter().map(|s| s.at).collect();
-            let froms = laid.map_or_else(|| starts(world, &on, &tiles), |p| vec![p]);
-            plan(world, &on, &tiles, n, &froms).map(|(_, p)| Stand { h: p.h, side: p.s })
+            let mut froms = laid.map(|p| vec![p]);
+            let mut run = Vec::new();
+            while run.len() < RUN {
+                let at = on.tiles.last().unwrap().at;
+                on.tiles.push(Spot { at: GridCoord { x: at.x + dx, y: at.y + dy }, want: last.want });
+                let tiles: Vec<GridCoord> = on.tiles.iter().map(|s| s.at).collect();
+                let from = froms.take().unwrap_or_else(|| starts(world, &on, &tiles));
+                let Some((_, p)) = plan(world, &on, &tiles, tiles.len() - 1, &from) else { break };
+                run.push(Stand { h: p.h, side: p.s });
+                froms = Some(vec![p]);
+            }
+            run
         })
         .collect()
 }
@@ -363,6 +378,31 @@ mod tests {
 
         fn turn(&self, a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> bool {
             map::pathfinding::may_turn(&self.world.map, self.node(a.0, a.1), self.node(b.0, b.1), self.node(c.0, c.1))
+        }
+    }
+
+    /// What a drag is told of the tiles straight on is what it lays there:
+    /// across a street, a crossroads on the ground, and over the street a
+    /// level up, ramps and all.
+    #[test]
+    fn a_run_is_what_the_drag_lays() {
+        for want in [0, 2] {
+            let mut f = Field::new();
+            f.world.map.place_road_path(&(-10..16).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+            let tiles: Vec<(i32, i32)> = (-3..=(-3 + RUN as i32)).map(|y| (2, y)).collect();
+            let spot = |&(x, y): &(i32, i32)| Spot { at: GridCoord { x, y }, want };
+            let ways = reach(&f.world, 1, &Stroke { id: 7, tool: Tool::Street, road: false, tiles: vec![spot(&tiles[0])], start: None });
+            let run = &ways[2];
+            assert_eq!(run.len(), RUN, "{want}: {run:?}");
+            for n in 1..=tiles.len() {
+                let stroke = Stroke { id: 7, tool: Tool::Street, road: false, tiles: tiles[..n].iter().map(spot).collect(), start: None };
+                draw(&mut f.world, &mut f.events, 1, stroke, 0);
+            }
+            let Some(Done { act: Act::Drawn { steps, .. }, .. }) = f.world.undo.get(&1).and_then(|h| h.last()) else { panic!("nothing laid") };
+            let laid: Vec<Stand> = steps.iter().map(|s| place_of(&f.world, s.nodes[1])).map(|p| Stand { h: p.h, side: p.s }).collect();
+            // The last tile of the drag is laid as its end; the run guessed
+            // it on toward the next.
+            assert_eq!(laid[..RUN - 1], run[..RUN - 1], "{want}");
         }
     }
 

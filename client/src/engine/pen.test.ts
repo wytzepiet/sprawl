@@ -37,6 +37,7 @@ class Table {
     priority: () => false,
     send: (msg) => this.send(msg),
     lift: (levels) => (this.pen = levels),
+    guess: () => {},
   });
 
   constructor() {
