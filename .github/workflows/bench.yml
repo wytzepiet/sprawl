@@ -41,7 +41,7 @@ jobs:
   phones:
     if: inputs.phones
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - if: github.event_name == 'push'
@@ -62,7 +62,7 @@ jobs:
           gcloud firebase test android run --project "${{ vars.GCP_PROJECT }}" --type instrumentation \
             --app bench/android/app/build/outputs/apk/debug/app-debug.apk \
             --test bench/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            "${devices[@]}" --timeout 5m --no-record-video --directories-to-pull /sdcard/Download/bench \
+            "${devices[@]}" --timeout 10m --no-record-video --directories-to-pull /sdcard/Download/bench \
             --environment-variables "^;^url=$URL/?bench=$WHERE;tab=fl-$GITHUB_RUN_ID" 2>&1 | tee testlab.log || true
           # Each phone's screens and log, as the run's artifact.
           bucket=$(grep -o 'storage/browser/[^]]*' testlab.log | head -1 | sed 's#storage/browser/#gs://#; s#/$##')
@@ -84,7 +84,7 @@ jobs:
   # throttles, for numbers that compare run to run.
   gpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - if: github.event_name == 'push'
