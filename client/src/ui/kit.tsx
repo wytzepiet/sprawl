@@ -257,6 +257,18 @@ export function Bar(props: { value: number; color?: string; w?: number; h?: numb
   );
 }
 
+/** Whole things, one tick each, the first `n` lit: crates on a shelf,
+ *  hands at work. As wide as `w`, the ticks sharing it. */
+export function Ticks(props: { n: number; of: number; color: string; w?: number }) {
+  return (
+    <Box dir="row" gap={props.of > 15 ? 2 : 3} w={props.w ?? 120}>
+      <For each={Array.from({ length: Math.max(1, Math.round(props.of)) })}>
+        {(_, i) => <Box grow={1} h={14} round={3} fill={i() < Math.floor(props.n) ? props.color : "ink/0.12"} />}
+      </For>
+    </Box>
+  );
+}
+
 /** A line you can go to: a tap opens its card. */
 export function To(props: { link: Link | null | undefined; fallback?: string }) {
   return (

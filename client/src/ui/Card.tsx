@@ -5,7 +5,7 @@ import { select } from "../state/selection";
 import { selected } from "../state/selection";
 import { eachEntity, getEntity, reached } from "../state/gameObjects";
 import { now } from "../state/town";
-import { BAD, Bar, GOOD, Press, Row, Section, ROUND } from "./kit";
+import { BAD, Bar, GOOD, Press, Row, Section, Ticks, ROUND } from "./kit";
 import { PATIENCE_MS } from "../generated/rows";
 import type { JSX } from "solid-js";
 import type { Building, Car, CarRole, Good, Stock } from "../generated";
@@ -50,9 +50,12 @@ export function InspectHead() {
           const bp = BLUEPRINTS[x.b.kind];
           const h = x.b.home;
           const idle = bp.seats > 0 && x.b.present === 0;
+          // A want nobody is out for leads: why not, the oldest first.
+          const stuck = h?.wants.filter((w) => w.by === null).sort((a, b) => a.since - b.since)[0];
           return {
             title: h ? `${["", "Cottage", "House", "Townhouse", "Apartment"][h.level] ?? bp.label}` : bp.label,
-            sub: h ? (h.wants.length ? `wants ${h.wants.map((w) => GOODS[w.good].label.toLowerCase()).join(", ")}` : "content") : idle ? "nobody at work" : bp.makes ? `makes ${GOODS[bp.makes].label.toLowerCase()}` : undefined,
+            sub: stuck ? `${GOODS[stuck.good].label}: ${why(x.b, selected()!, stuck.good)}` : h ? (h.wants.length ? "what it wants is on its way" : "content") : idle ? "nobody at work" : bp.makes ? `makes ${GOODS[bp.makes].label.toLowerCase()}` : undefined,
+            alarm: !!stuck || idle,
             icon: (
               <Box w={36} h={36} round={18} fill={bp.color} align="center" justify="center">
                 <Icon d={bp.glyph} size={19} ink="white" />
@@ -60,7 +63,7 @@ export function InspectHead() {
             ),
           };
         };
-        return <Header title={head().title} sub={head().sub} icon={(head() as { icon?: JSX.Element }).icon} />;
+        return <Header title={head().title} sub={head().sub} alarm={(head() as { alarm?: boolean }).alarm} icon={(head() as { icon?: JSX.Element }).icon} />;
       }}
     </Show>
   );
@@ -101,6 +104,7 @@ export function why(home: Building, homeId: number, good: Good): string {
 }
 
 const stocks = (s: { [key in Good]?: Stock }) => Object.entries(s) as [Good, Stock][];
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 function BuildingLines(props: { b: Building; id: number }) {
   const bp = () => BLUEPRINTS[props.b.kind];
@@ -115,10 +119,12 @@ function BuildingLines(props: { b: Building; id: number }) {
                   {(w) => {
                     const left = () => 1 - Math.min(1, (now() - w.since) / PATIENCE_MS);
                     return (
-                      <Row label={GOODS[w.good].label}>
-                        <Bar value={left()} color={left() < 0.3 ? BAD : GOOD} />
-                        <Text size={13} soft>{w.by !== null ? "on its way" : why(props.b, props.id, w.good)}</Text>
-                      </Row>
+                      <Box gap={2}>
+                        <Row label={GOODS[w.good].label}>
+                          <Bar value={left()} color={left() < 0.3 ? BAD : GOOD} />
+                        </Row>
+                        <Text size={13} weight={600} ink={w.by !== null ? GOOD : BAD}>{w.by !== null ? "On its way" : cap(why(props.b, props.id, w.good))}</Text>
+                      </Box>
                     );
                   }}
                 </For>
@@ -137,7 +143,10 @@ function BuildingLines(props: { b: Building; id: number }) {
       <Show when={bp().seats > 0}>
         <Section title="Crew">
           <Row label={`${props.b.present} of ${bp().seats} at work`}>
-            <Bar value={props.b.work} color={GOODS[bp().makes ?? "Logs"]?.color} />
+            <Ticks n={props.b.present} of={bp().seats} color={GOODS[bp().makes ?? "Logs"]?.color ?? GOOD} w={Math.min(120, bp().seats * 18)} />
+          </Row>
+          <Row label="Next crate">
+            <Bar value={props.b.work} w={120} color={GOODS[bp().makes ?? "Logs"]?.color} />
           </Row>
         </Section>
       </Show>
@@ -146,8 +155,8 @@ function BuildingLines(props: { b: Building; id: number }) {
           <For each={stocks(props.b.stocks)}>
             {([good, s]) => (
               <Row label={GOODS[good].label}>
-                <Bar value={s.level / Math.max(1, s.cap)} color={s.level < 1 ? BAD : GOODS[good].color} />
-                <Text num size={13} soft>{`${Math.floor(s.level)} / ${s.cap}`}</Text>
+                <Ticks n={s.level} of={s.cap} color={GOODS[good].color} />
+                <Text num size={13} ink={s.level < 1 ? BAD : undefined} soft={s.level >= 1}>{`${Math.floor(s.level)} / ${s.cap}`}</Text>
               </Row>
             )}
           </For>
@@ -173,14 +182,16 @@ export function Pane(props: { children: JSX.Element; layer: string; at: BoxProps
   );
 }
 
-export function Header(props: { title: string; sub?: string; icon?: JSX.Element; onClose?: () => void }) {
+/** A card's head: its name, a line under it (red when it is what is
+ *  wrong), and a way to close it. */
+export function Header(props: { title: string; sub?: string; alarm?: boolean; icon?: JSX.Element; onClose?: () => void }) {
   return (
     <Box dir="row" align="center" gap={10} pad={{ x: 16, top: 14, bottom: 10 }}>
       {props.icon}
       <Box grow={1} gap={2}>
         <Text size={17} weight={600} lines={1}>{props.title}</Text>
         <Show when={props.sub}>
-          <Text size={13} soft lines={1}>{props.sub}</Text>
+          <Text size={13} weight={props.alarm ? 600 : undefined} ink={props.alarm ? BAD : undefined} soft={!props.alarm} lines={1}>{props.sub}</Text>
         </Show>
       </Box>
       <Press w={30} h={30} round={15} align="center" justify="center" fill="ink/0.14" onTap={props.onClose ?? (() => select(null))}>

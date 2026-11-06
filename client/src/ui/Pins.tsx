@@ -80,7 +80,7 @@ function Over(props: { id: number; building: () => Building }) {
 
 /** A want: its good's disc and glyph, ringed white, the ring filling red
  *  over the family's patience. */
-function Pin(props: { want: Want; onTap: () => void }) {
+export function Pin(props: { want: Want; onTap: () => void }) {
   const { color, glyph } = GOODS[props.want.good];
   const full = () => Math.min(1, Math.max(0, (now() - props.want.since) / PATIENCE_MS));
   const R = 15;
