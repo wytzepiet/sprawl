@@ -43,7 +43,7 @@ const PAD = 1;
  *  a zoom in and back out, or a pan there and back, finds the town as it
  *  left it, rather than have every road, building and car taken down and
  *  sent and built again (on a big town, a quarter second at a time). */
-const KEEP = 192;
+const KEEP = 48;
 /** A view kept in far fewer chunks than it holds lets them go once it has
  *  stood this long: the player has settled on a closer look. */
 const SHRINK_MS = 5000;
