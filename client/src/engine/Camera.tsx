@@ -38,12 +38,12 @@ const PAN_MARGIN_CHUNKS = 1;
  *  neighbours. */
 const LEVEL_MARGIN = 5;
 /** Chunks loaded past the ground in view, so it is there before it is seen. */
-const PAD = 1;
+const PAD = 2;
 /** Chunks kept loaded that have gone out of view, as many as this in all:
  *  a zoom in and back out, or a pan there and back, finds the town as it
  *  left it, rather than have every road, building and car taken down and
  *  sent and built again (on a big town, a quarter second at a time). */
-const KEEP = 48;
+const KEEP = 192;
 /** A view kept in far fewer chunks than it holds lets them go once it has
  *  stood this long: the player has settled on a closer look. */
 const SHRINK_MS = 5000;
