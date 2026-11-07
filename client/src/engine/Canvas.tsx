@@ -112,6 +112,8 @@ const MOVING_FPS = 60;
 /** Frames a second while it stands still. Cars and water move a few pixels a
  *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
 const STILL_FPS = PHONE ? 20 : 30;
+/** `?gpu`'s hand on the frame rate at rest (`gpuPanel.ts`), and a count of frames. */
+export const frameKnobs = { stillFps: STILL_FPS, frames: 0 };
 /** How long the view counts as moving after it last moved. A drag's pointer
  *  events do not land before every tick: one that finds the camera where the
  *  last frame left it would fall back to the still rate mid-pan, and the pan
@@ -225,9 +227,10 @@ export default function Canvas(props: ParentProps) {
       if (held) return;
       if (where() !== seen) lastMoved = now;
       const moving = now - lastMoved < MOVING_LINGER_MS;
-      const fps = moving ? MOVING_FPS : STILL_FPS;
+      const fps = moving ? MOVING_FPS : frameKnobs.stillFps;
       if (now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
+      frameKnobs.frames++;
       lastFrame = now;
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
@@ -252,6 +255,7 @@ export default function Canvas(props: ParentProps) {
     };
     requestAnimationFrame(frame);
 
+    if (new URLSearchParams(location.search).has("gpu")) setTimeout(() => void import("./gpuPanel").then(({ gpuPanel }) => gpuPanel(scene)), 10_000);
     if (import.meta.env.DEV) {
       (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => (document.querySelectorAll<HTMLElement>(".ink").forEach((e) => (e.style.display = "none")), true) };
     }
