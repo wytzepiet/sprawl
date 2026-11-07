@@ -334,6 +334,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   const camera = () => scene.camera as Eye;
   // When the picture was last drawn, from where, and what of the scene it held.
   let [drawn, from, content] = [-Infinity, "", ""];
+  let [lastCall, lastDue] = [0, false];
   const view = () => {
     const c = camera();
     return `${c.position.x},${c.position.y},${c.position.z},${c.fov},${surface.canvas.width},${surface.canvas.height}`;
@@ -422,6 +423,10 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
       addToScene(scene, cones);
     },
     frame(now, render, always = false) {
+      // The bench's question: are the slow frames the ones after a redraw?
+      if (now - lastCall > 34) perfCount(lastDue ? "still.slowAfterRedraw" : "still.slowOther", 1);
+      lastCall = now;
+      lastDue = false;
       const c = scene.camera;
       if (!c) return render();
       const here = view();
@@ -435,6 +440,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) ||
         since >= EVERY_MS;
       if (due) {
+        lastDue = true;
         perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
         aim(now);
         stillTask.enabled = true;
