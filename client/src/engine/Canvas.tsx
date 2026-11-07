@@ -106,8 +106,9 @@ const STEP = 0.8;
 const RETRY_MS = 10_000;
 
 /** Frames a second while the view moves: a 120Hz display shows the town no
- *  better than a 60Hz one, for twice the shading. */
-const MOVING_FPS = PHONE ? 30 : 60;
+ *  better than a 60Hz one, for twice the shading. A phone too: a moving
+ *  frame slides the still picture (`still.ts`) and draws the cars over it. */
+const MOVING_FPS = 60;
 /** Frames a second while it stands still. Cars and water move a few pixels a
  *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
 const STILL_FPS = PHONE ? 20 : 30;
