@@ -238,7 +238,13 @@ fn sunLost(w: vec3f) -> f32 {
     let lost = select(0., sunLost(f.at), shaderUniforms.shadowInfo.x > 0.);
     if (lost > 0.) {
       let sun = lightOn(surfaceAt(f.texel), -shaderUniforms.sunDir.xyz, normalize(f.eye - f.at), shaderUniforms.sunColor.rgb);
-      color = shown(max(unshown(color) - sun * lost * shaderUniforms.shadowInfo.x, vec3f(0.)));
+      // As much of its light as the sun gave, taken from all of it alike,
+      // and only as far as the curve moves for that: the way back to light
+      // is near, not exact, and taken channel by channel it tints.
+      let was = unshown(color);
+      let luma = vec3f(0.2126, 0.7152, 0.0722);
+      let kept = saturate(1. - dot(sun, luma) * lost * shaderUniforms.shadowInfo.x / max(dot(was, luma), 1e-6));
+      color = max(color + shown(was * kept) - shown(was), vec3f(0.));
     }
   }
   out.color = vec4f(color, 1.);
