@@ -34,6 +34,7 @@ import {
 } from "@babylonjs/lite";
 import { _vis } from "@babylonjs/lite/src/engine/engine";
 import { meshOf } from "./geometry";
+import { CONTRAST, TONE } from "./toneMap";
 
 /**
  * The town is drawn once and kept, and only what moves is drawn every frame.
@@ -218,11 +219,35 @@ const BEAM_VERTEX = wgsl`struct VertexOutput { @builtin(position) position: vec4
 // the picture's depth beside it, lit as a spot light lights it.
 const BEAM_FRAGMENT = wgsl`struct VertexOutput { @builtin(position) position: vec4f, @location(0) @interpolate(flat) beam: u32, };
 ${FIND}
+${TONE.helpersWGSL}
 fn along(f: Found, step: vec2i) -> vec3f {
   let size = vec2i(textureDimensions(still));
   let fore = pictureAt(clamp(f.texel + step, vec2i(0), size - 1)) - f.at;
   let back = f.at - pictureAt(clamp(f.texel - step, vec2i(0), size - 1));
   return select(back, fore, dot(fore, fore) < dot(back, back));
+}
+// The picture is light as the screen shows it: exposed, through the tone
+// curve, into gamma. Lit further, it must be taken back to light first,
+// lit, and brought to the screen again; what it gains is added. The curve
+// is undone as a curve alone, its colour matrices and saturation left out:
+// near enough, since the gain is reckoned from the same undoing.
+fn shown(light: vec3f) -> vec3f {
+  return pow(toneMap(light * shaderUniforms.sky.w), vec3f(1. / 2.2));
+}
+fn poly(x: f32) -> f32 {
+  let x2 = x * x;
+  let x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+fn unshown(p: f32) -> f32 {
+  let want = pow(max(p, 0.), ${1 / CONTRAST});
+  var lo = 0.;
+  var hi = 1.;
+  for (var i = 0; i < 14; i++) {
+    let mid = 0.5 * (lo + hi);
+    if (poly(mid) < want) { lo = mid; } else { hi = mid; }
+  }
+  return exp2(0.5 * (lo + hi) * 16.5 - 12.47393) / shaderUniforms.sky.w;
 }
 @fragment fn mainFragment(input: VertexOutput) -> @location(0) vec4f {
   let f = find(input.position.xy);
@@ -241,9 +266,12 @@ fn along(f: Found, step: vec2i) -> vec3f {
   let near = saturate(1. - fall * fall);
   let cone = saturate((dot(-ahead, L) - light.w) / max(1. - light.w, 0.001));
   let radiance = light.rgb * near * near / max(d2, 1e-4) * cone * cone;
-  // The surface's own colour: the picture is it in the sky's light alone.
-  let albedo = textureLoad(still, f.texel, 0).rgb / shaderUniforms.sky;
-  return vec4f(albedo * max(dot(N, L), 0.) * radiance / 3.14159265, 1.);
+  let p = textureLoad(still, f.texel, 0).rgb;
+  let was = vec3f(unshown(p.r), unshown(p.g), unshown(p.b));
+  // The surface's own colour: the light on it is the sky's, at most.
+  let albedo = min(was / shaderUniforms.sky.rgb, vec3f(1.));
+  let now = was + albedo * max(dot(N, L), 0.) * radiance / 3.14159265;
+  return vec4f(max(shown(now) - shown(was), vec3f(0.)), 1.);
 }`;
 
 export interface Still {
@@ -300,7 +328,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     vertexSource: BEAM_VERTEX,
     fragmentSource: BEAM_FRAGMENT,
     attributes: ["position"],
-    uniforms: [...VIEW_UNIFORMS, { name: "sky", type: "vec3<f32>" }],
+    uniforms: [...VIEW_UNIFORMS, { name: "sky", type: "vec4<f32>" }],
     samplers: [...PICTURE],
     storageBuffers: [{ name: "beams", type: "array<vec4<f32>>" }],
     backFaceCulling: false,
@@ -397,7 +425,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     shadowInfo[0] = on ? light.share * (1 - shadowInfo[3]) : 0;
     setShaderUniform(shown, "shadowInfo", shadowInfo);
     const { r, g, b } = light.sky;
-    setShaderUniform(lit, "sky", [Math.max(r, 1e-3), Math.max(g, 1e-3), Math.max(b, 1e-3)]);
+    setShaderUniform(lit, "sky", [Math.max(r, 1e-3), Math.max(g, 1e-3), Math.max(b, 1e-3), scene.imageProcessing.exposure]);
   }
 
   return {

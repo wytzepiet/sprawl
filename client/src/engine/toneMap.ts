@@ -26,12 +26,15 @@ c = luma + ${colour} * (c - luma);
 return pow(max(toneOut * c, vec3f(0.)), vec3f(2.2));
 }`;
 
+/** How much contrast the curve is given: what undoing it (`still.ts`) takes back. */
+export const CONTRAST = 1.35;
+
 /** The town's tone mapping, set on the scene (`DayNightCycle.tsx`); the
  *  exposure, the eye's, applied first. Richer than Wrensch's punchy, whose
  *  colour is 1.4: AgX takes the colour out of a bright light, and a noon
  *  in full sun came out pale. */
 export const TONE: ToneMapping = {
   id: "agx-rich",
-  helpersWGSL: agx(1.7, 1.35),
+  helpersWGSL: agx(1.7, CONTRAST),
   callWGSL: "color = toneMap(color * scene.vImageInfos.x);",
 };
