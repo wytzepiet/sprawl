@@ -578,13 +578,15 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         hold(true);
         render();
         hold(false);
-        if (shadows) setShadowStaticOnly(shadows, false);
+        // Drawn in the shade of a sun's map not drawn for it (its casters still
+        // loading): drawn again soon, as anything changed is.
+        const sunDrawn = !shadows || setShadowStaticOnly(shadows, false) || shadows._runtimeEnabledState?.enabled === false;
         stillTask.enabled = false;
         layers.executionEnabled = false;
         main.enabled = true;
         // What changed as it was drawn is in it.
         content = holding();
-        staleSince = Infinity;
+        staleSince = sunDrawn ? Infinity : now;
       }
       const vp = getViewProjectionMatrix(c, surface.canvas.width / Math.max(1, surface.canvas.height));
       const inverse = Array.from(invertMat4(vp) ?? vp);
