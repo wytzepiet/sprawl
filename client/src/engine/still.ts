@@ -1,6 +1,8 @@
 import { perfCount } from "./PerfReport";
 import {
   addTaskAtStart,
+  createGeometryRendererTask,
+  GeometryTextureType,
   addToScene,
   createFreeCamera,
   createRenderTask,
@@ -102,7 +104,64 @@ const VIEW_UNIFORMS = [
 const PICTURE = [
   { name: "still", sampleType: "float" },
   { name: "stillDepth", sampleType: "depth" },
+  // What each pixel of the picture is: its colour unlit, which way it
+  // faces, and how it shines (its reflectance, and roughness in alpha).
+  { name: "albedo", sampleType: "float" },
+  { name: "facing", sampleType: "float" },
+  { name: "shine", sampleType: "float" },
 ] as const;
+
+// Light as the picture shows it, and back: the picture is the town exposed,
+// through the tone curve and into gamma; light added to it is added before
+// all that. The curve is undone as a curve alone, its colour matrices and
+// saturation left out: near enough, since what is added is the difference
+// between two points brought through the same curve.
+const LIGHT = wgsl`${TONE.helpersWGSL}
+fn shown(light: vec3f) -> vec3f {
+  return pow(toneMap(light * shaderUniforms.sky.w), vec3f(1. / 2.2));
+}
+fn poly(x: f32) -> f32 {
+  let x2 = x * x;
+  let x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+fn unshownOne(p: f32) -> f32 {
+  let want = pow(max(p, 0.), ${1 / CONTRAST});
+  var lo = 0.;
+  var hi = 1.;
+  for (var i = 0; i < 14; i++) {
+    let mid = 0.5 * (lo + hi);
+    if (poly(mid) < want) { lo = mid; } else { hi = mid; }
+  }
+  return exp2(0.5 * (lo + hi) * 16.5 - 12.47393) / shaderUniforms.sky.w;
+}
+fn unshown(p: vec3f) -> vec3f { return vec3f(unshownOne(p.r), unshownOne(p.g), unshownOne(p.b)); }
+struct Surface { albedo: vec3f, normal: vec3f, f0: vec3f, roughness: f32, };
+fn surfaceAt(texel: vec2i) -> Surface {
+  var s: Surface;
+  s.albedo = textureLoad(albedo, texel, 0).rgb;
+  s.normal = normalize(textureLoad(facing, texel, 0).xyz * 2. - 1.);
+  let r = textureLoad(shine, texel, 0);
+  s.f0 = r.rgb;
+  s.roughness = 1. - r.a;
+  return s;
+}
+// What a light from L, of this radiance, gives a surface seen from V, as
+// Lite's own materials reckon it (\`clustered-light-wgsl.ts\`).
+fn lightOn(s: Surface, L: vec3f, V: vec3f, radiance: vec3f) -> vec3f {
+  let NdotL = saturate(dot(s.normal, L));
+  if (NdotL <= 0.) { return vec3f(0.); }
+  let H = normalize(V + L);
+  let NdotV = max(dot(s.normal, V), 1e-4);
+  let NdotH = clamp(dot(s.normal, H), 1e-7, 1.);
+  let a2 = pow(s.roughness * s.roughness + 0.0005, 2.);
+  let d = NdotH * NdotH * (a2 - 1.) + 1.;
+  let D = a2 / (3.14159265 * d * d);
+  let G = 0.5 / (NdotL * sqrt(NdotV * (NdotV - a2 * NdotV) + a2) + NdotV * sqrt(NdotL * (NdotL - a2 * NdotL) + a2));
+  let t = 1. - saturate(dot(V, H));
+  let F = s.f0 + (1. - s.f0) * (t * t * t * t * t);
+  return (s.albedo / 3.14159265 + F * D * G) * NdotL * radiance;
+}`;
 
 // A pixel of the screen, found in the picture: the ray through it meets
 // the ground, that point is looked up in the picture, and the height there
@@ -150,6 +209,7 @@ const SCREEN = wgsl`struct VertexOutput { @builtin(position) position: vec4f, };
 const SHOWN = wgsl`struct VertexOutput { @builtin(position) position: vec4f, };
 struct Out { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, };
 ${FIND}
+${LIGHT}
 fn sunLost(w: vec3f) -> f32 {
   let l = shaderUniforms.shadowMatrix * vec4f(w, 1.);
   let c = l.xyz / l.w;
@@ -173,7 +233,13 @@ fn sunLost(w: vec3f) -> f32 {
   } else {
     let c = shaderUniforms.seen * vec4f(f.at, 1.);
     out.depth = clamp(c.z / c.w, 0., 1.);
-    if (shaderUniforms.shadowInfo.x > 0.) { color *= 1. - shaderUniforms.shadowInfo.x * sunLost(f.at); }
+    // A moving thing's shadow: the sun's light this surface had, taken
+    // away as far as the shadows are dark.
+    let lost = select(0., sunLost(f.at), shaderUniforms.shadowInfo.x > 0.);
+    if (lost > 0.) {
+      let sun = lightOn(surfaceAt(f.texel), -shaderUniforms.sunDir.xyz, normalize(f.eye - f.at), shaderUniforms.sunColor.rgb);
+      color = shown(max(unshown(color) - sun * lost * shaderUniforms.shadowInfo.x, vec3f(0.)));
+    }
   }
   out.color = vec4f(color, 1.);
   return out;
@@ -215,40 +281,11 @@ const BEAM_VERTEX = wgsl`struct VertexOutput { @builtin(position) position: vec4
   return out;
 }`;
 
-// A headlight on the picture: the surface under the pixel, its slope from
-// the picture's depth beside it, lit as a spot light lights it.
+// A headlight on the picture: the surface under the pixel, as the picture's
+// layers have it, lit as a spot light lights it.
 const BEAM_FRAGMENT = wgsl`struct VertexOutput { @builtin(position) position: vec4f, @location(0) @interpolate(flat) beam: u32, };
 ${FIND}
-${TONE.helpersWGSL}
-fn along(f: Found, step: vec2i) -> vec3f {
-  let size = vec2i(textureDimensions(still));
-  let fore = pictureAt(clamp(f.texel + step, vec2i(0), size - 1)) - f.at;
-  let back = f.at - pictureAt(clamp(f.texel - step, vec2i(0), size - 1));
-  return select(back, fore, dot(fore, fore) < dot(back, back));
-}
-// The picture is light as the screen shows it: exposed, through the tone
-// curve, into gamma. Lit further, it must be taken back to light first,
-// lit, and brought to the screen again; what it gains is added. The curve
-// is undone as a curve alone, its colour matrices and saturation left out:
-// near enough, since the gain is reckoned from the same undoing.
-fn shown(light: vec3f) -> vec3f {
-  return pow(toneMap(light * shaderUniforms.sky.w), vec3f(1. / 2.2));
-}
-fn poly(x: f32) -> f32 {
-  let x2 = x * x;
-  let x4 = x2 * x2;
-  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
-}
-fn unshown(p: f32) -> f32 {
-  let want = pow(max(p, 0.), ${1 / CONTRAST});
-  var lo = 0.;
-  var hi = 1.;
-  for (var i = 0; i < 14; i++) {
-    let mid = 0.5 * (lo + hi);
-    if (poly(mid) < want) { lo = mid; } else { hi = mid; }
-  }
-  return exp2(0.5 * (lo + hi) * 16.5 - 12.47393) / shaderUniforms.sky.w;
-}
+${LIGHT}
 @fragment fn mainFragment(input: VertexOutput) -> @location(0) vec4f {
   let f = find(input.position.xy);
   if (f.depth <= 0.) { discard; }
@@ -260,17 +297,13 @@ fn unshown(p: f32) -> f32 {
   let range = at.w;
   if (d2 >= range * range) { discard; }
   let L = toLight / max(sqrt(d2), 1e-4);
-  var N = normalize(cross(along(f, vec2i(1, 0)), along(f, vec2i(0, 1))));
-  if (dot(N, f.eye - f.at) < 0.) { N = -N; }
   let fall = d2 / (range * range);
   let near = saturate(1. - fall * fall);
   let cone = saturate((dot(-ahead, L) - light.w) / max(1. - light.w, 0.001));
   let radiance = light.rgb * near * near / max(d2, 1e-4) * cone * cone;
   let p = textureLoad(still, f.texel, 0).rgb;
-  let was = vec3f(unshown(p.r), unshown(p.g), unshown(p.b));
-  // The surface's own colour: the light on it is the sky's, at most.
-  let albedo = min(was / shaderUniforms.sky.rgb, vec3f(1.));
-  let now = was + albedo * max(dot(N, L), 0.) * radiance / 3.14159265;
+  let was = unshown(p);
+  let now = was + lightOn(surfaceAt(f.texel), L, normalize(f.eye - f.at), radiance);
   return vec4f(max(shown(now) - shown(was), vec3f(0.)), 1.);
 }`;
 
@@ -280,11 +313,18 @@ export interface Still {
    *  scene once. */
   frame(now: number, draw: () => void, always?: boolean): void;
   /** The sun, whose shadows of moving things stay off the picture and are
-   *  laid over it, taking the sun's `share` of the light away; and the
-   *  `sky`'s light, which the night's picture is a surface's colour in. */
-  sun(shadows: ShadowGenerator, light: { share: number; sky: { r: number; g: number; b: number } }): void;
+   *  laid over it, taking away the sun's light where they fall. */
+  sun(shadows: ShadowGenerator, light: Sunlight): void;
   /** The headlights, kept off the picture and laid over it. */
   headlights(container: ClusteredLightContainer, lights: ClusteredSpotLight[]): void;
+}
+
+/** The light the town stands in now: the sky's from above, and the sun's
+ *  (or the moon's), which way it shines and how strong, linear. */
+export interface Sunlight {
+  sky: { r: number; g: number; b: number };
+  sunDir: [number, number, number];
+  sunColor: { r: number; g: number; b: number };
 }
 
 /** The game's camera, as the still picture's is: a free camera at a target. */
@@ -303,6 +343,38 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   const stillTask = createRenderTask({ name: "still", rt: picture.rt, cam: eye, keep: (m) => !lives.has(m) }, engine, scene);
   addTaskAtStart(scene, stillTask);
   stillTask.enabled = false;
+  // What the picture's pixels are, drawn with it: lit again each frame
+  // by what moves (headlights, the shadows of cars) as the town's own
+  // materials are lit.
+  const size = { surface, scale: 1 + 2 * MARGIN };
+  const layers = createGeometryRendererTask(
+    {
+      name: "stillLayers",
+      camera: eye,
+      size,
+      // The picture's own depth: the same town from the same eye.
+      depthTexture: picture.rt,
+      get meshes() {
+        return scene.meshes.filter((m) => !lives.has(m));
+      },
+      textureDescriptions: [{ type: GeometryTextureType.ALBEDO }, { type: GeometryTextureType.WORLD_NORMAL, format: "rgba8unorm" }, { type: GeometryTextureType.REFLECTIVITY }],
+    },
+    engine,
+    scene,
+  );
+  addTaskAtStart(scene, layers);
+  layers.executionEnabled = false;
+  // The task makes its layers anew when the screen's size changes, as the
+  // frame graph is recorded again, before anything is drawn with them: the
+  // materials take the new ones there, or the frame is lost whole.
+  const record = layers.record.bind(layers);
+  layers.record = () => (record(), bindLayers());
+  const layered = [
+    ["albedo", layers.geometryAlbedoTexture!],
+    ["facing", layers.geometryWorldNormalTexture!],
+    ["shine", layers.geometryReflectivityTexture!],
+  ] as const;
+  const boundViews = new Map<string, GPUTextureView | null>();
   // The scene's own pass draws only what is live, over the picture.
   const tasks = (getFrameGraph(scene) as unknown as { _tasks: RenderTask[] })._tasks;
   const main = tasks.find((t) => t.name === "scene")!;
@@ -313,7 +385,14 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     vertexSource: SCREEN,
     fragmentSource: SHOWN,
     attributes: ["position"],
-    uniforms: [...VIEW_UNIFORMS, { name: "shadowMatrix", type: "mat4x4<f32>" }, { name: "shadowInfo", type: "vec4<f32>" }],
+    uniforms: [
+      ...VIEW_UNIFORMS,
+      { name: "sky", type: "vec4<f32>" },
+      { name: "sunDir", type: "vec4<f32>" },
+      { name: "sunColor", type: "vec4<f32>" },
+      { name: "shadowMatrix", type: "mat4x4<f32>" },
+      { name: "shadowInfo", type: "vec4<f32>" },
+    ],
     samplers: [
       ...PICTURE,
       { name: "shadowNow", viewDimension: "2d-array", comparison: true },
@@ -341,7 +420,19 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   const bind = () => {
     for (const m of both) setShaderTexture(m, "still", picture.texture), setShaderTexture(m, "stillDepth", picture.depthTexture!);
   };
+  /** The layers, bound as they are now. Until they are made, the picture
+   *  stands in. */
+  function bindLayers() {
+    for (const [name, rt] of layered) {
+      const view = rt._colorView;
+      if (boundViews.get(name) === view) continue;
+      boundViews.set(name, view);
+      const texture = view && rt._colorTexture ? ({ texture: rt._colorTexture, view, sampler: picture.texture.sampler, width: rt._width, height: rt._height } as Texture2D) : picture.texture;
+      for (const m of both) setShaderTexture(m, name, texture);
+    }
+  }
   bind();
+  bindLayers();
   onRenderTargetTextureResize(picture, () => (bind(), stale()));
 
   const quad = live(meshOf(engine, "still", { positions: [-1, -1, 0, 3, -1, 0, -1, 3, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 1, 2] }));
@@ -351,7 +442,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   addToScene(scene, quad);
 
   let shadows: ShadowGenerator | null = null;
-  let light = { share: 0, sky: { r: 1, g: 1, b: 1 } };
+  let light: Sunlight = { sky: { r: 1, g: 1, b: 1 }, sunDir: [0, 0, -1], sunColor: { r: 0, g: 0, b: 0 } };
   let [shadowNow, shadowStill]: (Texture2D | null)[] = [null, null];
   /** The sun's share taken by a shadow, the map's size and a texel of it, and how dark its shadows are. */
   const shadowInfo = [0, 1, 1, 0];
@@ -422,10 +513,13 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     if (now !== shadowNow) setShaderTexture(shown, "shadowNow", (shadowNow = now));
     if (still !== shadowStill) setShaderTexture(shown, "shadowStill", (shadowStill = still));
     const on = shadows._runtimeEnabledState?.enabled !== false && still !== now;
-    shadowInfo[0] = on ? light.share * (1 - shadowInfo[3]) : 0;
+    shadowInfo[0] = on ? 1 - shadowInfo[3] : 0;
     setShaderUniform(shown, "shadowInfo", shadowInfo);
     const { r, g, b } = light.sky;
-    setShaderUniform(lit, "sky", [Math.max(r, 1e-3), Math.max(g, 1e-3), Math.max(b, 1e-3), scene.imageProcessing.exposure]);
+    const sky = [Math.max(r, 1e-3), Math.max(g, 1e-3), Math.max(b, 1e-3), scene.imageProcessing.exposure];
+    for (const m of both) setShaderUniform(m, "sky", sky);
+    setShaderUniform(shown, "sunDir", [...light.sunDir, 0]);
+    setShaderUniform(shown, "sunColor", [light.sunColor.r, light.sunColor.g, light.sunColor.b, 0]);
   }
 
   return {
@@ -472,6 +566,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
         aim(now);
         stillTask.enabled = true;
+        layers.executionEnabled = true;
         main.enabled = false;
         if (shadows) setShadowStaticOnly(shadows, true);
         hold(true);
@@ -479,6 +574,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         hold(false);
         if (shadows) setShadowStaticOnly(shadows, false);
         stillTask.enabled = false;
+        layers.executionEnabled = false;
         main.enabled = true;
         // What changed as it was drawn is in it.
         content = holding();

@@ -385,13 +385,13 @@ export function daylight(engine: Engine, scene: SceneContext, mapSize: number) {
 
   let lastColorStep = -1;
   let shadowing = true;
-  const luma = (c: Rgb) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   return {
     shadows,
     casters,
-    /** How much of the light on level ground is the sun's: what a shadow
-     *  falling on it takes away. */
-    share: 0,
+    /** Which way the sun (or the moon) shines, and its light, linear:
+     *  what a moving thing's shadow takes away (`still.ts`). */
+    sunDir: [0, 0, -1] as [number, number, number],
+    sunColor: rgb(0, 0, 0),
     /** The sky's light from straight above: what a matt surface in shade
      *  shows of its colour. */
     sky: rgb(1, 1, 1),
@@ -410,11 +410,9 @@ export function daylight(engine: Engine, scene: SceneContext, mapSize: number) {
       const light = linearLight(sun.colour, sun.strength);
       sunLight.specular = tuple(light);
       setLightDiffuseColor(sunLight, tuple(light));
-      // The sun's light on the level, against the sky's from all round it.
-      const fromSun = luma(light) * Math.max(0, -dz);
       this.sky = linearLight(mul(ramp(ambientStops, t, lerp3), SKY_LIGHT), SKY);
-      const fromSky = Math.PI * luma(this.sky);
-      this.share = elev > 0 ? fromSun / Math.max(1e-6, fromSun + fromSky) : 0;
+      this.sunDir = [dx, dy, dz];
+      this.sunColor = elev > 0 ? light : rgb(0, 0, 0);
 
       // The sky is redrawn, and the flat things' tint walked over every
       // bucket, only when the quantized time moves: 1/1024 of a day is below
