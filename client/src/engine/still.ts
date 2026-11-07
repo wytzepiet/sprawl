@@ -424,7 +424,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     },
     frame(now, render, always = false) {
       // The bench's question: are the slow frames the ones after a redraw?
-      if (now - lastCall > 34) perfCount(lastDue ? "still.slowAfterRedraw" : "still.slowOther", 1);
+      if (now - lastCall > 50) perfCount(lastDue ? "still.slowAfterRedraw" : "still.slowOther", 1);
       lastCall = now;
       lastDue = false;
       const c = scene.camera;
