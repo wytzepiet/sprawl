@@ -38,7 +38,7 @@ const PAN_MARGIN_CHUNKS = 1;
  *  neighbours. */
 const LEVEL_MARGIN = 5;
 /** Chunks loaded past the ground in view, so it is there before it is seen. */
-const PAD = 2;
+const PAD = 1;
 /** Chunks kept loaded that have gone out of view, as many as this in all:
  *  a zoom in and back out, or a pan there and back, finds the town as it
  *  left it, rather than have every road, building and car taken down and

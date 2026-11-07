@@ -3,6 +3,7 @@ import { Icon } from "~ui";
 import { setBuildingListener } from "../state/gameObjects";
 import { BLUEPRINTS, GOODS, middle } from "../blueprints";
 import { onMap } from "./kit";
+import { useEngine } from "../engine/Canvas";
 import type { Building, GameObjectEntry, Good } from "../generated";
 
 /**
@@ -33,8 +34,11 @@ const MOVE_IN = "#4FA36B";
 
 const [pings, setPings] = createSignal<Ping[]>([]);
 const timers = new Map<string, number>();
+/** Whether a place is in view: a ping off screen is never made. */
+let seen = (_x: number, _y: number) => false;
 
 function ping(p: Omit<Ping, "n" | "beat">, n = 1) {
+  if (!seen(p.at[0], p.at[1])) return;
   const had = pings().find((q) => q.key === p.key);
   const next: Ping = had ? { ...had, n: had.n + n, beat: had.beat + 1 } : { ...p, n, beat: 0 };
   setPings((l) => [...l.filter((q) => q.key !== p.key), next]);
@@ -79,6 +83,8 @@ function changed(before: GameObjectEntry | undefined, after: GameObjectEntry) {
 }
 
 export default function Pings() {
+  const { cull } = useEngine();
+  seen = (x, y) => cull.sees(x, y);
   setBuildingListener(changed);
   onCleanup(() => setBuildingListener(null));
   return (
@@ -108,7 +114,7 @@ function One(props: { ping: Ping }) {
   return (
     <Show when={at()}>
       {(p) => (
-        <div style={{ position: "absolute", left: `${p().sx}px`, top: `${p().sy - 26}px`, "pointer-events": "none" }}>
+        <div style={{ position: "absolute", left: "0", top: "0", transform: `translate(${p().sx}px, ${p().sy - 26}px)`, "pointer-events": "none" }}>
           <Show when={props.ping.beat + 1} keyed>
             {(_beat) => (
               <div style={{ position: "absolute", left: `${-D / 2}px`, top: `${-D / 2}px`, animation: `ping-rise ${LIFE_MS}ms cubic-bezier(.2,.8,.3,1) forwards` }}>
