@@ -282,12 +282,21 @@ export const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM9 12a3 3 0 
 /** Where a point of the map is on the screen this frame, for what is
  *  pinned to it: asked before each frame is drawn, after the camera has
  *  moved, so it is drawn where the town is. */
+/** Pixels past the screen's edge a thing on the map is still placed. */
+const EDGE = 120;
+
 export function onMap(at: () => [number, number, number] | null) {
   const { scene, canvas, beforeRender } = useEngine();
   // Placed as it is made, not a frame later: until then it would stand nowhere.
+  // Off screen it is nowhere: a town's worth of pins kept up to date, each
+  // frame, behind the screen's edge cost a pan more than its drawing.
   const where = () => {
     const w = scene.camera && at();
-    return w ? projector(scene, canvas).at(...w) : null;
+    if (!w) return null;
+    const { rect, at: to } = projector(scene, canvas);
+    const p = to(...w);
+    const out = p.sx < rect.left - EDGE || p.sx > rect.right + EDGE || p.sy < rect.top - EDGE || p.sy > rect.bottom + EDGE;
+    return out ? null : p;
   };
   const [p, set] = createSignal(untrack(where), { equals: (a, b) => a?.sx === b?.sx && a?.sy === b?.sy });
   onCleanup(beforeRender(() => set(where())));
