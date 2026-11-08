@@ -471,6 +471,10 @@ impl Map {
             _ => {}
         }
         match self.driveway_for(&tiles, kind, facing) {
+            // A front's lorries back into its docks off a street running
+            // straight past them: at a corner, a junction or a dead end
+            // there is nowhere for them to swing round, and nowhere to load.
+            Some((street, gate)) if model::blueprint::fronted(kind) && self.dock_bays((gate, street), kind).len() < model::blueprint::blueprint(kind).docks() => Err("Its lorries need a straight street past its front"),
             Some(_) => Ok(tiles),
             None if model::blueprint::fronted(kind) => Err("No street before its front"),
             None => Err("No street beside it"),

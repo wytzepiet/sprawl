@@ -205,7 +205,7 @@ for (const line of lines) {
       break;
     case "town": {
       const t = town as Town | null;
-      report = t ? [`day ${t.day}, ${t.people} people (${t.toward}/${t.step} to the next pick), ${t.left} left`, `roads ${t.roads}, hand ${t.hand.map(([k, n]) => `${k}×${n}`).join(" ") || "empty"}`, `tools ${t.tools.join(" ") || "street"}`, t.offer.length ? `pick: ${t.offer.map((o, i) => `${i}) ${JSON.stringify(o)}`).join("  ")}` : "no pick"] : ["no town heard"];
+      report = t ? [`day ${t.day}, ${t.people} people (${t.toward}/${t.step} to the next pick), ${t.left} left`, `roads ${t.roads}, hand ${t.hand.map(([k, n]) => `${k}×${n}`).join(" ") || "empty"}`, `tools ${t.tools.join(" ") || "street"}`, `began at ${t.start ? `${t.start.x},${t.start.y}` : "?"}`, t.offer.length ? `pick: ${t.offer.map((o, i) => `${i}) ${JSON.stringify(o)}`).join("  ")}` : "no pick"] : ["no town heard"];
       break;
     }
     case "undo":

@@ -105,6 +105,9 @@ pub struct Town {
     /// (`homes::spare`). Not saved: counted every look.
     #[serde(skip)]
     spare: BTreeMap<Good, u32>,
+    /// What moved, by step and good, for the bot to read. Not saved.
+    #[serde(skip)]
+    pub tally: BTreeMap<(&'static str, Good), u32>,
 }
 
 impl Town {

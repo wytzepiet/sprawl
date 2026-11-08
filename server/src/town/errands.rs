@@ -7,7 +7,7 @@ use traffic::event_queue::EventQueue;
 use model::blueprint::{blueprint, maker};
 use model::{BuildingKind, CarRole, EntityId, GameTime, Good, Package};
 use crate::world::World;
-use super::homes::{shop_for, LEVELS};
+use super::homes::{shops_for, LEVELS};
 use super::{apart, of_kind, open, reaches, stock};
 
 /// How often whoever waits at a counter or a yard looks again.
@@ -110,44 +110,62 @@ fn set_out(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Ent
         events.wake(POLL_MS * 3, car);
         return;
     }
-    let found = match role {
-        CarRole::Private => family_errand(world, car, owner, now),
-        CarRole::Truck => lorry_errand(world, owner),
-        _ => return,
-    };
-    if let Some((to, want)) = found {
-        if trip(world, events, car, owner, to, now) {
-            if role == CarRole::Private
-                && let Some(h) = world.map.building_mut(owner).and_then(|b| b.home.as_mut())
-            {
-                for w in h.wants.iter_mut().filter(|w| w.by.is_none() && want.contains(&w.good)) {
-                    w.by = Some(car);
+    match role {
+        CarRole::Private => {
+            // Each shop that sells it, nearest with it on the shelf first,
+            // until one has a bay free.
+            let errands = family_errands(world, car, owner, now);
+            let tried = !errands.is_empty();
+            for (to, want) in errands {
+                if trip(world, events, car, owner, to, now) {
+                    if let Some(h) = world.map.building_mut(owner).and_then(|b| b.home.as_mut()) {
+                        for w in h.wants.iter_mut().filter(|w| w.by.is_none() && want.contains(&w.good)) {
+                            w.by = Some(car);
+                        }
+                    }
+                    world.town.errands.insert(car, Errand::Fetch { to, want, got: Vec::new(), extra: Vec::new(), at: None, last: now });
+                    return;
                 }
             }
-            world.town.errands.insert(car, Errand::Fetch { to, want, got: Vec::new(), extra: Vec::new(), at: None, last: now });
-        } else {
-            events.wake(POLL_MS, car);
+            if tried {
+                events.wake(POLL_MS, car);
+                return;
+            }
         }
-        return;
+        CarRole::Truck => {
+            // Each place that has it, or makes it, nearest first, until
+            // one has room for the lorry.
+            for (to, want) in lorry_errands(world, owner) {
+                if trip(world, events, car, owner, to, now) {
+                    world.town.errands.insert(car, Errand::Fetch { to, want, got: Vec::new(), extra: Vec::new(), at: None, last: now });
+                    return;
+                }
+            }
+            events.wake(POLL_MS, car);
+            return;
+        }
+        _ => return,
     }
     if role == CarRole::Private && world.town.rest.get(&car).is_none_or(|&r| r <= now) {
-        if let Some(job) = job(world, car, owner)
-            && trip(world, events, car, owner, job, now)
-        {
+        if let Some(job) = job(world, car, owner) {
             commuting(world, car, true);
-            world.town.errands.insert(car, Errand::Work { job, at: None });
-            return;
+            if trip(world, events, car, owner, job, now) {
+                world.town.errands.insert(car, Errand::Work { job, at: None });
+                return;
+            }
+            commuting(world, car, false);
         }
     }
     events.wake(POLL_MS * 2, car);
 }
 
-/// What a family's car goes out for, and where: everything open the
-/// nearest shop that sells any of it sells, wants first, then what the
-/// house grows with that no other car of theirs is out for.
-fn family_errand(world: &World, car: EntityId, owner: EntityId, now: GameTime) -> Option<(EntityId, Vec<Good>)> {
-    let h = world.map.building(owner)?.home.as_ref()?;
-    let mut want: Vec<Good> = h.wants.iter().filter(|w| w.by.is_none()).map(|w| w.good).collect();
+/// What a family's car goes out for, and where it might get it: wants
+/// first, then what the house grows with that no other car of theirs is
+/// out for; at each shop that sells any of it, nearest with some on the
+/// shelf first, everything open there that it sells.
+fn family_errands(world: &World, car: EntityId, owner: EntityId, now: GameTime) -> Vec<(EntityId, Vec<Good>)> {
+    let Some(h) = world.map.building(owner).and_then(|b| b.home.as_ref()) else { return Vec::new() };
+    let want: Vec<Good> = h.wants.iter().filter(|w| w.by.is_none()).map(|w| w.good).collect();
     let others: Vec<Good> = world.map.objects.fleet(owner).filter(|&c| c != car).filter_map(|c| match world.town.errands.get(&c) {
         Some(Errand::Fetch { want, .. }) => Some(want.clone()),
         _ => None,
@@ -161,21 +179,30 @@ fn family_errand(world: &World, car: EntityId, owner: EntityId, now: GameTime) -
     // What the house grows with is fetched only from a shelf that has it:
     // a trip for nothing is a want kept waiting.
     let stocked = |s: EntityId, g: &Good| world.map.building(s).and_then(|b| b.stocks.get(g)).is_some_and(|st| st.level >= 1.0);
-    let shop = if want.is_empty() {
-        shop_for(world, owner, &growth, now).filter(|&s| growth.iter().any(|g| stocked(s, g)))?
+    // A wait at the counter only at the nearest that sells it, when none
+    // has any.
+    let shops: Vec<EntityId> = if want.is_empty() {
+        shops_for(world, owner, &growth, now).into_iter().filter(|&s| growth.iter().any(|g| stocked(s, g))).collect()
     } else {
-        shop_for(world, owner, &want, now)?
+        let all = shops_for(world, owner, &want, now);
+        let some: Vec<EntityId> = all.iter().copied().filter(|&s| want.iter().any(|g| stocked(s, g))).collect();
+        if some.is_empty() { all.into_iter().take(1).collect() } else { some }
     };
-    want.extend(growth.into_iter().filter(|g| stocked(shop, g)));
-    let sells = &world.map.building(shop)?.stocks;
-    want.retain(|g| sells.contains_key(g));
-    Some((shop, want))
+    shops
+        .into_iter()
+        .filter_map(|shop| {
+            let sells = &world.map.building(shop)?.stocks;
+            let all: Vec<Good> = want.iter().copied().chain(growth.iter().copied().filter(|g| stocked(shop, g))).filter(|g| sells.contains_key(g)).collect();
+            (!all.is_empty()).then_some((shop, all))
+        })
+        .collect()
 }
 
-/// What a lorry goes out for, and where: the good its building lacks most
-/// of, from the nearest maker that has some, else that has room to wait.
-fn lorry_errand(world: &World, owner: EntityId) -> Option<(EntityId, Vec<Good>)> {
-    let b = world.map.building(owner)?;
+/// What a lorry goes out for, and where it might get it: the good its
+/// building lacks most of first, from each maker that has some no lorry
+/// has spoken for, nearest first, then each with room to wait.
+fn lorry_errands(world: &World, owner: EntityId) -> Vec<(EntityId, Vec<Good>)> {
+    let Some(b) = world.map.building(owner) else { return Vec::new() };
     let shop = b.kind == BuildingKind::Shop;
     let mut lacks: Vec<(f64, Good, usize)> = b
         .stocks
@@ -188,29 +215,25 @@ fn lorry_errand(world: &World, owner: EntityId) -> Option<(EntityId, Vec<Good>)>
         })
         .collect();
     lacks.sort_by(|a, b| b.0.total_cmp(&a.0));
-    lacks.into_iter().find_map(|(_, g, n)| Some((source(world, owner, g)?, vec![g; n])))
+    lacks.into_iter().flat_map(|(_, g, n)| sources(world, owner, g).into_iter().map(move |s| (s, vec![g; n]))).collect()
 }
 
-/// The nearest maker of a good a lorry from `home` can reach: one with
-/// some in its yard no lorry already on its way has spoken for, else one
-/// with room to wait in its yard.
-fn source(world: &World, home: EntityId, good: Good) -> Option<EntityId> {
+/// The makers of a good a lorry from `home` can reach: those with some in
+/// their yard no lorry on its way has spoken for, nearest first, then
+/// those with room to wait in their yard.
+fn sources(world: &World, home: EntityId, good: Good) -> Vec<EntityId> {
     let map = &world.map;
     let kind = maker(good);
-    let mut best: Option<(i32, EntityId)> = None;
-    let mut wait: Option<(i32, EntityId)> = None;
-    for (id, _) in of_kind(map, kind) {
-        if !reaches(map, home, id) {
-            continue;
-        }
-        let d = apart(map, home, id);
-        if stock(map, id, good) - spoken_for(world, id, good) >= 1.0 {
-            best = best.filter(|b| b.0 <= d).or(Some((d, id)));
-        } else if waiting_at(world, id) < blueprint(kind).queue as usize {
-            wait = wait.filter(|b| b.0 <= d).or(Some((d, id)));
-        }
-    }
-    best.or(wait).map(|(_, id)| id)
+    let mut found: Vec<(bool, i32, EntityId)> = of_kind(map, kind)
+        .into_iter()
+        .filter(|&(id, _)| reaches(map, home, id))
+        .filter_map(|(id, _)| {
+            let has = stock(map, id, good) - spoken_for(world, id, good) >= 1.0;
+            (has || waiting_at(world, id) < blueprint(kind).queue as usize).then(|| (!has, apart(map, home, id), id))
+        })
+        .collect();
+    found.sort();
+    found.into_iter().map(|f| f.2).collect()
 }
 
 /// Crates of a good the lorries on their way to a yard, or in it, have
@@ -250,6 +273,9 @@ fn fetch(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Entit
             }
         }
     }
+    for &g in &took {
+        *world.town.tally.entry((if lorry { "hauled" } else { "bought" }, g)).or_default() += 1;
+    }
     if !took.is_empty() {
         last = now;
         got.extend(took.iter().copied());
@@ -270,8 +296,7 @@ fn fetch(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Entit
     // A lorry waiting on an empty yard while another has some goes there.
     if lorry && got.is_empty() && took.is_empty()
         && let Some(&g) = want.first()
-        && let Some(other) = source(world, owner, g).filter(|&o| o != to && stock(&world.map, o, g) >= 1.0)
-        && trip(world, events, car, to, other, now)
+        && let Some(other) = sources(world, owner, g).into_iter().filter(|&o| o != to && stock(&world.map, o, g) >= 1.0).collect::<Vec<_>>().into_iter().find(|&o| trip(world, events, car, to, o, now))
     {
         world.town.errands.insert(car, Errand::Fetch { to: other, want, got, extra, at: None, last: now });
         return;
@@ -352,6 +377,7 @@ fn unpack(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Enti
                 if let Some(s) = world.map.building_mut(owner).and_then(|b| b.stocks.get_mut(&g)) {
                     s.level = (s.level + n as f64).min(s.cap);
                 }
+                *world.town.tally.entry(("shelved", g)).or_default() += n as u32;
             }
             events.wake(done.saturating_sub(now).max(POLL_MS), car);
         }
@@ -367,9 +393,7 @@ fn off_shift(world: &mut World, events: &mut EventQueue, car: EntityId, owner: E
     let rest = REST_MS as f64 * (0.7 + 0.6 * world.town.roll());
     world.town.rest.insert(car, now + rest as GameTime);
     world.town.errands.remove(&car);
-    if let Some((to, want)) = family_errand(world, car, owner, now)
-        && trip(world, events, car, job, to, now)
-    {
+    if let Some((to, want)) = family_errands(world, car, owner, now).into_iter().find(|(to, _)| trip(world, events, car, job, *to, now)) {
         if let Some(h) = world.map.building_mut(owner).and_then(|b| b.home.as_mut()) {
             for w in h.wants.iter_mut().filter(|w| w.by.is_none() && want.contains(&w.good)) {
                 w.by = Some(car);

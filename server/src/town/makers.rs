@@ -47,4 +47,5 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     if let Some(s) = b.stocks.get_mut(&good) {
         s.level += 1.0;
     }
+    *world.town.tally.entry(("made", good)).or_default() += 1;
 }

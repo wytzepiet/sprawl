@@ -291,7 +291,7 @@ pub struct Lot {
     nodes: Vec<EntityId>,
     edges: Vec<(EntityId, EntityId)>,
     /// The cars at the door.
-    doorway: Vec<EntityId>,
+    pub doorway: Vec<EntityId>,
     /// The lorries refused a dock here, to be woken when one is let go of.
     refused: Vec<EntityId>,
     pub stats: Stats,
@@ -589,7 +589,7 @@ impl Map {
     /// by side, each a notch in its front a truck backs into from the
     /// street, its tail to the loading door (`square`), and leaves forward
     /// either way.
-    fn dock_bays(&self, (tile, street): (GridCoord, EntityId), kind: model::BuildingKind) -> Vec<KerbBay> {
+    pub(crate) fn dock_bays(&self, (tile, street): (GridCoord, EntityId), kind: model::BuildingKind) -> Vec<KerbBay> {
         let Some(r) = self.objects.get(street).and_then(|e| e.position) else { return Vec::new() };
         let (dx, dy) = (r.x - tile.x, r.y - tile.y);
         if dx.abs() + dy.abs() != 1 {
@@ -794,8 +794,10 @@ impl Map {
             // The door holds one at a time, and not while one still pulls
             // away from it.
             .or_else(|| {
+                // Nor is the door anyone's to park at all day: a worker
+                // with no bay free at work finds none there.
                 let Way::Kerb { door, .. } = lot.way;
-                (lot.doorway.iter().all(|&c| c == car) && !self.leaving_from(door, car) && (!front || !lorry || docks == 0)).then_some(Claim::Door)
+                (!self.is_commuter(car) && lot.doorway.iter().all(|&c| c == car) && !self.leaving_from(door, car) && (!front || !lorry || docks == 0)).then_some(Claim::Door)
             });
         let Some(claim) = claim else {
             let lot = self.lots.get_mut(&building).unwrap();
@@ -820,6 +822,10 @@ impl Map {
     }
 
     /// A depot's own vehicle, lorry or van: what takes a dock.
+    fn is_commuter(&self, car: EntityId) -> bool {
+        matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.commuting)
+    }
+
     fn is_lorry(&self, car: EntityId) -> bool {
         matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != model::CarRole::Private)
     }

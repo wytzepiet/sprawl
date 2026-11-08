@@ -5,6 +5,8 @@
 //! pick is on the table.
 
 use model::blueprint::{blueprint, maker};
+use std::collections::BTreeMap;
+
 use model::{BuildingKind, EntityId, Good, Offer, Unlock};
 use crate::world::World;
 use super::{of_kind, PICK_ROADS, PICK_STEP};
@@ -79,18 +81,28 @@ pub fn offer(world: &mut World, now: model::GameTime) {
 }
 
 /// Every card the town could be offered, and how much it needs it: a
-/// kind by the shortages it would fix at their root, a shop by the
-/// families on a street no shop reaches, road by how little is left, a tool once.
+/// kind by how many more of it the town's demand calls for (`rates`),
+/// and by the waits it would fix at their root; a shop by the families
+/// on a street no shop reaches, and the waits where the goods are made
+/// but not brought; road by how little is left, a tool once.
 pub(super) fn candidates(world: &World, now: model::GameTime) -> Vec<(Offer, f64)> {
     let map = &world.map;
+    let rates = rates(world);
+    let mut weight: BTreeMap<BuildingKind, f64> = Default::default();
+    // More makers where the town wants more than they can make, by how
+    // many more it would take.
+    for (&g, &(want, make)) in &rates {
+        let one = 60_000.0 / blueprint(maker(g)).every as f64;
+        let more = ((want - make) / one).max(0.0);
+        *weight.entry(maker(g)).or_default() += 4.0 * more.min(6.0);
+    }
     // Each family's wait, at what it is short of: a want waited on a while
     // three times what the house grows with.
-    let mut weight: std::collections::BTreeMap<BuildingKind, f64> = Default::default();
     for (id, _) in of_kind(map, BuildingKind::House) {
         let Some(h) = map.building(id).and_then(|b| b.home.as_ref()) else { continue };
         let waits = h.wants.iter().filter(|w| now >= w.since + super::homes::PATIENCE_MS / 3).map(|w| (w.good, 3.0)).chain(h.growing.iter().flat_map(|g| g.iter().filter(|(_, s)| s.short() >= 1.0).map(|(&g, _)| (g, 1.0))));
         for (g, w) in waits.collect::<Vec<_>>() {
-            *weight.entry(short_of(world, id, g)).or_default() += w;
+            *weight.entry(short_of(world, &rates, id, g)).or_default() += w;
         }
     }
     let homes: Vec<EntityId> = of_kind(map, BuildingKind::House).into_iter().map(|(id, _)| id).collect();
@@ -108,30 +120,83 @@ pub(super) fn candidates(world: &World, now: model::GameTime) -> Vec<(Offer, f64
     cands
 }
 
-/// What a family waiting on a good is short of: a shop, if the shop it
-/// goes to has it on the shelf, or it sits in a maker's yard with no lorry
-/// come for it yet; else whoever makes it.
-pub(super) fn short_of(world: &World, home: EntityId, good: Good) -> BuildingKind {
+/// Each good the town uses, a minute: how much it wants, and how much
+/// its makers could make at a full crew. What families eat, every house
+/// at its level; and what a maker takes, at the pace it could make at,
+/// or no faster than its own good is wanted.
+pub fn rates(world: &World) -> BTreeMap<Good, (f64, f64)> {
     let map = &world.map;
+    let mut r: BTreeMap<Good, (f64, f64)> = BTreeMap::new();
+    for (id, _) in of_kind(map, BuildingKind::House) {
+        let Some(h) = map.building(id).and_then(|b| b.home.as_ref()) else { continue };
+        for &(g, every) in super::homes::LEVELS[h.level as usize].wants {
+            if h.due.contains_key(&g) {
+                r.entry(g).or_default().0 += 60_000.0 / every as f64;
+            }
+        }
+    }
+    for e in map.objects.iter() {
+        let model::GameObject::Building(ref b) = e.object else { continue };
+        let row = blueprint(b.kind);
+        if let Some(g) = row.makes {
+            r.entry(g).or_default().1 += 60_000.0 / row.every as f64;
+        }
+    }
+    // Down the chains: what a maker takes, at the pace its own good goes,
+    // a link further down each time round.
+    let base: BTreeMap<Good, f64> = r.iter().map(|(&g, &(w, _))| (g, w)).collect();
+    for _ in 0..4 {
+        let mut want = base.clone();
+        for e in map.objects.iter() {
+            let model::GameObject::Building(ref b) = e.object else { continue };
+            let row = blueprint(b.kind);
+            let Some(g) = row.makes else { continue };
+            let (w, make) = r.get(&g).copied().unwrap_or_default();
+            let pace = if make > 0.0 { (60_000.0 / row.every as f64) * (w / make).min(1.0) } else { 0.0 };
+            for &(i, n) in row.takes {
+                *want.entry(i).or_default() += pace * n as f64;
+            }
+        }
+        for (g, w) in want {
+            r.entry(g).or_default().0 = w;
+        }
+    }
+    r
+}
+
+/// What a family waiting on a good is short of: whoever makes it, at its
+/// root, if the town's makers cannot make as much as is wanted; else a
+/// shop, if the shop it goes to has it on the shelf, or it sits in a
+/// maker's yard with no lorry come for it yet; else whoever makes it.
+pub(super) fn short_of(world: &World, rates: &BTreeMap<Good, (f64, f64)>, home: EntityId, good: Good) -> BuildingKind {
+    let map = &world.map;
+    let (want, make) = rates.get(&good).copied().unwrap_or_default();
+    if make < want {
+        return root(world, rates, good, 0);
+    }
     let shelf = super::homes::shop_for(world, home, &[good], 0).is_some_and(|s| super::stock(map, s, good) >= 1.0);
     let yard = of_kind(map, maker(good)).into_iter().map(|(id, _)| super::stock(map, id, good)).sum::<f64>() >= 3.0;
     if shelf || yard {
         return BuildingKind::Shop;
     }
-    root(world, good, 0)
+    root(world, rates, good, 0)
 }
 
-/// Where a shortage of a good really comes from: its makers waiting on an
-/// input (follow that input), or too few makers.
-fn root(world: &World, good: Good, depth: u32) -> BuildingKind {
+/// Where a shortage of a good really comes from: what its makers take,
+/// if too little of that is made, or they wait on it (follow that input);
+/// else too few makers.
+fn root(world: &World, rates: &BTreeMap<Good, (f64, f64)>, good: Good, depth: u32) -> BuildingKind {
     let kind = maker(good);
     if depth > 4 {
         return kind;
     }
-    let starved = world.map.objects.of_kind(kind).filter_map(|id| world.map.building(id)).find_map(|b| blueprint(kind).takes.iter().find(|&&(g, n)| b.stocks.get(&g).is_none_or(|s| s.level < n as f64)).map(|&(g, _)| g));
+    let (want, make) = rates.get(&good).copied().unwrap_or_default();
+    let under = |g: Good| rates.get(&g).is_some_and(|&(w, m)| m < w);
+    let starved = world.map.objects.of_kind(kind).filter_map(|id| world.map.building(id)).find_map(|b| blueprint(kind).takes.iter().find(|&&(g, n)| under(g) || b.stocks.get(&g).is_none_or(|s| s.level < n as f64)).map(|&(g, _)| g));
     match starved {
-        Some(g) => root(world, g, depth + 1),
-        None => kind,
+        // Its makers could make it all, but go without what they take.
+        Some(g) if make >= want || under(g) => root(world, rates, g, depth + 1),
+        _ => kind,
     }
 }
 

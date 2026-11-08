@@ -56,9 +56,9 @@ pub struct Blueprint {
 
 impl Blueprint {
     /// Docks at its front: one for each of its own lorries, which rest in
-    /// them, and one more for lorries come to load, taking turns at it.
+    /// them, and one for each lorry come to load that may wait its turn.
     pub fn docks(&self) -> usize {
-        self.lorries as usize + (self.queue as usize).min(1)
+        self.lorries as usize + self.queue as usize
     }
 
     /// Bays at its kerb: its workers' cars and its customers'.

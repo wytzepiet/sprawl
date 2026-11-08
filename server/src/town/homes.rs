@@ -405,14 +405,18 @@ pub fn catchment(world: &mut World) {
 /// The nearest shop within reach of a house that has any of these on its
 /// shelves, else that sells any of them, open.
 pub fn shop_for(world: &World, home: EntityId, goods: &[Good], now: GameTime) -> Option<EntityId> {
+    shops_for(world, home, goods, now).into_iter().next()
+}
+
+/// Every shop within reach of a house that sells any of these, open:
+/// those with some on the shelf first, nearest first.
+pub fn shops_for(world: &World, home: EntityId, goods: &[Good], now: GameTime) -> Vec<EntityId> {
     if !open(now) {
-        return None;
+        return Vec::new();
     }
     let map = &world.map;
     let has = |s: EntityId, k: f64| map.building(s).is_some_and(|b| goods.iter().any(|g| b.stocks.get(g).is_some_and(|st| st.level >= k)));
-    of_kind(map, BuildingKind::Shop)
-        .into_iter()
-        .map(|(id, _)| id)
-        .filter(|&s| apart(map, s, home) <= REACH && reaches(map, s, home) && has(s, 0.0))
-        .min_by_key(|&s| (!has(s, 1.0), apart(map, s, home), s))
+    let mut v: Vec<EntityId> = of_kind(map, BuildingKind::Shop).into_iter().map(|(id, _)| id).filter(|&s| apart(map, s, home) <= REACH && reaches(map, s, home) && has(s, 0.0)).collect();
+    v.sort_by_key(|&s| (!has(s, 1.0), apart(map, s, home), s));
+    v
 }

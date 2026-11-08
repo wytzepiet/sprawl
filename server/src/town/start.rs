@@ -38,24 +38,30 @@ pub fn found(world: &mut World, now: GameTime) {
     }
 }
 
-/// A short street from the fishery's yard straight inland over open
-/// grass, never cut through a wood, laid free, so
-/// the first shop has somewhere to stand: its far end.
+/// A short street along the fishery's front, so its docks have a street
+/// running straight past them, and from its end straight inland over open
+/// grass, never cut through a wood, laid free, so the first shop has
+/// somewhere to stand: its far end.
 fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
     let b = map.building(fishery)?;
     let (dx, dy) = model::blueprint::FACINGS[b.facing as usize % 4];
-    let front: Vec<GridCoord> = b.tiles.iter().copied().filter(|t| !b.tiles.contains(&GridCoord { x: t.x + dx, y: t.y + dy })).collect();
-    let m = *front.get(front.len() / 2)?;
-    let mut path = Vec::new();
+    let g = Map::gate_of(&b.tiles, BuildingKind::Fishery, b.facing)?;
+    let (ux, uy) = (-dy, dx);
+    let front = GridCoord { x: g.x + dx, y: g.y + dy };
+    let dry = |map: &Map, p: GridCoord| map.terrain.get(&(p.x, p.y)) == Some(&land::TerrainType::Grass) && !map.occupied.contains_key(&(p.x, p.y));
+    let mut path: Vec<GridCoord> = (-1..=1).map(|k| GridCoord { x: front.x + k * ux, y: front.y + k * uy }).collect();
+    if !path.iter().all(|&p| dry(map, p)) {
+        return None;
+    }
+    let corner = path[2];
     for k in 1..=LANE {
-        let p = GridCoord { x: m.x + k * dx, y: m.y + k * dy };
-        let dry = map.terrain.get(&(p.x, p.y)) == Some(&land::TerrainType::Grass);
-        if !dry || map.occupied.contains_key(&(p.x, p.y)) {
+        let p = GridCoord { x: corner.x + k * dx, y: corner.y + k * dy };
+        if !dry(map, p) {
             break;
         }
         path.push(p);
     }
-    if path.len() < 4 {
+    if path.len() < 3 + 4 {
         return None;
     }
     // Laid free: the town's road starts whole.

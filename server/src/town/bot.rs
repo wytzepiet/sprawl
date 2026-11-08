@@ -132,11 +132,18 @@ fn ground_near(map: &Map, kind: BuildingKind, t: GridCoord) -> bool {
     let terrain = |p: GridCoord| map.terrain.get(&(p.x, p.y)).copied();
     match model::blueprint::blueprint(kind).ground {
         Ground::Forest => (-4..=4).flat_map(|dx| (-4..=4).map(move |dy| (dx, dy))).filter(|&(dx, dy)| terrain(at(t.x + dx, t.y + dy)) == Some(land::TerrainType::Forest)).count() >= 18,
-        Ground::Shore => near(2, &|p| matches!(terrain(p), Some(land::TerrainType::Sea | land::TerrainType::Water))),
+        Ground::Shore => shore_dir(map, t).is_some(),
         Ground::Clay => near(1, &|p| map.deposits.get(&(p.x, p.y)) == Some(&land::Deposit::Clay)),
         Ground::Beach => near(1, &|p| terrain(p) == Some(land::TerrainType::Beach)),
         _ => true,
     }
+}
+
+/// The way to the water from a tile a fishery's street would run past:
+/// one tile of land for its plot, then the water.
+fn shore_dir(map: &Map, t: GridCoord) -> Option<(i32, i32)> {
+    let wet = |p: GridCoord| matches!(map.terrain.get(&(p.x, p.y)), Some(land::TerrainType::Sea | land::TerrainType::Water));
+    N4.iter().copied().find(|&(dx, dy)| map.is_buildable(at(t.x + dx, t.y + dy)) && wet(at(t.x + 2 * dx, t.y + 2 * dy)) && [-1, 1].iter().all(|&k| map.is_buildable(at(t.x + dx - dy * k, t.y + dy + dx * k)) && wet(at(t.x + 2 * dx - dy * k, t.y + 2 * dy + dx * k))))
 }
 
 /// Each building in hand, placed where it fits nearest the town's middle,
@@ -197,7 +204,8 @@ fn place_hand(game: &mut Game, tried: &mut BTreeMap<BuildingKind, u32>) {
             // Two tiles on past the goal, the way it ran, for a front to face it.
             let mut path = path;
             let (a, b) = (path[path.len() - 2], path[path.len() - 1]);
-            for k in 1..=2 {
+            let past = if model::blueprint::blueprint(kind).ground == model::blueprint::Ground::Shore { 0 } else { 2 };
+            for k in 1..=past {
                 let t = at(b.x + (b.x - a.x) * k, b.y + (b.y - a.y) * k);
                 if !map.is_buildable(t) {
                     break;
@@ -206,6 +214,24 @@ fn place_hand(game: &mut Game, tried: &mut BTreeMap<BuildingKind, u32>) {
             }
             for w in path.windows(2) {
                 step(game, w[0], w[1]);
+            }
+            // And a crossbar at its end, a street running straight past
+            // where a front would stand.
+            let end = *path.last().unwrap();
+            let (px, py) = match shore_dir(&game.world.map, end).filter(|_| model::blueprint::blueprint(kind).ground == model::blueprint::Ground::Shore) {
+                Some((dx, dy)) => (-dy, dx),
+                None => (-(b.y - a.y), b.x - a.x),
+            };
+            for side in [1, -1] {
+                let mut from = end;
+                for k in 1..=2 {
+                    let t = at(end.x + px * side * k, end.y + py * side * k);
+                    if !game.world.map.is_buildable(t) {
+                        break;
+                    }
+                    step(game, from, t);
+                    from = t;
+                }
             }
         } else {
             println!("  nowhere for the {kind:?}");
@@ -227,7 +253,7 @@ fn pick(game: &mut Game) {
     let mut why: BTreeMap<String, u32> = BTreeMap::new();
     for (id, _) in of_kind(&game.world.map, BuildingKind::House) {
         for w in game.world.map.building(id).and_then(|b| b.home.as_ref()).map_or(vec![], |h| h.wants.clone()) {
-            *why.entry(format!("{:?}->{:?}", w.good, picks::short_of(&game.world, id, w.good))).or_default() += 1;
+            *why.entry(format!("{:?}->{:?}", w.good, picks::short_of(&game.world, &picks::rates(&game.world), id, w.good))).or_default() += 1;
         }
     }
     println!("  pick {:?} of {:?}; top {:?}; waits {:?}", offer[n], offer, &c[..3.min(c.len())], why);
@@ -364,6 +390,29 @@ fn report(game: &Game) {
         people(map), &levels[1..], world.town.left, oldest / 1000, world.town.roads(map),
         world.town.hand.iter().filter(|(_, n)| **n > 0).collect::<Vec<_>>()
     );
+    println!("    tally: {}", world.town.tally.iter().map(|((k, g), n)| format!("{k} {g:?} {n}")).collect::<Vec<_>>().join(", "));
+    {
+        let mut st: BTreeMap<&str, u32> = BTreeMap::new();
+        for (id, _) in of_kind(map, BuildingKind::Shop) {
+            for c in map.objects.fleet(id) {
+                let car = map.car(c);
+                let k = match (world.town.errands.get(&c), car.is_some_and(|x| x.trip.is_some())) {
+                    (None, _) => "idle",
+                    (Some(errands::Errand::Fetch { .. }), true) => "to source",
+                    (Some(errands::Errand::Fetch { .. }), false) => "at source",
+                    (Some(errands::Errand::Home { .. }), true) => "home bound",
+                    (Some(_), _) => "other",
+                };
+                *st.entry(k).or_default() += 1;
+            }
+        }
+        println!("    shop lorries: {st:?}");
+        let speeds: Vec<f64> = map.objects.iter().filter_map(|e| match e.object { GameObject::Car(ref c) => c.trip.as_ref().map(|t| t.speed), _ => None }).collect();
+        let n = speeds.len().max(1) as f64;
+        println!("    moving {} mean speed {:.2} stopped {}", speeds.len(), speeds.iter().sum::<f64>() / n, speeds.iter().filter(|&&v| v < 0.05).count());
+    }
+    let rates = picks::rates(world);
+    println!("    rates/min (want, make): {}", rates.iter().map(|(g, (w, m))| format!("{g:?} {w:.1}/{m:.1}")).collect::<Vec<_>>().join(", "));
     for e in map.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         if b.kind == BuildingKind::House {
@@ -377,6 +426,8 @@ fn report(game: &Game) {
         if b.kind != BuildingKind::Shop {
             print!("    [{} shops reach it, {} lorries for it]", reached, lorries_at);
         }
+        if std::env::var("LORRY").is_ok() { if let Some(l) = map.lots.get(&e.id) { println!("      lot docks {} door {:?} spots {:?}", l.docks(), l.doorway, l.spots.iter().map(|s| s.windows.iter().map(|w| (w.car, w.from, w.to)).collect::<Vec<_>>()).collect::<Vec<_>>()); } }
+        if std::env::var("LORRY").is_ok() { for c in map.objects.fleet(e.id) { let car = map.car(c); println!("      lorry {c}: trip {:?} run {:?} due {:?} claim {:?} errand {:?} pos {:?}", car.map(|x| x.trip.is_some()), car.map(|x| x.run.is_some()), car.map(|x| x.due), map.claims.get(&c), world.town.errands.get(&c), map.objects.get(c).and_then(|o| o.position)); } }
         println!("    {:?}#{} crew {}/{} here {} out {} {}{}", b.kind, e.id, b.crew.len(), row.seats, b.present, lorries, stocks.join(", "), if map.street_of(e.id).is_none() { " NO STREET" } else { "" });
     }
 }
