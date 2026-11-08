@@ -86,23 +86,38 @@ pub fn at(world: &Traffic, trip: &Trip, k: usize) -> Option<Way> {
     let street = |k: usize| k >= trip.from_lot && k < n - trip.to_lot;
     // Where it joins the street, and where it leaves it.
     let (out, into) = (trip.from_lot, n - 1 - trip.to_lot);
+    // At a junction, the junction says who goes: the place is one more
+    // of its arms.
+    let junction = |k: usize| world.map.is_intersection(trip.route[k]);
     // Out and back in at one street node, next door: one way through it.
     let next_door = trip.from_lot > 0 && trip.to_lot > 0 && out == into;
-    if trip.from_lot > 0 && k == 1 {
+    if trip.from_lot > 0 && k == 1 && !junction(out) {
         let (here, at) = (trip.route[out], lane(trip));
         let end = if next_door { n - 1 } else { out };
         return Some(Way { id: DRIVEWAYS | here, track: track(&way(trip, &at, 0, end), pos(here)?), start: seg(1), past: trip.along[end] - trip.along[1], turns: true });
     }
-    if trip.to_lot > 0 && k == into + 1 && !next_door {
+    if trip.to_lot > 0 && k == into + 1 && !next_door && !junction(into) {
         let (here, at) = (trip.route[into], lane(trip));
         return Some(Way { id: DRIVEWAYS | here, track: track(&way(trip, &at, into, n - 1), pos(here)?), start: seg(k), past: trip.along[n - 1] - trip.along[k], turns: true });
     }
     let here = trip.route[k];
-    if k + 1 < n && street(k - 1) && street(k + 1) && world.map.driveways.contains_key(&here) {
+    if k + 1 < n && street(k - 1) && street(k + 1) && world.map.driveways.contains_key(&here) && !junction(k) {
         // A tile either side: one backing out of a bay by the kerb sweeps
-        // along the street as much as across it.
-        let at = lane(trip);
-        return Some(Way { id: DRIVEWAYS | here, track: track(&at[k - 1..=k + 1], pos(here)?), start: seg(k), past: seg(k + 1), turns: false });
+        // along the street as much as across it. Each end in its lane as
+        // the street runs from here: where it bends a tile on, the lanes
+        // come together round the corner, nearer than two ways that never
+        // meet (`CLEAR`), and the street's two lanes held each other.
+        // A junction there, only as far as its edge: one held at the
+        // driveway stands clear of the junction behind it.
+        let p = &trip.route_positions;
+        let reach = |j: usize| if junction(j) { 0.5 } else { 1.0 };
+        let end = |j: usize| {
+            let o = offset_positions(&[p[k], p[j]], if j > k { LANE_OFFSET } else { -LANE_OFFSET });
+            let r = reach(j);
+            [o[0][0] + (o[1][0] - o[0][0]) * r, o[0][1] + (o[1][1] - o[0][1]) * r]
+        };
+        let ends = [end(k - 1), lane(trip)[k], end(k + 1)];
+        return Some(Way { id: DRIVEWAYS | here, track: track(&ends, pos(here)?), start: seg(k) * reach(k - 1), past: seg(k + 1) * reach(k + 1), turns: false });
     }
     None
 }

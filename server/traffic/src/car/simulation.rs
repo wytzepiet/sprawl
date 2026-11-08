@@ -934,7 +934,7 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
         })
     };
     // Each junction it would claim, and how far on it is clear of it.
-    let mut wants = Vec::new();
+    let mut wants: Vec<(usize, f64, f64, Gate, crate::intersection::Claim)> = Vec::new();
     let mut to_k = seg_start - cur_progress;
     let next = 'scan: {
         for k in ri..trip.route.len() {
@@ -962,8 +962,10 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
                 let begins = to_k - g.start;
                 // Driving by a driveway someone waits to turn at, with no
                 // room past it to be clear of it, it keeps it clear: it
-                // says nothing there, and stops short of it.
-                if g.driveway() && !g.turns && keeps_clear(world, h, trip, begins, to_k + g.past, &g) {
+                // says nothing there, and stops short of it; unless short
+                // of it is still in the junction before it.
+                let in_junction = wants.iter().any(|w| !w.3.driveway() && w.2 > begins - nose(role) - INTERSECTION_STOP_MARGIN);
+                if g.driveway() && !g.turns && !in_junction && keeps_clear(world, h, trip, begins, to_k + g.past, &g) {
                     continue;
                 }
                 // A driveway's line is where its track begins: the street
@@ -1042,7 +1044,19 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
     };
     let mut waiting = Vec::new();
     for made in 0..wants.len() {
-        let (k, _, _, ref g, mut claim) = wants[made];
+        let (k, _, out, ref g, mut claim) = wants[made];
+        // Driving by a driveway, it does not go into it to stand there
+        // waiting for the junction past it: it keeps it clear, and waits
+        // short of it, as it does for a queue (`keeps_clear`); unless short
+        // of it is still in the junction before it, where it would stand
+        // in everyone's way.
+        let line = wants[made].1 - INTERSECTION_STOP_MARGIN;
+        if g.driveway() && !g.turns && !claim.committed
+            && !wants[..made].iter().any(|w| !w.3.driveway() && w.2 > line)
+            && wants[made + 1..].iter().any(|w| !w.3.driveway() && w.1 < out + nose(role) && !world.streets.has_passage(w.3.id, car_id))
+        {
+            continue;
+        }
         // Still behind a give-way line short of it, it is not on the
         // priority road yet, and comes to the next junction as anyone does.
         claim.major &= !wants[..made].iter().any(|w| !w.4.major && !world.streets.has_passage(w.3.id, car_id));
@@ -1096,7 +1110,7 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
 /// in its lane standing too near past it for this one to be clear of it.
 fn keeps_clear(world: &Traffic, h: &Here, trip: &Trip, begins: f64, ends: f64, g: &Gate) -> bool {
     let Here { car_id, role, now, ri, progress, speed, .. } = *h;
-    if begins - nose(role) < physics::braking_distance(speed, 0.0) || !world.streets.waited_across(g.id, car_id, &g.track) {
+    if begins - nose(role) < physics::braking_distance(speed, 0.0) || !world.streets.waited_across(g.id, car_id, &g.track, now) {
         return false;
     }
     // The car ahead in its lane, as far along this one's way as it is.

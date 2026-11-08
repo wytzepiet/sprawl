@@ -378,7 +378,9 @@ impl IntersectionManager {
         let mut ahead = e.claim.after;
         for _ in 0..self.queue.len() + self.passing.len() {
             let Some(a) = ahead.and_then(|a| self.queue.iter().chain(&self.passing).find(|o| o.car_id == a)) else { break };
-            due = due.max(a.arrived);
+            // After it, never with it: a tie went to the lower id, and a
+            // car behind came first and was waited for by the one ahead.
+            due = due.max(a.arrived.saturating_add(1));
             ahead = a.claim.after;
         }
         (!e.claim.major, due, e.car_id)
@@ -550,11 +552,14 @@ impl IntersectionRegistry {
     }
 
     /// Is anyone but this car waiting at this junction to come across its
-    /// way (`track`): not one behind it in its lane, whose way begins
-    /// where its own does.
-    pub fn waited_across(&self, node_id: EntityId, car_id: EntityId, track: &Track) -> bool {
+    /// way (`track`): at its line by now, not on its way there still, some
+    /// way off and held up perhaps in the very queue that would keep clear
+    /// for it; and not one behind it in its lane, whose way begins on its
+    /// own.
+    pub fn waited_across(&self, node_id: EntityId, car_id: EntityId, track: &Track, now: GameTime) -> bool {
         let Some(m) = self.managers.get(&node_id) else { return false };
-        m.queue.iter().filter(|e| e.car_id != car_id).filter_map(|e| e.claim.track).any(|t| t[0] != track[0] && near(&t, track).is_some())
+        let on = |p: [f32; 2]| track.windows(2).any(|w| between(p, p, w[0], w[1]) < CLEAR);
+        m.queue.iter().filter(|e| e.car_id != car_id && e.claim.due <= now + HOLD).filter_map(|e| e.claim.track).any(|t| !on(t[0]) && near(&t, track).is_some())
     }
 
     /// Where along its track a car waiting at a junction first comes into
