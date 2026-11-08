@@ -433,7 +433,8 @@ fn gates(world: &Traffic, trip: &Trip, k: usize) -> [Option<Gate>; 3] {
         && let (Some(from), Some(to)) = (arm(world, at, prev), arm(world, at, route[k + 1]))
     {
         let track = map::track::track(p, j, n, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]));
-        out[1] = Some(Gate { id: at, from, to, track, start: world.map.segment_length(prev, at) / 2.0, past: 0.0, turns: false });
+        let (track, start, past) = driveway::through_lot(trip, k, &track, j, world.map.segment_length(prev, at) / 2.0, 0.0);
+        out[1] = Some(Gate { id: at, from, to, track, start, past, turns: false });
     }
     out[2] = driveway::at(world, trip, k).map(|w| Gate { id: w.id, from: (0, 0), to: (0, 0), track: w.track, start: w.start, past: w.past, turns: w.turns });
     out

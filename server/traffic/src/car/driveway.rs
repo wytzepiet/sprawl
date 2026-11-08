@@ -125,6 +125,27 @@ pub fn at(world: &Traffic, trip: &Trip, k: usize) -> Option<Way> {
     None
 }
 
+/// A way through a junction a place opens onto (`at` leaves those to the
+/// junction): its track (`mid`, from the node `o`) run on back to where the
+/// car stands, or on to where it will, since it sweeps the street as it
+/// turns; and how far before route node `k` it begins and past it ends.
+pub fn through_lot(trip: &Trip, k: usize, mid: &Track, o: [f64; 2], start: f64, past: f64) -> (Track, f64, f64) {
+    let n = trip.route.len();
+    let (out, into) = (k == trip.from_lot && k > 0, trip.to_lot > 0 && k + 1 == n - trip.to_lot);
+    if (!out && !into) || trip.route_positions.len() != n || trip.along.len() != n {
+        return (*mid, start, past);
+    }
+    let at = lane(trip);
+    let mut points = if out { way(trip, &at, 0, k - 1) } else { Vec::new() };
+    points.extend(mid.iter().map(|q| [q[0] as f64 + o[0], q[1] as f64 + o[1]]));
+    if into {
+        points.extend(way(trip, &at, k + 1, n - 1));
+    }
+    let start = if out { trip.along[k] } else { start };
+    let past = if into { trip.along[n - 1] - trip.along[k] } else { past };
+    (track(&points, o), start, past)
+}
+
 /// How far along a track its point `i` is.
 pub fn along(track: &Track, i: usize) -> f64 {
     track.windows(2).take(i).map(|w| ((w[1][0] - w[0][0]) as f64).hypot((w[1][1] - w[0][1]) as f64)).sum()

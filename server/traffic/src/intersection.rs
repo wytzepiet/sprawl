@@ -11,6 +11,8 @@ pub type Dir = (i32, i32);
 /// How near two cars' tracks may come before they are in each other's
 /// way: a car's width, and a little.
 const CLEAR: f32 = 0.15;
+/// Half a car's length.
+const HALF_BODY: f32 = 0.145;
 
 /// What a party asks of a junction: its way through, and when it means
 /// to be there.
@@ -462,7 +464,7 @@ impl IntersectionRegistry {
     /// only, goes out in its lane.
     pub fn meets(&self, node_id: EntityId, car_id: EntityId, track: &Track, into: bool) -> bool {
         let Some(m) = self.managers.get(&node_id) else { return false };
-        m.queue.iter().chain(&m.passing).filter(|e| e.car_id != car_id).map(|e| e.claim.track).any(|t| t[0] != track[0] && if into { t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1] } else { apart(&t, track) < CLEAR })
+        m.queue.iter().chain(&m.passing).filter(|e| e.car_id != car_id).map(|e| e.claim.track).any(|t| t[0] != track[0] && if into { t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1] } else { near(&t, track).is_some() })
     }
 
     /// Is anyone coming in by another arm than `from` to come out where a
@@ -531,13 +533,14 @@ impl IntersectionRegistry {
 }
 
 
-/// Where two tracks come nearer than `CLEAR`: on each, from the first
-/// point of the first stretch that does to the last point of the last.
+/// Where two tracks come nearer than their cars' bodies let them
+/// (`clear`): on each, from the first point of the first stretch that
+/// does to the last point of the last.
 fn near(a: &Track, b: &Track) -> Option<([usize; 2], [usize; 2])> {
     let (mut i, mut j) = ([usize::MAX, 0], [usize::MAX, 0]);
     for (k, p) in a.windows(2).enumerate() {
         for (l, q) in b.windows(2).enumerate() {
-            if between(p[0], p[1], q[0], q[1]) < CLEAR {
+            if between(p[0], p[1], q[0], q[1]) < clear(p, q) {
                 (i[0], i[1]) = (i[0].min(k), i[1].max(k + 1));
                 (j[0], j[1]) = (j[0].min(l), j[1].max(l + 1));
             }
@@ -546,15 +549,14 @@ fn near(a: &Track, b: &Track) -> Option<([usize; 2], [usize; 2])> {
     (i[0] != usize::MAX).then_some((i, j))
 }
 
-/// How near two tracks come.
-fn apart(a: &Track, b: &Track) -> f32 {
-    let mut near = f32::MAX;
-    for p in a.windows(2) {
-        for q in b.windows(2) {
-            near = near.min(between(p[0], p[1], q[0], q[1]));
-        }
-    }
-    near
+/// How near two stretches of two cars' ways may come: side by side, a
+/// car's width (`CLEAR`); turned across each other, more: seen square to
+/// one, the other's body reaches out by its half length as it turns.
+fn clear(p: &[[f32; 2]], q: &[[f32; 2]]) -> f32 {
+    let (u, v) = ([p[1][0] - p[0][0], p[1][1] - p[0][1]], [q[1][0] - q[0][0], q[1][1] - q[0][1]]);
+    let l = (u[0].hypot(u[1]) * v[0].hypot(v[1])).max(1e-9);
+    let (sin, cos) = ((u[0] * v[1] - u[1] * v[0]).abs() / l, (u[0] * v[0] + u[1] * v[1]).abs() / l);
+    CLEAR / 2.0 * (1.0 + cos) + HALF_BODY * sin
 }
 
 /// How near two segments come: none if they cross.
@@ -573,7 +575,7 @@ fn between(a: [f32; 2], b: [f32; 2], c: [f32; 2], d: [f32; 2]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{apart, CLEAR};
+    use super::near;
     use map::track::track;
 
     /// Ways through a junction at the origin, by the neighbours' steps and
@@ -611,17 +613,18 @@ mod tests {
     fn tracks_cross_where_cars_would() {
         let (w, e, n, s) = ((-1, 0), (1, 0), (0, -1), (0, 1));
         // Two one-ways each bending round its own corner of one tile.
-        assert!(apart(&way(w, n, false), &way(s, e, false)) > CLEAR, "two bends in opposite corners meet");
+        assert!(near(&way(w, n, false), &way(s, e, false)).is_none(), "two bends in opposite corners meet");
         // Straight across each other.
-        assert!(apart(&way(w, e, true), &way(s, n, true)) < CLEAR, "a crossroads does not cross");
+        assert!(near(&way(w, e, true), &way(s, n, true)).is_some(), "a crossroads does not cross");
         // Two ways of a road both ways, side by side.
-        assert!(apart(&way(w, e, true), &way(e, w, true)) > CLEAR, "a road's two lanes meet");
+        assert!(near(&way(w, e, true), &way(e, w, true)).is_none(), "a road's two lanes meet");
         // A left turn across the oncoming lane.
-        assert!(apart(&way(w, n, true), &way(e, w, true)) < CLEAR, "a left turn misses the oncoming");
+        assert!(near(&way(w, n, true), &way(e, w, true)).is_some(), "a left turn misses the oncoming");
         // Two right turns from opposite arms.
-        assert!(apart(&way(w, s, true), &way(e, n, true)) > CLEAR, "two right turns meet");
-        // A diagonal past a one-way's bend.
-        assert!(apart(&way((-1, 1), (1, -1), false), &way(n, w, false)) > CLEAR, "a diagonal meets a bend it passes");
+        assert!(near(&way(w, s, true), &way(e, n, true)).is_none(), "two right turns meet");
+        // A diagonal past a one-way's bend, a body's width off it but
+        // turned across it: the corners of the two cars would touch.
+        assert!(near(&way((-1, 1), (1, -1), false), &way(n, w, false)).is_some(), "a diagonal misses the bend its car's corner sweeps");
     }
 
     use super::*;
