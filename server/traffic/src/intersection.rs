@@ -297,13 +297,18 @@ impl IntersectionManager {
                 }
     }
 
-    /// Is `e` held up by `p`, through already: across its way, unless
+    /// Is `e` held up by `p`, through already (but not behind it in its
+    /// lane): across its way, unless
     /// `p`'s tail will be past where their ways meet when `e`'s nose comes
     /// there, or, `e` at its line, `e` would be past before `p` can come
     /// (`nose` is the soonest it can); into its lane, until `p` is in, for
     /// `e` to follow it, when `e` comes to its line.
     fn held_by(&self, e: &QueueEntry, p: &QueueEntry, now: GameTime) -> bool {
         let at_line = e.claim.due <= now;
+        // Never by the one behind it in its lane: that one comes after.
+        if p.claim.after == Some(e.car_id) {
+            return false;
+        }
         match self.meet(e, p) {
             Meet::Apart => false,
             Meet::Cross([i0, i1], [j0, j1]) => e.nose(i0, now) < p.tail(j1, now).saturating_add(SPARE / 2) && !(at_line && e.tail(i1, now).saturating_add(SPARE) <= p.nose(j0, now)),

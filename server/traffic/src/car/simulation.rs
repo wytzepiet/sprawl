@@ -1016,9 +1016,12 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
     let mut start = 0;
     while start < wants.len() {
         let mut end = start;
-        // Driveway to driveway is no box: a street of them, each a tile
-        // either side, would be one from end to end.
-        while end + 1 < wants.len() && wants[end].2 > wants[end + 1].1 - INTERSECTION_STOP_MARGIN && !(wants[end].3.driveway() && wants[end + 1].3.driveway()) {
+        // Driving by driveway after driveway is no box: a street of them,
+        // each a tile either side, would be one from end to end. Turning
+        // in or out at one beside another is: held at one and waiting at
+        // the other, it locks with whoever is the other way round.
+        let by = |w: &(usize, f64, f64, Gate, crate::intersection::Claim)| w.3.driveway() && !w.3.turns;
+        while end + 1 < wants.len() && wants[end].2 > wants[end + 1].1 - INTERSECTION_STOP_MARGIN && !(by(&wants[end]) && by(&wants[end + 1])) {
             end += 1;
         }
         let group = start..=end;
