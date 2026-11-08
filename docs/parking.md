@@ -98,18 +98,26 @@ turns and a steady trickle of loops, slides and places with no way in.
 
 ## 7. Giving way at a lot
 
-Where a lot's way out meets the street is a **give-way line**: the car
-waits there until nobody is coming who could not stop for it (`gap_at`),
-then holds the street node until its tail is clear, and joins the
-street's queues where it stands, ahead of whoever is still coming
-(`join_run`). A car turns in when nobody is moving toward it from the
-other way (`clear_to_turn_in`) and holds its turn until it is parked; a
-kerb bay's turn holds every street node of the stretch it crosses
-(`Trip::stretches`), and only the car at the head of its queue into the
-lot may take it. A car standing in a queue short of the node lets one
-out, as drivers do. Every hold lapses after `PATIENCE` standing still
-(§9). The holds cost the town about a sixth of its speed
-(`how_fast_a_town_runs`).
+**A driveway is a junction** (`car/driveway.rs`), with the same
+controller as any other (`IntersectionManager`), known by the street
+node beside the place (`Map::driveway`), and it splits no route: each
+car says its way through it as a track, as it does at a junction. One
+turning in says its way from the street node it turns off after to
+where it will stand; one pulling out, from where it stands to the street
+node it joins at; and while anyone turns there, everyone driving by
+says theirs, along its lane from half a tile before the node to the
+next. The street has priority: one pulling out is a side road and waits
+for a gap where it stands, and after `EXIT_PATIENCE` (twelve seconds)
+takes its turn as anyone does; one turning in goes in the order it
+comes. Whoever is held up stops just short of where its way first
+meets the way of the one it waits for (`IntersectionRegistry::held_at`),
+not at a line. When one first comes to turn there, the driveway lets
+nobody through for a second (`WARM`) while whoever is coming by is
+woken to say when they will be there. A car pulling out joins the
+street's queues once it may go, ahead of whoever is still coming
+(`join_run`). Out and back in at one driveway is one way through it.
+A driveway is never one with the junction beside it: a car waits at it
+for its own gap, not for the next junction to let it through.
 
 ## 8. Where the kerb runs out
 
@@ -153,8 +161,8 @@ but it needs the edge queues in physical order, and a re-planned trip, a
 car pulling out into a lane and the order cars happen to wake all put a
 car behind one that registered later, which the reservation turns into
 a new deadlock. So: queues ordered by position first, then the box rule.
-Of that, the give-way lines and joining a queue where a car stands are
-built (§7).
+Of that, giving way at driveways and joining a queue where a car
+stands are built (§7).
 
 **Found 2026-10-28:** two cars coming out of lots at one street node
 stand level in the street's queues, both at the node, and level measured

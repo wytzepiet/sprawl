@@ -50,12 +50,6 @@ pub struct Map {
     /// Maps node_id → set of car_ids whose route passes through that node,
     /// in id order: a road taken up reroutes them in it.
     pub node_cars: HashMap<EntityId, BTreeSet<EntityId>>,
-    /// The car turning between the street and a lot at each street node,
-    /// and when it was last seen moving: pulling out, from the moment it
-    /// found a gap until its tail is clear of the node; turning in, from
-    /// leaving the street there until it is parked. The street waits for it
-    /// (`car::simulation`, `gap_at`), unless it stands still too long.
-    pub manoeuvres: HashMap<EntityId, (EntityId, model::GameTime)>,
     /// Lorries refused a dock whose yard has since had one let go of: the
     /// game wakes them to try again now, not an hour on (`World::drive`).
     pub docks_freed: Vec<EntityId>,
@@ -172,7 +166,6 @@ impl Map {
             claims: HashMap::default(),
             network: RoadNetwork::default(),
             node_cars: HashMap::default(),
-            manoeuvres: HashMap::default(),
             docks_freed: Vec::new(),
             terrain_seed: 0,
             laid: 0,
@@ -258,7 +251,6 @@ impl Map {
                     seg.remove(car_id);
                 }
             }
-            self.manoeuvres.retain(|_, (c, _)| *c != car_id);
         }
     }
 

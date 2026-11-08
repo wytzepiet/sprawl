@@ -2,7 +2,7 @@ pub mod physics;
 pub mod reroute;
 pub mod simulation;
 pub mod spawn;
-pub mod sweep;
+pub mod driveway;
 
 /// What a vehicle drives in a lot: a manoeuvring pace, under twenty
 /// kilometres an hour.

@@ -1020,27 +1020,12 @@ impl Map {
         self.legs_out(car).iter().take_while(|l| l.back).count()
     }
 
-    /// The nodes a car holds while it turns between the street and its
-    /// place, coming or going, besides where it leaves or joins the street:
-    /// the street waits at all of them. A kerb bay's, the street nodes
-    /// either side of where it turns. A front's lorry holds its door too: a
-    /// front is one lorry moving at a time, so one coming in waits at the
-    /// gate and one leaving in its dock until the front is clear.
-    pub fn stretch(&self, car: EntityId) -> Vec<EntityId> {
-        let Some((lot, bay, i)) = self.bay_of(car) else {
-            return Vec::new();
-        };
-        let side = &bay.sides[lot.side(i, car)];
-        let mut nodes = vec![side.entry, side.ahead, lot.exit(bay, i, car).node];
-        if let Way::Kerb { door, .. } = lot.way
-            && self.is_lorry(car)
-            && self.has_front(self.claims[&car])
-        {
-            nodes.push(door);
-        }
-        nodes.sort_unstable();
-        nodes.dedup();
-        nodes
+    /// The driveway a car turns at between the street and the place it
+    /// holds: the street node beside it, where the street takes turns with
+    /// it as at a junction (`traffic::car::driveway`). None at a door.
+    pub fn driveway(&self, car: EntityId) -> Option<EntityId> {
+        let (lot, bay, i) = self.bay_of(car)?;
+        Some(bay.sides[lot.side(i, car)].ahead)
     }
 
     /// How many edges at the end of the car's way in are driven backwards:
@@ -1248,8 +1233,7 @@ mod tests {
         assert_eq!(out[0], way[n - 1], "out of the dock");
         assert_eq!(world.backs_out(lorry), 0, "forward");
         let gate = world.door_of(depot).unwrap();
-        let held = world.stretch(lorry);
-        assert!(held.contains(&gate.1) || held.iter().any(|n| world.arms_of(gate.1, false).contains(n)), "the street waits while it turns");
+        assert_eq!(world.driveway(lorry), Some(gate.1), "it turns at the street before its gate");
     }
 
 }
