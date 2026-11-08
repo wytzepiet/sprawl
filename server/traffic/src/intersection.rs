@@ -8,12 +8,6 @@ use map::track::{Track, TRACK_POINTS};
 
 pub type Dir = (i32, i32);
 
-/// Who may go together through a junction: does a party waiting, from
-/// its arm to its exit, cross one passing. Only ships, which say no track,
-/// are judged by one (`sea::lanes`; keeping right is
-/// `paths_conflict`); a car says its track.
-pub type Rule = fn(waiting: (Dir, Dir), passing: (Dir, Dir)) -> bool;
-
 /// How near two cars' tracks may come before they are in each other's
 /// way: a car's width, and a little.
 const CLEAR: f32 = 0.15;
@@ -24,9 +18,8 @@ const CLEAR: f32 = 0.15;
 pub struct Claim {
     pub from: Dir,
     pub to: Dir,
-    /// Its way through, in its lanes, if it is a car on the road; a ship,
-    /// none, and its junction's rule says who crosses whom.
-    pub track: Option<Track>,
+    /// Its way through, in its lanes.
+    pub track: Track,
     /// Coming in on a priority road: it goes before anyone on a minor one.
     pub major: bool,
     /// When it comes to the line; and at each point of its track, when its
@@ -71,7 +64,7 @@ impl QueueEntry {
     }
     /// It cannot say when it will be out, waiting at another junction
     /// first: those it would hold up see it coming, but it is not let
-    /// through. A ship, which cannot say either, is let through.
+    /// through.
     fn waits(&self) -> bool {
         self.claim.tail[0] == GameTime::MAX && !self.claim.committed
     }
@@ -85,52 +78,13 @@ pub const HOLD: GameTime = 3_000;
 /// they meet and the other's nose into it: each says when it will be there
 /// going as fast as it may, and may be slower.
 const SPARE: GameTime = 1_000;
-/// How much shorter a gap one waiting at its line takes, at most: a tenth
-/// of the time it has waited.
-pub const IMPATIENCE: GameTime = 1_500;
 /// How two ways through a junction meet: not at all; across each other,
 /// over a stretch of each track (from the point its nose comes into the
-/// other's way, to the one its tail is out of it at); into one lane; or, a
-/// way unknown, as the junction's rule says, across the whole of it.
+/// other's way, to the one its tail is out of it at); or into one lane.
 enum Meet {
     Apart,
     Cross([usize; 2], [usize; 2]),
     Merge,
-    Rule,
-}
-
-/// How long a car holds a junction it cannot use before it waves the others
-/// through: a driver stuck behind something with the cross traffic waiting
-/// gives way in a matter of seconds. A claim held that long by a car that
-/// is not moving lapses, and the car queues again. Two driveways two tiles
-/// apart can otherwise hold each other for good (docs/parking.md §9); with
-/// this, no claim outlives whatever is blocking it. Physics seconds, like
-/// the cruising speed.
-pub const PATIENCE: GameTime = 10_000;
-
-/// Angle on the game map (y-down screen coords → negate y for math-CCW = map-CCW).
-fn dir_angle(d: Dir) -> f64 {
-    (-(d.1 as f64)).atan2(d.0 as f64)
-}
-
-/// Right-hand traffic conflict test.
-/// Sweep CCW from the waiting car's entry arm. If we hit the waiting car's exit
-/// before any arm of the passing car, the paths don't cross.
-pub fn paths_conflict((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) -> bool {
-    // Same entry arm: segment ordering handles safety
-    if w_from == p_from {
-        return false;
-    }
-    let base = dir_angle(w_from);
-    let tau = std::f64::consts::TAU;
-    let ccw = |d: Dir| (dir_angle(d) - base).rem_euclid(tau);
-    let w_to = ccw(w_to);
-    let p_from = ccw(p_from);
-    let p_to = ccw(p_to);
-    // Conflict if a passing arm appears before our exit in the CCW sweep.
-    // p_from at boundary = opposite directions on same arm (no conflict) → strict <
-    // p_to at boundary = same exit arm (merge conflict) → <=
-    (p_from > 0.0 && p_from < w_to) || (p_to > 0.0 && p_to <= w_to)
 }
 
 /// A junction's traffic lights: its arms in phases, each green in turn.
@@ -202,26 +156,13 @@ pub fn phases_of(arms: &[Dir]) -> Vec<Vec<Dir>> {
 pub struct IntersectionManager {
     queue: VecDeque<QueueEntry>,
     passing: Vec<QueueEntry>,
-    /// None on the road, where every car says its track.
-    rule: Option<Rule>,
     /// Its lights, if it has them.
     signal: Option<Signal>,
 }
 
 impl IntersectionManager {
-    pub fn new(rule: Option<Rule>) -> Self {
-        Self {
-            queue: VecDeque::new(),
-            passing: Vec::new(),
-            rule,
-            signal: None,
-        }
-    }
-
-    /// Queue a ship, from its arm to its exit: here now, and holding the
-    /// junction until it is through.
-    pub fn register(&mut self, car_id: EntityId, from: Dir, to: Dir, now: GameTime) {
-        self.claim(car_id, Claim { from, to, track: None, major: false, due: now, nose: [now; TRACK_POINTS], tail: [GameTime::MAX; TRACK_POINTS], committed: true, after: None }, now);
+    pub fn new() -> Self {
+        Self { queue: VecDeque::new(), passing: Vec::new(), signal: None }
     }
 
     /// Say when a party will be at the junction, the first time or again
@@ -274,20 +215,26 @@ impl IntersectionManager {
         woken
     }
 
-    /// A car with passage is standing still: if it has held the claim past
-    /// `PATIENCE`, it gives it back and queues again at the back. Returns
-    /// whoever that lets through.
-    pub fn lapse(&mut self, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
-        let Some(i) = self.passing.iter().position(|e| e.car_id == car_id && now >= e.since + PATIENCE) else { return Vec::new() };
-        let mut entry = self.passing.remove(i);
-        entry.since = now;
-        self.queue.push_back(entry);
-        self.grant_passage(now)
-    }
-
     /// Returns true if this car has been granted passage (is in the passing list).
     pub fn has_passage(&self, car_id: EntityId) -> bool {
         self.passing.iter().any(|e| e.car_id == car_id)
+    }
+
+    /// Would this claim be let through now, were it made: by the rule
+    /// below, as though it were the only one asking.
+    fn grantable(&self, car_id: EntityId, claim: Claim, now: GameTime) -> bool {
+        if self.has_passage(car_id) {
+            return true;
+        }
+        let arrived = self.queue.iter().find(|e| e.car_id == car_id).map_or(claim.due, |e| if claim.due <= now { e.arrived.min(claim.due) } else { claim.due });
+        let e = QueueEntry { car_id, claim, arrived, since: now };
+        if e.waits() || e.due(now) > now + HOLD || self.passing.iter().any(|p| self.held_by(&e, p, now)) {
+            return false;
+        }
+        match &self.signal {
+            Some(signal) => !signal.clearing && signal.phases.get(signal.phase).is_some_and(|g| g.contains(&claim.from)),
+            None => !self.queue.iter().any(|q| q.car_id != car_id && self.yields(&e, q, now)),
+        }
     }
 
     /// Let through whoever may go now (the rule above), each in turn as
@@ -335,7 +282,6 @@ impl IntersectionManager {
     /// before `e` were past it: across, out the far side; merging, before
     /// `e` is in, so `q` would not follow it.
     fn yields(&self, e: &QueueEntry, q: &QueueEntry, now: GameTime) -> bool {
-        let patience = Self::patience(e, now);
         e.claim.after == Some(q.car_id)
             || e.car_id != q.car_id
                 && self.first(q) < self.first(e)
@@ -344,9 +290,8 @@ impl IntersectionManager {
                 && (!q.waits() || q.claim.major && !e.claim.major)
                 && match self.meet(e, q) {
                     Meet::Apart => false,
-                    Meet::Cross([_, i1], [j0, _]) => q.nose(j0, now).saturating_add(patience) < e.tail(i1, now).saturating_add(SPARE),
-                    Meet::Merge => q.due(now).saturating_add(patience) < e.tail(0, now),
-                    Meet::Rule => true,
+                    Meet::Cross([_, i1], [j0, _]) => q.nose(j0, now) < e.tail(i1, now).saturating_add(SPARE),
+                    Meet::Merge => q.due(now) < e.tail(0, now),
                 }
     }
 
@@ -361,14 +306,7 @@ impl IntersectionManager {
             Meet::Apart => false,
             Meet::Cross([i0, i1], [j0, j1]) => e.nose(i0, now) < p.tail(j1, now).saturating_add(SPARE / 2) && !(at_line && e.tail(i1, now).saturating_add(SPARE) <= p.nose(j0, now)),
             Meet::Merge => e.due(now) < p.tail(0, now),
-            Meet::Rule => true,
         }
-    }
-
-    /// How much shorter a gap `e` takes, waiting at its line: a tenth of the
-    /// time it has waited, up to `IMPATIENCE`.
-    fn patience(e: &QueueEntry, now: GameTime) -> GameTime {
-        (now.saturating_sub(e.arrived) / 10).min(IMPATIENCE)
     }
 
     /// Who comes first: one on a priority road, then whoever is due first,
@@ -386,20 +324,16 @@ impl IntersectionManager {
         (!e.claim.major, due, e.car_id)
     }
 
-    /// How two ways through meet: where both are known, apart for two from
-    /// one lane, which follow each other in (`Claim::after`), or that come
-    /// no nearer than `CLEAR`, and merging for two out into one; else by
-    /// the junction's rule.
+    /// How two ways through meet: apart for two from one lane, which
+    /// follow each other in (`Claim::after`), or that come no nearer than
+    /// `CLEAR`, and merging for two out into one.
     fn meet(&self, a: &QueueEntry, b: &QueueEntry) -> Meet {
-        match (&a.claim.track, &b.claim.track) {
-            (Some(x), Some(y)) if x[0] == y[0] => Meet::Apart,
-            (Some(x), Some(y)) => match near(x, y) {
-                None => Meet::Apart,
-                Some(_) if x[TRACK_POINTS - 1] == y[TRACK_POINTS - 1] => Meet::Merge,
-                Some((i, j)) => Meet::Cross(i, j),
-            },
-            _ if self.rule.is_some_and(|rule| rule((a.claim.from, a.claim.to), (b.claim.from, b.claim.to))) => Meet::Rule,
-            _ => Meet::Apart,
+        let (x, y) = (&a.claim.track, &b.claim.track);
+        match near(x, y) {
+            _ if x[0] == y[0] => Meet::Apart,
+            None => Meet::Apart,
+            Some(_) if x[TRACK_POINTS - 1] == y[TRACK_POINTS - 1] => Meet::Merge,
+            Some((i, j)) => Meet::Cross(i, j),
         }
     }
 
@@ -486,13 +420,6 @@ impl IntersectionRegistry {
         }
     }
 
-    /// A car with passage at this junction is standing still; let its claim
-    /// lapse if it is old enough. Returns the cars let through.
-    pub fn lapse(&mut self, node_id: EntityId, car_id: EntityId, now: GameTime) -> Vec<EntityId> {
-        let Some(manager) = self.managers.get_mut(&node_id) else { return Vec::new() };
-        manager.lapse(car_id, now)
-    }
-
     /// A car says when it will be at a junction (`IntersectionManager::claim`).
     pub fn claim(&mut self, node_id: EntityId, car_id: EntityId, claim: Claim, now: GameTime) -> Vec<EntityId> {
         let held = self.held.entry(car_id).or_default();
@@ -511,18 +438,18 @@ impl IntersectionRegistry {
         gone.into_iter().flat_map(|n| self.clear_car(n, car_id, now)).collect()
     }
 
-    /// A road junction, where every car says its track.
     pub fn get_or_create(&mut self, node_id: EntityId) -> &mut IntersectionManager {
-        self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(None))
-    }
-
-    /// A junction that keeps its own rule (a sea's: `sea::lanes`).
-    pub fn get_or_create_with(&mut self, node_id: EntityId, rule: Rule) -> &mut IntersectionManager {
-        self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(Some(rule)))
+        self.managers.entry(node_id).or_insert_with(IntersectionManager::new)
     }
 
     pub fn has_passage(&self, node_id: EntityId, car_id: EntityId) -> bool {
         self.managers.get(&node_id).is_some_and(|m| m.has_passage(car_id))
+    }
+
+    /// Would a car be let through a junction now, were it to claim it so
+    /// (`IntersectionManager::grantable`): a box is claimed only whole.
+    pub fn grantable(&self, node_id: EntityId, car_id: EntityId, claim: Claim, now: GameTime) -> bool {
+        self.managers.get(&node_id).is_none_or(|m| m.grantable(car_id, claim, now))
     }
 
     /// Has a car said when it will be at this junction.
@@ -535,14 +462,14 @@ impl IntersectionRegistry {
     /// only, goes out in its lane.
     pub fn meets(&self, node_id: EntityId, car_id: EntityId, track: &Track, into: bool) -> bool {
         let Some(m) = self.managers.get(&node_id) else { return false };
-        m.queue.iter().chain(&m.passing).filter(|e| e.car_id != car_id).filter_map(|e| e.claim.track).any(|t| t[0] != track[0] && if into { t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1] } else { apart(&t, track) < CLEAR })
+        m.queue.iter().chain(&m.passing).filter(|e| e.car_id != car_id).map(|e| e.claim.track).any(|t| t[0] != track[0] && if into { t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1] } else { apart(&t, track) < CLEAR })
     }
 
     /// Is anyone coming in by another arm than `from` to come out where a
     /// car's way (`track`) does.
     pub fn joins(&self, node_id: EntityId, car_id: EntityId, track: &Track, from: Dir) -> bool {
         let Some(m) = self.managers.get(&node_id) else { return false };
-        m.queue.iter().chain(&m.passing).any(|e| e.car_id != car_id && e.claim.from != from && e.claim.track.is_some_and(|t| t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1]))
+        m.queue.iter().chain(&m.passing).any(|e| e.car_id != car_id && e.claim.from != from && e.claim.track[TRACK_POINTS - 1] == track[TRACK_POINTS - 1])
     }
 
     /// Who else let through a junction comes out into a car's lane
@@ -559,7 +486,7 @@ impl IntersectionRegistry {
     pub fn waited_across(&self, node_id: EntityId, car_id: EntityId, track: &Track, now: GameTime) -> bool {
         let Some(m) = self.managers.get(&node_id) else { return false };
         let on = |p: [f32; 2]| track.windows(2).any(|w| between(p, p, w[0], w[1]) < CLEAR);
-        m.queue.iter().filter(|e| e.car_id != car_id && e.claim.due <= now + HOLD).filter_map(|e| e.claim.track).any(|t| !on(t[0]) && near(&t, track).is_some())
+        m.queue.iter().filter(|e| e.car_id != car_id && e.claim.due <= now + HOLD).map(|e| e.claim.track).any(|t| !on(t[0]) && near(&t, track).is_some())
     }
 
     /// Where along its track a car waiting at a junction first comes into
@@ -568,12 +495,12 @@ impl IntersectionRegistry {
     pub fn held_at(&self, node_id: EntityId, car_id: EntityId, now: GameTime) -> Option<usize> {
         let m = self.managers.get(&node_id)?;
         let e = m.queue.iter().find(|e| e.car_id == car_id)?;
-        let mine = e.claim.track?;
+        let mine = e.claim.track;
         m.passing
             .iter()
             .filter(|p| m.held_by(e, p, now))
             .chain(m.queue.iter().filter(|q| m.yields(e, q, now)))
-            .filter_map(|o| near(&mine, &o.claim.track?))
+            .filter_map(|o| near(&mine, &o.claim.track))
             .map(|(i, _)| i[0])
             .min()
     }
@@ -658,7 +585,7 @@ mod tests {
 
     /// A car's claim: due at `due`, a second through, its tail half a
     /// second behind its nose.
-    fn come(j: &mut super::IntersectionManager, car: u64, from: super::Dir, to: super::Dir, track: Option<super::Track>, major: bool, due: u64) {
+    fn come(j: &mut super::IntersectionManager, car: u64, from: super::Dir, to: super::Dir, track: super::Track, major: bool, due: u64) {
         let nose = std::array::from_fn(|i| due + 1_000 * i as u64 / (super::TRACK_POINTS - 1) as u64);
         let tail = nose.map(|t| t + 500);
         j.claim(car, super::Claim { from, to, track, major, due, nose, tail, committed: false, after: None }, due);
@@ -669,13 +596,13 @@ mod tests {
     #[test]
     fn cars_whose_ways_miss_go_at_once() {
         let (w, e, n, s) = ((-1, 0), (1, 0), (0, -1), (0, 1));
-        let mut j = super::IntersectionManager::new(None);
-        come(&mut j, 1, w, n, Some(way(w, n, false)), false, 0);
-        come(&mut j, 2, s, e, Some(way(s, e, false)), false, 0);
+        let mut j = super::IntersectionManager::new();
+        come(&mut j, 1, w, n, way(w, n, false), false, 0);
+        come(&mut j, 2, s, e, way(s, e, false), false, 0);
         assert!(j.has_passage(1) && j.has_passage(2), "two bends wait for each other");
-        let mut j = super::IntersectionManager::new(None);
-        come(&mut j, 1, w, e, Some(way(w, e, true)), false, 0);
-        come(&mut j, 2, s, n, Some(way(s, n, true)), false, 0);
+        let mut j = super::IntersectionManager::new();
+        come(&mut j, 1, w, e, way(w, e, true), false, 0);
+        come(&mut j, 2, s, n, way(s, n, true), false, 0);
         assert!(j.has_passage(1) && !j.has_passage(2), "two crossing go together");
     }
 
@@ -709,25 +636,25 @@ mod tests {
     /// it is first come, first served.
     #[test]
     fn the_priority_road_goes_first() {
-        let mut j = IntersectionManager::new(Some(paths_conflict));
-        come(&mut j, 1, S, N, None, false, 0);
+        let mut j = IntersectionManager::new();
+        come(&mut j, 1, S, N, way(S, N, true), false, 0);
         assert!(j.has_passage(1), "alone, the side street goes");
         j.clear(1, 10);
 
-        let mut j = IntersectionManager::new(Some(paths_conflict));
+        let mut j = IntersectionManager::new();
         // Both arrive while the junction is held, the side street first,
         // and both are bound west, so only one may go.
-        come(&mut j, 9, N, S, None, true, 0);
-        come(&mut j, 1, S, W, None, false, 1);
-        come(&mut j, 2, E, W, None, true, 2);
+        come(&mut j, 9, N, S, way(N, S, true), true, 0);
+        come(&mut j, 1, S, W, way(S, W, true), false, 1);
+        come(&mut j, 2, E, W, way(E, W, true), true, 2);
         assert!(!j.has_passage(1) && !j.has_passage(2));
         assert_eq!(j.clear(9, 3), vec![2], "the priority road's car, not the side street's");
         assert_eq!(j.clear(2, 4), vec![1], "then the side street");
 
-        let mut j = IntersectionManager::new(Some(paths_conflict));
-        come(&mut j, 9, N, S, None, false, 0);
-        come(&mut j, 1, S, W, None, false, 1);
-        come(&mut j, 2, E, W, None, false, 2);
+        let mut j = IntersectionManager::new();
+        come(&mut j, 9, N, S, way(N, S, true), false, 0);
+        come(&mut j, 1, S, W, way(S, W, true), false, 1);
+        come(&mut j, 2, E, W, way(E, W, true), false, 2);
         assert_eq!(j.clear(9, 3), vec![1], "no priority: in the order they came");
     }
 
@@ -735,14 +662,14 @@ mod tests {
     /// empty after the shortest green, all red, then the other.
     #[test]
     fn the_lights_take_turns() {
-        let mut j = IntersectionManager::new(Some(paths_conflict));
+        let mut j = IntersectionManager::new();
         j.set_signal(Some(&[W, E, N, S]), 0);
         assert_eq!(j.signal().unwrap().phases.len(), 2, "east-west, and north-south");
         let green = j.signal().unwrap().phases[0].clone();
         let (go, stop) = if green.contains(&W) { (W, N) } else { (N, W) };
         let opposite = |d: Dir| (-d.0, -d.1);
-        j.register(1, go, opposite(go), 0);
-        j.register(2, stop, opposite(stop), 0);
+        come(&mut j, 1, go, opposite(go), way(go, opposite(go), true), false, 0);
+        come(&mut j, 2, stop, opposite(stop), way(stop, opposite(stop), true), false, 0);
         assert!(j.has_passage(1), "green");
         assert!(!j.has_passage(2), "red");
         j.clear(1, 1_000);

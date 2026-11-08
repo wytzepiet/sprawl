@@ -4,7 +4,6 @@ use model::CRUISE_SPEED;
 use model::Cause;
 use model::GameTime;
 use crate::event_queue::EventQueue;
-use crate::intersection::IntersectionRegistry;
 use map::track::TRACK_POINTS;
 use model::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
 use crate::Traffic;
@@ -716,7 +715,8 @@ fn deadlocked(world: &Traffic, car_id: EntityId, now: GameTime) -> bool {
         let Some(t) = world.map.car(id).and_then(|c| c.trip.as_ref()).filter(|t| t.at(now).1 < 0.01) else { return Vec::new() };
         match t.why.map(|w| w.0) {
             Some(Cause::Ahead(o) | Cause::Merging(o) | Cause::LettingIn(o) | Cause::GettingIn(Some(o))) => vec![o],
-            Some(Cause::Junction(n)) => world.streets.who(n).0,
+            // Not itself: let through since it last looked, it waits no more.
+            Some(Cause::Junction(n)) => world.streets.who(n).0.into_iter().filter(|&o| o != id).collect(),
             _ => Vec::new(),
         }
     };
@@ -854,7 +854,7 @@ fn stops_at(world: &Traffic, trip: &Trip, k: usize) -> bool {
 /// Let go of the junctions its tail is through. Those it is still in, and
 /// where along its route the next of them clears, if any.
 fn clear_behind(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip) -> (Vec<EntityId>, Option<f64>) {
-    let Here { car_id, role, now, ri, seg_start, progress: cur_progress, speed: cur_speed } = *h;
+    let Here { car_id, role, now, ri, seg_start, progress: cur_progress, .. } = *h;
     // A car holds a junction until its tail is through it, not until its
     // nose is: the car behind is let into the node only once this one has
     // actually left it. The last few nodes passed are the ones that can
@@ -873,16 +873,6 @@ fn clear_behind(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &T
                 let clears = node_dist + g.past + tail(role);
                 tail_clears = Some(tail_clears.map_or(clears, |t: f64| t.min(clears)));
                 still_in.push(g.id);
-                // Standing with its tail in the box: after a few seconds it
-                // waves the others through, as it would at the line. Not at
-                // a driveway: there it is in their way, and they would drive
-                // through it. Whoever it waits for is on the street ahead of
-                // it, and waits for nobody turning there.
-                if cur_speed < 0.01 && !g.driveway() {
-                    for woken_id in world.streets.lapse(g.id, car_id, now) {
-                        events.wake(0, woken_id);
-                    }
-                }
             }
         }
         node_dist -= trip.segment_lengths[k];
@@ -988,7 +978,7 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
                 let claim = crate::intersection::Claim {
                     from: g.from,
                     to: g.to,
-                    track: Some(g.track),
+                    track: g.track,
                     major,
                     due: ms(due),
                     nose: along.map(|s| time(begins + s - nose(role))),
@@ -1037,28 +1027,33 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
         if !first.4.committed && boxed && !room(world, h, trip, last.2) {
             break;
         }
-        let junction = |m: usize| !wants[m].3.driveway();
-        let waits = |m: usize, streets: &IntersectionRegistry| !wants[m].4.committed && (m + 1..=end).any(|j| !streets.has_passage(wants[j].3.id, car_id));
-        let mut waiting = Vec::new();
-        for made in group.clone() {
-            let (k, _, _, ref g, mut claim) = wants[made];
-            // A box is one: due at it at its first line, and in its way
-            // from then on, until it is out as it would be.
-            let early = claim.due.saturating_sub(wants[start].4.due);
-            claim.due -= early;
-            claim.nose = claim.nose.map(|t| t.saturating_sub(early));
-            // Into the box, it is into all of it.
-            claim.committed |= wants[start..made].iter().any(|w| w.4.committed);
-            // Driving by a driveway in a box not yet let through, it says
-            // nothing there: it stands short of it.
-            if g.driveway() && !g.turns && waits(made, &world.streets) {
-                continue;
-            }
-            // Still behind a give-way line short of it, it is not on the
-            // priority road yet, and comes to the next junction as anyone does.
-            claim.major &= !wants[..made].iter().any(|w| !w.4.major && !world.streets.has_passage(w.3.id, car_id));
-            if junction(made) && waits(made, &world.streets) {
-                waiting.push((made, claim));
+        // Each claim as the box makes it: due at its first line, and in
+        // its way from then on, until it is out as it would be; into the
+        // box, into all of it; and behind a give-way line short of it, not
+        // on the priority road yet.
+        let claims: Vec<crate::intersection::Claim> = group
+            .clone()
+            .map(|m| {
+                let mut claim = wants[m].4;
+                let early = claim.due.saturating_sub(first.4.due);
+                claim.due -= early;
+                claim.nose = claim.nose.map(|t| t.saturating_sub(early));
+                claim.committed |= wants[start..m].iter().any(|w| w.4.committed);
+                claim.major &= !wants[..m].iter().any(|w| !w.4.major && !world.streets.has_passage(w.3.id, car_id));
+                claim
+            })
+            .collect();
+        // Let into all of it, or into none: short of a box it is not let
+        // into whole, it says it is coming to its junctions (its tail
+        // never, so it holds them against nobody), and nothing at the
+        // driveways in it, where a car coming holds up one pulling out.
+        let whole = first.4.committed || group.clone().zip(&claims).all(|(m, &c)| world.streets.grantable(wants[m].3.id, car_id, c, now));
+        for (made, mut claim) in group.clone().zip(claims) {
+            let (k, _, _, ref g, _) = wants[made];
+            if !whole {
+                if g.driveway() {
+                    continue;
+                }
                 claim.tail = [GameTime::MAX; TRACK_POINTS];
             }
             let lit = light_arms(world, g.id);
@@ -1077,25 +1072,6 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
             // coming along it may make room for.
             if new && !g.crossing() && !g.driveway() && g.from != (-g.to.0, -g.to.1) && world.map.edges.get(&(trip.route[k], trip.route[k + 1])).is_some_and(|s| s.lanes > 1) {
                 wake_round(world, events, &[g.id], car_id);
-            }
-            // Holding the junction and going nowhere: after a few seconds
-            // of that, wave the others through and queue again. Standing
-            // is a crawl under a hundredth of a tile a second, since a
-            // car held at a gap never quite reads zero.
-            if cur_speed < 0.01 && !g.driveway() {
-                for woken_id in world.streets.lapse(g.id, car_id, now) {
-                    events.wake(0, woken_id);
-                }
-            }
-        }
-        // Let in at the furthest after all, it says when it will be out of
-        // the nearer, as far as that lets it.
-        while let Some(i) = waiting.iter().position(|&(i, _)| !waits(i, &world.streets)) {
-            let (i, claim) = waiting.remove(i);
-            for woken_id in world.streets.claim(wants[i].3.id, car_id, claim, now) {
-                if woken_id != car_id {
-                    events.wake(0, woken_id);
-                }
             }
         }
         if !wants[group].iter().all(|w| world.streets.has_passage(w.3.id, car_id)) {
@@ -1321,9 +1297,10 @@ fn settle(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, o
 
     // Holding short of a merge: nobody wakes it when the other is through.
     // Waiting at a driveway: it looks again as whoever it waits for moves
-    // on, for where their ways meet comes nearer as it goes. Kept out of a
-    // box for want of room past it: nobody tells it when there is.
-    if soon || matches!(cause, Some(Cause::Junction(id)) if id & driveway::DRIVEWAYS != 0 || !world.streets.knows(id, car_id)) {
+    // on, for where their ways meet comes nearer as it goes. Short of a
+    // box: nobody tells it when there is room past it, or when it may
+    // have the whole of it.
+    if soon || matches!(cause, Some(Cause::Junction(_))) {
         wake_ms = wake_ms.min(500);
     }
     if let Some(ms) = standing {
