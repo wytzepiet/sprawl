@@ -102,22 +102,25 @@ pub fn at(world: &Traffic, trip: &Trip, k: usize) -> Option<Way> {
     }
     let here = trip.route[k];
     if k + 1 < n && street(k - 1) && street(k + 1) && world.map.driveways.contains_key(&here) && !junction(k) {
-        // A tile either side: one backing out of a bay by the kerb sweeps
-        // along the street as much as across it. Each end in its lane as
-        // the street runs from here: where it bends a tile on, the lanes
-        // come together round the corner, nearer than two ways that never
-        // meet (`CLEAR`), and the street's two lanes held each other.
-        // A junction there, only as far as its edge: one held at the
-        // driveway stands clear of the junction behind it.
+        // Its lane's way past as through a junction, from seam to seam
+        // (`map::track::track`), where the street's two lanes never meet,
+        // round a bend as well; and on along its lane to the node either
+        // side, but into no junction there: one backing out of a bay by
+        // the kerb sweeps along the street as much as across it.
         let p = &trip.route_positions;
+        let o = p[k];
+        let mid = map::track::track(p[k - 1], o, p[k + 1], LANE_OFFSET, LANE_OFFSET).map(|q| [q[0] as f64 + o[0], q[1] as f64 + o[1]]);
         let reach = |j: usize| if junction(j) { 0.5 } else { 1.0 };
-        let end = |j: usize| {
-            let o = offset_positions(&[p[k], p[j]], if j > k { LANE_OFFSET } else { -LANE_OFFSET });
-            let r = reach(j);
-            [o[0][0] + (o[1][0] - o[0][0]) * r, o[0][1] + (o[1][1] - o[0][1]) * r]
-        };
-        let ends = [end(k - 1), lane(trip)[k], end(k + 1)];
-        return Some(Way { id: DRIVEWAYS | here, track: track(&ends, pos(here)?), start: seg(k) * reach(k - 1), past: seg(k + 1) * reach(k + 1), turns: false });
+        let end = |j: usize| offset_positions(&[o, p[j]], if j > k { LANE_OFFSET } else { -LANE_OFFSET })[1];
+        let mut way = Vec::new();
+        if reach(k - 1) > 0.5 {
+            way.push(end(k - 1));
+        }
+        way.extend(mid);
+        if reach(k + 1) > 0.5 {
+            way.push(end(k + 1));
+        }
+        return Some(Way { id: DRIVEWAYS | here, track: track(&way, pos(here)?), start: seg(k) * reach(k - 1), past: seg(k + 1) * reach(k + 1), turns: false });
     }
     None
 }

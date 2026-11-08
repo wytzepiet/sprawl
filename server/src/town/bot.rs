@@ -529,7 +529,7 @@ fn overlaps(world: &World, now: GameTime) {
         let n = t.route.len();
         let turning = if t.route_index <= t.from_lot { "out" } else if t.route_index >= n - t.to_lot { "in" } else { "by" };
         let edge = (t.route[t.route_index - 1], t.route[t.route_index]);
-        bodies.push((e.id, ends, turning, v, t.why.map(|w| w.0), edge, t.ghost.is_some()));
+        bodies.push((e.id, ends, turning, v, t.why.map(|w| w.0), edge, t.ghost.is_some(), t.route.get(t.route_index + 1).copied()));
     }
     let d = |p: [f64; 2], a: [f64; 2], b: [f64; 2]| {
         let (vx, vy) = (b[0] - a[0], b[1] - a[1]);
@@ -547,11 +547,16 @@ fn overlaps(world: &World, now: GameTime) {
             if a.5 == (b.5.1, b.5.0) {
                 continue;
             }
+            // Coming to one node from each other's way on: a bend's two
+            // lanes, cut short as bodies are drawn round it.
+            if a.5.1 == b.5.1 && a.7 == Some(b.5.0) && b.7 == Some(a.5.0) {
+                continue;
+            }
             if near < 0.1 {
                 let mut said = SAID.lock().unwrap();
                 if !said.contains(&(a.0, b.0)) {
                     said.push((a.0, b.0));
-                    println!("{} {:.3} {} {} v{:.2} {:?} {:?} / {} {} v{:.2} {:?} {:?} at {:.1},{:.1} near {near:.2}", if a.6 || b.6 { "GHOSTLAP" } else { "OVERLAP" }, now as f64 / DAY_MS as f64, a.0, a.2, a.3, a.4, a.5, b.0, b.2, b.3, b.4, b.5, a1[0], a1[1]);
+                    println!("{} {:.3} {} {} v{:.2} {:?} {:?} / {} {} v{:.2} {:?} {:?} at {:.1},{:.1} near {near:.2} next {:?} {:?} junction {}", if a.6 || b.6 { "GHOSTLAP" } else { "OVERLAP" }, now as f64 / DAY_MS as f64, a.0, a.2, a.3, a.4, a.5, b.0, b.2, b.3, b.4, b.5, a1[0], a1[1], a.7, b.7, world.map.is_intersection(a.5.1) || world.map.is_intersection(b.5.1));
                 }
             }
         }
