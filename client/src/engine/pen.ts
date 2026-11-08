@@ -1,5 +1,6 @@
 import { MIDDLE, snap, spot, STEPS, TOP, type Side } from "./tiles";
 import type { Area, Build, ClientMessage, GridCoord, Hint, Stand, Stroke, Tool } from "../generated";
+import type { Guess } from "../state/guess";
 
 /**
  * The hand's drag, apart from the pointer and the page (`RoadBrush.tsx`,
@@ -10,10 +11,15 @@ import type { Area, Build, ClientMessage, GridCoord, Hint, Stand, Stroke, Tool }
  * on from the tile it is on (`Ask::Reach`), asked again at each tile and
  * waited for, a step not yet answered not taken.
  *
+ * The game tells a drag where it may go a few tiles straight on each way
+ * (`draw::RUN`), so a drag goes on along them without waiting to be
+ * told again, and only waits where it turns, or the run is walked.
+ *
  * A drag of road is sent whole as it goes (`Stroke`), and the game plans
  * and lays it (`server/src/draw.rs`). The eraser goes a step at a time,
  * standing where the game says it would. A tap takes, or lights, what
- * stands where it was pressed.
+ * stands where it was pressed. Each step and tap is shown at once, a
+ * guess (`state/guess.ts`), until the game says what it made of it.
  *
  * A drag starts on the road on the tile pressed nearest the pointer and
  * the pen's height, or at the pen's height. Each tile carries the pen's
@@ -40,6 +46,8 @@ export interface Desk {
   send(msg: ClientMessage): void;
   /** The pen set to this many levels up. */
   lift(levels: number): void;
+  /** What a step or tap just sent will do, shown before the game says. */
+  guess(g: Guess): void;
 }
 
 /** Which drag is which (`Stroke::id`): from anywhere, so a page loaded
@@ -51,15 +59,15 @@ export class Pen {
   current: GridCoord | null = null;
   /** The tiles in view a drag may start from, as the game last said. */
   starts: GridCoord[] = [];
-  /** Where on its tile the eraser, or a tap, stands. */
+  /** Where on its tile the drag, or a tap, stands. */
   private place: Place = GROUND;
   private pressed: GridCoord | null = null;
   /** The drag: of road, sent whole, kept after it for ↑ and ↓; the
    *  eraser's, its tiles, and where it stands on the last (`start`). */
   private stroke: Stroke | null = null;
-  /** Where the drag would stand a step on, each of `STEPS`, as the game
-   *  said; none, not yet said. */
-  private ways: (Stand | null)[] | null = null;
+  /** Where the drag would stand on each tile straight on, each way of
+   *  `STEPS`, as the game said; none, not yet said. */
+  private ways: Stand[][] | null = null;
   /** What the starts were last asked of. */
   private asked = "";
   /** Where the pointer was, last in a drag; the way it last went, of
@@ -76,6 +84,7 @@ export class Pen {
     this.pointer = { x: wx, y: wy };
     this.moved = [0, 0];
     this.place = this.startAt(t, wx, wy);
+    this.ways = null;
     const tool = this.d.tool();
     const on = this.d.roads(t).length > 0;
     const start = { h: this.place.h, side: this.place.s };
@@ -94,13 +103,19 @@ export class Pen {
     const to = i < 0 ? null : this.way(i);
     if (!cur || !s || !to) return false;
     s.tiles.push({ at: next, want: this.d.want() });
+    const q = { h: to.h, s: to.side as Side };
     if (s.tool === "Demolish") {
-      const q = { h: to.h, s: to.side as Side };
       this.send({ tool: "Demolish", from: cur, to: next, road: false, ...placed(this.place, q) });
-      this.place = q;
+      this.d.guess({ type: "Cut", from: cur, pf: this.place, to: next, pt: q });
       s.start = to;
-    } else this.d.send({ type: "Draw", data: s });
+    } else {
+      this.d.send({ type: "Draw", data: s });
+      this.d.guess({ type: "Link", from: cur, pf: this.place, to: next, pt: q, tool: s.tool, road: s.road });
+    }
+    this.place = q;
     this.current = next;
+    // On along the run the game told of; any other way, when it says.
+    this.ways = STEPS.map((_, j) => (j === i ? this.ways![i].slice(1) : []));
     this.ask();
     return true;
   }
@@ -149,7 +164,10 @@ export class Pen {
   release() {
     this.pointer = null;
     const [t, p, place] = [this.d.tool(), this.pressed, this.place];
-    if (p && this.current === p && (t === "Demolish" || t === "Light")) this.send({ tool: t, from: p, to: p, road: false, ...placed(place, place) });
+    if (p && this.current === p && (t === "Demolish" || t === "Light")) {
+      this.send({ tool: t, from: p, to: p, road: false, ...placed(place, place) });
+      if (t === "Demolish") this.d.guess({ type: "Tap", at: p, place });
+    }
     if (this.stroke && (this.stroke.tool === "Demolish" || this.stroke.tiles.length < 2)) this.stroke = null;
     this.pressed = this.current = null;
     this.ways = null;
@@ -201,17 +219,18 @@ export class Pen {
       if (!s || s.tool === "Demolish") return;
       s.tiles[s.tiles.length - 1].want = want;
       this.d.send({ type: "Draw", data: s });
+      this.ways = null;
       if (this.current) this.ask();
     };
   }
 
   private way(i: number): Stand | null {
-    return this.ways?.[i] ?? null;
+    return this.ways?.[i]?.[0] ?? null;
   }
 
-  /** Where the drag may go on from here: asked, and until said, nowhere. */
+  /** Where the drag may go on from here: asked, and until said, only on
+   *  along the run it is on. */
   private ask() {
-    this.ways = null;
     if (this.stroke && this.current) this.d.send({ type: "Ask", data: { type: "Reach", data: this.stroke } });
   }
 

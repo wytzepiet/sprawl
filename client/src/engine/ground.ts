@@ -16,6 +16,7 @@ import { bakedTexture } from "./bakeCache";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
+import { live } from "./still";
 
 /**
  * The land, layer on layer (`LAYERS`): the beaches, the rock the land
@@ -251,8 +252,11 @@ const [inner0, inner1] = [n(0.5 / DENSITY), n(1 - 0.5 / DENSITY)];
 // pixel); whether the pixel is on the share; and how near its edges.
 /** The land's tiles: each told its slot, round, bump and glint, its colour
  *  and shine, its fray, mottle, slate and matte (`GroundTiles`), one buffer a
- *  chunk; the grain, the atlas, the slate and the ripples, read. */
-function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
+ *  chunk; the grain, the atlas, the slate and the ripples, read. The land
+ *  stands still but for the beach's swash, so it is drawn twice (`still.ts`):
+ *  all but the band the swash runs over, still; and the sand of that band
+ *  alone, as the waves leave it, live (`wash`). */
+function groundPlugin(engine: EngineContext, atlas: Atlas, wash: boolean): MaterialPlugin {
   return {
     name: "Ground",
     priority: 210,
@@ -280,7 +284,7 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
     writeUbo: (data, offsets) => {
       data.set(atlas.grid, offsets.get("groundGrid")! / 4);
       // The water's clock (`water.ts`), so the beach's swash keeps its waves.
-      data[offsets.get("groundTime")! / 4] = (performance.now() / 1000) % 3600;
+      if (wash) data[offsets.get("groundTime")! / 4] = (performance.now() / 1000) % 3600;
     },
     getCustomCode: (stage) =>
       stage === "vertex"
@@ -318,9 +322,11 @@ let groundPatchUv = input.worldPos.xy / ${patchSpan};
 let groundPatchDx = dpdx(groundPatchUv);
 let groundPatchDy = dpdy(groundPatchUv);
 if (input.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && textureSampleGrad(groundSlate, groundSlateSampler, groundPatchUv, groundPatchDx, groundPatchDy).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
-// A beach draws back from each wave as it breaks, and is wet where they reach.
-var groundSwash = 0.;
-if (input.vGroundSlot.w > 0.) { groundSwash = input.vGroundSlot.w * ${swash} * groundWash(material.groundTime, input.worldPos.xy) * (0.6 + 0.8 * groundFrayBy); }
+// A beach draws back from each wave as it breaks, and is wet where they
+// reach: the band they reach drawn live, the rest of the land still.
+let groundBand = input.vGroundSlot.w * ${swash} * (0.6 + 0.8 * groundFrayBy);
+${wash ? `if (groundD.g < 0. || groundD.g >= groundBand) { discard; }
+let groundSwash = groundBand * groundWash(material.groundTime, input.worldPos.xy);` : "let groundSwash = groundBand;"}
 // Grass frays blade by blade, the gaps going first, then the shorter
 // blades; the wood floor by them and by the grain's tufts, so its edge
 // wanders off its tiles' outline even where the blades are too fine to see.
@@ -350,12 +356,20 @@ if (groundD.g >= 0. && groundD.g < groundBevel) {
  *  tile told its layer's height, colour, shine and round, the top layer's
  *  drawn first, so what lies under it is not shaded. A chunk drawn anew
  *  touches its own tiles alone, and a chunk out of view is not drawn. */
+/** A chunk's ground: its tiles, and its beach's again for the swash. */
+interface Ground {
+  mesh: Mesh;
+  wash: Mesh | null;
+}
+
 export class GroundTiles {
   private atlas: Atlas;
-  private chunks = new Map<string, Mesh>();
+  private chunks = new Map<string, Ground>();
   /** Grounds drawn anew, the old kept until the new is drawn. */
-  private replaced: { old: Mesh; by: Mesh }[] = [];
+  private replaced: { old: Ground; by: Mesh }[] = [];
   private material: TownMaterial;
+  /** The beach's sand where the swash runs, drawn live. */
+  private wash: TownMaterial;
   private colours: Rgb[] = LAYERS.map(() => WHITE);
   private stopClock: () => void;
 
@@ -367,19 +381,20 @@ export class GroundTiles {
   ) {
     // Its chunks bound to the atlas's texture anew whenever that grows.
     this.atlas = new Atlas(engine, SLOT, () => {
-      for (const mesh of this.chunks.values()) markMeshRenderableDirty(mesh);
+      for (const { mesh, wash } of this.chunks.values()) markMeshRenderableDirty(mesh), wash && markMeshRenderableDirty(wash);
     });
-    this.material = townMaterial([groundPlugin(engine, this.atlas)]);
+    this.material = townMaterial([groundPlugin(engine, this.atlas, false)]);
+    this.wash = townMaterial([groundPlugin(engine, this.atlas, true)]);
     // The swash's clock, a frame at a time; and the atlas, as shapes come.
     this.stopClock = beforeRender(() => {
       this.atlas.upload();
-      markMaterialUboDirty(this.material);
+      markMaterialUboDirty(this.wash);
       // A chunk drawn anew is built a frame or two after it is shown: its
       // old ground stays until then, or the land under it flashes through.
       if (!this.replaced.length) return;
       const drawn = new Set((scene as unknown as { _renderables: { mesh: Mesh }[] })._renderables.map((r) => r.mesh));
       this.replaced = this.replaced.filter(({ old, by }) => {
-        if (drawn.has(by) || !this.scene.meshes.includes(by)) return this.cull.forget(old), drop(this.scene, old), false;
+        if (drawn.has(by) || !this.scene.meshes.includes(by)) return this.drop(old), false;
         return true;
       });
     });
@@ -392,7 +407,7 @@ export class GroundTiles {
     this.chunks.delete(key);
     const count = layers.reduce((sum, l) => sum + l.shapes.length, 0);
     if (!count) {
-      if (old) this.cull.forget(old), drop(this.scene, old);
+      if (old) this.drop(old);
       return;
     }
     const matrices = new Float32Array(count * 16);
@@ -409,23 +424,40 @@ export class GroundTiles {
         data.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint, colour.r, colour.g, colour.b, shine, fray, mottle, grain, matte], n * 12);
       }
     }
-    const mesh = meshOf(this.engine, `ground_${key}`, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
-    mesh.material = this.material;
+    // Baked before it is shown, so the atlas holds its shapes when it is bound.
+    this.atlas.upload();
+    const area = [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE] as const;
+    const mesh = this.tiles(`ground_${key}`, this.material, matrices, data, count, area);
+    // The sand's tiles again, for the swash over it.
+    const sand = Array.from({ length: count }, (_, i) => i).filter((i) => data[i * 12 + 3] > 0);
+    const wash = sand.length
+      ? this.tiles(`ground_wash_${key}`, this.wash, new Float32Array(sand.flatMap((i) => [...matrices.subarray(i * 16, i * 16 + 16)])), new Float32Array(sand.flatMap((i) => [...data.subarray(i * 12, i * 12 + 12)])), sand.length, area, true)
+      : null;
+    this.chunks.set(key, { mesh, wash });
+    if (old) this.replaced.push({ old, by: mesh });
+  }
+
+  /** A chunk's tiles, as one mesh. */
+  private tiles(name: string, material: TownMaterial, matrices: Float32Array, data: Float32Array, count: number, area: readonly [number, number, number, number], moves = false) {
+    const mesh = meshOf(this.engine, name, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
+    mesh.material = material;
     mesh.renderOrder = LAYER_ORDER.ground;
     mesh.receiveShadows = true;
     setThinInstances(mesh, matrices, count);
     setMeshAttribute(this.engine, mesh, "ground", data);
-    // Baked before it is shown, so the atlas holds its shapes when it is bound.
-    this.atlas.upload();
-    this.cull.keep(mesh, [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
+    this.cull.keep(mesh, area);
+    if (moves) live(mesh);
     addToScene(this.scene, mesh);
-    this.chunks.set(key, mesh);
-    if (old) this.replaced.push({ old, by: mesh });
+    return mesh;
+  }
+
+  private drop({ mesh, wash }: Ground) {
+    for (const m of wash ? [mesh, wash] : [mesh]) this.cull.forget(m), drop(this.scene, m);
   }
 
   delete(key: string) {
-    const mesh = this.chunks.get(key);
-    if (mesh) this.cull.forget(mesh), drop(this.scene, mesh);
+    const ground = this.chunks.get(key);
+    if (ground) this.drop(ground);
     this.chunks.delete(key);
   }
 
@@ -436,7 +468,7 @@ export class GroundTiles {
 
   dispose() {
     for (const key of [...this.chunks.keys()]) this.delete(key);
-    for (const { old } of this.replaced) this.cull.forget(old), drop(this.scene, old);
+    for (const { old } of this.replaced) this.drop(old);
     this.replaced = [];
     this.stopClock();
     this.atlas.dispose();

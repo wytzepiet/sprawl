@@ -29,7 +29,7 @@ public class Bench {
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
     // What the screen showed, for the run's files (bench.yml pulls this folder).
     sh(shell, "mkdir -p /sdcard/Download/bench\n");
-    for (int s = 15; s <= 225; s += 30) {
+    for (int s = 15; s <= 525; s += 30) {
       Thread.sleep(s == 15 ? 15_000 : 30_000);
       sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + s + "s.png\n");
     }

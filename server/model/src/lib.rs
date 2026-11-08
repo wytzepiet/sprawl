@@ -131,10 +131,11 @@ pub struct Area {
 #[serde(tag = "type", content = "data")]
 pub enum Hint {
     Starts { hand: Holding, area: Area, tiles: Vec<GridCoord> },
-    /// For the drag `id`, `len` tiles long: the eight steps on from its
+    /// For the drag `id`, `len` tiles long: the eight ways on from its
     /// last tile (east, then on round toward +y), each where it would
-    /// stand, or none where it may not go.
-    Reach { id: u32, len: u32, ways: Vec<Option<Stand>> },
+    /// stand on each tile straight on that way, as far as it may go, up
+    /// to a few (`draw::RUN`); empty, where it may not go at all.
+    Reach { id: u32, len: u32, ways: Vec<Vec<Stand>> },
     Placing(Placing),
 }
 
@@ -738,12 +739,6 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub why: Option<(crate::Cause, f64)>,
-    /// The street nodes either side of the stretch a kerb bay is turned
-    /// across, at the trip's start and its end: the street waits at both
-    /// while the car turns (`car::simulation`).
-    #[serde(skip)]
-    #[ts(skip)]
-    pub stretches: [Vec<EntityId>; 2],
     /// Its last change of lanes along a road of two (`car::simulation`):
     /// for the client to slide it across while it lasts.
     #[serde(default)]
@@ -1038,6 +1033,9 @@ pub enum ServerMessage {
     /// Who you are.
     Welcome(#[ts(type = "number")] OwnerId),
     Update(StateUpdate),
+    /// How many of this client's messages are done, sent after what they
+    /// changed: what it guessed they would do may go (`state/guess.ts`).
+    Seen(u32),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
     /// What happened that the mayor should hear: a family left, a
@@ -1070,14 +1068,8 @@ pub enum Cause {
     /// The lane its way out asks for, not yet got into: the car in the way
     /// there, if it has tried.
     GettingIn(Option<crate::EntityId>),
-    /// A junction or crossing it has no passage at yet.
+    /// A junction, crossing or driveway it has no passage at yet.
     Junction(crate::EntityId),
-    /// A car turning into or out of a lot across its way.
-    Turn(crate::EntityId),
-    /// Its give-way line out of a lot, with no gap yet.
-    Line,
-    /// About to turn into a lot across the oncoming lane.
-    TurningIn,
     /// A bend.
     Bend,
     /// A lot, or backing.

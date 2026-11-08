@@ -5,7 +5,7 @@ import { barn, box, cask, ground, chimney, crate, door, model, pitched, plate, p
  * A fishery, whole, on the back row of its plot (x -1 to 1, the street
  * at +y, its loading bay cut at x = 0.5): a boathouse of grey-blue boards
  * along the back under a rust-red roof, its big door to the street; at the
- * bay's end a smokehouse, its chimney smoking; at the other nets drying on
+ * bay's end a smokehouse; at the other nets drying on
  * poles; fish in crates and casks along its front.
  */
 
@@ -37,12 +37,12 @@ export const FISHERY = model((m) => {
   // The name board over the door.
   put(m, "matte", plate(front, -0.52, -0.08, 0.26, 0.3, -0.002, 0.016), TRIM);
 
-  // The smokehouse behind the bay, its chimney smoking.
+  // The smokehouse behind the bay, its chimney.
   const [S0, S1, SY0, SY1] = [0.42, 0.94, -1.36, -0.9];
   put(m, "matte", barn("y", S0, S1, SY0, SY1, 0.22, 0.36), SMOKE_WALL);
   pitched(m, "y", S0, S1, SY0, SY1, 0.22, 0.36, SMOKE_ROOF, { over: 0.03 });
   door(m, { face: "+y", at: SY1 }, (S0 + S1) / 2, WOOD, { w: 0.08, h: 0.15, frame: TRIM });
-  chimney(m, S1 - 0.12, SY0 + 0.12, 0.44, SMOKE_WALL, { w: 0.08, smoke: 0.12 });
+  chimney(m, S1 - 0.12, SY0 + 0.12, 0.44, SMOKE_WALL, { w: 0.08 });
 
   // Nets drying between poles, in front of the boathouse's end.
   for (const x of [-0.92, -0.6]) put(m, "matte", post(x, -0.5, 0, 0.26, 0.012, 6), WOOD);

@@ -30,6 +30,7 @@ import { clearProps, placeProps, showProps } from "./props";
 import type { Part } from "./merged";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType, Placing } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
+import { stale } from "./still";
 
 /** How many roads one tile may hold: the ground's two side by side, and
  *  the decks' over them. */
@@ -141,7 +142,7 @@ export class TownLayer {
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF, WINDOWS]), "building", bevel);
     let glow = -1;
     this.stopGlow = ctx.beforeRender(() => {
-      if (night.on !== glow) markMaterialUboDirty(this.masses), (glow = night.on);
+      if (night.on !== glow) markMaterialUboDirty(this.masses), (glow = night.on), stale();
     });
     this.roads = new RoadTiles(ctx.engine, ctx.scene);
     const { r, g, b } = theme.paved;

@@ -13,6 +13,7 @@ import { drawnPath, type DrawnPath } from "./drawnPath";
 import { bakedTexture } from "../bakeCache";
 import { WHEAT_MARGIN, WHEAT_STAGES, WHEAT_STRIDE, WHEAT_TEXELS } from "../wheat";
 import recipe from "../wheat.ts?raw";
+import { stale } from "../still";
 
 /** A point on the field. */
 type P = { x: number; y: number };
@@ -292,6 +293,7 @@ class Strips {
   /** Paint changed: every mesh reads it again. */
   repaint() {
     for (const mesh of [this.mesh, ...this.crops]) markMaterialUboDirty(mesh.material as TownMaterial);
+    stale();
   }
 
   drop() {
@@ -390,6 +392,7 @@ class Field {
     this.strips?.drop();
     this.strips = this.lay(run.path, run.job, [this.look, after]);
     updateTexture2DFromPixels(this.ctx.engine, this.cuts, this.reached(this.strips));
+    stale();
   }
 
   /** \`cuts\` for these strips: where each piece works, drawn as the GPU

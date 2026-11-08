@@ -105,7 +105,7 @@ impl Game {
         // Objects come with the first SetChunks.
         let update = Shared::new(&self.world, self.clock()).update(vec![]);
         self.send(id, update);
-        self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default() });
+        self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default(), seen: 0, told: 0 });
     }
 
     pub fn disconnect(&mut self, id: ClientId) {
@@ -114,6 +114,9 @@ impl Game {
 
     /// A message from a client, done.
     pub fn command(&mut self, client_id: ClientId, message: ClientMessage) {
+        if let Some(cs) = self.clients.get_mut(&client_id) {
+            cs.seen += 1;
+        }
         match message {
             ClientMessage::SetSpeed(s) => self.set_speed(s, None),
             ClientMessage::RunTo(t) => self.set_speed(MAX_SPEED, Some(t)),

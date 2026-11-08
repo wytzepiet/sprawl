@@ -364,6 +364,9 @@ impl Map {
         let mut edge = |world: &mut Map, a: EntityId, b: EntityId| {
             world.edges.insert((a, b), EdgeSegment::new(1));
             edges.push((a, b));
+            for n in [a, b].into_iter().filter(|n| !world.lot_nodes.contains_key(n)) {
+                *world.driveways.entry(n).or_default() += 1;
+            }
         };
         let (tiles, kind, _) = self.building_of(building)?;
         // The door: the lot's own node on the door's tile, where a car with
@@ -624,6 +627,14 @@ impl Map {
     /// Take a lot down, and say who held what in it, and when.
     fn drop_run(&mut self, building: EntityId) -> Vec<(EntityId, Claim, GameTime, GameTime)> {
         let Some(lot) = self.lots.remove(&building) else { return Vec::new() };
+        for n in lot.edges.iter().flat_map(|&(a, b)| [a, b]).filter(|n| !self.lot_nodes.contains_key(n)) {
+            if let Some(c) = self.driveways.get_mut(&n) {
+                *c -= 1;
+                if *c == 0 {
+                    self.driveways.remove(&n);
+                }
+            }
+        }
         for id in &lot.nodes {
             self.lot_nodes.remove(id);
         }
@@ -780,7 +791,12 @@ impl Map {
                     .map(|(i, _)| Claim::Spot(i))
             })
             // A lorry stops at the door of a front whose docks no way reaches.
-            .or_else(|| (!front || !lorry || docks == 0).then_some(Claim::Door));
+            // The door holds one at a time, and not while one still pulls
+            // away from it.
+            .or_else(|| {
+                let Way::Kerb { door, .. } = lot.way;
+                (lot.doorway.iter().all(|&c| c == car) && !self.leaving_from(door, car) && (!front || !lorry || docks == 0)).then_some(Claim::Door)
+            });
         let Some(claim) = claim else {
             let lot = self.lots.get_mut(&building).unwrap();
             lot.stats.refused += 1;
@@ -859,6 +875,14 @@ impl Map {
         let claim = self.claim_of(building, car).unwrap();
         let pose = self.pose_of(building, car, claim);
         self.set_spot(car, pose);
+    }
+
+    /// Is any car but this one still on its way out of the lot from
+    /// this lot node.
+    fn leaving_from(&self, node: EntityId, car: EntityId) -> bool {
+        self.node_cars.get(&node).is_some_and(|cars| {
+            cars.iter().any(|&c| c != car && matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(o)) if o.trip.as_ref().is_some_and(|t| t.route_index <= t.from_lot && t.route[..t.from_lot].contains(&node))))
+        })
     }
 
     fn parked_here(&self, car: EntityId) -> bool {
@@ -948,7 +972,11 @@ impl Map {
         // behind, not turning back from the node ahead of it.
         let Way::Kerb { bays, .. } = &self.lots[&building].way;
         let sides: Vec<Option<usize>> = bays.iter().map(|b| b.sides.iter().position(|s| ways.bays.get(&s.entry).is_some_and(|r| r.len() < 2 || r[r.len() - 2] != s.ahead))).collect();
-        let claim = self.claim_spot(building, car, from, to, |i| sides.get(i).is_none_or(|s| s.is_some()))?;
+        // Nor a bay a car is still pulling out of: it gave the bay up as it
+        // set out, but stands in it until there is a gap in the street.
+        let lot = &self.lots[&building];
+        let leaving: Vec<bool> = lot.spots.iter().map(|s| self.leaving_from(s.node, car)).collect();
+        let claim = self.claim_spot(building, car, from, to, |i| sides.get(i).is_none_or(|s| s.is_some()) && !leaving[i])?;
         let side = |i: usize| sides.get(i).copied().flatten().unwrap_or(0);
         if let Claim::Spot(i) = claim
             && let Some(w) = self.lots.get_mut(&building).unwrap().spots[i].windows.iter_mut().find(|w| w.car == car)
@@ -1018,29 +1046,6 @@ impl Map {
     /// backwards: its way out's first legs that back.
     pub fn backs_out(&self, car: EntityId) -> usize {
         self.legs_out(car).iter().take_while(|l| l.back).count()
-    }
-
-    /// The nodes a car holds while it turns between the street and its
-    /// place, coming or going, besides where it leaves or joins the street:
-    /// the street waits at all of them. A kerb bay's, the street nodes
-    /// either side of where it turns. A front's lorry holds its door too: a
-    /// front is one lorry moving at a time, so one coming in waits at the
-    /// gate and one leaving in its dock until the front is clear.
-    pub fn stretch(&self, car: EntityId) -> Vec<EntityId> {
-        let Some((lot, bay, i)) = self.bay_of(car) else {
-            return Vec::new();
-        };
-        let side = &bay.sides[lot.side(i, car)];
-        let mut nodes = vec![side.entry, side.ahead, lot.exit(bay, i, car).node];
-        if let Way::Kerb { door, .. } = lot.way
-            && self.is_lorry(car)
-            && self.has_front(self.claims[&car])
-        {
-            nodes.push(door);
-        }
-        nodes.sort_unstable();
-        nodes.dedup();
-        nodes
     }
 
     /// How many edges at the end of the car's way in are driven backwards:
@@ -1247,9 +1252,6 @@ mod tests {
         let out = world.way_out(lorry).unwrap();
         assert_eq!(out[0], way[n - 1], "out of the dock");
         assert_eq!(world.backs_out(lorry), 0, "forward");
-        let gate = world.door_of(depot).unwrap();
-        let held = world.stretch(lorry);
-        assert!(held.contains(&gate.1) || held.iter().any(|n| world.arms_of(gate.1, false).contains(n)), "the street waits while it turns");
     }
 
 }

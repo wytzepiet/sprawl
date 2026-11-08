@@ -23,7 +23,7 @@ import { shape, type Shape } from "./sea";
  *   lean-to off a wall, all `over` past the walls.
  * - On a wall: windows, doors, roller shutters, an awning.
  * - Round the plot: fences and their gates, hedges, flowers, lamps that
- *   light at night and smoke from chimneys (the town's props, `props.ts`),
+ *   light at night (the town's props, `props.ts`),
  *   trees (the town's, `trees.ts`), and the ground itself in the town's
  *   own finishes: its grass, its paving, earth, dust, the rock of the
  *   mountains.
@@ -378,11 +378,10 @@ export function awning(m: Model, wall: Wall, a0: number, a1: number, z: number, 
 // --- Up from the roof -----------------------------------------------------
 
 /** A chimney stack from the ground at (x, y), `w` square, up to `top`, a
- *  cap round its top; smoking, if the hearth is lit. */
-export function chimney(m: Model, x: number, y: number, top: number, rgb: RGB, { w = 0.06, smoke = 0 } = {}) {
+ *  cap round its top. */
+export function chimney(m: Model, x: number, y: number, top: number, rgb: RGB, { w = 0.06 } = {}) {
   put(m, "matte", box(x - w / 2, x + w / 2, y - w / 2, y + w / 2, 0, top).add(box(x - w / 2 - 0.008, x + w / 2 + 0.008, y - w / 2 - 0.008, y + w / 2 + 0.008, top - 0.025, top)), rgb);
   put(m, "matte", post(x, y, top, 0.022, w * 0.26, 10).subtract(post(x, y, top + 0.006, 0.03, w * 0.17, 10)), [0.32, 0.3, 0.3]);
-  if (smoke) m.props.push({ kind: "smoke", at: [x, y, top], size: smoke, high: 0 });
 }
 
 // --- Round the plot -------------------------------------------------------

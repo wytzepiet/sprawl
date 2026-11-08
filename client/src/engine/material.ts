@@ -1,5 +1,6 @@
 import { createPbrMaterial, markMaterialUboDirty, type MaterialPlugin, type PbrMaterialProps, type Texture2D } from "@babylonjs/lite";
 import { WHITE, type Rgb } from "./rgb";
+import { stale } from "./still";
 
 /**
  * The town's material: PBR, lit by the sun and by the sky round it
@@ -40,6 +41,7 @@ export function setFade(hand: { x: number; y: number } | null, eye: { x: number;
   const next = hand ? { x: hand.x, y: hand.y, r: FADE_REACH, leanX: (eye.x - hand.x) / eye.z, leanY: (eye.y - hand.y) / eye.z } : { ...fade, r: 0 };
   if ((Object.keys(next) as (keyof typeof fade)[]).every((k) => next[k] === fade[k])) return;
   Object.assign(fade, next);
+  stale();
   for (const ref of towns) {
     const m = ref.deref();
     if (m) markMaterialUboDirty(m);

@@ -41,7 +41,7 @@ jobs:
   phones:
     if: inputs.phones
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - if: github.event_name == 'push'
@@ -62,7 +62,7 @@ jobs:
           gcloud firebase test android run --project "${{ vars.GCP_PROJECT }}" --type instrumentation \
             --app bench/android/app/build/outputs/apk/debug/app-debug.apk \
             --test bench/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            "${devices[@]}" --timeout 5m --no-record-video --directories-to-pull /sdcard/Download/bench \
+            "${devices[@]}" --timeout 10m --no-record-video --directories-to-pull /sdcard/Download/bench \
             --environment-variables "^;^url=$URL/?bench=$WHERE;tab=fl-$GITHUB_RUN_ID" 2>&1 | tee testlab.log || true
           # Each phone's screens and log, as the run's artifact.
           bucket=$(grep -o 'storage/browser/[^]]*' testlab.log | head -1 | sed 's#storage/browser/#gs://#; s#/$##')
@@ -84,7 +84,7 @@ jobs:
   # throttles, for numbers that compare run to run.
   gpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - if: github.event_name == 'push'
@@ -100,7 +100,10 @@ jobs:
           page=$(jq -n --arg p "$URL/?bench=$WHERE&tab=gpu-$GITHUB_RUN_ID" '$p')
           args="bash -c 'echo $script | base64 -d > /b.sh && bash /b.sh'"
           # The cheapest card that is free, of those that draw like a player's.
-          for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation"; do
+          echo "credit: $(q 'query { myself { clientBalance } }' | jq -r '.data.myself.clientBalance // .errors[0].message // "?"')"
+          for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation" "NVIDIA GeForce RTX 3080" "NVIDIA GeForce RTX 3090" "NVIDIA GeForce RTX 4080" "NVIDIA RTX A4500" "NVIDIA L4"; do
+            # Why a card was not had, said, so a run that finds none says why.
+            curl -s https://api.runpod.io/graphql -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$(jq -n --arg q "query { gpuTypes(input: { id: \"$gpu\" }) { id lowestPrice(input: { gpuCount: 1 }) { stockStatus uninterruptablePrice } } }" '{query: $q}')" | jq -c '.data.gpuTypes[0] // .errors' || true
             id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }, { key: \"SCREEN\", value: \"${{ inputs.screen || '1600x1000@1' }}\" }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
             [ -n "$id" ] && { echo "$gpu: $id"; break; }
           done

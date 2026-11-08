@@ -1,4 +1,5 @@
 import { setMeshVisible, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { MARGIN } from "./still";
 import { groundCover } from "./view";
 
 /** A box on the map: low x, low y, high x, high y, in tiles. */
@@ -46,7 +47,9 @@ export class Culler {
    *  as it is kept or wanted, so only a view that moved walks them all. */
   update() {
     if (!this.scene.camera) return;
-    const { cx, cy, radius } = groundCover(this.scene, this.canvas);
+    const { cx, cy } = groundCover(this.scene, this.canvas);
+    // The still town's picture reaches a margin past the screen.
+    const radius = groundCover(this.scene, this.canvas).radius * (1 + 2 * MARGIN);
     const view: Area = [cx - radius, cy - radius, cx + radius, cy + radius];
     if (view.every((v, i) => v === this.view[i])) return;
     this.view = view;
@@ -58,6 +61,12 @@ export class Culler {
     if (shown === k.shown) return;
     k.shown = shown;
     setMeshVisible(mesh, shown);
+  }
+
+  /** Whether a point is in what is drawn: the view, a margin past it. */
+  sees(x: number, y: number) {
+    const [v0, w0, v1, w1] = this.view;
+    return x >= v0 && x <= v1 && y >= w0 && y <= w1;
   }
 
   private meets([x0, y0, x1, y1]: Area) {

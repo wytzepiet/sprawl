@@ -11,6 +11,7 @@ import { spread } from "../engine/budget";
 import { syncFromClock } from "../network/clock";
 import { setTown, tell } from "./town";
 import type { Place } from "../engine/pen";
+import { make, STALE_MS, type Ground, type Guess } from "./guess";
 import type { Side } from "../engine/tiles";
 import type { Building,
   GameObjectEntry,
@@ -174,66 +175,134 @@ export function setTerrainListener(fn: TerrainListener | null) {
 const [builtVersion, setBuiltVersion] = createSignal(0);
 export { builtVersion };
 
-function applyOps(ops: Operation[]) {
-  let built = false;
-  for (const op of ops) {
-    const was = entities.get(String(op.op === "Upsert" ? op.data.id : op.data))?.object.kind;
-    const is = op.op === "Upsert" ? op.data.object.kind : undefined;
-    if ([was, is].some((k) => k === "RoadNode" || k === "Building")) built = true;
-    switch (op.op) {
-      case "Upsert": {
-        const key = String(op.data.id);
-        const existing = entities.get(key);
-        if (existing?.position) {
-          const pk = posKey(existing.position.x, existing.position.y);
-          const ids = spatial.get(pk);
-          if (ids) {
-            const filtered = ids.filter((i) => i !== existing.id);
-            if (filtered.length === 0) spatial.delete(pk);
-            else spatial.set(pk, filtered);
-          }
-        }
-        if (op.data.position) {
-          const pk = posKey(op.data.position.x, op.data.position.y);
-          const ids = spatial.get(pk);
-          if (!ids) spatial.set(pk, [op.data.id]);
-          else if (!ids.includes(op.data.id)) ids.push(op.data.id);
-        }
-        entities.set(key, op.data);
-        trackSign(op.data, op.data.id);
-        if (op.data.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
-        break;
-      }
-      case "Delete": {
-        const key = String(op.data);
-        const existing = entities.get(key);
-        if (existing) {
-          if (existing.position) {
-            const pk = posKey(existing.position.x, existing.position.y);
-            const ids = spatial.get(pk);
-            if (ids) {
-              const filtered = ids.filter((i) => i !== existing.id);
-              if (filtered.length === 0) spatial.delete(pk);
-              else spatial.set(pk, filtered);
-            }
-          }
-          entities.delete(key);
-          if (existing.object.kind === "RoadNode") setSignsVersion((v) => v + 1);
-        }
-        trackSign(undefined, Number(key));
-        break;
-      }
-    }
+/** An op kept: the entity, and where it stands. Nobody told. */
+function keep(op: Operation) {
+  const id = op.op === "Upsert" ? op.data.id : op.data;
+  const existing = entities.get(String(id));
+  if (existing?.position) {
+    const pk = posKey(existing.position.x, existing.position.y);
+    const ids = spatial.get(pk)?.filter((i) => i !== id);
+    if (!ids?.length) spatial.delete(pk);
+    else spatial.set(pk, ids);
   }
+  if (op.op === "Delete") return void entities.delete(String(id));
+  if (op.data.position) {
+    const pk = posKey(op.data.position.x, op.data.position.y);
+    const ids = spatial.get(pk);
+    if (!ids) spatial.set(pk, [id]);
+    else if (!ids.includes(id)) ids.push(id);
+  }
+  entities.set(String(id), op.data);
+}
+
+/** Ops kept, and everyone told: the signs, what is built, the scene.
+ *  `was`, the kind each entity was before them. */
+function announce(ops: Operation[], was: (string | undefined)[]) {
+  let built = false;
+  ops.forEach((op, i) => {
+    const is = op.op === "Upsert" ? op.data.object.kind : undefined;
+    if ([was[i], is].some((k) => k === "RoadNode" || k === "Building")) built = true;
+    if (is === "RoadNode" || was[i] === "RoadNode") setSignsVersion((v) => v + 1);
+    trackSign(op.op === "Upsert" ? op.data : undefined, op.op === "Upsert" ? op.data.id : op.data);
+  });
   if (built) setBuiltVersion((v) => v + 1);
-  opsListener?.(ops);
+  if (ops.length) opsListener?.(ops);
+}
+
+const kindOf = (id: number) => entities.get(String(id))?.object.kind;
+const idOf = (op: Operation) => (op.op === "Upsert" ? op.data.id : op.data);
+
+function applyOps(ops: Operation[]) {
+  const was = ops.map((op) => kindOf(idOf(op)));
+  for (const op of ops) keep(op);
+  announce(ops, was);
+}
+
+// --- The hand's guesses (`guess.ts`) ---
+
+/** How many messages have gone to the game since it last welcomed us. */
+let sent = 0;
+/** What the hand did that the game has not yet said it did: each with
+ *  the messages sent when it was done, when, and the ids of the roads it
+ *  laid where none stood. */
+const guesses: { seq: number; at: number; g: Guess; ids: number[] }[] = [];
+/** What the game last said of each entity a guess changed: none, it
+ *  never stood. Shown instead is the guess. */
+const said = new Map<number, GameObjectEntry | null>();
+let guessed = 0;
+
+/** The hand did this, just now, and sent it: shown at once. */
+export function guess(g: Guess) {
+  guesses.push({ seq: sent, at: performance.now(), g, ids: [] });
+  reguess();
+}
+
+/** The game's ops, under what the hand guessed: an entity a guess
+ *  changed keeps the guess shown, and what the game said of it is put
+ *  by; then every guess made again on what the game now says. */
+function applyHeard(ops: Operation[]) {
+  if (!guesses.length && !said.size) return applyOps(ops);
+  const built = (k: string | undefined) => k === "RoadNode" || k === "Building";
+  const stirs = ops.some((op) => said.has(idOf(op)) || built(kindOf(idOf(op))) || (op.op === "Upsert" && built(op.data.object.kind)));
+  const mine = ops.filter((op) => said.has(idOf(op)));
+  for (const op of mine) said.set(idOf(op), op.op === "Upsert" ? op.data : null);
+  applyOps(mine.length ? ops.filter((op) => !said.has(idOf(op))) : ops);
+  if (stirs) reguess();
+}
+
+/** The game has done this many of our messages: the guesses they carried
+ *  give way to what it made of them. And any too old to wait for. */
+function seen(n: number) {
+  const now = performance.now();
+  const before = guesses.length;
+  for (let i = guesses.length - 1; i >= 0; i--) if (guesses[i].seq <= n || now - guesses[i].at > STALE_MS) guesses.splice(i, 1);
+  if (guesses.length !== before) reguess();
+}
+
+function* acking(n: number) {
+  seen(n);
+}
+
+/** What the game said put back, every guess made again over it, and
+ *  only what that changed told. */
+function reguess() {
+  const before = new Map<number, GameObjectEntry | undefined>();
+  const keepFirst = (id: number) => before.has(id) || before.set(id, entities.get(String(id)));
+  for (const [id, e] of said) keepFirst(id), keep(e ? { op: "Upsert", data: e } : { op: "Delete", data: id });
+  said.clear();
+  const touch = (id: number) => {
+    keepFirst(id);
+    if (!said.has(id)) said.set(id, entities.get(String(id)) ?? null);
+  };
+  const ground: Ground = {
+    at: (t) => getObjectsAt(t.x, t.y),
+    get: getEntity,
+    building: (t) => buildingAt(t.x, t.y),
+    put: (e) => (touch(e.id), keep({ op: "Upsert", data: e })),
+    drop: (id) => (touch(id), keep({ op: "Delete", data: id })),
+  };
+  for (const g of guesses) {
+    let k = 0;
+    make(g.g, ground, () => (g.ids[k++] ??= -++guessed));
+  }
+  // An entity the guesses leave as the game said it is no longer theirs.
+  for (const [id, e] of said) if (JSON.stringify(e ?? undefined) === JSON.stringify(entities.get(String(id)))) said.delete(id);
+  const ops: Operation[] = [];
+  const was: (string | undefined)[] = [];
+  for (const [id, e] of before) {
+    const now = entities.get(String(id));
+    if (JSON.stringify(now) === JSON.stringify(e)) continue;
+    ops.push(now ? { op: "Upsert", data: now } : { op: "Delete", data: id });
+    was.push(e?.object.kind);
+  }
+  announce(ops, was);
 }
 
 /** A message's ops, so many at a time. */
 const OPS_A_PART = 64;
 function* applying(ops: Operation[]) {
   for (let i = 0; i < ops.length; i += OPS_A_PART) {
-    applyOps(ops.slice(i, i + OPS_A_PART));
+    applyHeard(ops.slice(i, i + OPS_A_PART));
     yield;
   }
 }
@@ -261,7 +330,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   const [welcomed, setWelcomed] = createSignal(0);
   const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
-  const { send, close } = props.connect((msg) => {
+  const line = props.connect((msg) => {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
@@ -269,6 +338,10 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         setTown(msg.data.town);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops));
+        break;
+      case "Seen":
+        // After the ops before it, which wait their turn too.
+        void spread(acking(msg.data));
         break;
       case "TerrainChunk":
         ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
@@ -282,6 +355,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         // knows nothing of what it held: let it all go, and the camera asks
         // for its view again. In line behind what the old server said and
         // is still landing, or that lands after, over what it says now.
+        (sent = 0), (guesses.length = 0), said.clear();
         void spread((function* () {
           applyOps([...entities.values()].map((e) => ({ op: "Delete", data: e.id })));
         })());
@@ -301,7 +375,11 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
     }
   });
 
-  onCleanup(close);
+  // Every message counted as the game counts what it has done (`Seen`),
+  // whoever sends it on this line.
+  const raw = line.send.bind(line);
+  const send = (line.send = (msg: ClientMessage) => raw(msg) && ++sent > 0);
+  onCleanup(() => line.close());
 
   // Built by hand, as Solid compiles it: this module is also the engine's,
   // which `bun test` loads with no JSX transform.

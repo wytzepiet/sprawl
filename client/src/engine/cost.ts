@@ -1,6 +1,6 @@
 import { night } from "./lights";
 import { crownsBaked } from "./trees";
-import { renderFrame, setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "@babylonjs/lite";
+import { setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "@babylonjs/lite";
 
 /**
  * Development only: what each kind of thing in view costs a frame, found by
@@ -60,12 +60,12 @@ const STEADY = 0.2;
 /** The scene is ready when its meshes and their draws have held this long. */
 const READY_MS = 1000;
 
-export function costMeter(engine: EngineContext, scene: SceneContext, after: () => void, hold: (held: boolean) => void) {
+/** `draw` draws a frame as the game does, the still town's picture and all. */
+export function costMeter(engine: EngineContext, scene: SceneContext, draw: () => void, hold: (held: boolean) => void) {
   /** One frame drawn and handed to the GPU, not waited on. */
   function frame() {
     const t0 = performance.now();
-    renderFrame(engine, 16);
-    after();
+    draw();
     return { cpu: performance.now() - t0, draws: engine.drawCallCount };
   }
 

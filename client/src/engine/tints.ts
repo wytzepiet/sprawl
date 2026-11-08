@@ -1,5 +1,6 @@
 import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import type { RGB } from "./rgb";
+import { stale } from "./still";
 
 /** Slots a row of the texture, and its rows: room for this many buildings
  *  ever coloured, a texture bound once and never replaced. */
@@ -48,6 +49,7 @@ export class Tints {
     if (!this.stale) return;
     this.stale = false;
     updateTexture2DFromPixels(this.engine, this.texture, this.data);
+    stale();
   }
 }
 

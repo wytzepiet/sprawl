@@ -126,8 +126,7 @@ function scene(built: Built): { tris: Tri[]; plot: [number, number, number, numb
       solid([[x - 0.011, y - 0.011, z], [x + 0.011, y + 0.011, z + 0.28]], IRON);
       solid([[Math.min(x, tx), Math.min(y, ty) - 0.006, z + 0.268], [Math.max(x, tx), Math.max(y, ty) + 0.006, z + 0.28]], IRON);
       solid([[tx - 0.03, ty - 0.03, z + 0.255], [tx + 0.03, ty + 0.03, z + 0.272]], [1, 0.86, 0.55], "smoke");
-    } else if (p.kind === "smoke") for (let k = 1; k <= 3; k++) ball([x - 0.04 * k, y + 0.02 * k, z + 0.06 * k], [p.size * 0.25 * (0.6 + 0.3 * k), p.size * 0.25 * (0.6 + 0.3 * k), p.size * 0.2 * (0.6 + 0.3 * k)], [0.92, 0.92, 0.92], "smoke");
-    else solid([[x - p.size / 2, y - p.size / 2, z], [x + p.size / 2, y + p.size / 2, z + p.high]], [0.7, 0.72, 0.75]);
+    } else solid([[x - p.size / 2, y - p.size / 2, z], [x + p.size / 2, y + p.size / 2, z + p.high]], [0.7, 0.72, 0.75]);
   }
   for (const [tx, ty, s] of built.trees) {
     const [x, y] = [tx * side, ty];

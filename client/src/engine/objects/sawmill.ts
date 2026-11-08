@@ -16,7 +16,7 @@ import { add, barn, box, chimney, gablet, ground, heap, hull, model, pitched, pl
  *   braced, a lamp over it and a dormer above, where the logs go in.
  * - On the right, the wing, in two: its tall back, its lower front, its
  *   gable to the street, the loading bay coming in to it; the brick
- *   chimney behind, smoking through the shift.
+ *   chimney behind.
  * - Before the hall, on wood chips: the water tower, the conveyor up into
  *   the hall with logs on it, sawdust heaped, a stack of sawn planks;
  *   logs racked between posts.
@@ -155,7 +155,7 @@ export const SAWMILL = model((m) => {
   window(m, { face: "+y", at: fy1 }, (wx0 + wx1) / 2, 0.29, { w: 0.08, h: 0.04, frame: TRIM });
   for (const y of [-0.7, -0.45]) window(m, { face: "-x", at: wx0 + 0.02 }, y, 0.08, { w: 0.08, h: 0.06, frame: TRIM });
   // Its chimney, brick, behind the wing, smoking.
-  chimney(m, 0.62, -1.86, 0.72, BRICK, { w: 0.12, smoke: 0.15 });
+  chimney(m, 0.62, -1.86, 0.72, BRICK, { w: 0.12 });
 
   // The water tower at the yard's corner, on four braced legs.
   const [tx, ty, legs, tr, th] = [-0.8, -0.66, 0.26, 0.14, 0.2];
@@ -213,7 +213,7 @@ export const WOODCUTTER = model((m) => {
     put(m, "matte", plate(front, at - 0.06, at + 0.06, 0.08, 0.16, 0, 0.006), TRIM);
     put(m, "glass", plate(front, at - 0.045, at + 0.045, 0.092, 0.148, 0, 0.009), PANE);
   }
-  chimney(m, X0 + 0.15, Y0 + 0.16, RIDGE + 0.06, BRICK, { smoke: 0.1 });
+  chimney(m, X0 + 0.15, Y0 + 0.16, RIDGE + 0.06, BRICK);
   // The wood: two racks of logs, a stump with the axe in it, chips round it.
   rack(m, 0.5, -1.12, "x", 0.5, 4, 3);
   put(m, "matte", post(0.1, -0.62, 0, 0.06, 0.04, 10), BARKED);

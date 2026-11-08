@@ -47,8 +47,8 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
 /** A bucket of a vehicle's shape in its colour, its material lacquered
  *  and its edges rounded tight (a lit bucket's is the town's,
  *  `InstancePool`); its key. */
-export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true): string {
-  pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat]);
+export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true, moves = true): string {
+  pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
   const bucket = pool.finish(key)!;
   bucket.bevel.width = ROUNDING;
   lacquer(bucket.material, "car");
@@ -88,7 +88,7 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
  *  pose, its base at `z`, in its own finish or a vehicle's paint, casting
  *  a shadow unless it lies too flat to. It is
  *  the world's: no building's look is on it. */
-export const placeShape = (pool: InstancePool, { key, geo, coat, cast }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast) }], p, z);
+export const placeShape = (pool: InstancePool, { key, geo, coat, cast }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean }, p: Pose, z: number, moves = true) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast, moves) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs
@@ -180,7 +180,14 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   // for one, every time.
   const light = (m: Moment, lift: number) => look.light !== undefined && beam(id, m.body.at[0], m.body.at[1], look.z + lift + look.light, m.body.heading);
   if (moving) light(first.m, first.lift);
+  // Out of view, worked out only now and then, enough to see it come in
+  // from the view's margin: a big town's cars are mostly elsewhere.
+  let worked = 0;
   const stop = moving || first.m.bed || car.role === "Ferry" ? ctx.beforeRender(() => {
+    const at = carPoses.get(id);
+    const clock = performance.now();
+    if (at && !ctx.cull.sees(at[0], at[1]) && clock - worked < OUT_OF_VIEW_MS) return;
+    worked = clock;
     const { m, lift } = now();
     if (!m) return;
     load(m, lift, simNow());
@@ -257,6 +264,9 @@ function liftOf(t: Car["trip"] & {}): (dist: number) => number {
     return heightAlong(heights, k + f) * HALF_LEVEL;
   };
 }
+
+/** How often a vehicle out of view is worked out. */
+const OUT_OF_VIEW_MS = 400;
 
 /** How quickly the drawn distance closes on the physics', per second, and
  *  the step it is eased in. */

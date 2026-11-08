@@ -8,4 +8,4 @@ import type { Stand } from "./Stand";
 /**
  * The game's answer to an `Ask`.
  */
-export type Hint = { "type": "Starts", "data": { hand: Holding, area: Area, tiles: Array<GridCoord>, } } | { "type": "Reach", "data": { id: number, len: number, ways: Array<Stand | null>, } } | { "type": "Placing", "data": Placing };
+export type Hint = { "type": "Starts", "data": { hand: Holding, area: Area, tiles: Array<GridCoord>, } } | { "type": "Reach", "data": { id: number, len: number, ways: Array<Array<Stand>>, } } | { "type": "Placing", "data": Placing };

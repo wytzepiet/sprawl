@@ -13,6 +13,7 @@ import { useDayNight, type Casters } from "./DayNightCycle";
 import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
+import { live, stale } from "./still";
 
 /**
  * One draw call per bucket, however many instances it holds. Thin instances
@@ -42,6 +43,8 @@ interface Bucket {
   castShadow: boolean;
   receiveShadow: boolean;
   geometry: MeshGeometry;
+  /** Drawn every frame over the still town (`still.ts`), not into it. */
+  live: boolean;
 }
 
 const STRIDE = 9;
@@ -107,6 +110,8 @@ export class InstancePool {
     receiveShadow: boolean,
     texture?: Texture2D,
     plugins: MaterialPlugin[] = [],
+    // A flat thing (a chevron, a marker) follows the hand.
+    moves = !receiveShadow,
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
@@ -122,6 +127,7 @@ export class InstancePool {
     // A shape's own colours scale its bucket's: a car's glass darker.
     const mesh = meshOf(this.engine, `inst_${key}`, shape);
     giveBevel(this.engine, mesh, shape);
+    if (moves) live(mesh);
     mesh.material = mat;
     mesh.receiveShadows = receiveShadow;
     // Room for some from the start: a buffer of none is no buffer at all.
@@ -146,6 +152,7 @@ export class InstancePool {
       castShadow,
       receiveShadow,
       geometry: shape,
+      live: moves,
     };
     // Painted with the ambient in force now, not the noon default: a bucket
     // born at dusk beside buckets already tinted for dusk would otherwise be
@@ -249,6 +256,7 @@ export class InstancePool {
   flush(): void {
     for (const [key, bucket] of this.buckets) {
       if (!bucket.dirty) continue;
+      if (!bucket.live) stale();
       if (bucket.count === 0) {
         if (bucket.castShadow) this.casters.remove(bucket.mesh);
         drop(this.scene, bucket.mesh);
