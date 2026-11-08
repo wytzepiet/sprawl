@@ -66,8 +66,12 @@ import { CONTRAST, TONE } from "./toneMap";
 
 /** The picture's margin past each edge of the screen, as a share of it. */
 export const MARGIN = 0.12;
-/** While the view moves, the picture drawn again at most this often. */
-const MOVING_MS = 100;
+/** While the view moves, the picture is slid, and drawn again only once
+ *  the screen nears its edge (this far out, of its half-width) or is
+ *  zoomed in on it this much: at most this often. */
+const EDGE = 0.95;
+const ZOOMED = 1.25;
+const MOVING_MS = 50;
 /** Something still changed: drawn again at most this often. */
 const CHANGED_MS = 100;
 /** And again this often whatever happened: the sun moves, and whatever was
@@ -468,6 +472,31 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   };
   const holding = () => `${(scene as unknown as { _renderableVersion: number })._renderableVersion},${_vis}`;
   let lastView = "";
+  let stillVp: ArrayLike<number> | null = null;
+
+  /** Whether the picture still holds the screen: each corner of it, on the
+   *  ground, inside the picture short of its edge, and the screen not
+   *  zoomed in on the picture past a little blur. */
+  function holds(inverse: ArrayLike<number> | null): boolean {
+    if (!stillVp || !inverse) return false;
+    const at = (m: ArrayLike<number>, x: number, y: number, z: number) => {
+      const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+      return [0, 1, 2].map((i) => (m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]) / w);
+    };
+    const xs: number[] = [];
+    for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      // The corner's ray, down to the ground.
+      const [a, b] = [at(inverse, x, y, 0), at(inverse, x, y, 1)];
+      const t = a[2] / (a[2] - b[2]);
+      if (!(t > 0) || !Number.isFinite(t)) return false;
+      const p = at(stillVp, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, 0);
+      if (Math.abs(p[0]) > EDGE || Math.abs(p[1]) > EDGE) return false;
+      xs.push(p[0]);
+    }
+    // The screen's width in the picture, against what it was when drawn.
+    const wide = (Math.max(...xs) - Math.min(...xs)) / 2;
+    return wide * (1 + 2 * MARGIN) * ZOOMED > 1;
+  }
 
   /** The picture's eye where the game's is, a margin wider. */
   function aim(now: number) {
@@ -480,6 +509,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     // screen's pixels are the picture's, a margin in.
     eye.fov = 2 * Math.atan(Math.tan(c.fov / 2) * (picture.rt._height / Math.max(1, surface.canvas.height)));
     const vp = getViewProjectionMatrix(eye, picture.rt._width / Math.max(1, picture.rt._height));
+    stillVp = vp;
     const inverse = Array.from(invertMat4(vp) ?? vp);
     for (const m of both) setShaderUniform(m, "stillView", Array.from(vp)), setShaderUniform(m, "stillInverse", inverse);
     [drawn, from] = [now, view()];
@@ -563,12 +593,16 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
       const moving = here !== lastView;
       lastView = here;
       const since = now - drawn;
+      const vp = getViewProjectionMatrix(c, surface.canvas.width / Math.max(1, surface.canvas.height));
+      const inverse = invertMat4(vp);
+      // While the view moves the picture is slid, and drawn again only as
+      // the screen nears its edge; whatever else is due waits for it to stop,
+      // when it is drawn again whatever happened.
       const due =
         always ||
-        // Moved since it was drawn: now and then while moving, at once once it stops.
-        (here !== from && (!moving || since >= MOVING_MS)) ||
-        ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) ||
-        since >= stillKnobs.everyMs;
+        (moving
+          ? since >= MOVING_MS && !holds(inverse)
+          : here !== from || ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) || since >= stillKnobs.everyMs);
       if (due) {
         lastDue = true;
         stillKnobs.redraws++;
@@ -591,12 +625,10 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         content = holding();
         staleSince = sunDrawn ? Infinity : now;
       }
-      const vp = getViewProjectionMatrix(c, surface.canvas.width / Math.max(1, surface.canvas.height));
-      const inverse = Array.from(invertMat4(vp) ?? vp);
       for (const m of both) {
         setShaderUniform(m, "screen", [surface.canvas.width, surface.canvas.height]);
         setShaderUniform(m, "seen", Array.from(vp));
-        setShaderUniform(m, "seenInverse", inverse);
+        setShaderUniform(m, "seenInverse", Array.from(inverse ?? vp));
       }
       shade();
       pack();
