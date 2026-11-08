@@ -529,34 +529,50 @@ fn overlaps(world: &World, now: GameTime) {
         let n = t.route.len();
         let turning = if t.route_index <= t.from_lot { "out" } else if t.route_index >= n - t.to_lot { "in" } else { "by" };
         let edge = (t.route[t.route_index - 1], t.route[t.route_index]);
-        bodies.push((e.id, ends, turning, v, t.why.map(|w| w.0), edge, t.ghost.is_some(), t.route.get(t.route_index + 1).copied()));
+        // Half its width, as the client draws it (`roadGeometry.ts`).
+        let half = if c.role == model::CarRole::Private { 0.075 } else { 0.085 };
+        bodies.push((e.id, ends, turning, v, t.why.map(|w| w.0), edge, t.ghost.is_some(), t.route.get(t.route_index + 1).copied(), half));
     }
-    let d = |p: [f64; 2], a: [f64; 2], b: [f64; 2]| {
-        let (vx, vy) = (b[0] - a[0], b[1] - a[1]);
-        let l = (vx * vx + vy * vy).max(1e-12);
-        let t = (((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l).clamp(0.0, 1.0);
-        (p[0] - a[0] - vx * t).hypot(p[1] - a[1] - vy * t)
+    // How deep two bodies are in each other, as boxes: the least overlap
+    // of their outlines across any of their sides; none if apart.
+    type Body = (EntityId, ([f64; 2], [f64; 2]), &'static str, f64, Option<model::Cause>, (EntityId, EntityId), bool, Option<EntityId>, f64);
+    let corners = |b: &Body| {
+        let ((p, q), w) = (b.1, b.8);
+        let (dx, dy) = (q[0] - p[0], q[1] - p[1]);
+        let l = dx.hypot(dy).max(1e-9);
+        let (nx, ny) = (-dy / l * w, dx / l * w);
+        [[p[0] + nx, p[1] + ny], [q[0] + nx, q[1] + ny], [q[0] - nx, q[1] - ny], [p[0] - nx, p[1] - ny]]
+    };
+    let into = |a: &Body, b: &Body| {
+        let (ca, cb) = (corners(a), corners(b));
+        let mut depth = f64::MAX;
+        for c in [&ca, &cb] {
+            for k in 0..2 {
+                let (ex, ey) = (c[k + 1][0] - c[k][0], c[k + 1][1] - c[k][1]);
+                let l = ex.hypot(ey).max(1e-9);
+                let along = |p: &[f64; 2]| (p[0] * ex + p[1] * ey) / l;
+                let (a0, a1) = ca.iter().map(along).fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+                let (b0, b1) = cb.iter().map(along).fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+                depth = depth.min(a1.min(b1) - a0.max(b0));
+            }
+        }
+        depth
     };
     static SAID: std::sync::Mutex<Vec<(EntityId, EntityId)>> = std::sync::Mutex::new(Vec::new());
     for i in 0..bodies.len() {
         for j in i + 1..bodies.len() {
             let (a, b) = (&bodies[i], &bodies[j]);
-            let ((a0, a1), (b0, b1)) = (a.1, b.1);
-            let near = d(a0, b0, b1).min(d(a1, b0, b1)).min(d(b0, a0, a1)).min(d(b1, a0, a1));
-            // Both on one road, each its own way along it: two lanes.
-            if a.5 == (b.5.1, b.5.0) {
-                continue;
-            }
+            let near = into(a, b);
             // Coming to one node from each other's way on: a bend's two
             // lanes, cut short as bodies are drawn round it.
             if a.5.1 == b.5.1 && a.7 == Some(b.5.0) && b.7 == Some(a.5.0) {
                 continue;
             }
-            if near < 0.1 {
+            if near > 0.02 {
                 let mut said = SAID.lock().unwrap();
                 if !said.contains(&(a.0, b.0)) {
                     said.push((a.0, b.0));
-                    println!("{} {:.3} {} {} v{:.2} {:?} {:?} / {} {} v{:.2} {:?} {:?} at {:.1},{:.1} near {near:.2} next {:?} {:?} junction {}", if a.6 || b.6 { "GHOSTLAP" } else { "OVERLAP" }, now as f64 / DAY_MS as f64, a.0, a.2, a.3, a.4, a.5, b.0, b.2, b.3, b.4, b.5, a1[0], a1[1], a.7, b.7, world.map.is_intersection(a.5.1) || world.map.is_intersection(b.5.1));
+                    println!("{} {:.3} {} {} v{:.2} {:?} {:?} / {} {} v{:.2} {:?} {:?} at {:.1},{:.1} near {near:.2} next {:?} {:?} junction {}", if a.6 || b.6 { "GHOSTLAP" } else { "OVERLAP" }, now as f64 / DAY_MS as f64, a.0, a.2, a.3, a.4, a.5, b.0, b.2, b.3, b.4, b.5, a.1.1[0], a.1.1[1], a.7, b.7, world.map.is_intersection(a.5.1) || world.map.is_intersection(b.5.1));
                 }
             }
         }

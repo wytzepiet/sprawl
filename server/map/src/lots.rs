@@ -791,7 +791,12 @@ impl Map {
                     .map(|(i, _)| Claim::Spot(i))
             })
             // A lorry stops at the door of a front whose docks no way reaches.
-            .or_else(|| (!front || !lorry || docks == 0).then_some(Claim::Door));
+            // The door holds one at a time, and not while one still pulls
+            // away from it.
+            .or_else(|| {
+                let Way::Kerb { door, .. } = lot.way;
+                (lot.doorway.iter().all(|&c| c == car) && !self.leaving_from(door, car) && (!front || !lorry || docks == 0)).then_some(Claim::Door)
+            });
         let Some(claim) = claim else {
             let lot = self.lots.get_mut(&building).unwrap();
             lot.stats.refused += 1;
@@ -870,6 +875,14 @@ impl Map {
         let claim = self.claim_of(building, car).unwrap();
         let pose = self.pose_of(building, car, claim);
         self.set_spot(car, pose);
+    }
+
+    /// Is any car but this one still on its way out of the lot from
+    /// this lot node.
+    fn leaving_from(&self, node: EntityId, car: EntityId) -> bool {
+        self.node_cars.get(&node).is_some_and(|cars| {
+            cars.iter().any(|&c| c != car && matches!(self.objects.get(c).map(|e| &e.object), Some(GameObject::Car(o)) if o.trip.as_ref().is_some_and(|t| t.route_index <= t.from_lot && t.route[..t.from_lot].contains(&node))))
+        })
     }
 
     fn parked_here(&self, car: EntityId) -> bool {
@@ -959,7 +972,11 @@ impl Map {
         // behind, not turning back from the node ahead of it.
         let Way::Kerb { bays, .. } = &self.lots[&building].way;
         let sides: Vec<Option<usize>> = bays.iter().map(|b| b.sides.iter().position(|s| ways.bays.get(&s.entry).is_some_and(|r| r.len() < 2 || r[r.len() - 2] != s.ahead))).collect();
-        let claim = self.claim_spot(building, car, from, to, |i| sides.get(i).is_none_or(|s| s.is_some()))?;
+        // Nor a bay a car is still pulling out of: it gave the bay up as it
+        // set out, but stands in it until there is a gap in the street.
+        let lot = &self.lots[&building];
+        let leaving: Vec<bool> = lot.spots.iter().map(|s| self.leaving_from(s.node, car)).collect();
+        let claim = self.claim_spot(building, car, from, to, |i| sides.get(i).is_none_or(|s| s.is_some()) && !leaving[i])?;
         let side = |i: usize| sides.get(i).copied().flatten().unwrap_or(0);
         if let Claim::Spot(i) = claim
             && let Some(w) = self.lots.get_mut(&building).unwrap().spots[i].windows.iter_mut().find(|w| w.car == car)
