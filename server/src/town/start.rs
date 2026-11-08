@@ -70,7 +70,7 @@ fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
 /// at all. Its tile, and the far end of the lane it comes with.
 fn shore(map: &mut Map) -> Option<(GridCoord, GridCoord)> {
     for wood in [true, false] {
-        for r in 0..90 {
+        for r in 0..200 {
             for i in 0..(8 * r).max(1) {
                 let (x, y) = ring(r, i);
                 for facing in 0..4 {

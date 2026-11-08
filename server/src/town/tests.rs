@@ -120,3 +120,29 @@ fn a_chain_comes_to_hand_from_its_raw_end() {
     picks::release(&mut world);
     assert!(world.town.has(BuildingKind::Sawmill));
 }
+
+/// Every new town rolls its own seed: whatever island it raises, the town
+/// begins whole on it, its fishery by a wood, two cottages up the lane.
+/// `cargo test every_seed_founds -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn every_seed_founds_a_town() {
+    let mut wrong = Vec::new();
+    for seed in (0..40u32).map(|i| i.wrapping_mul(2_654_435_761)) {
+        let mut world = World::new();
+        world.map.terrain_seed = seed;
+        world.map.terrain = land::terrain::generate(seed);
+        world.map.deposits = land::terrain::deposits(seed, &world.map.terrain);
+        world.map.raise_mountains();
+        let game = Game::new(world, 0, 1, Box::new(World::new));
+        let world = &game.world;
+        let start = world.town.start.unwrap_or(GridCoord { x: 0, y: 0 });
+        let woods = (-20..=20).flat_map(|dx| (-20..=20).map(move |dy| (start.x + dx, start.y + dy))).filter(|t| world.map.terrain.get(t) == Some(&land::TerrainType::Forest)).count();
+        let (fisheries, cottages) = (world.map.objects.of_kind(BuildingKind::Fishery).count(), homes(world).len());
+        println!("seed {seed:>10}: start {start:?}, {cottages} cottages, {woods} wood tiles near");
+        if world.town.start.is_none() || fisheries != 1 || cottages != 2 || woods < 40 {
+            wrong.push(seed);
+        }
+    }
+    assert!(wrong.is_empty(), "seeds with a broken start: {wrong:?}");
+}

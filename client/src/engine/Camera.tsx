@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
 import { attachFreeControl, createFreeCamera } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
@@ -7,6 +7,7 @@ import { CHUNK_SIZE } from "./TerrainChunks";
 import { groundCover, screenToWorld } from "./view";
 import type { ChunkBounds } from "../generated";
 import { following, setFollowing, positionOf } from "../state/selection";
+import { town } from "../state/town";
 
 /**
  * How wide the lens is, in radians. Small enough that the view still reads as a
@@ -48,8 +49,10 @@ const KEEP = 192;
  *  stood this long: the player has settled on a closer look. */
 const SHRINK_MS = 5000;
 
-/** Where the island's camera was when the page was left: each world is
- *  served from its own origin, so the browser keeps one per world. */
+/** Where the island's camera was when the page was left, and the town it
+ *  was over: each world is served from its own origin, so the browser keeps
+ *  one per world; a town begun since (a reset rolls a new island) is looked
+ *  at afresh. */
 const KEPT = "sprawl.camera";
 
 /**
@@ -102,6 +105,15 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   let half: number = kept.half;
   let at = { x: kept.x as number, y: kept.y as number };
   let target = { half, ...at };
+  let over: string | undefined = kept.over;
+  createEffect(() => {
+    const s = town().start;
+    if (props.bounds || !s || `${s.x},${s.y}` === over) return;
+    over = `${s.x},${s.y}`;
+    at = { x: s.x, y: s.y };
+    target = { half, ...at };
+    place();
+  });
   let flying = false;
   let lastChunks: ChunkBounds | null = null;
   let lastSent = 0;
@@ -317,7 +329,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   };
 
   const keep = () => {
-    if (!props.bounds) localStorage.setItem(KEPT, JSON.stringify({ ...at, half }));
+    if (!props.bounds) localStorage.setItem(KEPT, JSON.stringify({ ...at, half, over }));
   };
   const onHide = () => document.visibilityState === "hidden" && keep();
 

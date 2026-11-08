@@ -16,10 +16,11 @@ pub fn db_path() -> PathBuf {
     std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
 }
 
-/// The seed a fresh world gets. Set SPRAWL_SEED to get the same map back every
-/// time — the point of a test world is that what you saw yesterday is still
-/// there today, so a change in behaviour is a change in the code.
-fn new_seed() -> u32 {
+/// The seed the first world on an empty save gets. Set SPRAWL_SEED to get the
+/// same map back every time — the point of a test world is that what you saw
+/// yesterday is still there today, so a change in behaviour is a change in
+/// the code. A reset is asking for a new town, so it always rolls one.
+fn first_seed() -> u32 {
     std::env::var("SPRAWL_SEED")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -56,7 +57,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.town.boundless();
     } else {
         if world.map.objects.is_empty() {
-            world.map.terrain_seed = new_seed();
+            world.map.terrain_seed = first_seed();
         }
         island(&mut world);
         if !world.map.objects.is_empty() {
@@ -69,7 +70,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fresh = Box::new(move || {
         persistence::Db::open(&fresh_db).clear();
         let mut world = World::new();
-        world.map.terrain_seed = new_seed();
+        world.map.terrain_seed = rand::random();
         island(&mut world);
         println!("reset: world cleared, terrain regenerated");
         world
