@@ -59,7 +59,6 @@ pub fn depart(
         _ => return false,
     };
     let backs_out = world.map.backs_out(car_id);
-    let leaving = world.map.stretch(car_id);
     let planned_out = if out.len() > 1 { world.map.manoeuvres_out(car_id) } else { Vec::new() };
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.map.ways_to(dest_building, from_node) else { return false };
@@ -83,9 +82,8 @@ pub fn depart(
     let backs_in = world.map.reverse_tail(car_id);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
-    let stretches = [leaving, world.map.stretch(car_id)];
     let manoeuvres = planned_out.into_iter().chain(world.map.manoeuvres_in(car_id, route.len())).collect();
-    let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, manoeuvres, stretches, leaves, now);
+    let trip = trip(world, car_id, dest_building, route, from_lot, to_lot, backing, manoeuvres, leaves, now);
     set_off(world, events, car_id, trip);
     true
 }
@@ -105,7 +103,6 @@ pub(crate) fn trip(
     to_lot: usize,
     backing: Vec<[usize; 2]>,
     manoeuvres: Vec<model::Manoeuvre>,
-    stretches: [Vec<EntityId>; 2],
     leaves: Option<model::Pose>,
     now: GameTime,
 ) -> Trip {
@@ -145,7 +142,6 @@ pub(crate) fn trip(
         route,
         standing: None,
         why: None,
-        stretches,
         shift: None,
         signal: None,
         stood: None,
@@ -215,7 +211,7 @@ pub fn drive_through(world: &mut Traffic, events: &mut EventQueue, car_id: Entit
         })
         .map_or(CRUISE_SPEED, |v| v.min(CRUISE_SPEED));
     let end = route[route.len() - 1];
-    let trip = Trip { speed, ..trip(world, car_id, end, route, 0, 0, Vec::new(), Vec::new(), [Vec::new(), Vec::new()], None, now) };
+    let trip = Trip { speed, ..trip(world, car_id, end, route, 0, 0, Vec::new(), Vec::new(), None, now) };
     set_off(world, events, car_id, trip);
     true
 }

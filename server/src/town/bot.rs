@@ -284,6 +284,12 @@ impl Trips {
             let i = t.along.iter().position(|&a| a >= p).unwrap_or(t.along.len()).min(t.route_positions.len().saturating_sub(1));
             let q = t.route_positions.get(i).map_or((0, 0), |q| (q[0].floor() as i32, q[1].floor() as i32));
             let why = match t.why {
+                Some((model::Cause::Junction(j), _)) if j >> 63 == 1 => {
+                    let n = t.route.len();
+                    let k = if t.route_index <= t.from_lot + 1 { "Out" } else if t.route_index + 1 >= n - t.to_lot { "In" } else { "By" };
+                    let (through, waiting) = world.streets.who(j);
+                    format!("Driveway{k}{}{}", if through.is_empty() { "-nobody-through" } else { "" }, if waiting.len() <= 1 { "-alone" } else { "" })
+                }
                 Some((ref w, _)) => format!("{w:?}").split('(').next().unwrap_or("").to_string(),
                 None => "-".into(),
             };
@@ -407,6 +413,16 @@ fn bot() {
         place_hand(&mut game, &mut tried);
         game.take_outbox();
         let to = game.now + 3_000;
+        if std::env::var("OVERLAP").is_ok() {
+            while game.now < to {
+                let (was, step) = (game.now, game.now + 200);
+                game.run_to(step);
+                if game.now == was {
+                    break;
+                }
+                overlaps(&game.world, game.now);
+            }
+        }
         game.run_to(to);
         for n in std::mem::take(&mut game.world.news) {
             let t = game.now as f64 / DAY_MS as f64;
@@ -498,4 +514,100 @@ fn bot_look() {
     let c = game.world.town.start.unwrap();
     println!("start {c:?}");
     draw(&game.world.map, c, 40);
+}
+
+/// Every two vehicles whose bodies overlap as drawn, said once a pair.
+fn overlaps(world: &World, now: GameTime) {
+    use traffic::car::{nose, tail};
+    let mut bodies = Vec::new();
+    for e in world.map.objects.iter() {
+        let GameObject::Car(ref c) = e.object else { continue };
+        let Some(t) = &c.trip else { continue };
+        let (p, v) = t.at(now);
+        let Some((m, h)) = drawn(t, p) else { continue };
+        let ends = ([m[0] - h[0] * tail(c.role), m[1] - h[1] * tail(c.role)], [m[0] + h[0] * nose(c.role), m[1] + h[1] * nose(c.role)]);
+        let n = t.route.len();
+        let turning = if t.route_index <= t.from_lot { "out" } else if t.route_index >= n - t.to_lot { "in" } else { "by" };
+        let edge = (t.route[t.route_index - 1], t.route[t.route_index]);
+        // Half its width, as the client draws it (`roadGeometry.ts`).
+        let half = if c.role == model::CarRole::Private { 0.075 } else { 0.085 };
+        bodies.push((e.id, ends, turning, v, t.why.map(|w| w.0), edge, t.ghost.is_some(), t.route.get(t.route_index + 1).copied(), half));
+    }
+    // How deep two bodies are in each other, as boxes: the least overlap
+    // of their outlines across any of their sides; none if apart.
+    type Body = (EntityId, ([f64; 2], [f64; 2]), &'static str, f64, Option<model::Cause>, (EntityId, EntityId), bool, Option<EntityId>, f64);
+    let corners = |b: &Body| {
+        let ((p, q), w) = (b.1, b.8);
+        let (dx, dy) = (q[0] - p[0], q[1] - p[1]);
+        let l = dx.hypot(dy).max(1e-9);
+        let (nx, ny) = (-dy / l * w, dx / l * w);
+        [[p[0] + nx, p[1] + ny], [q[0] + nx, q[1] + ny], [q[0] - nx, q[1] - ny], [p[0] - nx, p[1] - ny]]
+    };
+    let into = |a: &Body, b: &Body| {
+        let (ca, cb) = (corners(a), corners(b));
+        let mut depth = f64::MAX;
+        for c in [&ca, &cb] {
+            for k in 0..2 {
+                let (ex, ey) = (c[k + 1][0] - c[k][0], c[k + 1][1] - c[k][1]);
+                let l = ex.hypot(ey).max(1e-9);
+                let along = |p: &[f64; 2]| (p[0] * ex + p[1] * ey) / l;
+                let (a0, a1) = ca.iter().map(along).fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+                let (b0, b1) = cb.iter().map(along).fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+                depth = depth.min(a1.min(b1) - a0.max(b0));
+            }
+        }
+        depth
+    };
+    static SAID: std::sync::Mutex<Vec<(EntityId, EntityId)>> = std::sync::Mutex::new(Vec::new());
+    for i in 0..bodies.len() {
+        for j in i + 1..bodies.len() {
+            let (a, b) = (&bodies[i], &bodies[j]);
+            let near = into(a, b);
+            // Coming to one node from each other's way on: a bend's two
+            // lanes, cut short as bodies are drawn round it.
+            if a.5.1 == b.5.1 && a.7 == Some(b.5.0) && b.7 == Some(a.5.0) {
+                continue;
+            }
+            if near > 0.02 {
+                let mut said = SAID.lock().unwrap();
+                if !said.contains(&(a.0, b.0)) {
+                    said.push((a.0, b.0));
+                    println!("{} {:.3} {} {} v{:.2} {:?} {:?} / {} {} v{:.2} {:?} {:?} at {:.1},{:.1} near {near:.2} next {:?} {:?} junction {}", if a.6 || b.6 { "GHOSTLAP" } else { "OVERLAP" }, now as f64 / DAY_MS as f64, a.0, a.2, a.3, a.4, a.5, b.0, b.2, b.3, b.4, b.5, a.1.1[0], a.1.1[1], a.7, b.7, world.map.is_intersection(a.5.1) || world.map.is_intersection(b.5.1));
+                }
+            }
+        }
+    }
+}
+
+/// Where a car on its trip is drawn `p` along it, and which way it faces:
+/// on its lane, or on a parking move's curve.
+fn drawn(trip: &model::Trip, p: f64) -> Option<([f64; 2], [f64; 2])> {
+    let n = trip.route.len();
+    if trip.route_positions.len() != n || trip.along.len() != n || n < 2 {
+        return None;
+    }
+    let lane = map::bezier::offset_positions(&trip.route_positions, map::bezier::LANE_OFFSET);
+    let at: Vec<[f64; 2]> = (0..n).map(|k| if k < trip.from_lot || k >= n - trip.to_lot { trip.route_positions[k] } else { lane[k] }).collect();
+    let point = |p: f64| {
+        let k = (1..n).find(|&k| trip.along[k] > p).unwrap_or(n - 1);
+        let seg = trip.along[k] - trip.along[k - 1];
+        let f = if seg > 0.0 { ((p - trip.along[k - 1]) / seg).clamp(0.0, 1.0) } else { 1.0 };
+        let pts = match trip.manoeuvres.iter().find(|m| m.edge == k - 1) {
+            Some(m) => m.points(),
+            None => vec![at[k - 1], at[k]],
+        };
+        let mut along = vec![0.0];
+        for w in pts.windows(2) {
+            along.push(along.last().unwrap() + (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]));
+        }
+        let s = f * along.last().unwrap();
+        let j = along.partition_point(|&d| d < s).clamp(1, pts.len() - 1);
+        let u = if along[j] > along[j - 1] { (s - along[j - 1]) / (along[j] - along[j - 1]) } else { 1.0 };
+        let (a, b) = (pts[j - 1], pts[j]);
+        [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]
+    };
+    let (c, a, b) = (point(p), point(p - 0.02), point(p + 0.02));
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let m = dx.hypot(dy).max(1e-9);
+    Some((c, [dx / m, dy / m]))
 }

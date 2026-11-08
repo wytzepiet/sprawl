@@ -739,12 +739,6 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub why: Option<(crate::Cause, f64)>,
-    /// The street nodes either side of the stretch a kerb bay is turned
-    /// across, at the trip's start and its end: the street waits at both
-    /// while the car turns (`car::simulation`).
-    #[serde(skip)]
-    #[ts(skip)]
-    pub stretches: [Vec<EntityId>; 2],
     /// Its last change of lanes along a road of two (`car::simulation`):
     /// for the client to slide it across while it lasts.
     #[serde(default)]
@@ -1074,14 +1068,8 @@ pub enum Cause {
     /// The lane its way out asks for, not yet got into: the car in the way
     /// there, if it has tried.
     GettingIn(Option<crate::EntityId>),
-    /// A junction or crossing it has no passage at yet.
+    /// A junction, crossing or driveway it has no passage at yet.
     Junction(crate::EntityId),
-    /// A car turning into or out of a lot across its way.
-    Turn(crate::EntityId),
-    /// Its give-way line out of a lot, with no gap yet.
-    Line,
-    /// About to turn into a lot across the oncoming lane.
-    TurningIn,
     /// A bend.
     Bend,
     /// A lot, or backing.
