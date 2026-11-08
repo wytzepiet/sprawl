@@ -1,11 +1,11 @@
-import { setMeshVisible, setShadowGeneratorEnabled, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { setMeshVisible, setShadowGeneratorEnabled, type EngineContext, type Mesh, type SceneContext } from "@babylonjs/lite";
 import { frameKnobs } from "./Canvas";
 import { isStill, stillKnobs } from "./still";
 
 /** `?gpu`: switches for what a frame at rest draws, to watch a GPU meter
  *  by, and how many frames and redraws of the picture a second. A
  *  diagnosis, not a feature: it goes once the answer is known. */
-export function gpuPanel(scene: SceneContext) {
+export function gpuPanel(engine: EngineContext, scene: SceneContext, timed: boolean) {
   const box = document.createElement("div");
   box.style.cssText = "position:fixed;left:12px;bottom:90px;z-index:99;background:#000;color:#fff;font:13px/1.4 system-ui;padding:10px;border-radius:12px;display:flex;flex-direction:column;gap:4px;max-height:70vh;overflow:auto";
   const rate = document.createElement("div");
@@ -30,10 +30,16 @@ export function gpuPanel(scene: SceneContext) {
     kinds.set(kind, [...(kinds.get(kind) ?? []), m]);
   }
   for (const [kind, meshes] of kinds) toggle(`${kind} (${meshes.length})`, (on) => meshes.forEach((m) => setMeshVisible(m, on)));
+  const cpu = document.createElement("div");
+  rate.after(cpu);
   let [frames, redraws] = [frameKnobs.frames, stillKnobs.redraws];
   setInterval(() => {
     rate.textContent = `${frameKnobs.frames - frames} frames/s · ${stillKnobs.redraws - redraws} redraws/s`;
+    // The main thread's second: what its frames took, the longest, and how
+    // often the screen waited over 50 ms for it (anything at all blocking it).
+    cpu.textContent = `${timed ? `gpu ${engine.gpuFrameTimeMs.toFixed(1)} ms/frame · ` : ""}js ${Math.round(frameKnobs.busyMs)} ms/s · worst ${Math.round(frameKnobs.worstMs)} ms · ${frameKnobs.stalls} stalls >50 ms`;
     [frames, redraws] = [frameKnobs.frames, stillKnobs.redraws];
+    Object.assign(frameKnobs, { busyMs: 0, worstMs: 0, stalls: 0 });
   }, 1000);
   document.body.append(box);
 }

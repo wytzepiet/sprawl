@@ -113,7 +113,7 @@ const MOVING_FPS = 60;
  *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
 const STILL_FPS = PHONE ? 20 : 30;
 /** `?gpu`'s hand on the frame rate at rest (`gpuPanel.ts`), and a count of frames. */
-export const frameKnobs = { stillFps: STILL_FPS, frames: 0 };
+export const frameKnobs = { stillFps: STILL_FPS, frames: 0, busyMs: 0, worstMs: 0, stalls: 0 };
 /** How long the view counts as moving after it last moved. A drag's pointer
  *  events do not land before every tick: one that finds the camera where the
  *  last frame left it would fall back to the still rate mid-pan, and the pan
@@ -221,9 +221,21 @@ export default function Canvas(props: ParentProps) {
       const c = scene.camera;
       return c ? `${c.worldMatrixVersion},${c.fov}` : "";
     };
+    let lastTick = 0;
+    // `?gpu`'s count of what the main thread spends: in each frame, and the
+    // gaps where it answered the screen late (`gpuPanel.ts`).
+    const tick = (now: number) => {
+      if (now - lastTick > 50 && lastTick) frameKnobs.stalls++;
+      lastTick = now;
+      const t0 = performance.now();
+      frame(now);
+      const ms = performance.now() - t0;
+      frameKnobs.busyMs += ms;
+      frameKnobs.worstMs = Math.max(frameKnobs.worstMs, ms);
+    };
     const frame = (now: number) => {
       if (!running) return;
-      requestAnimationFrame(frame);
+      requestAnimationFrame(tick);
       if (held) return;
       if (where() !== seen) lastMoved = now;
       const moving = now - lastMoved < MOVING_LINGER_MS;
@@ -253,9 +265,9 @@ export default function Canvas(props: ParentProps) {
       // good, the town and every update waiting on it.
       work(performance.now() + Math.max(WORK_MS, delta * WORK_SHARE));
     };
-    requestAnimationFrame(frame);
+    requestAnimationFrame(tick);
 
-    if (new URLSearchParams(location.search).has("gpu")) setTimeout(() => void import("./gpuPanel").then(({ gpuPanel }) => gpuPanel(scene)), 10_000);
+    if (new URLSearchParams(location.search).has("gpu")) setTimeout(() => void import("./gpuPanel").then(({ gpuPanel }) => gpuPanel(engine, scene, timed)), 10_000);
     if (import.meta.env.DEV) {
       (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => (document.querySelectorAll<HTMLElement>(".ink").forEach((e) => (e.style.display = "none")), true) };
     }
