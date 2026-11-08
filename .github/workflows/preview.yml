@@ -62,7 +62,7 @@ jobs:
         if: github.event_name == 'push'
         with:
           repository: wytzepiet/Babylon-Lite
-          ref: claude/still-cache  # back to sprawl once the still cache is merged there
+          ref: sprawl
           path: Babylon-Lite
 
       # The game crate is half the build, and most pushes leave it as it was:

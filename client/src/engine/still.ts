@@ -77,8 +77,6 @@ const CHANGED_MS = 100;
 /** And again this often whatever happened: the sun moves, and whatever was
  *  not told to the picture (`stale`) is in it this soon. */
 const EVERY_MS = 500;
-/** `?gpu`'s hands on the picture (`gpuPanel.ts`): how often the sun redraws it, and a count of redraws. */
-export const stillKnobs = { everyMs: EVERY_MS, redraws: 0 };
 
 /** Meshes drawn every frame, over the picture and never into it. */
 const lives = new WeakSet<Mesh>();
@@ -602,10 +600,9 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         always ||
         (moving
           ? since >= MOVING_MS && !holds(inverse)
-          : here !== from || ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) || since >= stillKnobs.everyMs);
+          : here !== from || ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) || since >= EVERY_MS);
       if (due) {
         lastDue = true;
-        stillKnobs.redraws++;
         perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
         aim(now);
         stillTask.enabled = true;
