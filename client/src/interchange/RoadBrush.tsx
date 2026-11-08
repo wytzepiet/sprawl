@@ -2,7 +2,7 @@ import { createEffect, createSignal, on, onCleanup } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { Dots } from "../engine/dots";
 import { screenToWorld, viewArea } from "../engine/view";
-import { builtVersion, listenHints, roadsAt, useGame } from "../state/gameObjects";
+import { builtVersion, guess, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { priority, setTool, tool } from "../ui/buildMode";
 import type { Tool } from "../generated";
 import { Pen } from "../engine/pen";
@@ -39,7 +39,7 @@ export function RoadBrush() {
   let erasing = false;
   const using = (): Tool | null => (erasing ? "Demolish" : tool());
 
-  const hold = new Pen({ roads: roadsAt, tool: using, want: () => pen() * 2, priority, send, lift: setPen });
+  const hold = new Pen({ roads: roadsAt, tool: using, want: () => pen() * 2, priority, send, lift: setPen, guess });
   const pick = (e: { clientX: number; clientY: number }) => screenToWorld(scene, canvas, e);
 
   /** The drag on toward the pointer, as far as the pen may go now. */

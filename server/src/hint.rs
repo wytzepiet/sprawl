@@ -21,7 +21,7 @@ pub fn answer(world: &World, owner: OwnerId, ask: Ask) -> Hint {
             let ways = match stroke.tool {
                 Tool::Street | Tool::OneWay | Tool::Wide => draw::reach(world, owner, &stroke),
                 Tool::Demolish => erase(world, &stroke),
-                Tool::Light => vec![None; 8],
+                Tool::Light => vec![Vec::new(); 8],
             };
             Hint::Reach { id: stroke.id, len: stroke.tiles.len() as u32, ways }
         }
@@ -54,30 +54,42 @@ fn starts_at(world: &World, hand: Holding, at: GridCoord) -> bool {
 }
 
 /// Where the eraser, standing on the last tile of `stroke` where its
-/// `start` says, may go on: to the road linked to it on each tile round,
-/// the nearest its height.
-fn erase(world: &World, stroke: &Stroke) -> Vec<Option<Stand>> {
+/// `start` says, may go on: along the road linked to it each way, the
+/// nearest its height, as far as `draw::RUN` tiles straight on.
+fn erase(world: &World, stroke: &Stroke) -> Vec<Vec<Stand>> {
     match (stroke.tiles.last(), stroke.start) {
-        (Some(last), Some(stand)) => erase_from(world, last.at, stand),
-        _ => vec![None; 8],
+        (Some(last), Some(stand)) => STEPS
+            .iter()
+            .map(|&(dx, dy)| {
+                let (mut at, mut stand, mut run) = (last.at, stand, Vec::new());
+                while run.len() < draw::RUN {
+                    let Some(next) = erase_to(world, at, stand, (dx, dy)) else { break };
+                    at = GridCoord { x: at.x + dx, y: at.y + dy };
+                    stand = next;
+                    run.push(next);
+                }
+                run
+            })
+            .collect(),
+        _ => vec![Vec::new(); 8],
     }
 }
 
 fn erase_from(world: &World, at: GridCoord, stand: Stand) -> Vec<Option<Stand>> {
-    let Some(here) = world.map.node_in(at, stand.h, stand.side) else { return vec![None; 8] };
-    STEPS
-        .iter()
-        .map(|&(dx, dy)| {
-            let to = GridCoord { x: at.x + dx, y: at.y + dy };
-            world.map
-                .nodes_on(to)
-                .into_iter()
-                .filter(|&(_, id)| world.map.edges.contains_key(&(here, id)) || world.map.edges.contains_key(&(id, here)))
-                .map(|(h, id)| Stand { h, side: world.map.side_of(id) })
-                .filter(|s| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to, up: Some([stand.h, s.h]), sides: Some([stand.side, s.side]), road: false }))
-                .min_by_key(|s| s.h.abs_diff(stand.h))
-        })
-        .collect()
+    STEPS.iter().map(|&step| erase_to(world, at, stand, step)).collect()
+}
+
+/// The road the eraser, standing here, may cut a step this way to.
+fn erase_to(world: &World, at: GridCoord, stand: Stand, (dx, dy): (i32, i32)) -> Option<Stand> {
+    let here = world.map.node_in(at, stand.h, stand.side)?;
+    let to = GridCoord { x: at.x + dx, y: at.y + dy };
+    world.map
+        .nodes_on(to)
+        .into_iter()
+        .filter(|&(_, id)| world.map.edges.contains_key(&(here, id)) || world.map.edges.contains_key(&(id, here)))
+        .map(|(h, id)| Stand { h, side: world.map.side_of(id) })
+        .filter(|s| crate::hand::may_step(world, Build { tool: Tool::Demolish, from: at, to, up: Some([stand.h, s.h]), sides: Some([stand.side, s.side]), road: false }))
+        .min_by_key(|s| s.h.abs_diff(stand.h))
 }
 
 #[cfg(test)]
@@ -130,11 +142,11 @@ mod tests {
         let stroke = |tool, start| Stroke { id: 9, tool, road: false, tiles: vec![model::Spot { at: at(5, 0), want: 0 }], start };
         let Hint::Reach { id, len, ways } = answer(&world, 1, Ask::Reach(stroke(Tool::Street, None))) else { unreachable!() };
         assert_eq!((id, len), (9, 1));
-        assert!(ways[2].is_some(), "off the street");
-        assert!(ways[1].is_none(), "into the water");
+        assert!(!ways[2].is_empty(), "off the street");
+        assert!(ways[1].is_empty(), "into the water");
         let ground = Stand { h: 0, side: map::decks::MIDDLE };
         let Hint::Reach { ways, .. } = answer(&world, 1, Ask::Reach(stroke(Tool::Demolish, Some(ground)))) else { unreachable!() };
-        assert_eq!(ways.iter().map(Option::is_some).collect::<Vec<_>>(), [true, false, false, false, true, false, false, false]);
+        assert_eq!(ways.iter().map(|w| !w.is_empty()).collect::<Vec<_>>(), [true, false, false, false, true, false, false, false]);
     }
 
     /// A building's dots and its place: beside the street, and said why
