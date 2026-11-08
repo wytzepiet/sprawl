@@ -364,6 +364,9 @@ impl Map {
         let mut edge = |world: &mut Map, a: EntityId, b: EntityId| {
             world.edges.insert((a, b), EdgeSegment::new(1));
             edges.push((a, b));
+            for n in [a, b].into_iter().filter(|n| !world.lot_nodes.contains_key(n)) {
+                *world.driveways.entry(n).or_default() += 1;
+            }
         };
         let (tiles, kind, _) = self.building_of(building)?;
         // The door: the lot's own node on the door's tile, where a car with
@@ -624,6 +627,14 @@ impl Map {
     /// Take a lot down, and say who held what in it, and when.
     fn drop_run(&mut self, building: EntityId) -> Vec<(EntityId, Claim, GameTime, GameTime)> {
         let Some(lot) = self.lots.remove(&building) else { return Vec::new() };
+        for n in lot.edges.iter().flat_map(|&(a, b)| [a, b]).filter(|n| !self.lot_nodes.contains_key(n)) {
+            if let Some(c) = self.driveways.get_mut(&n) {
+                *c -= 1;
+                if *c == 0 {
+                    self.driveways.remove(&n);
+                }
+            }
+        }
         for id in &lot.nodes {
             self.lot_nodes.remove(id);
         }
@@ -1020,14 +1031,6 @@ impl Map {
         self.legs_out(car).iter().take_while(|l| l.back).count()
     }
 
-    /// The driveway a car turns at between the street and the place it
-    /// holds: the street node beside it, where the street takes turns with
-    /// it as at a junction (`traffic::car::driveway`). None at a door.
-    pub fn driveway(&self, car: EntityId) -> Option<EntityId> {
-        let (lot, bay, i) = self.bay_of(car)?;
-        Some(bay.sides[lot.side(i, car)].ahead)
-    }
-
     /// How many edges at the end of the car's way in are driven backwards:
     /// one into a dock of a harbour's front; its way in's last legs that
     /// back, at the kerb.
@@ -1232,8 +1235,6 @@ mod tests {
         let out = world.way_out(lorry).unwrap();
         assert_eq!(out[0], way[n - 1], "out of the dock");
         assert_eq!(world.backs_out(lorry), 0, "forward");
-        let gate = world.door_of(depot).unwrap();
-        assert_eq!(world.driveway(lorry), Some(gate.1), "it turns at the street before its gate");
     }
 
 }

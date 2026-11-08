@@ -739,12 +739,6 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub why: Option<(crate::Cause, f64)>,
-    /// The driveway it turns at, at the trip's start and its end: the
-    /// street node beside where it stands (`Map::driveway`), a junction
-    /// while it turns there (`car::driveway`).
-    #[serde(skip)]
-    #[ts(skip)]
-    pub driveways: [Option<EntityId>; 2],
     /// Its last change of lanes along a road of two (`car::simulation`):
     /// for the client to slide it across while it lasts.
     #[serde(default)]

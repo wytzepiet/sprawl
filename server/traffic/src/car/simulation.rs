@@ -874,8 +874,11 @@ fn clear_behind(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &T
                 tail_clears = Some(tail_clears.map_or(clears, |t: f64| t.min(clears)));
                 still_in.push(g.id);
                 // Standing with its tail in the box: after a few seconds it
-                // waves the others through, as it would at the line.
-                if cur_speed < 0.01 {
+                // waves the others through, as it would at the line. Not at
+                // a driveway: there it is in their way, and they would drive
+                // through it. Whoever it waits for is on the street ahead of
+                // it, and waits for nobody turning there.
+                if cur_speed < 0.01 && !g.driveway() {
                     for woken_id in world.streets.lapse(g.id, car_id, now) {
                         events.wake(0, woken_id);
                     }
@@ -957,6 +960,12 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
             // that way. None its tail is through already (`clear_behind`).
             for g in gates.at(world, trip, k).filter(|g| (k <= ri + 1 || !g.crossing()) && to_k + g.past + tail(role) > 0.0) {
                 let begins = to_k - g.start;
+                // Driving by a driveway someone waits to turn at, with no
+                // room past it to be clear of it, it keeps it clear: it
+                // says nothing there, and stops short of it.
+                if g.driveway() && !g.turns && keeps_clear(world, h, trip, begins, to_k + g.past, &g) {
+                    continue;
+                }
                 // A driveway's line is where its track begins: the street
                 // has no line there, and one pulling out stands in its place.
                 let line = if g.driveway() { begins - nose(role) } else { line };
@@ -1002,7 +1011,6 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
                         physics::braking_distance(cur_speed, 0.0) >= line
                     },
                     after: after(k),
-                    turns: g.turns,
                 };
                 wants.push((k, line, to_k + g.past + tail(role), g, claim));
             }
@@ -1018,17 +1026,19 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
     // would stop between, each in the line of the next, are one: it waits
     // for none of them but the furthest, and is let into the nearer as
     // that one lets it go.
-    // A driveway is one of them with none: its way runs all the way into
-    // or out of a place, and joined to the junction beside it, a car
-    // waited at its door for the junction to let it through, which it
-    // would only once the car came near.
-    let one = |a: &Gate, b: &Gate| !a.driveway() && !b.driveway();
+    // A driveway is none of this: it neither waits for a junction nor
+    // holds one up. Its way runs all the way into or out of a place, and
+    // joined to the junction beside it, a car waited at its door for the
+    // junction to let it through, which it would only once the car came
+    // near; and one driving by, through it already but stood in a queue,
+    // given its turn back, held up every junction on its way.
     let waits = |i: usize, streets: &IntersectionRegistry| {
         let (k, _, out, g, claim) = &wants[i];
-        let joined = (0..i).rev().take_while(|&m| wants[m].2 > wants[m + 1].1 && one(&wants[m].3, &wants[m + 1].3)).count();
-        !claim.committed
-            && (wants[..i - joined].iter().any(|w| !streets.has_passage(w.3.id, car_id))
-                || wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && one(g, h) && !streets.has_passage(h.id, car_id)))
+        let joined = (0..i).rev().take_while(|&m| wants[m].2 > wants[m + 1].1 && !wants[m].3.driveway()).count();
+        !g.driveway()
+            && !claim.committed
+            && (wants[..i - joined].iter().any(|w| !w.3.driveway() && !streets.has_passage(w.3.id, car_id))
+                || wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && !h.driveway() && !streets.has_passage(h.id, car_id)))
     };
     let mut waiting = Vec::new();
     for made in 0..wants.len() {
@@ -1057,16 +1067,11 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
         if new && !g.crossing() && !g.driveway() && g.from != (-g.to.0, -g.to.1) && world.map.edges.get(&(trip.route[k], trip.route[k + 1])).is_some_and(|s| s.lanes > 1) {
             wake_round(world, events, &[g.id], car_id);
         }
-        // Coming to turn at a driveway: whoever drives by there says when
-        // they will be by (`IntersectionManager::quiet`).
-        if new && g.turns {
-            wake_round(world, events, &[g.id & !driveway::DRIVEWAYS], car_id);
-        }
         // Holding the junction and going nowhere: after a few seconds
         // of that, wave the others through and queue again. Standing
         // is a crawl under a hundredth of a tile a second, since a
         // car held at a gap never quite reads zero.
-        if cur_speed < 0.01 {
+        if cur_speed < 0.01 && !g.driveway() {
             for woken_id in world.streets.lapse(g.id, car_id, now) {
                 events.wake(0, woken_id);
             }
@@ -1083,6 +1088,28 @@ fn book(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, gat
         }
     }
     next
+}
+
+/// Should a car keep a driveway clear (`g`), its track `begins` ahead
+/// and ending `ends` ahead: short of it still and able to stop there,
+/// someone waiting to come across its way there, and the car ahead of it
+/// in its lane standing too near past it for this one to be clear of it.
+fn keeps_clear(world: &Traffic, h: &Here, trip: &Trip, begins: f64, ends: f64, g: &Gate) -> bool {
+    let Here { car_id, role, now, ri, progress, speed, .. } = *h;
+    if begins - nose(role) < physics::braking_distance(speed, 0.0) || !world.streets.waited_across(g.id, car_id, &g.track) {
+        return false;
+    }
+    // The car ahead in its lane, as far along this one's way as it is.
+    let ahead = (ri..trip.route.len()).find_map(|j| {
+        let edge = (trip.route[j - 1], trip.route[j]);
+        let s = world.map.edges.get(&edge)?;
+        let a = if s.contains(car_id) { s.ahead(car_id).first().copied() } else { s.back(trip.lanes[j] as usize) }?;
+        let c = world.map.car(a)?;
+        let t = c.trip.as_ref()?;
+        let (p, v) = t.at(now);
+        Some((p - t.start_of(edge)? + trip.along[j - 1] - progress - tail(c.role), v))
+    });
+    ahead.is_some_and(|(back, v)| v < 0.1 && back - MIN_GAP < ends + tail(role) + nose(role))
 }
 
 /// The cars it follows: ahead of it in its lanes, along its way as far as

@@ -100,24 +100,36 @@ turns and a steady trickle of loops, slides and places with no way in.
 
 **A driveway is a junction** (`car/driveway.rs`), with the same
 controller as any other (`IntersectionManager`), known by the street
-node beside the place (`Map::driveway`), and it splits no route: each
-car says its way through it as a track, as it does at a junction. One
-turning in says its way from the street node it turns off after to
-where it will stand; one pulling out, from where it stands to the street
-node it joins at; and while anyone turns there, everyone driving by
-says theirs, along its lane from half a tile before the node to the
-next. The street has priority: one pulling out is a side road and waits
-for a gap where it stands, and after `EXIT_PATIENCE` (twelve seconds)
-takes its turn as anyone does; one turning in goes in the order it
-comes. Whoever is held up stops just short of where its way first
-meets the way of the one it waits for (`IntersectionRegistry::held_at`),
-not at a line. When one first comes to turn there, the driveway lets
-nobody through for a second (`WARM`) while whoever is coming by is
-woken to say when they will be there. A car pulling out joins the
-street's queues once it may go, ahead of whoever is still coming
-(`join_run`). Out and back in at one driveway is one way through it.
-A driveway is never one with the junction beside it: a car waits at it
-for its own gap, not for the next junction to let it through.
+node where a car's way joins or leaves the street (`Map::driveways`
+lists them), and it splits no route: each car says its way through it
+as a track, as it does at a junction. One turning in says its way from
+the street node it turns off after to where it will stand; one pulling
+out, from where it stands to the street node it joins at; and everyone
+driving by says theirs, always, along its lane from the node before to
+the node after (a car backing out of a bay by the kerb sweeps along the
+street as much as across it). The street has priority: one pulling out
+is a side road and waits for a gap where it stands, and after
+`EXIT_PATIENCE` (twelve seconds) takes its turn as anyone does; one
+turning in goes in the order it comes. Whoever is held up stops just
+short of where its way first meets the way of the one it waits for
+(`IntersectionRegistry::held_at`), not at a line. A car pulling out
+joins the street's queues once it may go, ahead of whoever is still
+coming (`join_run`). Out and back in at one street node is one way
+through it.
+
+Two rules keep it whole. **A queue keeps a driveway clear**: a car
+driving by, with someone waiting to turn across its way and no room
+past the driveway to be clear of it, says nothing there and stops short
+of it (`keeps_clear`). And **no claim at a driveway lapses**: a car
+standing in one is in the others' way, and a lapse let them drive
+through it. Nor is a driveway one with the junction beside it: a car
+waits at it for its own gap, not for the next junction to let it
+through, and a car through it already holds no junction up by it.
+
+`bot`'s `OVERLAP=1` checks every two vehicles as drawn, five times a
+game second, and prints each pair whose bodies touch. On 2026-11-08,
+five bot days: 77 such pairs with driving by only while someone turned,
+23 with this.
 
 ## 8. Where the kerb runs out
 

@@ -40,10 +40,6 @@ pub struct Claim {
     pub committed: bool,
     /// The one ahead of it in its lane: through the junction before it.
     pub after: Option<EntityId>,
-    /// Turning between the street and a place at a driveway: whoever
-    /// drives past there says when it will be by while one does
-    /// (`IntersectionRegistry::busy`).
-    pub turns: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -210,16 +206,7 @@ pub struct IntersectionManager {
     rule: Option<Rule>,
     /// Its lights, if it has them.
     signal: Option<Signal>,
-    /// A driveway lets nobody through until this, from when one first
-    /// comes to turn there: whoever is coming by is told, and says when
-    /// it will be there, first (`WARM`).
-    quiet: GameTime,
 }
-
-/// How long a driveway waits, when one first comes to turn there, for
-/// whoever is coming by to say so: every car on the move looks again
-/// within a tile.
-pub const WARM: GameTime = 1_000;
 
 impl IntersectionManager {
     pub fn new(rule: Option<Rule>) -> Self {
@@ -228,14 +215,13 @@ impl IntersectionManager {
             passing: Vec::new(),
             rule,
             signal: None,
-            quiet: 0,
         }
     }
 
     /// Queue a ship, from its arm to its exit: here now, and holding the
     /// junction until it is through.
     pub fn register(&mut self, car_id: EntityId, from: Dir, to: Dir, now: GameTime) {
-        self.claim(car_id, Claim { from, to, track: None, major: false, due: now, nose: [now; TRACK_POINTS], tail: [GameTime::MAX; TRACK_POINTS], committed: true, after: None, turns: false }, now);
+        self.claim(car_id, Claim { from, to, track: None, major: false, due: now, nose: [now; TRACK_POINTS], tail: [GameTime::MAX; TRACK_POINTS], committed: true, after: None }, now);
     }
 
     /// Say when a party will be at the junction, the first time or again
@@ -249,9 +235,6 @@ impl IntersectionManager {
             e.arrived = if claim.due <= now { e.arrived.min(claim.due) } else { claim.due };
             e.claim = claim;
         };
-        if claim.turns && self.queue.is_empty() && self.passing.is_empty() {
-            self.quiet = now + WARM;
-        }
         if let Some(e) = self.queue.iter_mut().find(|e| e.car_id == car_id) {
             update(e);
         } else if let Some(i) = self.passing.iter().position(|e| e.car_id == car_id) {
@@ -311,9 +294,6 @@ impl IntersectionManager {
     /// it comes first, and due within `HOLD`.
     fn grant_passage(&mut self, now: GameTime) -> Vec<EntityId> {
         let mut newly_granted = Vec::new();
-        if now < self.quiet {
-            return newly_granted;
-        }
         // At lights, only those at a green arm, in the order they came: the
         // lights are the priority.
         if let Some(signal) = &mut self.signal {
@@ -569,9 +549,12 @@ impl IntersectionRegistry {
         self.managers.get(&node_id).map_or_else(Vec::new, |m| m.merging(car_id))
     }
 
-    /// Is anyone turning between the street and a place at this driveway.
-    pub fn busy(&self, node_id: EntityId) -> bool {
-        self.managers.get(&node_id).is_some_and(|m| m.queue.iter().chain(&m.passing).any(|e| e.claim.turns))
+    /// Is anyone but this car waiting at this junction to come across its
+    /// way (`track`): not one behind it in its lane, whose way begins
+    /// where its own does.
+    pub fn waited_across(&self, node_id: EntityId, car_id: EntityId, track: &Track) -> bool {
+        let Some(m) = self.managers.get(&node_id) else { return false };
+        m.queue.iter().filter(|e| e.car_id != car_id).filter_map(|e| e.claim.track).any(|t| t[0] != track[0] && near(&t, track).is_some())
     }
 
     /// Where along its track a car waiting at a junction first comes into
@@ -673,7 +656,7 @@ mod tests {
     fn come(j: &mut super::IntersectionManager, car: u64, from: super::Dir, to: super::Dir, track: Option<super::Track>, major: bool, due: u64) {
         let nose = std::array::from_fn(|i| due + 1_000 * i as u64 / (super::TRACK_POINTS - 1) as u64);
         let tail = nose.map(|t| t + 500);
-        j.claim(car, super::Claim { from, to, track, major, due, nose, tail, committed: false, after: None, turns: false }, due);
+        j.claim(car, super::Claim { from, to, track, major, due, nose, tail, committed: false, after: None }, due);
     }
 
     /// Cars on two bends round opposite corners of one junction go at

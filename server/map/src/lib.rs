@@ -41,6 +41,9 @@ pub struct Map {
     pub lots: lots::Lots,
     /// Where each lot node is: off the grid, and not an entity.
     pub lot_nodes: HashMap<EntityId, [f64; 2]>,
+    /// The street nodes cars turn at into and out of lots, driveways, and
+    /// how many of the lots' edges meet each.
+    pub driveways: HashMap<EntityId, u32>,
     /// Which lot each car holds a place in.
     pub claims: HashMap<EntityId, EntityId>,
     /// Who can reach whom, kept in step with `edges` — the one gate the
@@ -163,6 +166,7 @@ impl Map {
             edges: HashMap::default(),
             lots: HashMap::default(),
             lot_nodes: HashMap::default(),
+            driveways: HashMap::default(),
             claims: HashMap::default(),
             network: RoadNetwork::default(),
             node_cars: HashMap::default(),

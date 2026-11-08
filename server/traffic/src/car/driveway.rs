@@ -1,17 +1,16 @@
 //! A driveway: where a car turns between the street and the place it
 //! stands, a junction like any other (`IntersectionManager`), known by
-//! the street node beside the place (`Map::driveway`).
+//! the street node its way joins or leaves the street at (`Map::driveways`).
 //!
 //! Each car says its way through it, as it drives it: one turning in, from
 //! the street node it turns off after to where it stands; one pulling out,
 //! from where it stands to the street node it joins the street at; one
-//! driving by, along its lane from half a tile before the node to the
-//! next. Who goes first is the junction's rule: the street has priority,
+//! driving by, along its lane from the node before to the node after.
+//! Who goes first is the junction's rule: the street has priority,
 //! so one pulling out waits for a gap (and, waited long enough, takes its
 //! turn as anyone does, `EXIT_PATIENCE`), one turning in goes in the order
 //! it comes, and anyone held up stops just short of where its way first
-//! meets the way of the one it waits for. Only while someone turns there
-//! does anyone driving by say anything.
+//! meets the way of the one it waits for.
 
 use map::bezier::{offset_positions, LANE_OFFSET};
 use map::track::{Track, TRACK_POINTS};
@@ -75,9 +74,8 @@ fn track(points: &[[f64; 2]], o: [f64; 2]) -> Track {
 }
 
 /// The driveway a trip comes to at route node `k`, if it does: turning
-/// out of its place (at its first lot node after the one it stood in),
-/// turning in (at the first lot node of its way in), or driving by one
-/// somebody turns at.
+/// out of its place (at the first node after the one it stood at),
+/// turning in (at the first lot node of its way in), or driving by one.
 pub fn at(world: &Traffic, trip: &Trip, k: usize) -> Option<Way> {
     let n = trip.route.len();
     if k == 0 || k >= n || trip.route_positions.len() != n || trip.along.len() != n {
@@ -86,22 +84,25 @@ pub fn at(world: &Traffic, trip: &Trip, k: usize) -> Option<Way> {
     let seg = |k: usize| trip.along[k] - trip.along[k - 1];
     let pos = |id: EntityId| world.map.node_pos(id);
     let street = |k: usize| k >= trip.from_lot && k < n - trip.to_lot;
-    // Out and back in at one driveway, next door: one way through it.
-    let next_door = trip.driveways[0].is_some() && trip.driveways[0] == trip.driveways[1];
-    if let Some(here) = trip.driveways[0].filter(|_| k == 1 && trip.from_lot > 1) {
-        let at = lane(trip);
-        let end = if next_door { n - 1 } else { trip.from_lot.min(n - 1) };
+    // Where it joins the street, and where it leaves it.
+    let (out, into) = (trip.from_lot, n - 1 - trip.to_lot);
+    // Out and back in at one street node, next door: one way through it.
+    let next_door = trip.from_lot > 0 && trip.to_lot > 0 && out == into;
+    if trip.from_lot > 0 && k == 1 {
+        let (here, at) = (trip.route[out], lane(trip));
+        let end = if next_door { n - 1 } else { out };
         return Some(Way { id: DRIVEWAYS | here, track: track(&way(trip, &at, 0, end), pos(here)?), start: seg(1), past: trip.along[end] - trip.along[1], turns: true });
     }
-    if let Some(here) = trip.driveways[1].filter(|_| trip.to_lot > 1 && k == n - trip.to_lot && !next_door) {
-        let at = lane(trip);
-        return Some(Way { id: DRIVEWAYS | here, track: track(&way(trip, &at, k - 1, n - 1), pos(here)?), start: seg(k), past: trip.along[n - 1] - trip.along[k], turns: true });
+    if trip.to_lot > 0 && k == into + 1 && !next_door {
+        let (here, at) = (trip.route[into], lane(trip));
+        return Some(Way { id: DRIVEWAYS | here, track: track(&way(trip, &at, into, n - 1), pos(here)?), start: seg(k), past: trip.along[n - 1] - trip.along[k], turns: true });
     }
     let here = trip.route[k];
-    if k + 1 < n && street(k - 1) && street(k + 1) && world.streets.busy(DRIVEWAYS | here) {
+    if k + 1 < n && street(k - 1) && street(k + 1) && world.map.driveways.contains_key(&here) {
+        // A tile either side: one backing out of a bay by the kerb sweeps
+        // along the street as much as across it.
         let at = lane(trip);
-        let half = [(at[k - 1][0] + at[k][0]) / 2.0, (at[k - 1][1] + at[k][1]) / 2.0];
-        return Some(Way { id: DRIVEWAYS | here, track: track(&[half, at[k], at[k + 1]], pos(here)?), start: seg(k) / 2.0, past: seg(k + 1), turns: false });
+        return Some(Way { id: DRIVEWAYS | here, track: track(&at[k - 1..=k + 1], pos(here)?), start: seg(k), past: seg(k + 1), turns: false });
     }
     None
 }
