@@ -131,10 +131,11 @@ pub struct Area {
 #[serde(tag = "type", content = "data")]
 pub enum Hint {
     Starts { hand: Holding, area: Area, tiles: Vec<GridCoord> },
-    /// For the drag `id`, `len` tiles long: the eight steps on from its
+    /// For the drag `id`, `len` tiles long: the eight ways on from its
     /// last tile (east, then on round toward +y), each where it would
-    /// stand, or none where it may not go.
-    Reach { id: u32, len: u32, ways: Vec<Option<Stand>> },
+    /// stand on each tile straight on that way, as far as it may go, up
+    /// to a few (`draw::RUN`); empty, where it may not go at all.
+    Reach { id: u32, len: u32, ways: Vec<Vec<Stand>> },
     Placing(Placing),
 }
 
@@ -1038,6 +1039,9 @@ pub enum ServerMessage {
     /// Who you are.
     Welcome(#[ts(type = "number")] OwnerId),
     Update(StateUpdate),
+    /// How many of this client's messages are done, sent after what they
+    /// changed: what it guessed they would do may go (`state/guess.ts`).
+    Seen(u32),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
     /// What happened that the mayor should hear: a family left, a

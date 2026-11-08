@@ -5,4 +5,4 @@ import type { News } from "./News";
 import type { StateUpdate } from "./StateUpdate";
 import type { TerrainChunk } from "./TerrainChunk";
 
-export type ServerMessage = { "type": "Welcome", "data": number } | { "type": "Update", "data": StateUpdate } | { "type": "TerrainChunk", "data": TerrainChunk } | { "type": "UnloadChunk", "data": ChunkCoord } | { "type": "News", "data": Array<News> } | { "type": "Hint", "data": Hint };
+export type ServerMessage = { "type": "Welcome", "data": number } | { "type": "Update", "data": StateUpdate } | { "type": "Seen", "data": number } | { "type": "TerrainChunk", "data": TerrainChunk } | { "type": "UnloadChunk", "data": ChunkCoord } | { "type": "News", "data": Array<News> } | { "type": "Hint", "data": Hint };

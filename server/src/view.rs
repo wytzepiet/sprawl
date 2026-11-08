@@ -17,6 +17,10 @@ pub(crate) struct ClientState {
     pub(crate) subscribed: Option<ChunkBounds>,
     pub(crate) known: HashSet<EntityId>,
     pub(crate) known_chunks: HashSet<ChunkCoord>,
+    /// How many of its messages have been done, and how many of those it
+    /// has been told of (`ServerMessage::Seen`).
+    pub(crate) seen: u32,
+    pub(crate) told: u32,
 }
 
 /// Every update carries the ambient world state alongside its ops, so a client
@@ -136,16 +140,34 @@ pub(crate) fn flush_dirty(
     let stirred = world.shown.as_ref() != Some(&town);
     world.shown = Some(town);
 
-    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && !stirred {
-        return;
+    if !(changed.is_empty() && removed.is_empty() && crossings.is_empty() && !stirred) {
+        send_changes(world, clients, outbox, clk, &changed, &removed, &crossings, stirred);
     }
+    // After what they changed: what the client guessed of them may go.
+    for (&client_id, cs) in clients.iter_mut() {
+        if cs.seen != cs.told {
+            cs.told = cs.seen;
+            outbox.push((client_id, ServerMessage::Seen(cs.seen)));
+        }
+    }
+}
 
+#[allow(clippy::too_many_arguments)]
+fn send_changes(
+    world: &World,
+    clients: &mut HashMap<ClientId, ClientState>,
+    outbox: &mut Vec<(ClientId, ServerMessage)>,
+    clk: Clock,
+    changed: &[EntityId],
+    removed: &[EntityId],
+    crossings: &[(EntityId, ChunkCoord, ChunkCoord)],
+    stirred: bool,
+) {
     // Group by chunk so a client walks the chunks it subscribes to rather than
     // every entity that changed. A client sees a handful of chunks; the world
     // can have hundreds of moving cars.
-    let world = &*world;
     let mut by_chunk: HashMap<ChunkCoord, Vec<&GameObjectEntry>> = HashMap::default();
-    for id in &changed {
+    for id in changed {
         if let Some(entry) = world.map.objects.get(*id)
             && let Some(pos) = entry.position
         {
@@ -170,7 +192,7 @@ pub(crate) fn flush_dirty(
 
         // A crossing is the only way an entity leaves a view without being
         // deleted, and the only way one enters without being dirty.
-        for &(id, from, to) in &crossings {
+        for &(id, from, to) in crossings {
             let had = cs.known_chunks.contains(&from);
             let has = cs.known_chunks.contains(&to);
             if had && !has {
@@ -185,7 +207,7 @@ pub(crate) fn flush_dirty(
             }
         }
 
-        for id in &removed {
+        for id in removed {
             if cs.known.remove(id) {
                 ops.push(Operation::Delete(*id));
             }
