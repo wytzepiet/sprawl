@@ -28,7 +28,7 @@ public class Bench {
         + "buffers { size_kb: 16384 fill_policy: RING_BUFFER }\n"
         + "data_sources { config { name: \"android.power\" android_power_config { battery_poll_ms: 1000 collect_power_rails: true"
         + " battery_counters: BATTERY_COUNTER_CURRENT battery_counters: BATTERY_COUNTER_VOLTAGE } } }\n"
-        + "duration_ms: 900000 write_into_file: true file_write_period_ms: 5000\n"
+        + "duration_ms: 1100000 write_into_file: true file_write_period_ms: 5000\n"
         + "END\n"
         + "cat /data/local/tmp/power.cfg | perfetto --background --txt -c - -o /data/misc/perfetto-traces/power.pftrace 2>&1 | cat > /sdcard/Download/bench/perfetto.txt\n");
     String meters = "/sdcard/Download/bench/" + tab + "-power.txt";
@@ -47,11 +47,11 @@ public class Bench {
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
     // What the screen showed, for the run's files (bench.yml pulls this folder).
     long opened = System.currentTimeMillis();
-    for (long at = 5_000; at <= 840_000; at += 5_000) {
+    for (long at = 5_000; at <= 1_000_000; at += 5_000) {
       Thread.sleep(Math.max(0, opened + at - System.currentTimeMillis()));
       measure(shell, meters);
       if (at % 60_000 == 15_000) sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + at / 1000 + "s.png\n");
-      if (at % 60_000 == 0) sh(shell, "cp /data/misc/perfetto-traces/power.pftrace /sdcard/Download/bench/" + tab + "-power.pftrace\n");
+      if (at % 60_000 == 0) sh(shell, "{ ls -laZ /data/misc/perfetto-traces; cat /data/misc/perfetto-traces/power.pftrace > /sdcard/Download/bench/" + tab + "-power.pftrace; } >> /sdcard/Download/bench/copy.txt 2>&1\n");
     }
   }
 

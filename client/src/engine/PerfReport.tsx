@@ -90,13 +90,12 @@ export default function PerfReport() {
   // lived through at once, so the streets are full when the bench begins.
   const { send } = useGame();
   let filled = 0;
-  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + (PHASES === POWER ? TRAFFIC_MS / 4 : TRAFFIC_MS)) }), 1000);
+  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + (PHASES === POWER ? TRAFFIC_MS / 2 : TRAFFIC_MS)) }), 1000);
   const look = () => {
     if (phase >= PHASES.length) return;
     const t = (performance.now() - phaseBegan) / 1000;
     pinTimeOfDay(lightOf(PHASES[phase]));
     const p = PHASES[phase].replace("n-", "");
-    forced.fps = p === "off" ? 0 : p === "f60" ? 60 : null;
     // Looked at once and left: the rest of the power run stands still.
     if (POWER === PHASES && p !== "pan") return void (p === "settle" && eye.look(x, y, h));
     if (p === "pan") eye.look(x + h * 3 * Math.sin((Math.PI * t) / 7.5), y, h);
@@ -210,6 +209,8 @@ export default function PerfReport() {
     // the town is drawn: five seconds with no drawing of it.
     if (!(PHASES[phase] === "settle" && PHASES[phase + 1] !== "settle" && (simNow() < filled || body.counts["town.draws"]))) phase++;
     phaseBegan = performance.now();
+    // Set here, not as the frame is drawn: a frame not drawn would never set it back.
+    forced.fps = PHASES[phase] === "off" ? 0 : PHASES[phase] === "f60" ? 60 : null;
     if (phase === PHASES.length) {
       clearInterval(timer);
       setDone(sent);
