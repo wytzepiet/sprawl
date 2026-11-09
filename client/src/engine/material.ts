@@ -32,14 +32,21 @@ const OPEN: MaterialPlugin = {
 const FADE_REACH = 2.5;
 const FADE_ABOVE = 0.25;
 const FADE_MOST = 0.75;
+/** What fades stands still, drawn into the still picture, which is drawn
+ *  again at most this often (`still.ts`): the fade moves no oftener. */
+const FADE_MS = 100;
 const fade = { x: 0, y: 0, r: 0, leanX: 0, leanY: 0 };
+let faded = -Infinity;
 const towns = new Set<WeakRef<TownMaterial>>();
 
 /** Fade what stands between `eye` and the ground under the hand; `null`,
- *  nothing. */
+ *  nothing. Asked each frame, so a move held back is made the next. */
 export function setFade(hand: { x: number; y: number } | null, eye: { x: number; y: number; z: number }) {
   const next = hand ? { x: hand.x, y: hand.y, r: FADE_REACH, leanX: (eye.x - hand.x) / eye.z, leanY: (eye.y - hand.y) / eye.z } : { ...fade, r: 0 };
   if ((Object.keys(next) as (keyof typeof fade)[]).every((k) => next[k] === fade[k])) return;
+  const now = performance.now();
+  if (now - faded < FADE_MS) return;
+  faded = now;
   Object.assign(fade, next);
   stale();
   for (const ref of towns) {
