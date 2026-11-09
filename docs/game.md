@@ -43,15 +43,16 @@ is no fog and no survey. You can look anywhere, and what you see is the
 map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
 
-**The land is broken.** About a quarter of the map is land, in dozens
-of masses large and small, cut by sounds and inlets and crossed by
-rivers that run on into the sea, so a town soon meets water on more
-than one side and grows over it by bridges. It is one height of noise
-at a few scales and a river noise cut into it; water below the line is
-the sea where it reaches the map's edge and a lake where it does not
-(`terrain.rs`). Home is the first spot on the noise with open grass
-round it, water twenty to forty-odd tiles off, and water within sixty
-tiles most ways out of it, so the first town is hemmed in. `every_seed_is_broken_land` checks it on the first twenty seeds.
+**The land is broken.** Land and water wind through each other, about
+even inside the map's edge: dozens of masses, none much more than a
+hundred tiles across, cut by sounds and inlets and crossed by rivers
+that run on into the sea, so a town soon meets water on more than one
+side and grows over it by bridges. It is one height of noise cut at its
+middle, with a river noise carved into it; water is the sea where it
+reaches the map's edge and a lake where it does not (`terrain.rs`). Home
+is the first spot on the noise with open grass round it and water
+twenty to forty-odd tiles off. `every_seed_is_broken_land` checks it on
+the first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a
