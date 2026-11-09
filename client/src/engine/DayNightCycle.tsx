@@ -455,11 +455,11 @@ export default function DayNightLights(props: ParentProps) {
   const { _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setCasters: setCasters } = useDayNight();
 
   const lit = daylight(engine, scene, shadowMapSize(canvas));
-  // What stands still is drawn into the map only when the sun has turned a
-  // little, some six times a second in a two-minute day, or it changed;
-  // what moves, the cars, is drawn over a copy of that every frame (Lite's
-  // static cache). Which is which is the still town's (`still.ts`).
-  prepare(enableCsmStaticCache(engine, lit.shadows, { refitAngle: 0.008, still: isStill }));
+  // What stands still is drawn into the map as the still town's picture is
+  // drawn, where the sun is then, or when it changed; what moves, the cars,
+  // is drawn over a copy of that every frame (Lite's static cache). Which is
+  // which, and how the shadows slide between drawings, is `still.ts`'s.
+  prepare(enableCsmStaticCache(engine, lit.shadows, { holdFit: true, still: isStill }));
   setCasters(lit.casters);
   // The shadows of what moves kept off the still town's picture.
   ctx.still.sun(lit.shadows, lit);

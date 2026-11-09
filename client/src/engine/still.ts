@@ -9,6 +9,7 @@ import {
   createShaderMaterial,
   createStorageBuffer,
   createSurfaceRenderTargetTexture,
+  getCsmPreviousStaticTexture,
   getCsmReceiverTexture,
   getCsmStaticTexture,
   getFrameGraph,
@@ -62,6 +63,14 @@ import { CONTRAST, TONE } from "./toneMap";
  * its still layer has not, the sun's share of the light is taken away; and
  * each headlight lights the pixels its cone reaches, found by their depth,
  * the way a deferred renderer lights its surfaces.
+ *
+ * The still things' shadows are drawn into the picture where the sun stood
+ * as it was drawn, and their map is fitted to the sun then and only then
+ * (Lite's `holdFit`), the map as it stood the drawing before kept beside
+ * it. Shown, they are where the sun stood that drawing before, and slide
+ * toward where it stood at this one as the frames go, the picture lit or
+ * shaded where they now differ from it: so they move every frame, a
+ * drawing behind the sun, though the town is drawn twice a second.
  */
 
 /** The picture's margin past each edge of the screen, as a share of it. */
@@ -77,6 +86,9 @@ const CHANGED_MS = 100;
 /** And again this often whatever happened: the sun moves, and whatever was
  *  not told to the picture (`stale`) is in it this soon. */
 const EVERY_MS = 500;
+/** Or once the sun has turned this far (radians) since: a fast clock's
+ *  shadows slide in small steps too. */
+const TURN = 0.01;
 
 /** Meshes drawn every frame, over the picture and never into it. */
 const lives = new WeakSet<Mesh>();
@@ -214,19 +226,34 @@ const SHOWN = wgsl`struct VertexOutput { @builtin(position) position: vec4f, };
 struct Out { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, };
 ${FIND}
 ${LIGHT}
-fn sunLost(w: vec3f) -> f32 {
-  let l = shaderUniforms.shadowMatrix * vec4f(w, 1.);
+// How much of the sun reaches w in a map, as the map placed by m has it;
+// -1 off the map.
+fn litIn(map: texture_depth_2d_array, s: sampler_comparison, m: mat4x4f, w: vec3f) -> f32 {
+  let l = m * vec4f(w, 1.);
   let c = l.xyz / l.w;
   let uv = vec2f(0.5 * c.x + 0.5, 0.5 - 0.5 * c.y);
-  if (any(uv < vec2f(0.)) || any(uv > vec2f(1.))) { return 0.; }
+  if (any(uv < vec2f(0.)) || any(uv > vec2f(1.))) { return -1.; }
   let depth = clamp(c.z, 0., 0.99999994);
   let o = shaderUniforms.shadowInfo.z * 0.5;
-  var lost = 0.;
+  var lit = 0.;
   for (var i = 0; i < 4; i++) {
-    let at = uv + vec2f(select(-o, o, (i & 1) == 1), select(-o, o, i >= 2));
-    lost += textureSampleCompareLevel(shadowStill, shadowStillSampler, at, 0, depth) - textureSampleCompareLevel(shadowNow, shadowNowSampler, at, 0, depth);
+    lit += textureSampleCompareLevel(map, s, uv + vec2f(select(-o, o, (i & 1) == 1), select(-o, o, i >= 2)), 0, depth);
   }
-  return max(lost * 0.25, 0.);
+  return lit * 0.25;
+}
+// How much more of the sun reaches w now than the picture was drawn with
+// (less, below nought). The picture is drawn in the still things' shadows
+// where the sun stood then; shown, they are where it stood the drawing
+// before, slid toward that a little more each frame until the next, and
+// what moves shades them as it goes.
+fn sunGained(w: vec3f) -> f32 {
+  let still = litIn(shadowStill, shadowStillSampler, shaderUniforms.shadowMatrix, w);
+  if (still < 0.) { return 0.; }
+  let gained = -max(still - litIn(shadowNow, shadowNowSampler, shaderUniforms.shadowMatrix, w), 0.);
+  let behind = 1. - shaderUniforms.slid.x;
+  if (behind <= 0.) { return gained; }
+  let past = litIn(shadowPast, shadowPastSampler, shaderUniforms.shadowPastMatrix, w);
+  return gained + behind * (select(past, still, past < 0.) - still);
 }
 @fragment fn mainFragment(input: VertexOutput) -> Out {
   let f = find(input.position.xy);
@@ -237,18 +264,19 @@ fn sunLost(w: vec3f) -> f32 {
   } else {
     let c = shaderUniforms.seen * vec4f(f.at, 1.);
     out.depth = clamp(c.z / c.w, 0., 1.);
-    // A moving thing's shadow: the sun's light this surface had, taken
-    // away as far as the shadows are dark.
-    let lost = select(0., sunLost(f.at), shaderUniforms.shadowInfo.x > 0.);
-    if (lost > 0.) {
+    // The sun's light this surface had, given or taken away as far as
+    // the shadows are dark.
+    let gained = select(0., sunGained(f.at), shaderUniforms.shadowInfo.x > 0.) * shaderUniforms.shadowInfo.x;
+    if (gained != 0.) {
       let sun = lightOn(surfaceAt(f.texel), -shaderUniforms.sunDir.xyz, normalize(f.eye - f.at), shaderUniforms.sunColor.rgb);
-      // As much of its light as the sun gave, taken from all of it alike,
-      // and only as far as the curve moves for that: the way back to light
-      // is near, not exact, and taken channel by channel it tints.
       let was = unshown(color);
+      // Taken, from all of it alike, and only as far as the curve moves for
+      // that: the way back to light is near, not exact, and taken channel
+      // by channel it tints. Given, added as a lamp's is.
       let luma = vec3f(0.2126, 0.7152, 0.0722);
-      let kept = saturate(1. - dot(sun, luma) * lost * shaderUniforms.shadowInfo.x / max(dot(was, luma), 1e-6));
-      color = max(color + shown(was * kept) - shown(was), vec3f(0.));
+      let kept = saturate(1. + dot(sun, luma) * gained / max(dot(was, luma), 1e-6));
+      let now = select(was * kept, was + sun * gained, gained > 0.);
+      color = max(color + shown(now) - shown(was), vec3f(0.));
     }
   }
   out.color = vec4f(color, 1.);
@@ -401,12 +429,16 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
       { name: "sunDir", type: "vec4<f32>" },
       { name: "sunColor", type: "vec4<f32>" },
       { name: "shadowMatrix", type: "mat4x4<f32>" },
+      { name: "shadowPastMatrix", type: "mat4x4<f32>" },
       { name: "shadowInfo", type: "vec4<f32>" },
+      // How far the shadows have slid from where the sun stood two drawings ago to where it stood at the last.
+      { name: "slid", type: "vec4<f32>" },
     ],
     samplers: [
       ...PICTURE,
       { name: "shadowNow", viewDimension: "2d-array", comparison: true },
       { name: "shadowStill", viewDimension: "2d-array", comparison: true },
+      { name: "shadowPast", viewDimension: "2d-array", comparison: true },
     ],
     backFaceCulling: false,
     depthWrite: true,
@@ -453,7 +485,16 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
 
   let shadows: ShadowGenerator | null = null;
   let light: Sunlight = { sky: { r: 1, g: 1, b: 1 }, sunDir: [0, 0, -1], sunColor: { r: 0, g: 0, b: 0 } };
-  let [shadowNow, shadowStill]: (Texture2D | null)[] = [null, null];
+  let [shadowNow, shadowStill, shadowPast]: (Texture2D | null)[] = [null, null, null];
+  /** When the sun's map was last fitted, as the picture was drawn, and the time before. */
+  let [fitted, fittedBefore] = [NaN, NaN];
+  const slid = [1, 0, 0, 0];
+  /** Where the sun stood as the picture was last drawn. */
+  let sunWas = light.sunDir;
+  const turned = () => {
+    const [a, b] = [light.sunDir, sunWas];
+    return Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) >= TURN;
+  };
   /** The sun's share taken by a shadow, the map's size and a texel of it, and how dark its shadows are. */
   const shadowInfo = [0, 1, 1, 0];
 
@@ -546,8 +587,13 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
     if (!shadows) return;
     const now = getCsmReceiverTexture(shadows);
     const still = getCsmStaticTexture(shadows) ?? now;
+    const past = getCsmPreviousStaticTexture(shadows) ?? still;
     if (now !== shadowNow) setShaderTexture(shown, "shadowNow", (shadowNow = now));
     if (still !== shadowStill) setShaderTexture(shown, "shadowStill", (shadowStill = still));
+    if (past !== shadowPast) setShaderTexture(shown, "shadowPast", (shadowPast = past));
+    // The shadows take as long to slide one drawing on as the sun took.
+    slid[0] = Math.min(1, (performance.now() - fitted) / (fitted - fittedBefore)) || 1;
+    setShaderUniform(shown, "slid", slid);
     const on = shadows._runtimeEnabledState?.enabled !== false && still !== now;
     shadowInfo[0] = on ? 1 - shadowInfo[3] : 0;
     setShaderUniform(shown, "shadowInfo", shadowInfo);
@@ -563,9 +609,13 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
       shadows = s;
       light = l;
       shade();
-      // The map's place on the ground, as it is fitted each frame.
+      // The map's place on the ground, as it is fitted for each drawing,
+      // and where it was for the one before.
+      let matrix = Array.from({ length: 16 }, (_, i) => +(i % 5 === 0));
       onCsmReceiverUpdate(s, (data) => {
-        setShaderUniform(shown, "shadowMatrix", Array.from(data.subarray(0, 16)));
+        setShaderUniform(shown, "shadowPastMatrix", matrix);
+        setShaderUniform(shown, "shadowMatrix", (matrix = Array.from(data.subarray(0, 16))));
+        [fittedBefore, fitted] = [fitted, performance.now()];
         [shadowInfo[3], shadowInfo[1], shadowInfo[2]] = [data[72], data[73], data[74]];
       });
     },
@@ -600,7 +650,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         always ||
         (moving
           ? since >= MOVING_MS && !holds(inverse)
-          : here !== from || ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) || since >= EVERY_MS);
+          : here !== from || ((staleSince < Infinity || holding() !== content || turned()) && since >= CHANGED_MS) || since >= EVERY_MS);
       if (due) {
         lastDue = true;
         perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
@@ -620,6 +670,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         main.enabled = true;
         // What changed as it was drawn is in it.
         content = holding();
+        sunWas = light.sunDir;
         staleSince = sunDrawn ? Infinity : now;
       }
       for (const m of both) {
