@@ -295,12 +295,9 @@ function makeFrame(scene: Scene): Frame {
     for (const l of c.points) add(l, null, 0);
     const lampCount = n;
     for (const l of c.spots) add(l, l.direction, l.angle);
-    const changedLamps = lampCount !== lamps || lampCount > 0;
     [lamps, beams] = [lampCount, n - lampCount];
     if (n) device.queue.writeBuffer(lightBuffer, 0, lightData, 0, n * LIGHT_FLOATS);
-    if (changedLamps) relightSoon = true;
   }
-  let relightSoon = false;
 
   function sizeTargets(w: number, h: number) {
     const size = gen?.mapSize ?? 1;
@@ -370,9 +367,7 @@ function makeFrame(scene: Scene): Frame {
       // The sun's maps: the still one when due, the live one every frame something casts.
       if (gen && refit(gen)) staticDue = true;
       if (fit) {
-        sunUbo.set("viewProjection", fit.caster);
         common(sunUbo, fit.caster, fit.matrix, w, h, now);
-        sunUbo.set("viewProjection", fit.caster);
         sunUbo.write();
       }
       const shadowing = !!gen?.enabled && !!fit;
@@ -452,9 +447,9 @@ function makeFrame(scene: Scene): Frame {
       put("counts", [lamps, lamps, beams, 0]);
       if (scene._env) put("sh", scene._env.sh);
       device.queue.writeBuffer(frameBuffer, 0, frameData);
-      if (relightDue || ((relightSoon || true) && now - relitAt >= RELIGHT_MS)) {
+      if (relightDue || now - relitAt >= RELIGHT_MS) {
         const t0 = performance.now();
-        relightDue = relightSoon = false;
+        relightDue = false;
         relitAt = now;
         relightPipeline ??= fullscreen(RELIGHT, RELIGHT_LAYOUT, "rgba16float", false);
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: picture!.lit.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
@@ -467,7 +462,6 @@ function makeFrame(scene: Scene): Frame {
       }
 
       // The composite, then what moves over it, in one pass.
-      const t0 = performance.now();
       compositePipeline ??= fullscreen(COMPOSITE, COMPOSITE_LAYOUT, surface.format, true);
       const pass = encoder.beginRenderPass({
         colorAttachments: [{ view: target.createView(), loadOp: "clear", storeOp: "store", clearValue: clear }],
@@ -481,7 +475,6 @@ function makeFrame(scene: Scene): Frame {
       pass.end();
       count("frames", 1);
       count("frameMs", performance.now() - began);
-      void t0;
     },
   };
 }

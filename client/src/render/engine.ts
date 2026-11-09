@@ -11,8 +11,6 @@ export interface Surface {
   context: GPUCanvasContext;
   format: GPUTextureFormat;
   maxDevicePixelRatio: number;
-  /** Bumped when the canvas is resized: what is sized by it is made again. */
-  _version: number;
   _scenes: Scene[];
 }
 
@@ -74,7 +72,7 @@ export function createSurface(engine: Engine, canvas: HTMLCanvasElement | Offscr
   const context = canvas.getContext("webgpu") as GPUCanvasContext;
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device: engine._device, format, alphaMode: opts.alphaMode ?? "premultiplied" });
-  const surface: Surface = { engine, canvas, context, format, maxDevicePixelRatio: 1, _version: 0, _scenes: [] };
+  const surface: Surface = { engine, canvas, context, format, maxDevicePixelRatio: 1, _scenes: [] };
   engine.surfaces.push(surface);
   return surface;
 }
@@ -88,7 +86,6 @@ export function resizeEngine(engine: Engine): void {
     const [w, h] = [Math.max(1, Math.floor(c.clientWidth * ratio)), Math.max(1, Math.floor(c.clientHeight * ratio))];
     if (c.width === w && c.height === h) continue;
     [c.width, c.height] = [w, h];
-    s._version++;
   }
 }
 
