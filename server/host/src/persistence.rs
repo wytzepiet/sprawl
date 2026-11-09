@@ -43,6 +43,8 @@ const MIGRATIONS: &[Migration] = &[
     // The land is broken up, rivers and all: every seed's map is another,
     // and what stood on the old one would stand in the water.
     None,
+    // Home is no longer calmed into open grass.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

@@ -52,8 +52,9 @@ Rivers cross the land and run on into the sea, so a town soon meets
 water on more than one side and grows over it by bridges. It is one
 height of noise cut at its middle, with a river noise carved into it;
 water is the sea where it reaches the map's edge and a lake where it
-does not (`terrain.rs`). Home is the first spot on the noise with open
-grass round it and water sixteen to thirty tiles off.
+does not (`terrain.rs`). Home is the first spot on the noise with a little low ground round it,
+water eight to twenty tiles off and land beyond, and nothing calmed: the
+first town works round mountains and water as every later one does.
 `every_seed_is_broken_land` checks it on the first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
