@@ -86,9 +86,6 @@ const CHANGED_MS = 100;
 /** And again this often whatever happened: the sun moves, and whatever was
  *  not told to the picture (`stale`) is in it this soon. */
 const EVERY_MS = 500;
-/** Or once the sun has turned this far (radians) since: a fast clock's
- *  shadows slide in small steps too. */
-const TURN = 0.01;
 
 /** Meshes drawn every frame, over the picture and never into it. */
 const lives = new WeakSet<Mesh>();
@@ -489,12 +486,6 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   /** When the sun's map was last fitted, as the picture was drawn, and the time before. */
   let [fitted, fittedBefore] = [NaN, NaN];
   const slid = [1, 0, 0, 0];
-  /** Where the sun stood as the picture was last drawn. */
-  let sunWas = light.sunDir;
-  const turned = () => {
-    const [a, b] = [light.sunDir, sunWas];
-    return Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])) >= TURN;
-  };
   /** The sun's share taken by a shadow, the map's size and a texel of it, and how dark its shadows are. */
   const shadowInfo = [0, 1, 1, 0];
 
@@ -650,7 +641,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         always ||
         (moving
           ? since >= MOVING_MS && !holds(inverse)
-          : here !== from || ((staleSince < Infinity || holding() !== content || turned()) && since >= CHANGED_MS) || since >= EVERY_MS);
+          : here !== from || ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) || since >= EVERY_MS);
       if (due) {
         lastDue = true;
         perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
@@ -670,7 +661,6 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         main.enabled = true;
         // What changed as it was drawn is in it.
         content = holding();
-        sunWas = light.sunDir;
         staleSince = sunDrawn ? Infinity : now;
       }
       for (const m of both) {
