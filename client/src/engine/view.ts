@@ -56,8 +56,21 @@ export function screenToWorld(
  * ground in view is wider at the top than at the foot, and reaches further
  * up from the middle than down.
  */
-export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; halfW: number; halfH: number; radius: number; x0: number; y0: number; x1: number; y1: number } {
+export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): Cover {
   const { width, height } = rectOf(canvas);
+  // Asked a few times a frame, eight rays each: worked out again only
+  // when the view has changed.
+  const c = scene.camera!;
+  const key = `${c.worldMatrixVersion},${c.fov},${width},${height}`;
+  const kept = COVERS.get(c);
+  if (kept?.key === key) return kept.cover;
+  const cover = coverOf(scene, width, height);
+  COVERS.set(c, { key, cover });
+  return cover;
+}
+type Cover = { cx: number; cy: number; halfW: number; halfH: number; radius: number; x0: number; y0: number; x1: number; y1: number };
+const COVERS = new WeakMap<object, { key: string; cover: Cover }>();
+function coverOf(scene: SceneContext, width: number, height: number): Cover {
   const mid = groundAt(scene, width, height, width / 2, height / 2);
   const corners = [groundAt(scene, width, height, 0, 0), groundAt(scene, width, height, width, 0), groundAt(scene, width, height, 0, height), groundAt(scene, width, height, width, height)];
   const xs = corners.map((c) => c.wx);
