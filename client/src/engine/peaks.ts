@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";

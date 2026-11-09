@@ -33,8 +33,8 @@ import {
   type ShaderMaterial,
   type ShadowGenerator,
   type Texture2D,
-} from "@babylonjs/lite";
-import { _vis } from "@babylonjs/lite/src/engine/engine";
+} from "./gpu";
+import { _vis } from "./gpu";
 import { meshOf } from "./geometry";
 import { CONTRAST, TONE } from "./toneMap";
 

@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterialProps } from "@babylonjs/lite";
+import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterialProps } from "../gpu";
 import barkRecipe from "../bark.ts?raw";
 import { BARK_LONG, BARK_ROUND } from "../bark";
 import { bakedTexture } from "../bakeCache";

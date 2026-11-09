@@ -1,4 +1,4 @@
-import type { EngineContext, MaterialPlugin } from "@babylonjs/lite";
+import type { EngineContext, MaterialPlugin } from "./gpu";
 import { grain, grainSlope } from "./ground";
 
 /**

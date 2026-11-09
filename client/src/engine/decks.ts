@@ -1,4 +1,4 @@
-import { addToScene, type EngineContext, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { addToScene, type EngineContext, type Mesh, type SceneContext } from "./gpu";
 import { drop, meshOf, type MeshGeometry, type P } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { rgb, type Rgb } from "./rgb";

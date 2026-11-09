@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { toHalf } from "./kerbLines";
 import { stale } from "./still";

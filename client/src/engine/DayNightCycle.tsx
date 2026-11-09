@@ -18,7 +18,7 @@ import {
   type EngineContext as Engine,
   type Mesh,
   type SceneContext,
-} from "@babylonjs/lite";
+} from "./gpu";
 import { useEngine } from "./Canvas";
 import { TONE } from "./toneMap";
 import { groundCover } from "./view";

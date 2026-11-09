@@ -1,4 +1,4 @@
-import { addToScene, setThinInstanceColors, setThinInstances, type Mesh } from "@babylonjs/lite";
+import { addToScene, setThinInstanceColors, setThinInstances, type Mesh } from "./gpu";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, type MeshGeometry } from "./geometry";

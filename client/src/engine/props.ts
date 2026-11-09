@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, type MaterialPlugin } from "@babylonjs/lite";
+import { markMaterialUboDirty, type MaterialPlugin } from "./gpu";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { merged, type Part } from "./merged";

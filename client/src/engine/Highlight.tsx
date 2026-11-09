@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { flushThinInstances, setThinInstances, type Mesh } from "@babylonjs/lite";
+import { flushThinInstances, setThinInstances, type Mesh } from "./gpu";
 import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { meshOf } from "./geometry";

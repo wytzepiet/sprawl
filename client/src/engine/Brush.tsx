@@ -1,5 +1,5 @@
 import { createEffect, on, onCleanup } from "solid-js";
-import { getCameraPosition } from "@babylonjs/lite";
+import { getCameraPosition } from "./gpu";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";

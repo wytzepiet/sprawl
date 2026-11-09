@@ -1,4 +1,4 @@
-import { addToScene, type Mesh } from "@babylonjs/lite";
+import { addToScene, type Mesh } from "./gpu";
 import { spread } from "./budget";
 import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";

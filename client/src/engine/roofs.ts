@@ -1,4 +1,4 @@
-import type { MaterialPlugin } from "@babylonjs/lite";
+import type { MaterialPlugin } from "./gpu";
 
 /**
  * Roofs tiled, as the light finds them: on every face that slopes, courses

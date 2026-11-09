@@ -1,4 +1,4 @@
-import { createMeshFromData, disposeMeshGpu, releaseTexture, removeFromScene, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { createMeshFromData, disposeMeshGpu, releaseTexture, removeFromScene, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 
 /** A shape as the town's code builds it, before it is a mesh. */
 export interface MeshGeometry {

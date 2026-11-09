@@ -6,7 +6,7 @@ import {
   markClusteredLightContainerDirty,
   type ClusteredPointLight,
   type ClusteredSpotLight,
-} from "@babylonjs/lite";
+} from "./gpu";
 import type { EngineContext } from "./Canvas";
 import { groundCover } from "./view";
 

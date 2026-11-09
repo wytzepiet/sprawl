@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { markMaterialUboDirty, type DirectionalLight, type EngineContext as LiteEngine, type MaterialPlugin, type Texture2D } from "./gpu";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";

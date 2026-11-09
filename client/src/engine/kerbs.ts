@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import type { KerbTexels } from "./kerbLines";
 

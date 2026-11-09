@@ -6,7 +6,7 @@ import {
   on,
   type ParentProps,
 } from "solid-js";
-import { addToScene, composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { addToScene, composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight, type Casters } from "./DayNightCycle";

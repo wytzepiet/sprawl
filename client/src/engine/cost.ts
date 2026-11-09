@@ -1,6 +1,6 @@
 import { night } from "./lights";
 import { crownsBaked } from "./trees";
-import { setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "@babylonjs/lite";
+import { setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "./gpu";
 
 /**
  * Development only: what each kind of thing in view costs a frame, found by

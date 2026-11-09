@@ -1,4 +1,4 @@
-import type { ToneMapping } from "@babylonjs/lite";
+import type { ToneMapping } from "./gpu";
 
 /**
  * How the scene's light, unbounded, is brought into what a screen can show:

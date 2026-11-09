@@ -1,4 +1,4 @@
-import { setMeshVisible, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { setMeshVisible, type Mesh, type SceneContext } from "./gpu";
 import { MARGIN } from "./still";
 import { groundCover } from "./view";
 

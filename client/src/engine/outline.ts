@@ -15,7 +15,7 @@ import {
   type MaterialPlugin,
   type Mesh,
   type SceneContext,
-} from "@babylonjs/lite";
+} from "./gpu";
 import { townMaterial } from "./material";
 import { meshOf } from "./geometry";
 import { live } from "./still";

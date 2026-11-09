@@ -1,4 +1,4 @@
-import { createPbrMaterial, markMaterialUboDirty, type MaterialPlugin, type PbrMaterialProps, type Texture2D } from "@babylonjs/lite";
+import { createPbrMaterial, markMaterialUboDirty, type MaterialPlugin, type PbrMaterialProps, type Texture2D } from "./gpu";
 import { WHITE, type Rgb } from "./rgb";
 import { stale } from "./still";
 

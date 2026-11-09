@@ -1,4 +1,4 @@
-import type { SceneContext } from "@babylonjs/lite";
+import type { SceneContext } from "./gpu";
 import { snap, STEPS } from "./tiles";
 import { groundCover, projector } from "./view";
 import { step, type Sprung } from "./spring";

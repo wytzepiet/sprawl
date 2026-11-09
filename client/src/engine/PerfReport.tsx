@@ -1,6 +1,6 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { isGpuTimingSupported, setGpuTimingEnabled } from "@babylonjs/lite";
+import { isGpuTimingSupported, setGpuTimingEnabled } from "./gpu";
 import { useEngine } from "./Canvas";
 import { eye } from "./Camera";
 import { groundCover } from "./view";

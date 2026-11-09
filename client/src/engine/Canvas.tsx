@@ -23,7 +23,7 @@ import {
   setGpuTimingEnabled,
   type EngineContext as Engine,
   type SceneContext,
-} from "@babylonjs/lite";
+} from "./gpu";
 import { theme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";

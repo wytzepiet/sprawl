@@ -1,4 +1,4 @@
-import { addToScene, markMaterialUboDirty, type MaterialPlugin, type Mesh } from "@babylonjs/lite";
+import { addToScene, markMaterialUboDirty, type MaterialPlugin, type Mesh } from "./gpu";
 import { night } from "./lights";
 import { spread } from "./budget";
 import { perfCount } from "./PerfReport";

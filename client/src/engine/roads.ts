@@ -1,4 +1,4 @@
-import { addToScene, markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { addToScene, markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "./gpu";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
 import { theme } from "./theme";

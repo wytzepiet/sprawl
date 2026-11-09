@@ -1,4 +1,4 @@
-import { createCubeEnvironment, updateCubeEnvironment, type CubeEnvironment, type SceneContext } from "@babylonjs/lite";
+import { createCubeEnvironment, updateCubeEnvironment, type CubeEnvironment, type SceneContext } from "./gpu";
 import { add, lerp, scale, type Rgb } from "./rgb";
 
 /**

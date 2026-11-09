@@ -8,7 +8,7 @@ import {
   renderFrame,
   setMeshVisible,
   type EngineContext as Engine,
-} from "@babylonjs/lite";
+} from "./gpu";
 import { daylight } from "./DayNightCycle";
 import { TILT } from "./Camera";
 import { TownLayer } from "./TownLayer";

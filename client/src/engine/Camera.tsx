@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { attachFreeControl, createFreeCamera } from "@babylonjs/lite";
+import { attachFreeControl, createFreeCamera } from "./gpu";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { held, inHand } from "../ui/buildMode";

@@ -1,4 +1,4 @@
-import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
+import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "./gpu";
 import type { Area } from "../generated";
 
 /**

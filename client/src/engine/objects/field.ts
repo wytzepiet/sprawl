@@ -1,4 +1,4 @@
-import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "../gpu";
 import type { EngineContext } from "../Canvas";
 import type { Casters } from "../DayNightCycle";
 import { drop, meshOf } from "../geometry";

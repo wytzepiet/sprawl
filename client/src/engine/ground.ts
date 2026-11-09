@@ -1,4 +1,4 @@
-import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
 import { WHITE, type Rgb } from "./rgb";

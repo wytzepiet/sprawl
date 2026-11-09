@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, setMeshAttribute, type EngineContext, type MaterialPlugin, type Mesh, type PbrMaterialProps } from "@babylonjs/lite";
+import { markMaterialUboDirty, setMeshAttribute, type EngineContext, type MaterialPlugin, type Mesh, type PbrMaterialProps } from "./gpu";
 import type { MeshGeometry } from "./geometry";
 
 /**

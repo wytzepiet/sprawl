@@ -1,4 +1,4 @@
-import type { MaterialPlugin } from "@babylonjs/lite";
+import type { MaterialPlugin } from "../gpu";
 import type { EngineContext } from "../Canvas";
 import { WHITE, type Rgb } from "../rgb";
 import type { MeshGeometry } from "../geometry";
