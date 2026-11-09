@@ -63,4 +63,9 @@ ruts: Array<GridCoord>,
  * Where it is driven into: one of its tiles, and the street tile
  * beside it the drive runs from.
  */
-door: Door | null, };
+door: Door | null, 
+/**
+ * Burning since when: a fire engine there by `FIRE_MS` puts it out,
+ * else the house burns down.
+ */
+fire: number | null, };

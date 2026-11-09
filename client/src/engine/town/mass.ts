@@ -33,7 +33,7 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
 /** Kinds drawn whole from the kit (`objects/BuildingObject.tsx`): the
  *  town grid lays their ground and raises no walls of its own,
  *  and no sign lies on them, the model saying what it is. */
-export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor"]);
+export const WHOLE: ReadonlySet<string> = new Set<BuildingKind>(["Shop", "House", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor", "FireStation"]);
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 /** The walls' height. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
@@ -76,5 +76,5 @@ export const kin = (a: Tile, b: Tile) =>
 /** A kind placed whole, one building: it joins only itself, and never on
  *  the diagonal. */
 export const alone = (t: Tile) => ALONE.has(t.kind as BuildingKind);
-const ALONE = new Set<BuildingKind>(["House", "Shop", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor"]);
+const ALONE = new Set<BuildingKind>(["House", "Shop", "Fishery", "Woodcutter", "Sawmill", "Farm", "Bakery", "ClayPit", "Brickworks", "Workshop", "SandPit", "Glassworks", "SheepFarm", "Tailor", "FireStation"]);
 

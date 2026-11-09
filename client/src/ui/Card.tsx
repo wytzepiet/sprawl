@@ -56,8 +56,8 @@ export function InspectHead() {
           const stuck = h?.wants.filter((w) => w.by === null).sort((a, b) => a.since - b.since)[0];
           return {
             title: h ? `${["", "Cottage", "House", "Townhouse", "Apartment"][h.level] ?? bp.label}` : bp.label,
-            sub: stuck ? `${GOODS[stuck.good].label}: ${why(x.b, selected()!, stuck.good)}` : h ? (h.wants.length ? "what it wants is on its way" : "content") : idle ? "nobody at work" : bp.makes ? `makes ${GOODS[bp.makes].label.toLowerCase()}` : undefined,
-            alarm: !!stuck || idle,
+            sub: x.b.fire != null ? "On fire: a fire engine puts it out, if it gets here in time" : stuck ? `${GOODS[stuck.good].label}: ${why(x.b, selected()!, stuck.good)}` : h ? (h.wants.length ? "what it wants is on its way" : "content") : idle ? "nobody at work" : bp.makes ? `makes ${GOODS[bp.makes].label.toLowerCase()}` : undefined,
+            alarm: !!stuck || idle || x.b.fire != null,
             icon: (
               <Box w={36} h={36} round={18} fill={bp.color} align="center" justify="center">
                 <Icon d={bp.glyph} size={19} ink="white" />

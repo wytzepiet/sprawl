@@ -256,11 +256,13 @@ pub enum BuildingKind {
     SheepFarm,
     /// Wool sewn into clothes.
     Tailor,
+    /// A fire engine, out to whatever house catches fire.
+    FireStation,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 14] = [
+    pub const ALL: [BuildingKind; 15] = [
         BuildingKind::House,
         BuildingKind::Shop,
         BuildingKind::Fishery,
@@ -275,6 +277,7 @@ impl BuildingKind {
         BuildingKind::Glassworks,
         BuildingKind::SheepFarm,
         BuildingKind::Tailor,
+        BuildingKind::FireStation,
     ];
 }
 
@@ -326,6 +329,11 @@ pub struct Building {
     /// beside it the drive runs from.
     #[serde(default)]
     pub door: Option<Door>,
+    /// Burning since when: a fire engine there by `FIRE_MS` puts it out,
+    /// else the house burns down.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub fire: Option<GameTime>,
 }
 
 /// A family, and how it lives: its size, what it wants and since when,
@@ -458,7 +466,7 @@ pub struct Run {
 impl Building {
     /// One of a kind, placed, with nothing in it yet.
     pub fn new(kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> Building {
-        Building { kind, tiles, facing, stocks: Default::default(), lifts: Vec::new(), home: None, crew: Vec::new(), present: 0, work: 0.0, land: Vec::new(), ruts: Vec::new(), door: None }
+        Building { kind, tiles, facing, stocks: Default::default(), lifts: Vec::new(), home: None, crew: Vec::new(), present: 0, work: 0.0, land: Vec::new(), ruts: Vec::new(), door: None, fire: None }
     }
 }
 

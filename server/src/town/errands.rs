@@ -44,6 +44,8 @@ pub(super) enum Errand {
     Home { got: Vec<Good>, extra: Vec<Good> },
     /// On its way to work, or there since.
     Work { job: EntityId, at: Option<GameTime> },
+    /// A fire engine on its way to a house on fire.
+    Fire { to: EntityId },
 }
 
 /// A parked car's turn: what its owner needs, fetched; its worker's shift.
@@ -102,6 +104,17 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         Some(Errand::Work { .. }) => {
             world.town.errands.insert(car, Errand::Home { got: Vec::new(), extra: Vec::new() });
             go_home(world, events, car, owner, here, now);
+        }
+        Some(Errand::Fire { to }) if here != Some(owner) => {
+            if here == Some(to) {
+                super::fire::doused(world, to);
+            }
+            world.town.errands.insert(car, Errand::Home { got: Vec::new(), extra: Vec::new() });
+            go_home(world, events, car, owner, here, now);
+        }
+        Some(Errand::Fire { .. }) => {
+            world.town.errands.remove(&car);
+            events.wake(POLL_MS, car);
         }
     }
 }
@@ -432,7 +445,7 @@ fn job(world: &mut World, car: EntityId, home: EntityId) -> Option<EntityId> {
 }
 
 /// A drive from one building to another: whether it set off.
-fn trip(world: &mut World, events: &mut EventQueue, car: EntityId, from: EntityId, to: EntityId, stay: GameTime, now: GameTime) -> bool {
+pub(super) fn trip(world: &mut World, events: &mut EventQueue, car: EntityId, from: EntityId, to: EntityId, stay: GameTime, now: GameTime) -> bool {
     let Some(door) = world.map.street_of(from) else { return false };
     world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, door, to, now, stay))
 }

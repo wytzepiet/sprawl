@@ -302,6 +302,7 @@ impl Trips {
                 (Some(errands::Errand::Fetch { .. }), false) => "at shop",
                 (Some(errands::Errand::Home { .. }), true) => "homeward",
                 (Some(errands::Errand::Home { .. }), false) => "home?",
+                (Some(errands::Errand::Fire { .. }), _) => "fire",
             };
             *n.entry(k).or_default() += 1;
         }
@@ -335,7 +336,7 @@ impl Trips {
             *n.entry(format!("{:?} {why} @{},{}", c.role, q.0, q.1)).or_default() += 1;
             if std::env::var("WHO").is_ok() {
                 let st = t.stood.map(|s| now.saturating_sub(s) / 1000);
-                println!("      #{} {:?} {:?} @{},{} for {:?}s to #{} {:?}", e.id, c.role, t.why.as_ref().map(|w| &w.0), q.0, q.1, st, t.destination, world.town.errands.get(&e.id).map(|e| match e { errands::Errand::Fetch { .. } => "fetch", errands::Errand::Home { .. } => "home", errands::Errand::Work { .. } => "work" }));
+                println!("      #{} {:?} {:?} @{},{} for {:?}s to #{} {:?}", e.id, c.role, t.why.as_ref().map(|w| &w.0), q.0, q.1, st, t.destination, world.town.errands.get(&e.id).map(|e| match e { errands::Errand::Fetch { .. } => "fetch", errands::Errand::Home { .. } => "home", errands::Errand::Work { .. } => "work", errands::Errand::Fire { .. } => "fire" }));
             }
         }
         late.sort();
@@ -423,6 +424,16 @@ fn report(game: &Game) {
             *stage.entry(format!("L{} {k}", h.level)).or_default() += 1;
         }
         println!("    stages: {stage:?}");
+        if std::env::var("GROW").is_ok() {
+            for (id, _) in of_kind(map, BuildingKind::House) {
+                let Some(h) = map.building(id).and_then(|b| b.home.as_ref()) else { continue };
+                let Some(g) = &h.growing else { continue };
+                let goods: Vec<Good> = g.keys().copied().collect();
+                let shops = homes::shops_for(world, id, &goods, now);
+                let cars: Vec<String> = map.objects.fleet(id).map(|c| format!("{c}:{:?}", world.town.errands.get(&c).map(|e| match e { errands::Errand::Fetch { to, want, .. } => format!("fetch {to} {want:?}"), errands::Errand::Home { got, .. } => format!("home {got:?}"), errands::Errand::Work { job, at } => format!("work {job} {}", at.is_some()), errands::Errand::Fire { to } => format!("fire {to}") }))).collect();
+                println!("      grow {id} {:?} shops {:?} cars {cars:?} wants {:?}", g.iter().map(|(g, s)| (g, s.level)).collect::<Vec<_>>(), shops.iter().map(|&s| (s, goods.iter().map(|&g| super::stock(map, s, g)).collect::<Vec<_>>())).collect::<Vec<_>>(), h.wants.iter().map(|w| w.good).collect::<Vec<_>>());
+            }
+        }
     }
     println!("    tally: {}", world.town.tally.iter().map(|((k, g), n)| format!("{k} {g:?} {n}")).collect::<Vec<_>>().join(", "));
     {
@@ -472,7 +483,7 @@ fn wants_of(world: &World) -> BTreeMap<EntityId, (Vec<model::Want>, String)> {
     of_kind(&world.map, BuildingKind::House).into_iter().filter_map(|(id, _)| {
         let cars: Vec<String> = world.map.objects.fleet(id).map(|c| {
             let car = world.map.car(c);
-            format!("car {c}: {:?} trip {} claim {:?} rest {:?} street {:?}", world.town.errands.get(&c).map(|e| match e { errands::Errand::Fetch { to, .. } => format!("fetch {to}"), errands::Errand::Home { .. } => "home".into(), errands::Errand::Work { job, at } => format!("work {job} {}", at.is_some()) }), car.is_some_and(|c| c.trip.is_some()), world.map.claims.get(&c), world.town.rest.get(&c), world.map.street_of(id))
+            format!("car {c}: {:?} trip {} claim {:?} rest {:?} street {:?}", world.town.errands.get(&c).map(|e| match e { errands::Errand::Fetch { to, .. } => format!("fetch {to}"), errands::Errand::Home { .. } => "home".into(), errands::Errand::Work { job, at } => format!("work {job} {}", at.is_some()), errands::Errand::Fire { to } => format!("fire {to}") }), car.is_some_and(|c| c.trip.is_some()), world.map.claims.get(&c), world.town.rest.get(&c), world.map.street_of(id))
         }).collect();
         Some((id, (world.map.building(id)?.home.as_ref()?.wants.clone(), cars.join("; "))))
     }).collect()
@@ -532,7 +543,7 @@ fn bot() {
         }
         if let Some(follow) = follow {
             let w = &game.world;
-            let er = w.town.errands.get(&follow).map(|e| match e { errands::Errand::Fetch { to, at, .. } => format!("fetch {to} at {:?}", at.map(|a| (game.now - a) / 1000)), errands::Errand::Home { .. } => "home".into(), errands::Errand::Work { job, at } => format!("work {job} {:?}", at.is_some()) });
+            let er = w.town.errands.get(&follow).map(|e| match e { errands::Errand::Fetch { to, at, .. } => format!("fetch {to} at {:?}", at.map(|a| (game.now - a) / 1000)), errands::Errand::Home { .. } => "home".into(), errands::Errand::Work { job, at } => format!("work {job} {:?}", at.is_some()), errands::Errand::Fire { to } => format!("fire {to}") });
             let tr = w.map.car(follow).and_then(|c| c.trip.as_ref()).map(|t| { let (p, v) = t.at(game.now); format!("to {} {:.1}/{:.1} v {v:.2} why {:?} late {}", t.destination, p, t.along.last().unwrap_or(&0.0), t.why.as_ref().map(|w| &w.0), game.now.saturating_sub(t.eta) / 1000) });
             let owner = w.map.car(follow).map(|c| c.owner);
             let wants = owner.and_then(|o| w.map.building(o)).and_then(|b| b.home.as_ref()).map(|h| h.wants.iter().map(|x| format!("{:?} {}s", x.good, game.now.saturating_sub(x.since) / 1000)).collect::<Vec<_>>());

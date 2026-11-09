@@ -3,4 +3,4 @@
 /**
  * What stands on a plot: a home, a shop, or one of the makers.
  */
-export type BuildingKind = "House" | "Shop" | "Fishery" | "Woodcutter" | "Sawmill" | "Farm" | "Bakery" | "ClayPit" | "Brickworks" | "Workshop" | "SandPit" | "Glassworks" | "SheepFarm" | "Tailor";
+export type BuildingKind = "House" | "Shop" | "Fishery" | "Woodcutter" | "Sawmill" | "Farm" | "Bakery" | "ClayPit" | "Brickworks" | "Workshop" | "SandPit" | "Glassworks" | "SheepFarm" | "Tailor" | "FireStation";

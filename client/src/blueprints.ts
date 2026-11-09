@@ -91,6 +91,9 @@ export function standing(b: Building): { at: [number, number]; size: [number, nu
 /** Where a building stands: the middle of its bounds. */
 export const middle = (b: Building): [number, number] => standing(b).at;
 
+/** A flame: a fire station's, and a house on fire's. */
+export const FLAME = "M12 1.5c1 3.5 5.5 6 5.5 11.5a5.5 5.5 0 0 1-11 0c0-2.5 1.2-4.2 2.5-5.5.2 2 1 3 2 3.5-.3-3.5.3-6.5 1-9.5z";
+
 const LOOKS: Record<BuildingKind, Look> = {
   House: {
     label: "House",
@@ -216,6 +219,15 @@ const LOOKS: Record<BuildingKind, Look> = {
     material: "#8E4A60",
     glyph: "M8 2l4 3 4-3 6 4-3 4-2-1v13H7V9l-2 1-3-4z",
     shape: "gabled",
+    heights: [0],
+  },
+  FireStation: {
+    label: "Fire station",
+    about: "Its engine races to any house on fire. There in time, the fire is out; too late, the house burns down and its family leaves. The nearer the station, and the clearer the roads, the safer the street.",
+    color: "#D2412F",
+    material: "#A8402F",
+    glyph: FLAME,
+    shape: "box",
     heights: [0],
   },
 };

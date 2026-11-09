@@ -6,7 +6,7 @@ const same = (a: number[], b: number[]) => a.length === b.length && a.every((x, 
 import { now } from "../state/town";
 import { select } from "../state/selection";
 import { PATIENCE_MS } from "../generated/rows";
-import { GOODS, middle } from "../blueprints";
+import { FLAME, GOODS, middle } from "../blueprints";
 import { BAD, onMap, Press } from "./kit";
 import type { Building, Want } from "../generated";
 
@@ -22,6 +22,7 @@ export default function Pins() {
   // keyed by it were taken down and put up again, blinking, each time.
   const wanting = createMemo(() => signed().filter((e) => (e.object.data as Building).home?.wants.length).map((e) => e.id), [], { equals: same });
   const cut = createMemo(() => signed().filter((e) => !reached(e)).map((e) => e.id), [], { equals: same });
+  const burning = createMemo(() => signed().filter((e) => (e.object.data as Building).fire !== null && (e.object.data as Building).fire !== undefined).map((e) => e.id), [], { equals: same });
   // As it was last, for the moment between its going and its pin's.
   const building = (id: number) => {
     let last = signedOne(id)!.object.data as Building;
@@ -31,6 +32,7 @@ export default function Pins() {
     <>
       <For each={wanting()}>{(id) => <Over id={id} building={building(id)} />}</For>
       <For each={cut()}>{(id) => <NoRoad id={id} building={building(id)} />}</For>
+      <For each={burning()}>{(id) => <Fire id={id} building={building(id)} />}</For>
     </>
   );
 }
@@ -53,6 +55,37 @@ function NoRoad(props: { id: number; building: () => Building }) {
     </Show>
   );
 }
+
+/** Over a house on fire: a flame, ringed, the ring filling red as it
+ *  burns (`town::fire::FIRE_MS`); it pings all the while. */
+function Fire(props: { id: number; building: () => Building }) {
+  const at = onMap(() => [...middle(props.building()), 1.4]);
+  const full = () => Math.min(1, Math.max(0, (now() - (props.building().fire ?? now())) / FIRE_MS));
+  const R = 17;
+  const round = 2 * Math.PI * R;
+  return (
+    <Show when={at()}>
+      {(p) => (
+        <Box at={{ left: 0, top: 0 }} x={p().sx - 21} y={p().sy - 62}>
+          <Press w={42} h={42} align="center" justify="center" onTap={() => select(props.id)}>
+            <div class="ping" style={{ "border-color": FIRE }} />
+            <svg width="42" height="42" viewBox="-21 -21 42 42" style={{ position: "absolute", left: "0", top: "0" }}>
+              <circle r="20.5" fill="white" />
+              <circle r={R} fill="none" stroke="#0000001f" stroke-width="5" />
+              <circle r={R} fill="none" stroke={BAD} stroke-width="5" stroke-dasharray={`${full() * round} ${round}`} transform="rotate(-90)" />
+              <circle r="13" fill={FIRE} />
+            </svg>
+            <Icon d={FLAME} size={17} ink="white" />
+          </Press>
+        </Box>
+      )}
+    </Show>
+  );
+}
+
+/** How long a house burns before it is lost (`town::fire::FIRE_MS`). */
+const FIRE_MS = 90_000;
+const FIRE = "#F26B1D";
 
 /** Pins over one building, at most; the rest a count. */
 const MOST = 4;

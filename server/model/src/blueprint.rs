@@ -124,6 +124,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Glassworks, Blueprint { loud: true, ..maker((2, 2), Glass, 10 * SECOND, &[(Sand, 1), (Logs, 1)], 1, Ground::Any) }),
         (SheepFarm, maker((2, 1), Wool, 10 * SECOND, &[], 0, Ground::Any)),
         (Tailor, maker((2, 1), Clothes, 9 * SECOND, &[(Wool, 1)], 1, Ground::Any)),
+        (FireStation, Blueprint { body: (2, 1), makes: None, every: 0, takes: &[], seats: 0, lorries: 1, queue: 0, customers: 0, yard: 0, ground: Ground::Any, forklifts: 0, farm: false, loud: false }),
     ];
     for (i, (k, _)) in rows.iter().enumerate() {
         assert_eq!(*k as usize, i, "blueprint table out of order at {k:?}");

@@ -18,6 +18,7 @@ export const ROWS: Record<BuildingKind, { size: [number, number]; makes: Good | 
   Glassworks: { size: [2, 2], makes: "Glass", every: 10000, takes: { Sand: 1, Logs: 1 }, seats: 2, bays: 2, docks: 3, lorries: 1, forklifts: 1, farm: false, loud: true },
   SheepFarm: { size: [2, 1], makes: "Wool", every: 10000, takes: {}, seats: 2, bays: 2, docks: 2, lorries: 0, forklifts: 1, farm: false, loud: false },
   Tailor: { size: [2, 1], makes: "Clothes", every: 9000, takes: { Wool: 1 }, seats: 2, bays: 2, docks: 3, lorries: 1, forklifts: 1, farm: false, loud: false },
+  FireStation: { size: [2, 1], makes: null, every: 0, takes: {}, seats: 0, bays: 0, docks: 1, lorries: 1, forklifts: 0, farm: false, loud: false },
 };
 
 /** A forklift's lift of one crate (`map::HANDLE_MS`). */

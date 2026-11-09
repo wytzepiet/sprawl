@@ -51,10 +51,11 @@ function cut(reason: string): number {
 function need(o: Offer): string | null {
   if (o.kind === "Building") {
     const makes = BLUEPRINTS[o.data[0]].makes;
-    if (!makes) {
+    if (o.data[0] === "Shop") {
       const far = cut("no shop within reach");
       return far ? `${far} ${far === 1 ? "house has" : "houses have"} no shop near` : null;
     }
+    if (!makes) return null;
     const [want, grow] = [waiting(makes, false), waiting(makes, true)];
     const what = GOODS[makes].label.toLowerCase();
     return want ? `${want} ${want === 1 ? "house waits" : "houses wait"} for ${what}` : grow ? `${grow} ${grow === 1 ? "house grows" : "houses grow"} with ${what}` : null;

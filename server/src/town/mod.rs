@@ -16,6 +16,7 @@
 //! doesn't.
 
 mod errands;
+mod fire;
 pub(crate) mod homes;
 mod makers;
 mod picks;
@@ -242,9 +243,9 @@ fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
     homes::catchment(world);
     world.town.room = picks::rates(world).into_iter().map(|(g, f)| (g, f.make - f.taken)).collect();
     standing(world);
+    fire::look(world, events, now, LOOK_MS);
     picks::release(world);
     events.wake(LOOK_MS, LOOK);
-    let _ = now;
 }
 
 /// The town's standing by its people, and the ground it may build on with

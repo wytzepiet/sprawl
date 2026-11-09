@@ -11,6 +11,9 @@ use model::{BuildingKind, EntityId, Good, Offer, Unlock};
 use crate::world::World;
 use super::{of_kind, PICK_ROADS, PICK_STEP};
 
+/// How far a fire station's engine is counted on to reach in time.
+const FIRE_REACH: i32 = 20;
+
 /// A kind the town now wants: met, and what it is made from met first.
 /// It comes to hand once what feeds it stands (`release`).
 pub fn unlock(world: &mut World, kind: BuildingKind) {
@@ -43,7 +46,10 @@ pub fn pick(world: &mut World, n: u8, now: model::GameTime) {
     match card {
         Offer::Building(kind, k) => *town.hand.entry(kind).or_default() += k,
         Offer::Roads(k) => town.allowance += k,
-        Offer::Lorry(k) => town.lorries += k,
+        Offer::Lorry(k) => {
+            town.lorries += k;
+            world.news.push(model::News { text: "A lorry in hand".into(), sub: "open a shop's or a maker's card to give it a second".into(), at: 0 });
+        }
         Offer::Tool(u) => {
             town.tools.insert(u);
         }
@@ -128,6 +134,13 @@ pub(super) fn candidates(world: &World, now: model::GameTime) -> Vec<(Offer, f64
     // Every lorry it may run running: another shop, with its own.
     // And a shop to every dozen houses or so: past that its bays and its
     // lorries are a queue.
+    // A fire station where houses stand out of its engine's reach, once a
+    // fire has been seen.
+    let stations = of_kind(map, BuildingKind::FireStation);
+    let unguarded = homes.iter().filter(|&&h| !stations.iter().any(|&(s, _)| super::apart(map, s, h) <= FIRE_REACH)).count() as f64;
+    if let Some(c) = cands.iter_mut().find(|c| c.0 == Offer::Building(BuildingKind::FireStation, 1)) {
+        c.1 += unguarded * 0.3;
+    }
     let shops = of_kind(map, BuildingKind::Shop).len().max(1) as f64;
     let crowd = (homes.len() as f64 / shops - 12.0).max(0.0) * 0.5;
     if let Some(c) = cands.iter_mut().find(|c| c.0 == Offer::Building(BuildingKind::Shop, 1)) {
@@ -256,6 +269,7 @@ fn name(kind: BuildingKind) -> String {
         BuildingKind::ClayPit => "clay pit".into(),
         BuildingKind::SandPit => "sand pit".into(),
         BuildingKind::SheepFarm => "sheep farm".into(),
+        BuildingKind::FireStation => "fire station".into(),
         k => format!("{k:?}").to_lowercase(),
     }
 }
@@ -278,5 +292,6 @@ fn why(kind: BuildingKind) -> &'static str {
         Glassworks => "a townhouse grows with glass, from sand over a wood fire",
         SheepFarm => "sheep on open grass give wool",
         Tailor => "apartments want clothes, sewn from wool",
+        FireStation => "its engine puts out a fire, if it gets there in time",
     }
 }

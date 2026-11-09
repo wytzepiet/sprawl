@@ -127,3 +127,28 @@ fn a_chain_comes_to_hand_from_its_raw_end() {
     picks::release(&mut world);
     assert!(world.town.has(BuildingKind::Sawmill));
 }
+
+/// A house on fire: the station's engine drives there and puts it out;
+/// with no station, it burns down and its family leaves.
+#[test]
+fn an_engine_in_time_saves_the_house() {
+    for station in [true, false] {
+        let mut world = street();
+        world.town.hand.clear();
+        world.town.picked = u32::MAX / 2;
+        world.town.start = None;
+        if station {
+            build(&mut world, 8, BuildingKind::FireStation);
+        }
+        let h = homes::house(&mut world, GridCoord { x: -6, y: -1 }, 0).unwrap();
+        world.map.building_mut(h).unwrap().fire = Some(0);
+        let mut game = Game::new(world, 0, 1, Box::new(World::new));
+        game.run_to(fire::FIRE_MS + 10_000);
+        let b = game.world.map.building(h);
+        if station {
+            assert!(b.is_some_and(|b| b.fire.is_none()), "the fire is out");
+        } else {
+            assert!(b.is_none(), "the house burnt down");
+        }
+    }
+}

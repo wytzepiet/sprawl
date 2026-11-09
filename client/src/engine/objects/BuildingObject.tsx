@@ -49,7 +49,7 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
   if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate, -0.5];
   if (kind === "ClayPit") return ["clayPit", CLAY_PIT, gate, -0.5];
   if (kind === "SandPit") return ["sandPit", SAND_PIT, gate, -0.5];
-  if (kind === "Bakery" || kind === "Tailor") return ["bakery", BAKERY, gate, -0.5];
+  if (kind === "Bakery" || kind === "Tailor" || kind === "FireStation") return ["bakery", BAKERY, gate, -0.5];
   // Two rows deep. Until each has its own model, the nearest of the kit's.
   const works: Partial<Record<Building["kind"], [string, Built]>> = { Sawmill: ["sawmill", SAWMILL], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
   const w = works[kind];
