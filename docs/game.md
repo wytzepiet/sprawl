@@ -50,8 +50,8 @@ than one side and grows over it by bridges. It is one height of noise
 at a few scales and a river noise cut into it; water below the line is
 the sea where it reaches the map's edge and a lake where it does not
 (`terrain.rs`). Home is the first spot on the noise with open grass
-round it, water twenty to forty-odd tiles off, and a land mass under
-it. `every_seed_is_broken_land` checks it on the first twenty seeds.
+round it, water twenty to forty-odd tiles off, and water within sixty
+tiles most ways out of it, so the first town is hemmed in. `every_seed_is_broken_land` checks it on the first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a
