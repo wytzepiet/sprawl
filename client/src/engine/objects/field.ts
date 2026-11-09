@@ -284,16 +284,23 @@ class Strips {
     this.crops.forEach((crop, c) => updateMeshPositions(this.ctx.engine, crop, this.raised[c]));
   }
 
-  /** The crop cut as the tractor goes: its shadow drawn again every frame,
-   *  as a car's is, by moving it, by nothing, every frame. */
-  stir() {
-    for (const crop of this.crops) crop.position.z = crop.position.z ? 0 : 1e-6;
-  }
+  /** The paint as last read, and the reach its crops' shadows were cut at. */
+  private painted = "";
+  private cut = NaN;
 
-  /** Paint changed: every mesh reads it again. */
+  /** The paint read again by every mesh, and the picture drawn again, when
+   *  it changed; and the crop's shadow cut again once the reach has moved
+   *  a quarter of a tile, by moving the crops, by nothing: the sun's map
+   *  draws what stands still again only when it moves. */
   repaint() {
+    const painted = `${this.paint.reach};${this.paint.looks.join(";")}`;
+    if (painted === this.painted) return;
+    this.painted = painted;
     for (const mesh of [this.mesh, ...this.crops]) markMaterialUboDirty(mesh.material as TownMaterial);
     stale();
+    if (Math.abs(this.paint.reach - this.cut) < 0.25) return;
+    this.cut = this.paint.reach;
+    for (const crop of this.crops) crop.position.z = crop.position.z ? 0 : 1e-6;
   }
 
   drop() {
@@ -437,10 +444,8 @@ class Field {
   private raise() {
     const { strips, out } = this;
     if (!strips) return;
-    if (out?.run) {
-      strips.paint.reach = strips.drawn.passing((simNow() - out.run.started) / out.run.pace);
-      strips.stir();
-    }
+    // In steps of the cuts' texels: no finer is seen.
+    if (out?.run) strips.paint.reach = Math.floor(strips.drawn.passing((simNow() - out.run.started) / out.run.pace) * CUT_RES) / CUT_RES;
     strips.lift(FIELD_Z, out ? [this.look, out.after].map(heightOf) : [heightOf(this.look)]);
     strips.repaint();
   }
