@@ -16,7 +16,7 @@ pub fn db_path() -> PathBuf {
     std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
 }
 
-/// The seed a fresh world gets. Set SPRAWL_SEED to get the same map back every
+/// The seed a new save gets. Set SPRAWL_SEED to get the same map back every
 /// time — the point of a test world is that what you saw yesterday is still
 /// there today, so a change in behaviour is a change in the code.
 fn new_seed() -> u32 {
@@ -68,10 +68,11 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let fresh_db = db_path.clone();
     let fresh = Box::new(move || {
         persistence::Db::open(&fresh_db).clear();
+        // A reset asks for a new map: `SPRAWL_SEED` names the first one alone.
         let mut world = World::new();
-        world.map.terrain_seed = new_seed();
+        world.map.terrain_seed = rand::random();
         island(&mut world);
-        println!("reset: world cleared, terrain regenerated");
+        println!("reset: world cleared, terrain regenerated from seed {}", world.map.terrain_seed);
         world
     });
     let mut game = Game::new(world, sim_time, speed, fresh);
