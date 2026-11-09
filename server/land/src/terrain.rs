@@ -1,82 +1,63 @@
 use fixed::HashMap;
-use std::f64::consts::{PI, TAU};
 
 use noise::{NoiseFn, Simplex};
-use fixed::SmallRng;
-use rand::{Rng, SeedableRng};
 
-use crate::{ChunkCoord, TerrainType, CHUNK_SIZE};
+use crate::{TerrainType, CHUNK_SIZE};
 
 /// The map, in tiles and in chunks.
 const WIDTH: i32 = 1024;
 const HEIGHT: i32 = 1024;
 pub const CHUNKS_MIN: i32 = -(WIDTH / 2) / CHUNK_SIZE;
 pub const CHUNKS_MAX: i32 = (WIDTH / 2) / CHUNK_SIZE - 1;
-/// Islands in one ocean. A handful of them, each a centre and a radius
-/// drawn from the seed: the first holds the origin, `HOME_IN` tiles in
-/// from its coast; the rest share out the land that is left, unevenly,
-/// scattered wherever they fit with open sea round each and between each
-/// and the map's edge. An island's coast is its radius, varied by noise
-/// read round its compass, so it closes on itself with headlands and
-/// bays; the whole map is bent by two more noises, a broad one and a
-/// fine one, before the islands are read from it, which makes the round
-/// shapes ragged without tearing them. Inside a coast is land or a lake,
-/// outside it the sea, so the sea is one, and every coast is on it.
-///
-/// Inland, three layers of noise make the land. A continental one, whose
-/// features are about `1 / COARSE` tiles across, and a fine one that gives
-/// the land its woods and hills. The third, larger than either, says how
-/// rugged a region is: where it is high the fine layer has its say and
-/// the heights are stretched, which makes ranges and lakes; where it is
-/// low the land rolls and flattens into plains. The ground rises from the
-/// coast over its first `SHELF_RISE` tiles, and no lake comes nearer the
-/// sea than `BAND`. Each island has a character of its own, added to
-/// those layers: most are grass with some wood, some are forest, some
-/// mountain.
-const COARSE: f64 = 0.012;
-const FINE: f64 = 0.05;
-const RUGGED: f64 = 0.006;
-/// The bending, broad and fine: how far, in tiles, and at what frequency.
-const WARP: (f64, f64) = (40.0, 0.005);
-const WARP_FINE: (f64, f64) = (4.0, 0.03);
-/// The coast round an island: how much of the radius it swings, at what
-/// frequency along the coast, for the long swings and for the bays.
-const SWING: (f64, f64) = (0.28, 0.012);
-const BAYS: (f64, f64) = (0.1, 0.045);
-/// How far past its radius an island's coast can reach, with the bending,
-/// and how much open sea there is at least between two islands' reaches
-/// and between one and the map's edge.
-const REACH: f64 = 1.45;
-const GAP: f64 = 36.0;
-/// The share of the map that is land, roughly, and how many islands.
-const LAND: (f64, f64) = (0.17, 0.23);
-const ISLANDS: (u32, u32) = (4, 8);
-/// The origin's island: its radius, and how far in from its coast the
-/// origin lies.
-const HOME_RADIUS: (f64, f64) = (110.0, 145.0);
-const HOME_IN: f64 = 40.0;
-const SHELF: f64 = 0.8;
-const SHELF_RISE: f64 = 16.0;
-const BAND: f64 = 5.0;
-/// The fine layer's share of the height, from the flattest region to the
-/// most rugged.
-const DETAIL: (f64, f64) = (0.1, 0.9);
-/// How much the heights are stretched, likewise.
-const RELIEF: (f64, f64) = (0.35, 2.2);
-/// A mountain is ground above the hill line, in a region whose continental
-/// layer, stretched, is over the range line.
-const HILL: f64 = 0.4;
-const RANGE: f64 = 0.6;
-/// The land stands on a cliff over the water; only in some stretches of
-/// its shore, coves, has the sea left a beach at the cliff's foot: within
-/// `BEACH` tiles of the coast, where a noise this fine is over this.
+
+/// The land is one height, and wherever it is below the water's level is
+/// water: the sea where that water reaches the map's edge, a lake where it
+/// does not. The height is noise at a few scales, each finer one weaker,
+/// `(tiles across, weight)`: the broadest makes land masses and the sea
+/// between them, the next headlands, sounds and inlets, the finest a
+/// ragged coast. It sinks towards the map's edge over its last `EDGE`
+/// share, so the edge is open sea.
+const OCTAVES: [(f64, f64); 4] = [(240.0, 1.0), (90.0, 0.6), (36.0, 0.25), (14.0, 0.1)];
+const LEVEL: f64 = 0.12;
+const EDGE: f64 = 0.25;
+/// Rivers: where a noise of this scale crosses zero, give or take
+/// `RIVER` of it, the land falls away into water, with `BANK` how steeply
+/// its banks rise from it; a finer noise of a sixth the scale wanders it.
+/// They run on across land and sea alike, so they cut land masses in two
+/// and open into the sea at both ends.
+const RIVERS: f64 = 200.0;
+const RIVER: f64 = 0.025;
+const BANK: f64 = 6.0;
+/// The ground's character. A noise as large as the land masses says how
+/// rugged a region is: where it is high the finest layer of the height has
+/// its say and the heights are stretched; and a mountain is ground over the
+/// hill line where the broad layers alone, stretched, are over the range
+/// line, so ranges are contiguous and stand on high ground. Moisture,
+/// noise at the scale of the inlets and of the finest layer, makes woods.
+const RUGGED: f64 = 1.0 / 170.0;
+const DETAIL: (f64, f64) = (0.0, 0.3);
+const RELIEF: (f64, f64) = (0.5, 2.0);
+const HILL: f64 = 0.3;
+const RANGE: f64 = 0.9;
+const WOOD: f64 = 0.15;
+/// Only in some stretches of a shore, coves, has the water left a beach:
+/// ground this low, where a noise this fine is over this.
 const COVES: f64 = 0.04;
 const COVE: f64 = 0.05;
-const BEACH: f64 = 3.0;
-/// Round the origin the land is calmed, out to this far and fading over
-/// as far again: no range, no lake, little wood, so the first town has
-/// open grass between it and its coast.
-const HOME: f64 = 48.0;
+const BEACH: f64 = 0.02;
+/// Home, the origin: the seed's noise is read from the first place on a
+/// spiral out from the noise's own middle, a step of `STEP` tiles, with dry
+/// ground `DRY` tiles all round it, water nearest it between `SHORE`
+/// tiles, and land two thirds of the way round it at six tenths of `WIDE`
+/// out and half way round at `WIDE`, so it is on a land mass and not an
+/// islet. Round it the land is calmed, out to `HOME`
+/// and fading over as far again: no range, little wood, so the first town
+/// has open grass between it and its water.
+const STEP: f64 = 24.0;
+const DRY: f64 = 16.0;
+const SHORE: (f64, f64) = (20.0, 44.0);
+const WIDE: f64 = 70.0;
+const HOME: f64 = 40.0;
 
 fn elev(t: TerrainType) -> i32 {
     match t {
@@ -86,158 +67,98 @@ fn elev(t: TerrainType) -> i32 {
     }
 }
 
-/// One island: where, how big, and its character, added to the moisture,
-/// to the layer the range line reads and to the ruggedness of its land.
-struct Island {
-    x: f64,
-    y: f64,
-    radius: f64,
-    coast: Simplex,
-    wood: f64,
-    rock: f64,
-    rough: f64,
-}
-
-impl Island {
-    fn new(seed: u32, i: u32, radius: f64, rng: &mut SmallRng) -> Self {
-        // Grass with some wood, mostly; now and then a forest, or a
-        // mountain island. The first is grass.
-        let (wood, rock, rough) = match if i == 0 { 0.0 } else { rng.random_range(0.0..1.0) } {
-            r if r < 0.5 => (rng.random_range(-0.25..0.0), -0.4, 0.0),
-            r if r < 0.7 => (rng.random_range(-0.1..0.1), 0.0, 0.15),
-            r if r < 0.85 => (0.4, -0.3, 0.0),
-            _ => (rng.random_range(-0.2..0.1), 0.4, 0.3),
-        };
-        Island { x: 0.0, y: 0.0, radius, coast: Simplex::new(seed.wrapping_add(16 + i)), wood, rock, rough }
-    }
-
-    /// How far out from the centre the coast lies at angle `a`.
-    fn coast(&self, a: f64) -> f64 {
-        let round = |(amount, frequency): (f64, f64), off: f64| {
-            let k = self.radius * frequency;
-            amount * self.coast.get([off + a.cos() * k, off + a.sin() * k])
-        };
-        self.radius * (1.0 + round(SWING, 0.0) + round(BAYS, 50.0)).max(0.4)
-    }
-}
-
-/// The islands of a seed, the origin's first.
-fn islands(seed: u32) -> Vec<Island> {
-    let mut rng = SmallRng::seed_from_u64(seed as u64 ^ 0x1_51a_4d5);
-    let count = rng.random_range(ISLANDS.0..=ISLANDS.1);
-    let land = rng.random_range(LAND.0..LAND.1) * (WIDTH * HEIGHT) as f64;
-    let mut home = Island::new(seed, 0, rng.random_range(HOME_RADIUS.0..HOME_RADIUS.1), &mut rng);
-    let a = rng.random_range(0.0..TAU);
-    let towards = home.coast(a) - HOME_IN;
-    (home.x, home.y) = (-a.cos() * towards, -a.sin() * towards);
-    let mut shares: Vec<f64> = (1..count).map(|_| rng.random_range(0.3..1.0f64).powi(2)).collect();
-    shares.sort_by(|a, b| b.total_cmp(a));
-    let rest = (land - PI * home.radius * home.radius) / shares.iter().sum::<f64>();
-    let mut out = vec![home];
-    let half = (WIDTH / 2) as f64;
-    for (i, share) in shares.into_iter().enumerate() {
-        let mut island = Island::new(seed, i as u32 + 1, (rest * share / PI).sqrt(), &mut rng);
-        // Wherever it fits, smaller each time it does not.
-        'fit: while island.radius > 30.0 {
-            let room = half - island.radius * REACH - GAP;
-            for _ in 0..if room > 0.0 { 100 } else { 0 } {
-                (island.x, island.y) = (rng.random_range(-room..room), rng.random_range(-room..room));
-                if out.iter().all(|o: &Island| (o.x - island.x).hypot(o.y - island.y) > (o.radius + island.radius) * REACH + GAP) {
-                    out.push(island);
-                    break 'fit;
-                }
-            }
-            island.radius *= 0.9;
-        }
-    }
-    out
-}
-
-/// The layers, seeded, and the islands.
+/// The noises, seeded, and where on them home is.
 struct Layers {
     elevation: Simplex,
     moisture: Simplex,
     rugged: Simplex,
-    bend: [Simplex; 2],
+    river: Simplex,
     coves: Simplex,
-    islands: Vec<Island>,
+    home: (f64, f64),
 }
 
 impl Layers {
     fn new(seed: u32) -> Self {
-        Layers {
+        let mut layers = Layers {
             elevation: Simplex::new(seed),
             moisture: Simplex::new(seed.wrapping_add(1)),
             rugged: Simplex::new(seed.wrapping_add(2)),
-            bend: [Simplex::new(seed.wrapping_add(3)), Simplex::new(seed.wrapping_add(4))],
+            river: Simplex::new(seed.wrapping_add(3)),
             coves: Simplex::new(seed.wrapping_add(5)),
-            islands: islands(seed),
+            home: (0.0, 0.0),
+        };
+        layers.home = layers.find_home();
+        layers
+    }
+
+    /// Where on the noise home is: the first fit on a square spiral.
+    fn find_home(&mut self) -> (f64, f64) {
+        let round = |r: f64, n: usize| (0..n).map(move |i| (i as f64 * std::f64::consts::TAU / n as f64).sin_cos()).map(move |(s, c)| (c * r, s * r));
+        for ring in 0..400 {
+            for i in 0..(8 * ring).max(1) {
+                let (dx, dy) = spiral(ring, i);
+                self.home = (dx as f64 * STEP, dy as f64 * STEP);
+                let wet = |(x, y): (f64, f64)| self.height(x, y).0 < 0.0;
+                let dry = [DRY / 2.0, DRY].iter().all(|&r| !round(r, 16).any(wet)) && !wet((0.0, 0.0));
+                let shore = (SHORE.0 as i32..=SHORE.1 as i32).step_by(4).find(|&r| round(r as f64, 32).any(wet));
+                let wide = round(WIDE * 0.6, 24).filter(|&p| !wet(p)).count() >= 16 && round(WIDE, 24).filter(|&p| !wet(p)).count() >= 12;
+                if dry && wide && shore.is_some_and(|r| r as f64 > SHORE.0) {
+                    return self.home;
+                }
+            }
         }
+        (0.0, 0.0)
     }
 
-    /// The island a point is on, or nearest, and how many tiles in from
-    /// its coast the point is: below zero, out at sea. Simplex noise is
-    /// zero at the origin, so the bending leaves the origin where the
-    /// first island was put round it.
-    fn place(&self, fx: f64, fy: f64) -> (&Island, f64) {
-        let bend = |(far, frequency): (f64, f64)| far * self.bend[0].get([fx * frequency, fy * frequency]);
-        let bend_y = |(far, frequency): (f64, f64)| far * self.bend[1].get([fx * frequency, fy * frequency]);
-        let (x, y) = (fx + bend(WARP) + bend(WARP_FINE), fy + bend_y(WARP) + bend_y(WARP_FINE));
-        self.islands
-            .iter()
-            .map(|island| {
-                let (dx, dy) = (x - island.x, y - island.y);
-                let r = dx.hypot(dy);
-                let reach = island.radius * REACH;
-                (island, if r > reach { reach - r } else { island.coast(dy.atan2(dx)) - r })
-            })
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .expect("a seed with no islands")
+    /// The height at a point of the map, and how rugged its region is.
+    fn height(&self, x: f64, y: f64) -> (f64, f64, f64) {
+        let (nx, ny) = (x + self.home.0, y + self.home.1);
+        let at = |n: &Simplex, across: f64| n.get([nx / across, ny / across]);
+        let r = (0.5 + 0.5 * self.rugged.get([nx * RUGGED, ny * RUGGED])).clamp(0.0, 1.0);
+        let span = |(lo, hi): (f64, f64)| lo + (hi - lo) * r;
+        let broad: f64 = OCTAVES[..3].iter().map(|&(across, w)| w * at(&self.elevation, across)).sum();
+        let (fine_across, fine_w) = OCTAVES[3];
+        let edge = ((x.abs().max(y.abs()) / (WIDTH / 2) as f64 - (1.0 - EDGE)) / EDGE).clamp(0.0, 1.0);
+        let e = broad + (fine_w + span(DETAIL)) * at(&self.elevation, fine_across) - LEVEL - 2.0 * edge;
+        let river = (at(&self.river, RIVERS) + 0.15 * at(&self.river, RIVERS / 6.0)).abs() - RIVER;
+        (e.min(river * BANK), broad, r)
     }
 
-    /// The height at a point of the map, and what the tile there is made
-    /// of: the moisture, how far into range country, and how far inland.
-    fn sample(&self, fx: f64, fy: f64) -> (f64, f64, f64, f64) {
-        let (island, inland) = self.place(fx, fy);
-        if inland <= 0.0 {
-            return (inland / SHELF_RISE, 0.0, 0.0, inland);
-        }
-        let span = |(lo, hi): (f64, f64), t: f64| lo + (hi - lo) * t;
-        let home = 1.0 - ((fx.hypot(fy) - HOME) / HOME).clamp(0.0, 1.0);
-        let r = (0.5 + 0.5 * self.rugged.get([fx * RUGGED, fy * RUGGED]) + island.rough).clamp(0.0, 1.0) * (1.0 - home);
-        let detail = span(DETAIL, r);
-        // Averaging two independent noises crowds the result toward zero,
-        // which would leave almost nothing over the mountain line; scaled
-        // back so the blend is spread as widely as either layer alone.
-        let spread = ((1.0 - detail).powi(2) + detail.powi(2)).sqrt();
-        let blend = |n: &Simplex| ((1.0 - detail) * n.get([fx * COARSE, fy * COARSE]) + detail * n.get([fx * FINE, fy * FINE])) / spread;
-        let e = (blend(&self.elevation) * span(RELIEF, r) + SHELF * (inland / SHELF_RISE).min(1.0)).max(home * 0.3);
-        let m = blend(&self.moisture) + island.wood - 0.3 * home;
-        // A mountain is high ground in range country: the height above
-        // says whether this is a hill, the continental layer alone says
-        // whether the region is the kind that has ranges — the way
-        // moisture says whether it has forest. Neither makes a peak by
-        // itself, so ranges are contiguous and stand on high ground.
-        let range = self.elevation.get([fx * COARSE, fy * COARSE]) * span(RELIEF, r) + island.rock - 2.0 * home;
-        (e, m, range, inland)
-    }
-
-    /// One tile's type from the layers alone, before smoothing.
+    /// One tile's type from the noises alone, before smoothing; any water
+    /// is a lake, until the sea is told from it.
     fn tile(&self, x: i32, y: i32) -> TerrainType {
-        let (e, m, range, inland) = self.sample(x as f64, y as f64);
-        if inland <= 0.0 {
-            TerrainType::Sea
-        } else if e < -0.05 && inland > BAND {
+        let (fx, fy) = (x as f64, y as f64);
+        let (e, broad, r) = self.height(fx, fy);
+        let home = 1.0 - ((fx.hypot(fy) - HOME) / HOME).clamp(0.0, 1.0);
+        let (nx, ny) = (fx + self.home.0, fy + self.home.1);
+        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]) - 0.3 * home;
+        let range = broad * (RELIEF.0 + (RELIEF.1 - RELIEF.0) * r) - 2.0 * home;
+        if e < 0.0 {
             TerrainType::Water
-        } else if inland < BEACH && self.coves.get([x as f64 * COVES, y as f64 * COVES]) > COVE {
+        } else if e < BEACH && self.coves.get([nx * COVES, ny * COVES]) > COVE {
             TerrainType::Beach
         } else if e > HILL && range > RANGE {
             TerrainType::Mountain
-        } else if m > 0.15 {
+        } else if m > WOOD {
             TerrainType::Forest
         } else {
             TerrainType::Grass
         }
+    }
+}
+
+/// The `i`th step round the square ring `r` steps out from the middle.
+fn spiral(r: i32, i: i32) -> (i32, i32) {
+    if r == 0 {
+        return (0, 0);
+    }
+    let side = 2 * r;
+    let (k, t) = (i / side, i % side);
+    match k {
+        0 => (-r + t, -r),
+        1 => (r, -r + t),
+        2 => (r - t, r),
+        _ => (-r, r - t),
     }
 }
 
@@ -252,42 +173,50 @@ impl Ground {
     }
 
     pub fn height(&self, x: f64, y: f64) -> f64 {
-        self.0.sample(x, y).0
+        0.5 + self.0.height(x, y).0
     }
 
     /// The fine layer alone, -1 to 1: for detail.
     pub fn fine(&self, x: f64, y: f64) -> f64 {
-        self.0.elevation.get([x * FINE * 3.0, y * FINE * 3.0])
+        let (nx, ny) = (x + self.0.home.0, y + self.0.home.1);
+        self.0.elevation.get([nx / 7.0, ny / 7.0])
     }
 }
 
-/// One chunk of terrain, derived from the seed and nothing else. Terrain
-/// is never persisted and never an entity. Smoothed against an apron of
-/// its neighbours' tiles,
-/// computed the same way, so the seams agree: a tile that three or more of
-/// its four neighbours stand above or below takes their level.
-pub fn chunk(seed: u32, c: ChunkCoord) -> Vec<((i32, i32), TerrainType)> {
+/// The whole map of a seed, derived from the seed and nothing else.
+/// Terrain is never persisted and never an entity. Smoothed: a tile that
+/// three or more of its four neighbours stand above or below takes their
+/// level. Then the sea is told from the lakes: all the water the map's
+/// edge reaches.
+pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
     let layers = Layers::new(seed);
-    let (x0, y0) = (c.cx * CHUNK_SIZE, c.cy * CHUNK_SIZE);
-    let n = CHUNK_SIZE + 2;
-    let raw: Vec<TerrainType> = (0..n * n).map(|i| layers.tile(x0 - 1 + i % n, y0 - 1 + i / n)).collect();
-    let at = |x: i32, y: i32| raw[((y - y0 + 1) * n + (x - x0 + 1)) as usize];
-    let mut out = Vec::with_capacity((CHUNK_SIZE * CHUNK_SIZE) as usize);
-    for y in y0..y0 + CHUNK_SIZE {
-        for x in x0..x0 + CHUNK_SIZE {
-            let t = at(x, y);
-            let around = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)];
-            let other = around.iter().filter(|&&a| elev(a) != elev(t)).count();
-            let t = if other >= 3 { *around.iter().find(|&&a| elev(a) != elev(t)).unwrap() } else { t };
-            out.push(((x, y), t));
+    let (w, h) = (WIDTH as usize, HEIGHT as usize);
+    let (x0, y0) = (-WIDTH / 2, -HEIGHT / 2);
+    let raw: Vec<TerrainType> = (0..w * h).map(|i| layers.tile(x0 + (i % w) as i32, y0 + (i / w) as i32)).collect();
+    let mut land = raw.clone();
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let t = raw[y * w + x];
+            let around = [raw[y * w + x + 1], raw[y * w + x - 1], raw[(y + 1) * w + x], raw[(y - 1) * w + x]];
+            if around.iter().filter(|&&a| elev(a) != elev(t)).count() >= 3 {
+                land[y * w + x] = *around.iter().find(|&&a| elev(a) != elev(t)).unwrap();
+            }
         }
     }
-    out
-}
-
-/// The whole map of a seed, chunk by chunk.
-pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
-    (CHUNKS_MIN..=CHUNKS_MAX).flat_map(|cy| (CHUNKS_MIN..=CHUNKS_MAX).map(move |cx| ChunkCoord { cx, cy })).flat_map(|c| chunk(seed, c)).collect()
+    let mut todo: Vec<usize> = (0..w * h).filter(|&i| (i % w == 0 || i % w == w - 1 || i / w == 0 || i / w == h - 1) && land[i] == TerrainType::Water).collect();
+    for &i in &todo {
+        land[i] = TerrainType::Sea;
+    }
+    while let Some(i) = todo.pop() {
+        let (x, y) = (i % w, i / w);
+        for n in [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)].into_iter().flatten() {
+            if land[n] == TerrainType::Water {
+                land[n] = TerrainType::Sea;
+                todo.push(n);
+            }
+        }
+    }
+    land.into_iter().enumerate().map(|(i, t)| ((x0 + (i % w) as i32, y0 + (i / w) as i32), t)).collect()
 }
 
 /// What lies under the land of a seed (`Deposit`): clay, in patches of
@@ -386,74 +315,59 @@ mod tests {
         seen
     }
 
-    /// Every seed's map is islands in one ocean: land well under a third
-    /// of it, a handful of islands, each with coast on the open sea, no
-    /// sea shut in by land and no lake on the sea; and the origin's
-    /// island big, with open grass for a town near its coast. The first
-    /// twenty seeds stand for all. Twenty maps take a while, so this
-    /// runs on request; DRAW=1 draws the seeds that fail.
+    /// Every seed's map is broken land: between a fifth and a half of it
+    /// land, in many masses, none of them most of it; and home on one big
+    /// enough for a town (sixty tiles square and more: rivers may bound it), with open grass for a town and water near it. The first
+    /// twenty seeds stand for all. Twenty maps take a while, so this runs
+    /// on request; DRAW=1 draws the seeds that fail.
     #[test]
     #[ignore]
-    fn every_seed_is_islands_in_one_ocean() {
+    fn every_seed_is_broken_land() {
         let mut wrong = Vec::new();
         for seed in 0..20 {
             let land = generate(seed);
-            let sea = |t| t == TerrainType::Sea;
+            let dry = |t: TerrainType| !matches!(t, TerrainType::Sea | TerrainType::Water);
             let mut faults = Vec::new();
-            let share = land.values().filter(|&&t| !sea(t)).count() as f64 / land.len() as f64;
-            if !(0.15..=0.25).contains(&share) {
+            let total = land.values().filter(|&&t| dry(t)).count();
+            let share = total as f64 / land.len() as f64;
+            if !(0.2..=0.5).contains(&share) {
                 faults.push(format!("land {:.0}%", share * 100.0));
             }
-            let border: Vec<_> = land.keys().copied().filter(|&(x, y)| x.abs().max(y.abs()) >= WIDTH / 2 - 1 || x == -WIDTH / 2 || y == -HEIGHT / 2).collect();
-            let ocean = flood(&land, border, sea);
-            let shut_in = land.values().filter(|&&t| sea(t)).count() - ocean.len();
-            if shut_in > 0 {
-                faults.push(format!("{shut_in} tiles of sea shut in"));
-            }
-            let side = |&(x, y): &(i32, i32)| [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)];
-            if land.iter().any(|(t, &v)| v == TerrainType::Water && side(t).iter().any(|n| land.get(n) == Some(&TerrainType::Sea))) {
-                faults.push("a lake on the sea".into());
-            }
-            // Islands: everything not sea, lakes and all, joined.
             let mut counted: HashSet<(i32, i32)> = HashSet::default();
-            let (mut islands, mut islets) = (0, 0);
+            let (mut masses, mut biggest, mut home) = (0, 0, 0);
             let mut tiles: Vec<_> = land.keys().copied().collect();
             tiles.sort();
             for t in tiles {
-                if sea(land[&t]) || counted.contains(&t) {
+                if !dry(land[&t]) || counted.contains(&t) {
                     continue;
                 }
-                let island = flood(&land, vec![t], |v| !sea(v));
-                if !island.iter().any(|t| land[t] != TerrainType::Water && side(t).iter().any(|n| ocean.contains(n))) {
-                    faults.push(format!("an island at {t:?} with no coast on the open sea"));
+                let mass = flood(&land, vec![t], dry);
+                if mass.len() >= 1000 {
+                    masses += 1;
                 }
-                if island.contains(&(0, 0)) {
-                    let (xs, ys) = (island.iter().map(|t| t.0), island.iter().map(|t| t.1));
-                    let (w, h) = (xs.clone().max().unwrap() - xs.min().unwrap(), ys.clone().max().unwrap() - ys.min().unwrap());
-                    if w < 120 || h < 120 {
-                        faults.push(format!("the origin's island is {w} by {h}"));
-                    }
+                biggest = biggest.max(mass.len());
+                if mass.contains(&(0, 0)) {
+                    home = mass.len();
                 }
-                // An islet the bending broke off a headland is not one.
-                if island.len() >= 1000 {
-                    islands += 1;
-                } else {
-                    islets += 1;
-                }
-                counted.extend(island);
+                counted.extend(mass);
             }
-            if !(4..=8).contains(&islands) {
-                faults.push(format!("{islands} islands"));
+            if masses < 6 {
+                faults.push(format!("{masses} land masses"));
+            }
+            if biggest * 2 > total {
+                faults.push(format!("one mass is {:.0}% of the land", 100.0 * biggest as f64 / total as f64));
+            }
+            if home < 4000 {
+                faults.push(format!("home is on {home} tiles"));
             }
             // Room for a town: twenty tiles square of grass within sixty
-            // of the origin, with the sea within forty of it.
+            // of the origin, with water within forty of it.
             let grass = |x0: i32, y0: i32| (x0..x0 + 20).all(|x| (y0..y0 + 20).all(|y| land[&(x, y)] == TerrainType::Grass));
-            let near_sea = |x0: i32, y0: i32| (x0 - 40..x0 + 60).any(|x| (y0 - 40..y0 + 60).any(|y| ocean.contains(&(x, y))));
-            let room = (-60..40).step_by(4).any(|x| (-60..40).step_by(4).any(|y| grass(x, y) && near_sea(x, y)));
-            if !room {
-                faults.push("no grass for a town by the coast near the origin".into());
+            let wet = |x0: i32, y0: i32| (x0 - 40..x0 + 60).any(|x| (y0 - 40..y0 + 60).any(|y| !dry(land[&(x, y)])));
+            if !(-60..40).step_by(4).any(|x| (-60..40).step_by(4).any(|y| grass(x, y) && wet(x, y))) {
+                faults.push("no grass for a town by the water near the origin".into());
             }
-            eprintln!("seed {seed}: land {:.1}%, {islands} islands, {islets} islets{}", share * 100.0, faults.iter().map(|f| format!("; {f}")).collect::<String>());
+            eprintln!("seed {seed}: land {:.1}%, {masses} masses, home {home}{}", share * 100.0, faults.iter().map(|f| format!("; {f}")).collect::<String>());
             if !faults.is_empty() {
                 if std::env::var("DRAW").is_ok() {
                     eprintln!("{}", draw(&land));
@@ -461,6 +375,7 @@ mod tests {
                 wrong.push((seed, faults));
             }
         }
-        assert!(wrong.is_empty(), "seeds that are not islands in one ocean: {wrong:?}");
+        assert!(wrong.is_empty(), "seeds that are not broken land: {wrong:?}");
     }
 }
+
