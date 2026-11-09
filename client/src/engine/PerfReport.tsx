@@ -90,7 +90,7 @@ export default function PerfReport() {
   // lived through at once, so the streets are full when the bench begins.
   const { send } = useGame();
   let filled = 0;
-  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + TRAFFIC_MS) }), 1000);
+  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + (PHASES === POWER ? TRAFFIC_MS / 4 : TRAFFIC_MS)) }), 1000);
   const look = () => {
     if (phase >= PHASES.length) return;
     const t = (performance.now() - phaseBegan) / 1000;

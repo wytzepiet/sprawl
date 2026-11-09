@@ -12,7 +12,7 @@ export const PHASES = ["settle", "settle", "settle", "settle", ...["", "n-"].fla
 /** `?bench&power`: the camera held still, and the frames drawn each way in
  *  turn, for a phone's power meters to read (bench/android): as played at
  *  rest, nothing drawn at all, every frame drawn, panning, and at night. */
-export const POWER = ["settle", "settle", "settle", "settle", ...["rest", "off", "f60", "pan", "n-rest"].flatMap((p) => Array<string>(12).fill(p))];
+export const POWER = ["settle", "settle", "settle", "settle", ...["rest", "off", "f60", "pan", "n-rest"].flatMap((p) => Array<string>(15).fill(p))];
 /** The light each kind of phase is drawn in: noon, or nearly midnight. */
 export const lightOf = (phase: string) => (phase.startsWith("n-") ? 0.95 : 0.5);
 

@@ -58,11 +58,11 @@ jobs:
         run: |
           echo "TAB=fl-$GITHUB_RUN_ID" >> $GITHUB_ENV
           devices=()
-          for d in ${{ vars.BENCH_PHONES || 'a54x:34 shiba:34' }}; do devices+=(--device "model=${d%:*},version=${d#*:}"); done
+          for d in ${{ vars.BENCH_PHONES || 'shiba:34' }}; do devices+=(--device "model=${d%:*},version=${d#*:}"); done
           gcloud firebase test android run --project "${{ vars.GCP_PROJECT }}" --type instrumentation \
             --app bench/android/app/build/outputs/apk/debug/app-debug.apk \
             --test bench/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
-            "${devices[@]}" --timeout 15m --no-record-video --directories-to-pull /sdcard/Download/bench \
+            "${devices[@]}" --timeout 20m --no-record-video --directories-to-pull /sdcard/Download/bench \
             --environment-variables "^;^url=$URL/?bench=$WHERE;tab=fl-$GITHUB_RUN_ID" 2>&1 | tee testlab.log || true
           # Each phone's screens and log, as the run's artifact.
           bucket=$(grep -o 'storage/browser/[^]]*' testlab.log | head -1 | sed 's#storage/browser/#gs://#; s#/$##')

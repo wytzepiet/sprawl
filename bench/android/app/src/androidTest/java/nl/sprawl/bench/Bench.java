@@ -22,7 +22,15 @@ public class Bench {
     // The phone's own meters, every few seconds, the page's phases told by
     // the clock: energy by rail (CPU clusters, GPU, memory, display) and the
     // temperatures. First half a minute of the home screen alone, lit.
-    sh(shell, "mkdir -p /sdcard/Download/bench\nsvc power stayon true\ninput keyevent KEYCODE_WAKEUP\n");
+    sh(shell, "mkdir -p /sdcard/Download/bench\nsvc power stayon true\ninput keyevent KEYCODE_WAKEUP\n"
+        // Energy by rail, read by Perfetto, which may read the power HAL as the shell may not.
+        + "cat > /data/local/tmp/power.cfg <<'END'\n"
+        + "buffers { size_kb: 16384 fill_policy: RING_BUFFER }\n"
+        + "data_sources { config { name: \"android.power\" android_power_config { battery_poll_ms: 1000 collect_power_rails: true"
+        + " battery_counters: BATTERY_COUNTER_CURRENT battery_counters: BATTERY_COUNTER_VOLTAGE } } }\n"
+        + "duration_ms: 900000 write_into_file: true file_write_period_ms: 5000\n"
+        + "END\n"
+        + "perfetto --background --txt -c /data/local/tmp/power.cfg -o /data/misc/perfetto-traces/power.pftrace > /sdcard/Download/bench/perfetto.txt 2>&1\n");
     String meters = "/sdcard/Download/bench/" + tab + "-power.txt";
     long began = System.currentTimeMillis();
     for (long at = 0; at < 30_000; at += 5_000) {
@@ -39,18 +47,17 @@ public class Bench {
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
     // What the screen showed, for the run's files (bench.yml pulls this folder).
     long opened = System.currentTimeMillis();
-    for (long at = 5_000; at <= 570_000; at += 5_000) {
+    for (long at = 5_000; at <= 840_000; at += 5_000) {
       Thread.sleep(Math.max(0, opened + at - System.currentTimeMillis()));
       measure(shell, meters);
-      if (at % 30_000 == 15_000) sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + at / 1000 + "s.png\n");
+      if (at % 60_000 == 15_000) sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + at / 1000 + "s.png\n");
+      if (at % 60_000 == 0) sh(shell, "cp /data/misc/perfetto-traces/power.pftrace /sdcard/Download/bench/" + tab + "-power.pftrace\n");
     }
   }
 
   /** One reading of every meter the shell may read, appended. */
   private static void measure(UiAutomation shell, String file) throws Exception {
     sh(shell, "{ echo \"@@ $(date +%s.%N)\"\n"
-        + "dumpsys android.hardware.power.stats.IPowerStats/default\n"
-        + "echo '## powerstats'; dumpsys powerstats | grep -iA40 'energy' | head -80\n"
         + "echo '## thermal'; dumpsys thermalservice | grep -A40 'Current temperatures from HAL' | head -45\n"
         + "echo '## battery'; cat /sys/class/power_supply/battery/current_now /sys/class/power_supply/battery/voltage_now /sys/class/power_supply/battery/status\n"
         + "echo '## top'; top -b -n 1 -m 6 | tail -8\n"
