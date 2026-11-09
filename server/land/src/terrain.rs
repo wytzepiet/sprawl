@@ -12,13 +12,14 @@ pub const CHUNKS_MAX: i32 = (WIDTH / 2) / CHUNK_SIZE - 1;
 
 /// The land is one height, and wherever it is below zero is water: the sea
 /// where that water reaches the map's edge, a lake where it does not. The
-/// height is noise at a few scales, each finer one weaker, `(tiles across,
-/// weight)`, cut at its middle, so land and water are about even and wind
-/// through each other: neither makes one great mass, and land a hundred
-/// tiles across is about the most there is before the water. The finer
-/// scales make headlands, sounds and a ragged coast. It sinks towards the map's edge over its last `EDGE`
-/// share, so the edge is open sea.
-const OCTAVES: [(f64, f64); 4] = [(90.0, 1.0), (40.0, 0.35), (18.0, 0.15), (8.0, 0.05)];
+/// height is noise at a few scales, each `(tiles across, weight)`, cut at
+/// its middle, so land and water wind through each other. The first, far
+/// broader and weaker than the rest, makes regions: some mostly land, some
+/// mostly water. The second sets the grain, land a few dozen tiles across
+/// between the water, so no tile is much more than twenty from it; the
+/// finer ones make headlands, sounds and a ragged coast. It sinks towards
+/// the map's edge over its last `EDGE` share, so the edge is open sea.
+const OCTAVES: [(f64, f64); 5] = [(400.0, 0.4), (55.0, 1.0), (24.0, 0.4), (10.0, 0.15), (5.0, 0.05)];
 const EDGE: f64 = 0.25;
 /// Rivers: where a noise of this scale crosses zero, give or take
 /// `RIVER` of it, the land falls away into water, with `BANK` how steeply
@@ -52,8 +53,8 @@ const BEACH: f64 = 0.02;
 /// far again: no range, little wood, so the first town has open grass
 /// between it and its water.
 const STEP: f64 = 24.0;
-const DRY: f64 = 16.0;
-const SHORE: (f64, f64) = (20.0, 44.0);
+const DRY: f64 = 14.0;
+const SHORE: (f64, f64) = (16.0, 32.0);
 const HOME: f64 = 40.0;
 
 fn elev(t: TerrainType) -> i32 {
@@ -119,8 +120,8 @@ impl Layers {
         let at = |n: &Simplex, across: f64| n.get([nx / across, ny / across]);
         let r = (0.5 + 0.5 * self.rugged.get([nx * RUGGED, ny * RUGGED])).clamp(0.0, 1.0);
         let span = |(lo, hi): (f64, f64)| lo + (hi - lo) * r;
-        let broad: f64 = OCTAVES[..3].iter().map(|&(across, w)| w * at(&self.elevation, across)).sum();
-        let (fine_across, fine_w) = OCTAVES[3];
+        let broad: f64 = OCTAVES[..4].iter().map(|&(across, w)| w * at(&self.elevation, across)).sum();
+        let (fine_across, fine_w) = OCTAVES[4];
         let edge = ((x.abs().max(y.abs()) / (WIDTH / 2) as f64 - (1.0 - EDGE)) / EDGE).clamp(0.0, 1.0);
         let e = broad + (fine_w + span(DETAIL)) * at(&self.elevation, fine_across) - 2.0 * edge;
         let river = (at(&self.river, RIVERS) + 0.15 * at(&self.river, RIVERS / 6.0)).abs() - RIVER;
