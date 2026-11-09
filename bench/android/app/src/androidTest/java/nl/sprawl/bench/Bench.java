@@ -30,7 +30,7 @@ public class Bench {
         + " battery_counters: BATTERY_COUNTER_CURRENT battery_counters: BATTERY_COUNTER_VOLTAGE } } }\n"
         + "duration_ms: 900000 write_into_file: true file_write_period_ms: 5000\n"
         + "END\n"
-        + "perfetto --background --txt -c /data/local/tmp/power.cfg -o /data/misc/perfetto-traces/power.pftrace > /sdcard/Download/bench/perfetto.txt 2>&1\n");
+        + "cat /data/local/tmp/power.cfg | perfetto --background --txt -c - -o /data/misc/perfetto-traces/power.pftrace 2>&1 | cat > /sdcard/Download/bench/perfetto.txt\n");
     String meters = "/sdcard/Download/bench/" + tab + "-power.txt";
     long began = System.currentTimeMillis();
     for (long at = 0; at < 30_000; at += 5_000) {
