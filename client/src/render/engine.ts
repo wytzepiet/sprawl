@@ -1,7 +1,7 @@
 import type { Mesh } from "./mesh";
 import type { Scene } from "./scene";
 import { drawScene } from "./frame";
-import { writeDirtyMaterials } from "./pass";
+import { stats, writeDirtyMaterials } from "./pass";
 import { writeShaderUniforms } from "./shader";
 
 /** A canvas drawn to: the page's, or the studio's off the page. */
@@ -28,6 +28,8 @@ export interface Engine {
   _pipelines: Map<string, GPURenderPipeline | null>;
   /** Pipelines still being built: what waits on them (the studio) waits on this. */
   _building: number;
+  /** What it did, summed: pipelines, bundles, pictures, relights, and their JS ms. */
+  stats: Record<string, number>;
 }
 
 interface Timer {
@@ -53,6 +55,7 @@ export async function createEngine(canvas: HTMLCanvasElement, opts: { maxDeviceP
     _timing: false,
     _pipelines: new Map(),
     _building: 0,
+    stats,
   };
   const surface = createSurface(engine, canvas, { alphaMode: "opaque" });
   surface.maxDevicePixelRatio = opts.maxDevicePixelRatio ?? 2;

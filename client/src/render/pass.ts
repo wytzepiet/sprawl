@@ -83,9 +83,16 @@ export class DrawList {
       this.drawn.add(mesh);
     }
     this.bundle = encoder.finish();
-    perfCount("own.bundles", 1);
-    perfCount("own.bundleMs", performance.now() - began);
+    count("bundles", 1);
+    count("bundleMs", performance.now() - began);
   }
+}
+
+/** What the renderer did, summed since it began (`engine.stats`), and told to the bench as `own.*`. */
+export const stats: Record<string, number> = {};
+export function count(name: string, by = 1) {
+  stats[name] = (stats[name] ?? 0) + by;
+  perfCount(`own.${name}`, by);
 }
 
 /** Bumped whenever a pipeline is ready or a shader material's textures change: lists waiting on it encode again. */
@@ -106,7 +113,7 @@ export function pipelineOf(engine: Engine, key: string, make: () => GPURenderPip
   if (building.has(key)) return undefined;
   const desc = make();
   engine._building++;
-  perfCount("own.pipelines", 1);
+  count("pipelines", 1);
   const pending = engine._device.createRenderPipelineAsync(desc).then(
     (p) => p,
     async (e) => {

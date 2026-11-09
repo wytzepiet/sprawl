@@ -1,10 +1,9 @@
 import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "@babylonjs/lite";
-import { perfCount } from "../engine/PerfReport";
 import { SCENE_BYTES, SCENE_OFFSETS } from "./compose";
 import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, RELIGHT } from "./deferred";
 import { brdfLut } from "./env";
 import type { Mesh } from "./mesh";
-import { DrawList, layoutOf, type Targets } from "./pass";
+import { count, DrawList, layoutOf, type Targets } from "./pass";
 import type { Scene, ShadowGenerator } from "./scene";
 import { runTasks } from "./shader";
 
@@ -131,7 +130,7 @@ function makeFrame(scene: Scene): Frame {
   const [RELIGHT_LAYOUT, COMPOSITE_LAYOUT] = [layoutOf(device, { entries: deferredEntries(false) }), layoutOf(device, { entries: deferredEntries(true) })];
   const fullscreen = (code: string, layout: GPUBindGroupLayout, format: GPUTextureFormat, depth: boolean) => {
     const module = device.createShaderModule({ code });
-    perfCount("own.pipelines", 1);
+    count("pipelines", 1);
     return device.createRenderPipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
       vertex: { module, entryPoint: "vs" },
@@ -381,7 +380,7 @@ function makeFrame(scene: Scene): Frame {
         staticDue = false;
         shadowPass(encoder, maps!.still, shadowStill);
         relightDue = true;
-        perfCount("own.stillShadows", 1);
+        count("stillShadows", 1);
       }
       if (shadowing && deferred()) shadowPass(encoder, maps!.live, shadowLive);
 
@@ -407,7 +406,7 @@ function makeFrame(scene: Scene): Frame {
       const due = forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && since >= CHANGED_MS));
       if (due) {
         const t0 = performance.now();
-        perfCount(forced ? "own.picture.forced" : here !== from ? "own.picture.moved" : "own.picture.changed", 1);
+        count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
         forced = false;
         staleSince = Infinity;
         [drawnAt, from] = [now, here];
@@ -430,8 +429,8 @@ function makeFrame(scene: Scene): Frame {
         pass.end();
         relightDue = true;
         scene._pictured();
-        perfCount("own.gbuffer", 1);
-        perfCount("own.gbufferMs", performance.now() - t0);
+        count("gbuffer", 1);
+        count("gbufferMs", performance.now() - t0);
       }
 
       // The frame's uniforms, then the relight when due.
@@ -463,8 +462,8 @@ function makeFrame(scene: Scene): Frame {
         pass.setBindGroup(0, resources!.relight!);
         pass.draw(3);
         pass.end();
-        perfCount("own.relights", 1);
-        perfCount("own.relightMs", performance.now() - t0);
+        count("relights", 1);
+        count("relightMs", performance.now() - t0);
       }
 
       // The composite, then what moves over it, in one pass.
@@ -480,8 +479,8 @@ function makeFrame(scene: Scene): Frame {
       engine.drawCallCount++;
       forward.draw(pass);
       pass.end();
-      perfCount("own.frames", 1);
-      perfCount("own.frameMs", performance.now() - began);
+      count("frames", 1);
+      count("frameMs", performance.now() - began);
       void t0;
     },
   };
