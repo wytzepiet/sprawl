@@ -62,7 +62,7 @@ jobs:
         if: github.event_name == 'push'
         with:
           repository: wytzepiet/Babylon-Lite
-          ref: claude/geometry-views
+          ref: c27c8bd3aa08fb0b3f17f2ae13ce318bf9ac3c30 # claude/geometry-views: kept bindings on a scene change
           path: Babylon-Lite
 
       # The game crate is half the build, and most pushes leave it as it was:
