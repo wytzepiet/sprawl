@@ -263,25 +263,19 @@ export class InstancePool {
   /**
    * Upload whatever changed, once per bucket per frame. Instances write into
    * the buffer freely during the frame; nothing reaches the GPU until here.
-   * A bucket left empty goes now, not as its last instance does: a building
-   * the server sends again is taken down and put back up at once, and a
-   * mesh dropped and made again between is a new renderable and a new
-   * caster, a frame of a tenth of a second for the only bakery in town.
+   * A bucket left empty stays, drawing nothing: a mesh dropped and made
+   * again is a new renderable, and Lite rebuilds the whole scene for one,
+   * a few hundred pipelines and a tenth of a second or more each time a
+   * café's tables empty and fill again.
    */
   flush(): void {
     // What the picture has drawn since it stood still is in it now. What
     // leaves the picture shows there too until its next redraw, which a
     // stale picture has soon, but at the end of a pan.
     for (const [id, h] of this.handing) if (redraws > h.at) this.handing.delete(id), this.removeInstance(h.key, h.twin);
-    for (const [key, bucket] of this.buckets) {
+    for (const bucket of this.buckets.values()) {
       if (!bucket.dirty) continue;
       (bucket.live ? livened : stale)();
-      if (bucket.count === 0) {
-        if (bucket.castShadow) this.casters.remove(bucket.mesh);
-        drop(this.scene, bucket.mesh);
-        this.buckets.delete(key);
-        continue;
-      }
       // A new buffer at its whole capacity, then the count: what is drawn,
       // and uploaded, is the instances there are.
       if (bucket.resized) {
