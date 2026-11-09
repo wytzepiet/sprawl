@@ -45,6 +45,8 @@ const MIGRATIONS: &[Migration] = &[
     None,
     // Broken smaller, and home hemmed in by water.
     None,
+    // Land and water even, winding through each other.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

@@ -10,15 +10,15 @@ const HEIGHT: i32 = 1024;
 pub const CHUNKS_MIN: i32 = -(WIDTH / 2) / CHUNK_SIZE;
 pub const CHUNKS_MAX: i32 = (WIDTH / 2) / CHUNK_SIZE - 1;
 
-/// The land is one height, and wherever it is below the water's level is
-/// water: the sea where that water reaches the map's edge, a lake where it
-/// does not. The height is noise at a few scales, each finer one weaker,
-/// `(tiles across, weight)`: the broadest makes land masses and the sea
-/// between them, the next headlands, sounds and inlets, the finest a
-/// ragged coast. It sinks towards the map's edge over its last `EDGE`
+/// The land is one height, and wherever it is below zero is water: the sea
+/// where that water reaches the map's edge, a lake where it does not. The
+/// height is noise at a few scales, each finer one weaker, `(tiles across,
+/// weight)`, cut at its middle, so land and water are about even and wind
+/// through each other: neither makes one great mass, and land a hundred
+/// tiles across is about the most there is before the water. The finer
+/// scales make headlands, sounds and a ragged coast. It sinks towards the map's edge over its last `EDGE`
 /// share, so the edge is open sea.
-const OCTAVES: [(f64, f64); 4] = [(150.0, 1.0), (60.0, 0.6), (24.0, 0.25), (10.0, 0.08)];
-const LEVEL: f64 = 0.12;
+const OCTAVES: [(f64, f64); 4] = [(90.0, 1.0), (40.0, 0.35), (18.0, 0.15), (8.0, 0.05)];
 const EDGE: f64 = 0.25;
 /// Rivers: where a noise of this scale crosses zero, give or take
 /// `RIVER` of it, the land falls away into water, with `BANK` how steeply
@@ -48,15 +48,12 @@ const BEACH: f64 = 0.02;
 /// Home, the origin: the seed's noise is read from the first place on a
 /// spiral out from the noise's own middle, a step of `STEP` tiles, with dry
 /// ground `DRY` tiles all round it, water nearest it between `SHORE`
-/// tiles, and water within `HEM` tiles on `HEMMED` of sixteen ways out of
-/// it, so the town is hemmed in and soon has to bridge. Round it the land
-/// is calmed, out to `HOME` and fading over as far again: no range, little
-/// wood, so the first town has open grass between it and its water.
+/// tiles. Round it the land is calmed, out to `HOME` and fading over as
+/// far again: no range, little wood, so the first town has open grass
+/// between it and its water.
 const STEP: f64 = 24.0;
 const DRY: f64 = 16.0;
 const SHORE: (f64, f64) = (20.0, 44.0);
-const HEM: f64 = 60.0;
-const HEMMED: usize = 11;
 const HOME: f64 = 40.0;
 
 fn elev(t: TerrainType) -> i32 {
@@ -65,6 +62,13 @@ fn elev(t: TerrainType) -> i32 {
         TerrainType::Beach | TerrainType::Grass | TerrainType::Forest => 0,
         TerrainType::Mountain => 2,
     }
+}
+
+/// The `k`th noise of a seed. The noise's own seeding barely stirs a small
+/// seed, so seeds near each other made near the same land; stirred here
+/// first.
+fn noise(seed: u32, k: u32) -> Simplex {
+    Simplex::new(seed.wrapping_add(k).wrapping_mul(0x9E37_79B9) ^ 0x5bd1_e995)
 }
 
 /// The noises, seeded, and where on them home is.
@@ -80,11 +84,11 @@ struct Layers {
 impl Layers {
     fn new(seed: u32) -> Self {
         let mut layers = Layers {
-            elevation: Simplex::new(seed),
-            moisture: Simplex::new(seed.wrapping_add(1)),
-            rugged: Simplex::new(seed.wrapping_add(2)),
-            river: Simplex::new(seed.wrapping_add(3)),
-            coves: Simplex::new(seed.wrapping_add(5)),
+            elevation: noise(seed, 0),
+            moisture: noise(seed, 1),
+            rugged: noise(seed, 2),
+            river: noise(seed, 3),
+            coves: noise(seed, 5),
             home: (0.0, 0.0),
         };
         layers.home = layers.find_home();
@@ -101,8 +105,7 @@ impl Layers {
                 let wet = |(x, y): (f64, f64)| self.height(x, y).0 < 0.0;
                 let dry = [DRY / 2.0, DRY].iter().all(|&r| !round(r, 16).any(wet)) && !wet((0.0, 0.0));
                 let shore = (SHORE.0 as i32..=SHORE.1 as i32).step_by(4).find(|&r| round(r as f64, 32).any(wet));
-                let hemmed = round(1.0, 16).filter(|&(cx, cy)| (DRY as i32..=HEM as i32).step_by(3).any(|r| wet((cx * r as f64, cy * r as f64)))).count() >= HEMMED;
-                if dry && hemmed && shore.is_some_and(|r| r as f64 > SHORE.0) {
+                if dry && shore.is_some_and(|r| r as f64 > SHORE.0) {
                     return self.home;
                 }
             }
@@ -119,7 +122,7 @@ impl Layers {
         let broad: f64 = OCTAVES[..3].iter().map(|&(across, w)| w * at(&self.elevation, across)).sum();
         let (fine_across, fine_w) = OCTAVES[3];
         let edge = ((x.abs().max(y.abs()) / (WIDTH / 2) as f64 - (1.0 - EDGE)) / EDGE).clamp(0.0, 1.0);
-        let e = broad + (fine_w + span(DETAIL)) * at(&self.elevation, fine_across) - LEVEL - 2.0 * edge;
+        let e = broad + (fine_w + span(DETAIL)) * at(&self.elevation, fine_across) - 2.0 * edge;
         let river = (at(&self.river, RIVERS) + 0.15 * at(&self.river, RIVERS / 6.0)).abs() - RIVER;
         (e.min(river * BANK), broad, r)
     }
