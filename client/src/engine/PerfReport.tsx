@@ -26,6 +26,34 @@ export function perfCount(name: string, by = 1) {
   if (run) counts.set(name, (counts.get(name) ?? 0) + by);
 }
 
+/** What the GPU is asked to make and given, counted where the WebGPU API is
+ *  called, whichever renderer calls it: patched as the module loads, before
+ *  the engine (`Canvas.tsx`) asks for a device. */
+let pipelinesTotal = 0;
+if (run && typeof GPUDevice !== "undefined") {
+  const tally = (proto: object, method: string, name: string, by: (a: unknown[]) => number = () => 1) => {
+    const p = proto as Record<string, (...a: unknown[]) => unknown>;
+    const was = p[method];
+    p[method] = function (this: unknown, ...a: unknown[]) {
+      perfCount(name, by(a));
+      return was.apply(this, a);
+    };
+  };
+  const pipeline = () => (pipelinesTotal++, 1);
+  tally(GPUDevice.prototype, "createRenderPipeline", "gpu.pipelines", pipeline);
+  tally(GPUDevice.prototype, "createRenderPipelineAsync", "gpu.pipelines", pipeline);
+  tally(GPUDevice.prototype, "createBindGroup", "gpu.bindGroups");
+  tally(GPUDevice.prototype, "createBuffer", "gpu.buffers");
+  tally(GPUDevice.prototype, "createTexture", "gpu.textures");
+  tally(GPUDevice.prototype, "createShaderModule", "gpu.shaders");
+  tally(GPUQueue.prototype, "submit", "gpu.submits");
+  // writeBuffer(buffer, offset, data, dataOffset?, size?): the last two in elements of a typed array.
+  tally(GPUQueue.prototype, "writeBuffer", "gpu.writeBytes", ([, , data, from, size]) => {
+    const each = (data as { BYTES_PER_ELEMENT?: number }).BYTES_PER_ELEMENT ?? 1;
+    return size !== undefined ? (size as number) * each : (data as ArrayBufferLike).byteLength - ((from as number) ?? 0) * each;
+  });
+}
+
 /** When the still picture was drawn again (`still.ts`): the samples that
  *  fall in these are also tallied apart, to see where a redraw's time goes. */
 let spans: [number, number][] = [];
@@ -203,6 +231,7 @@ export default function PerfReport() {
       at: new Date().toISOString(),
       tab: run!,
       phase: PHASES[phase],
+      renderer: params.get("renderer") === "new" ? "new" : "lite",
       gpu,
       seconds: EVERY_MS / 1000,
       frames: gaps.length,
@@ -218,7 +247,7 @@ export default function PerfReport() {
       draws: engine.drawCallCount,
       long: long.sort((a, b) => b.ms - a.ms).slice(0, 6),
       errors: Object.fromEntries(errors),
-      counts: Object.fromEntries([...counts, ["vehicles moving", beamCount()] as const].map(([k, v]) => [k, Math.round(v)])),
+      counts: Object.fromEntries([...counts, ["vehicles moving", beamCount()] as const, ["gpu.pipelinesTotal", pipelinesTotal] as const].map(([k, v]) => [k, Math.round(v)])),
       profile: trace ? tally(trace) : "unavailable",
       agent: navigator.userAgent,
     };

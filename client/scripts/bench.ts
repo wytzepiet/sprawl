@@ -14,11 +14,16 @@
  *   --read bench-k3x9a               a run another device made, as its
  *                                    screen showed it at the end
  *   --runs                           the runs that game has, newest last
+ *   --compare <tabA> <tabB>          two runs side by side, phase by phase,
+ *                                    and B over A (`&renderer=new` against
+ *                                    Lite, say, from two `bench.yml` runs)
  */
 import { args, CLIENT, flag, has, launch, word } from "./lib";
 import { costLines, PHASES, summarise, type Report } from "../src/engine/bench";
 import type { CostReport } from "../src/engine/cost";
 
+const at = args.indexOf("--compare");
+const compare = at < 0 ? null : args.splice(at, 3).slice(1);
 const url = (word("--url") ?? CLIENT).replace(/\/$/, "");
 const read = word("--read");
 const town = word("--town");
@@ -28,6 +33,54 @@ const fetchRuns = async (tab?: string): Promise<Report[]> =>
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l));
+
+if (compare) {
+  const [a, b] = await Promise.all(compare.map(async (tab) => {
+    const reports = (await fetchRuns(tab)).filter((r) => !r.phase.endsWith("cost"));
+    if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
+    const r = reports[0];
+    console.log(`${tab}: ${r.renderer ?? "lite?"}, ${r.canvas.join("×")} at ${r.dpr}x, ${r.gpu}`);
+    return summarise(reports);
+  }));
+  // A phase's numbers: per frame, per second, or per redraw, from its reports' counts.
+  const numbers = (s: ReturnType<typeof summarise>[number] | undefined) => {
+    if (!s) return new Map<string, number | null>();
+    const seconds = s.reports.reduce((t, r) => t + r.seconds, 0);
+    const sum = (k: string) => s.reports.reduce((t, r) => t + (r.counts?.[k] ?? 0), 0);
+    const per = (k: string, by: number) => (by ? sum(k) / by : null);
+    // Runs from before the GPU was counted say nothing of it, rather than nought.
+    const gpu = (v: number | null) => (s.reports.some((r) => r.counts?.["gpu.pipelinesTotal"] !== undefined) ? v : null);
+    const own = [...new Set(s.reports.flatMap((r) => Object.keys(r.counts ?? {}).filter((k) => k.startsWith("own."))))].sort();
+    return new Map<string, number | null>([
+      ["fps", s.fps],
+      ["frame JS ms", per("frame.jsMs", sum("frame.count"))],
+      ["CPU ms", s.cpu],
+      ["GPU ms", s.gpu],
+      ["draws", s.draws],
+      ["redraws /s", per("still.redraws", seconds)],
+      ["redraw JS ms", per("still.redrawCpuMs", sum("still.redraws"))],
+      ...own.map((k) => [`${k} /s`, per(k, seconds)] as [string, number | null]),
+      ["pipelines", gpu(sum("gpu.pipelines"))],
+      ["pipelines, all", gpu(Math.max(0, ...s.reports.map((r) => r.counts?.["gpu.pipelinesTotal"] ?? 0)))],
+      ["bind groups", gpu(sum("gpu.bindGroups"))],
+      ["buffers", gpu(sum("gpu.buffers"))],
+      ["textures", gpu(sum("gpu.textures"))],
+      ["submits /s", gpu(per("gpu.submits", seconds))],
+      ["KB written /s", gpu(per("gpu.writeBytes", seconds * 1024))],
+    ]);
+  };
+  const num = (v: number | null | undefined) => (v === null || v === undefined ? "?" : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2)).padStart(10);
+  console.log(`\n${"".padEnd(18)}${"A".padStart(10)}${"B".padStart(10)}${"B/A".padStart(10)}`);
+  for (const phase of [...new Set([...a, ...b].map((s) => s.phase))]) {
+    const [na, nb] = [numbers(a.find((s) => s.phase === phase)), numbers(b.find((s) => s.phase === phase))];
+    console.log(phase);
+    for (const k of new Set([...na.keys(), ...nb.keys()])) {
+      const [va, vb] = [na.get(k), nb.get(k)];
+      console.log(`  ${k.padEnd(16)}${num(va)}${num(vb)}${num(va && vb !== null && vb !== undefined ? vb / va : null)}`);
+    }
+  }
+  process.exit(0);
+}
 
 if (has("--runs")) {
   for (const r of await fetchRuns()) console.log(`${r.tab.padEnd(16)} ${r.at}  ${r.gpu}  ${r.agent}`);

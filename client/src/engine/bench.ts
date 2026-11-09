@@ -23,6 +23,8 @@ export interface Report {
   at: string;
   tab: string;
   phase: string;
+  /** Which drew it: Lite, or our own (`&renderer=new`); absent before it was told. */
+  renderer?: "lite" | "new";
   gpu: string;
   seconds: number;
   frames: number;

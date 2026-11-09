@@ -15,7 +15,25 @@ vulkaninfo --summary 2>&1 | grep -i devicename
 # a laptop's, 412x915@2.625 a phone's.
 size=${SCREEN:-1600x1000@1}; dpr=${size#*@}; size=${size%@*}; w=${size%x*}; h=${size#*x}
 xw=$(awk "BEGIN { print int($w * $dpr) }"); xh=$(awk "BEGIN { print int($h * $dpr) }")
+# CPU: the tab's main thread slowed that many times, as DevTools does it
+# (Emulation.setCPUThrottlingRate), for a phone's JavaScript on a desktop's
+# GPU. The throttle lasts as long as the session that set it: held open.
+[ -n "${CPU:-}" ] && apt-get install -yq python3 python3-websocket >/dev/null
 xvfb-run -s "-screen 0 ${xw}x${xh}x24" google-chrome --no-sandbox --no-first-run --user-data-dir=/tmp/c \
   --enable-unsafe-webgpu --enable-features=Vulkan,VulkanFromANGLE --use-angle=vulkan --ignore-gpu-blocklist \
-  --force-device-scale-factor=$dpr --window-size=$w,$h "$PAGE"
+  ${CPU:+--remote-debugging-port=9222 --remote-allow-origins=*} \
+  --force-device-scale-factor=$dpr --window-size=$w,$h "$PAGE" &
+[ -n "${CPU:-}" ] && python3 - <<'PY'
+import json, os, time, urllib.request, websocket
+while True:
+    try:
+        pages = [t for t in json.load(urllib.request.urlopen("http://127.0.0.1:9222/json")) if t["type"] == "page"]
+        if pages: break
+    except Exception: pass
+    time.sleep(1)
+ws = websocket.create_connection(pages[0]["webSocketDebuggerUrl"])
+ws.send(json.dumps({"id": 1, "method": "Emulation.setCPUThrottlingRate", "params": {"rate": float(os.environ["CPU"])}}))
+print("CPU throttled", os.environ["CPU"], ws.recv(), flush=True)
+while True: ws.recv()
+PY
 sleep infinity

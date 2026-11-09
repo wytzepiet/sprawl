@@ -1,5 +1,5 @@
 import { work } from "./budget";
-import { run } from "./PerfReport";
+import { perfCount, run } from "./PerfReport";
 import {
   createContext,
   useContext,
@@ -231,6 +231,7 @@ export default function Canvas(props: ParentProps) {
       if (fps === 0 || now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
       lastFrame = now;
+      const began = performance.now();
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
       const cap = Math.min(DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
@@ -247,6 +248,8 @@ export default function Canvas(props: ParentProps) {
       after.run();
       seen = where();
       if (seen !== was) lastMoved = now;
+      perfCount("frame.jsMs", performance.now() - began);
+      perfCount("frame.count");
       // A share of the clock, not of the frame: on a slow device a frame
       // takes long, and work given a frame's fixed slice falls behind for
       // good, the town and every update waiting on it.

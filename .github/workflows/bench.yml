@@ -23,11 +23,14 @@ on:
         description: A test town (server/fixtures) run in the tab, or empty for the game's own world
         default: '15-city'
       where:
-        description: Tile and half-width the camera looks round, x,y,half
+        description: Tile and half-width the camera looks round, x,y,half, then any URL params, e.g. 65,46,14&renderer=new
         default: '33,23,20'
       screen:
         description: The GPU machine's window, CSS pixels and device pixel ratio, e.g. 412x915@2.625 for a phone's
         default: '1600x1000@1'
+      cpu:
+        description: The GPU machine's Chrome slowed this many times (DevTools' CPU throttling), e.g. 4 for about a phone's main thread; empty for none
+        default: ''
       phones:
         description: Also on Test Lab's phones (five a day, free)
         type: boolean
@@ -120,7 +123,7 @@ jobs:
           for gpu in "NVIDIA RTX A4000" "NVIDIA GeForce RTX 3070" "NVIDIA RTX A5000" "NVIDIA GeForce RTX 4070 Ti" "NVIDIA RTX 4000 Ada Generation" "NVIDIA GeForce RTX 3080" "NVIDIA GeForce RTX 3090" "NVIDIA GeForce RTX 4080" "NVIDIA RTX A4500" "NVIDIA L4"; do
             # Why a card was not had, said, so a run that finds none says why.
             curl -s https://api.runpod.io/graphql -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "$(jq -n --arg q "query { gpuTypes(input: { id: \"$gpu\" }) { id lowestPrice(input: { gpuCount: 1 }) { stockStatus uninterruptablePrice } } }" '{query: $q}')" | jq -c '.data.gpuTypes[0] // .errors' || true
-            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }, { key: \"SCREEN\", value: \"${{ inputs.screen || '1600x1000@1' }}\" }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
+            id=$(q "mutation { podFindAndDeployOnDemand(input: { cloudType: ALL, gpuCount: 1, gpuTypeId: \"$gpu\", name: \"sprawl-bench\", imageName: \"ubuntu:22.04\", containerDiskInGb: 20, volumeInGb: 0, minVcpuCount: 2, minMemoryInGb: 8, dockerArgs: $(jq -n --arg a "$args" '$a'), env: [{ key: \"NVIDIA_DRIVER_CAPABILITIES\", value: \"all\" }, { key: \"PAGE\", value: $page }, { key: \"SCREEN\", value: \"${{ inputs.screen || '1600x1000@1' }}\" }, { key: \"CPU\", value: \"${{ inputs.cpu }}\" }] }) { id } }" | jq -r '.data.podFindAndDeployOnDemand.id // empty') || true
             [ -n "$id" ] && { echo "$gpu: $id"; break; }
           done
           [ -n "${id:-}" ] || { echo "no GPU free"; exit 1; }
@@ -139,4 +142,6 @@ jobs:
             -d "{\"query\":\"mutation { podTerminate(input: { podId: \\\"$POD\\\" }) }\"}"
       - uses: oven-sh/setup-bun@v2
       - name: What the GPU measured
-        run: cd client && bun scripts/bench.ts --url "$URL" --read "$TAB" | tee -a $GITHUB_STEP_SUMMARY
+        run: |
+          [ -z "${{ inputs.cpu }}" ] || echo "CPU throttled ${{ inputs.cpu }}x" >> $GITHUB_STEP_SUMMARY
+          cd client && bun scripts/bench.ts --url "$URL" --read "$TAB" | tee -a $GITHUB_STEP_SUMMARY
