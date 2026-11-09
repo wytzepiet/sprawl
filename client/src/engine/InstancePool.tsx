@@ -13,7 +13,7 @@ import { useDayNight, type Casters } from "./DayNightCycle";
 import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
-import { live, livened, stale } from "./still";
+import { live, livened, redraws, stale } from "./still";
 
 /**
  * One draw call per bucket, however many instances it holds. Thin instances
@@ -42,7 +42,7 @@ interface Bucket {
   baseColor: Rgb;
   castShadow: boolean;
   receiveShadow: boolean;
-  geometry: MeshGeometry;
+  geometry: ReturnType<typeof bevelled>;
   /** Drawn every frame over the still town (`still.ts`), not into it. */
   live: boolean;
 }
@@ -89,10 +89,12 @@ function grow(bucket: Bucket): void {
 
 let nextId = 0;
 
-
-
 export class InstancePool {
   private buckets = new Map<string, Bucket>();
+  /** What has come to stand still and is not yet in the picture: drawn
+   *  live meanwhile, by its twin in a live bucket of the same look, until
+   *  the picture is drawn again (`redraws` past `at`). */
+  private handing = new Map<number, { key: string; twin: number; at: number }>();
   /** The ambient light in force, so a bucket made mid-day is painted for it. */
   private ambient: Rgb = WHITE;
 
@@ -113,7 +115,7 @@ export class InstancePool {
     // A flat thing (a chevron, a marker) follows the hand.
     moves = !receiveShadow,
   ): Bucket {
-    let bucket = this.buckets.get(key);
+    const bucket = this.buckets.get(key);
     if (bucket) return bucket;
 
     // Every shape held here has its creases rounded (`bevel.ts`): a car's
@@ -122,8 +124,10 @@ export class InstancePool {
     // linear itself (`material.ts`).
     const bevel: Bevel = { width: 0.05, soft: null };
     const mat = townMaterial(receiveShadow ? [bevelPlugin(bevel), ...plugins] : [bevelPlugin(bevel), FLAT, ...plugins], 0.9, texture);
-    const shape = bevelled(geometry);
+    return this.hold(key, bevelled(geometry), mat, bevel, color, castShadow, receiveShadow, moves);
+  }
 
+  private hold(key: string, shape: ReturnType<typeof bevelled>, mat: TownMaterial, bevel: Bevel, color: Rgb, castShadow: boolean, receiveShadow: boolean, moves: boolean): Bucket {
     // A shape's own colours scale its bucket's: a car's glass darker.
     const mesh = meshOf(this.engine, `inst_${key}`, shape);
     giveBevel(this.engine, mesh, shape);
@@ -137,7 +141,7 @@ export class InstancePool {
     addToScene(this.scene, mesh);
     if (castShadow) this.casters.add(mesh);
 
-    bucket = {
+    const bucket: Bucket = {
       mesh,
       material: mat,
       bevel,
@@ -184,6 +188,13 @@ export class InstancePool {
   ): number {
     const bucket = this.buckets.get(key)!;
     const id = nextId++;
+    if (!bucket.live) {
+      // Its shadow comes with the picture: a caster made and dropped would
+      // hold up the sun's map as it loads.
+      const twin = `${key}~`;
+      if (!this.buckets.has(twin)) this.hold(twin, bucket.geometry, bucket.material, bucket.bevel, bucket.baseColor, false, bucket.receiveShadow, true);
+      this.handing.set(id, { key: twin, twin: this.addInstance(twin, pos, rot, scale), at: redraws });
+    }
     if ((bucket.count + 1) * 16 > bucket.matrices.length) grow(bucket);
 
     const index = bucket.count++;
@@ -223,6 +234,8 @@ export class InstancePool {
     if (rot) { tr[t + 3] = rot[0]; tr[t + 4] = rot[1]; tr[t + 5] = rot[2]; }
     if (scale) { tr[t + 6] = scale[0]; tr[t + 7] = scale[1]; tr[t + 8] = scale[2]; }
     composeMatrix(bucket, index);
+    const h = this.handing.get(id);
+    if (h) this.updateInstance(h.key, h.twin, pos, rot, scale);
   }
 
   removeInstance(key: string, id: number): void {
@@ -243,6 +256,8 @@ export class InstancePool {
     }
     bucket.idToIndex.delete(id);
     bucket.dirty = true;
+    const h = this.handing.get(id);
+    if (h) this.handing.delete(id), this.removeInstance(h.key, h.twin);
   }
 
   /**
@@ -254,6 +269,10 @@ export class InstancePool {
    * caster, a frame of a tenth of a second for the only bakery in town.
    */
   flush(): void {
+    // What the picture has drawn since it stood still is in it now. What
+    // leaves the picture shows there too until its next redraw, which a
+    // stale picture has soon, but at the end of a pan.
+    for (const [id, h] of this.handing) if (redraws > h.at) this.handing.delete(id), this.removeInstance(h.key, h.twin);
     for (const [key, bucket] of this.buckets) {
       if (!bucket.dirty) continue;
       (bucket.live ? livened : stale)();

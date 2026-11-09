@@ -100,6 +100,10 @@ export function live(mesh: Mesh): Mesh {
  *  into the sun's map's still layer. */
 export const isStill = (mesh: Mesh) => !lives.has(mesh);
 
+/** How many times the picture has been drawn: what stood still before
+ *  the last is in it (`InstancePool`'s hand-off). */
+export let redraws = 0;
+
 let staleSince = Infinity;
 /** Something still has changed: the picture is drawn again soon. */
 export function stale() {
@@ -643,6 +647,7 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         main.enabled = true;
         // What changed as it was drawn is in it.
         content = holding();
+        redraws++;
         staleSince = sunDrawn ? Infinity : now;
       }
       for (const m of both) {
