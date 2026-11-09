@@ -49,6 +49,8 @@ const MIGRATIONS: &[Migration] = &[
     None,
     // The land's grain finer, in regions.
     None,
+    // Mountains on every region's high ground.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

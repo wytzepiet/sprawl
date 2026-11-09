@@ -29,17 +29,11 @@ const EDGE: f64 = 0.25;
 const RIVERS: f64 = 120.0;
 const RIVER: f64 = 0.04;
 const BANK: f64 = 6.0;
-/// The ground's character. A noise as large as the land masses says how
-/// rugged a region is: where it is high the finest layer of the height has
-/// its say and the heights are stretched; and a mountain is ground over the
-/// hill line where the broad layers alone, stretched, are over the range
-/// line, so ranges are contiguous and stand on high ground. Moisture,
-/// noise at the scale of the inlets and of the finest layer, makes woods.
-const RUGGED: f64 = 1.0 / 170.0;
-const DETAIL: (f64, f64) = (0.0, 0.3);
-const RELIEF: (f64, f64) = (0.5, 2.0);
-const HILL: f64 = 0.3;
-const RANGE: f64 = 0.9;
+/// The ground's character: a mountain is ground over the hill line,
+/// wherever it is, so every region has its heights, and woods are where
+/// moisture, noise at the scale of the inlets and of the finest layer, is
+/// over the wood line.
+const HILL: f64 = 0.48;
 const WOOD: f64 = 0.15;
 /// Only in some stretches of a shore, coves, has the water left a beach:
 /// ground this low, where a noise this fine is over this.
@@ -55,7 +49,7 @@ const BEACH: f64 = 0.02;
 const STEP: f64 = 24.0;
 const DRY: f64 = 14.0;
 const SHORE: (f64, f64) = (16.0, 32.0);
-const HOME: f64 = 40.0;
+const HOME: f64 = 14.0;
 
 fn elev(t: TerrainType) -> i32 {
     match t {
@@ -76,7 +70,6 @@ fn noise(seed: u32, k: u32) -> Simplex {
 struct Layers {
     elevation: Simplex,
     moisture: Simplex,
-    rugged: Simplex,
     river: Simplex,
     coves: Simplex,
     home: (f64, f64),
@@ -87,7 +80,6 @@ impl Layers {
         let mut layers = Layers {
             elevation: noise(seed, 0),
             moisture: noise(seed, 1),
-            rugged: noise(seed, 2),
             river: noise(seed, 3),
             coves: noise(seed, 5),
             home: (0.0, 0.0),
@@ -103,7 +95,7 @@ impl Layers {
             for i in 0..(8 * ring).max(1) {
                 let (dx, dy) = spiral(ring, i);
                 self.home = (dx as f64 * STEP, dy as f64 * STEP);
-                let wet = |(x, y): (f64, f64)| self.height(x, y).0 < 0.0;
+                let wet = |(x, y): (f64, f64)| self.height(x, y) < 0.0;
                 let dry = [DRY / 2.0, DRY].iter().all(|&r| !round(r, 16).any(wet)) && !wet((0.0, 0.0));
                 let shore = (SHORE.0 as i32..=SHORE.1 as i32).step_by(4).find(|&r| round(r as f64, 32).any(wet));
                 if dry && shore.is_some_and(|r| r as f64 > SHORE.0) {
@@ -114,34 +106,29 @@ impl Layers {
         (0.0, 0.0)
     }
 
-    /// The height at a point of the map, and how rugged its region is.
-    fn height(&self, x: f64, y: f64) -> (f64, f64, f64) {
+    /// The height at a point of the map.
+    fn height(&self, x: f64, y: f64) -> f64 {
         let (nx, ny) = (x + self.home.0, y + self.home.1);
         let at = |n: &Simplex, across: f64| n.get([nx / across, ny / across]);
-        let r = (0.5 + 0.5 * self.rugged.get([nx * RUGGED, ny * RUGGED])).clamp(0.0, 1.0);
-        let span = |(lo, hi): (f64, f64)| lo + (hi - lo) * r;
-        let broad: f64 = OCTAVES[..4].iter().map(|&(across, w)| w * at(&self.elevation, across)).sum();
-        let (fine_across, fine_w) = OCTAVES[4];
         let edge = ((x.abs().max(y.abs()) / (WIDTH / 2) as f64 - (1.0 - EDGE)) / EDGE).clamp(0.0, 1.0);
-        let e = broad + (fine_w + span(DETAIL)) * at(&self.elevation, fine_across) - 2.0 * edge;
+        let e = OCTAVES.iter().map(|&(across, w)| w * at(&self.elevation, across)).sum::<f64>() - 2.0 * edge;
         let river = (at(&self.river, RIVERS) + 0.15 * at(&self.river, RIVERS / 6.0)).abs() - RIVER;
-        (e.min(river * BANK), broad, r)
+        e.min(river * BANK)
     }
 
     /// One tile's type from the noises alone, before smoothing; any water
     /// is a lake, until the sea is told from it.
     fn tile(&self, x: i32, y: i32) -> TerrainType {
         let (fx, fy) = (x as f64, y as f64);
-        let (e, broad, r) = self.height(fx, fy);
+        let e = self.height(fx, fy);
         let home = 1.0 - ((fx.hypot(fy) - HOME) / HOME).clamp(0.0, 1.0);
         let (nx, ny) = (fx + self.home.0, fy + self.home.1);
-        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]) - 0.6 * home;
-        let range = broad * (RELIEF.0 + (RELIEF.1 - RELIEF.0) * r) - 2.0 * home;
+        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]) - 1.2 * home;
         if e < 0.0 {
             TerrainType::Water
         } else if e < BEACH && self.coves.get([nx * COVES, ny * COVES]) > COVE {
             TerrainType::Beach
-        } else if e > HILL && range > RANGE {
+        } else if e - home > HILL {
             TerrainType::Mountain
         } else if m > WOOD {
             TerrainType::Forest
@@ -177,7 +164,7 @@ impl Ground {
     }
 
     pub fn height(&self, x: f64, y: f64) -> f64 {
-        0.5 + self.0.height(x, y).0
+        0.5 + self.0.height(x, y)
     }
 
     /// The fine layer alone, -1 to 1: for detail.
