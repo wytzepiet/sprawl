@@ -159,6 +159,8 @@ export interface Scene {
   _frame: Frame | null;
   /** Which meshes stand still, when the still picture is ours; otherwise every mesh is drawn forward each frame. */
   _isStill: ((mesh: Mesh) => boolean) | null;
+  /** Told when the still picture has been drawn. */
+  _pictured: () => void;
   _meshChanged(mesh: Mesh, drawn: boolean): void;
   _castersChanged(): void;
 }
@@ -181,6 +183,7 @@ export function createSceneContext(target: Engine | Surface): Scene {
     _container: null,
     _frame: null,
     _isStill: null,
+    _pictured: () => {},
     _meshChanged: (mesh, drawn) => scene._frame?.meshChanged(mesh, drawn),
     _castersChanged: () => scene._frame?.castersChanged(),
   };

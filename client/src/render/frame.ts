@@ -429,6 +429,7 @@ function makeFrame(scene: Scene): Frame {
         gbuffer.draw(pass);
         pass.end();
         relightDue = true;
+        scene._pictured();
         perfCount("own.gbuffer", 1);
         perfCount("own.gbufferMs", performance.now() - t0);
       }

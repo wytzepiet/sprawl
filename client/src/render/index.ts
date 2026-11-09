@@ -65,9 +65,11 @@ export function markMaterialUboDirty(material: OwnPbrMaterial) {
 
 /** The still picture, ours: `still.ts`'s `createStill` under `?renderer=new`.
  *  The scene sorts its meshes by `isStill`; the sun and the headlights are
- *  the scene's own already, and a frame is one render. */
-export function ownStill(scene: Scene, isStill: (mesh: Mesh) => boolean) {
+ *  the scene's own already, and a frame is one render. `drawn` is told of
+ *  each picture drawn (`still.ts`'s `redraws`). */
+export function ownStill(scene: Scene, isStill: (mesh: Mesh) => boolean, drawn: () => void) {
   scene._isStill = isStill;
+  scene._pictured = drawn;
   return {
     sun() {},
     headlights() {},
