@@ -17,7 +17,7 @@ pub const CHUNKS_MAX: i32 = (WIDTH / 2) / CHUNK_SIZE - 1;
 /// between them, the next headlands, sounds and inlets, the finest a
 /// ragged coast. It sinks towards the map's edge over its last `EDGE`
 /// share, so the edge is open sea.
-const OCTAVES: [(f64, f64); 4] = [(240.0, 1.0), (90.0, 0.6), (36.0, 0.25), (14.0, 0.1)];
+const OCTAVES: [(f64, f64); 4] = [(150.0, 1.0), (60.0, 0.6), (24.0, 0.25), (10.0, 0.08)];
 const LEVEL: f64 = 0.12;
 const EDGE: f64 = 0.25;
 /// Rivers: where a noise of this scale crosses zero, give or take
@@ -25,8 +25,8 @@ const EDGE: f64 = 0.25;
 /// its banks rise from it; a finer noise of a sixth the scale wanders it.
 /// They run on across land and sea alike, so they cut land masses in two
 /// and open into the sea at both ends.
-const RIVERS: f64 = 200.0;
-const RIVER: f64 = 0.025;
+const RIVERS: f64 = 120.0;
+const RIVER: f64 = 0.04;
 const BANK: f64 = 6.0;
 /// The ground's character. A noise as large as the land masses says how
 /// rugged a region is: where it is high the finest layer of the height has
@@ -48,15 +48,15 @@ const BEACH: f64 = 0.02;
 /// Home, the origin: the seed's noise is read from the first place on a
 /// spiral out from the noise's own middle, a step of `STEP` tiles, with dry
 /// ground `DRY` tiles all round it, water nearest it between `SHORE`
-/// tiles, and land two thirds of the way round it at six tenths of `WIDE`
-/// out and half way round at `WIDE`, so it is on a land mass and not an
-/// islet. Round it the land is calmed, out to `HOME`
-/// and fading over as far again: no range, little wood, so the first town
-/// has open grass between it and its water.
+/// tiles, and water within `HEM` tiles on `HEMMED` of sixteen ways out of
+/// it, so the town is hemmed in and soon has to bridge. Round it the land
+/// is calmed, out to `HOME` and fading over as far again: no range, little
+/// wood, so the first town has open grass between it and its water.
 const STEP: f64 = 24.0;
 const DRY: f64 = 16.0;
 const SHORE: (f64, f64) = (20.0, 44.0);
-const WIDE: f64 = 70.0;
+const HEM: f64 = 60.0;
+const HEMMED: usize = 11;
 const HOME: f64 = 40.0;
 
 fn elev(t: TerrainType) -> i32 {
@@ -101,8 +101,8 @@ impl Layers {
                 let wet = |(x, y): (f64, f64)| self.height(x, y).0 < 0.0;
                 let dry = [DRY / 2.0, DRY].iter().all(|&r| !round(r, 16).any(wet)) && !wet((0.0, 0.0));
                 let shore = (SHORE.0 as i32..=SHORE.1 as i32).step_by(4).find(|&r| round(r as f64, 32).any(wet));
-                let wide = round(WIDE * 0.6, 24).filter(|&p| !wet(p)).count() >= 16 && round(WIDE, 24).filter(|&p| !wet(p)).count() >= 12;
-                if dry && wide && shore.is_some_and(|r| r as f64 > SHORE.0) {
+                let hemmed = round(1.0, 16).filter(|&(cx, cy)| (DRY as i32..=HEM as i32).step_by(3).any(|r| wet((cx * r as f64, cy * r as f64)))).count() >= HEMMED;
+                if dry && hemmed && shore.is_some_and(|r| r as f64 > SHORE.0) {
                     return self.home;
                 }
             }
@@ -131,7 +131,7 @@ impl Layers {
         let (e, broad, r) = self.height(fx, fy);
         let home = 1.0 - ((fx.hypot(fy) - HOME) / HOME).clamp(0.0, 1.0);
         let (nx, ny) = (fx + self.home.0, fy + self.home.1);
-        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]) - 0.3 * home;
+        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]) - 0.6 * home;
         let range = broad * (RELIEF.0 + (RELIEF.1 - RELIEF.0) * r) - 2.0 * home;
         if e < 0.0 {
             TerrainType::Water
@@ -317,7 +317,7 @@ mod tests {
 
     /// Every seed's map is broken land: between a fifth and a half of it
     /// land, in many masses, none of them most of it; and home on one big
-    /// enough for a town (sixty tiles square and more: rivers may bound it), with open grass for a town and water near it. The first
+    /// enough for a town (forty-odd tiles square and more: rivers may bound it), with open grass for a town and water near it. The first
     /// twenty seeds stand for all. Twenty maps take a while, so this runs
     /// on request; DRAW=1 draws the seeds that fail.
     #[test]
@@ -357,14 +357,14 @@ mod tests {
             if biggest * 2 > total {
                 faults.push(format!("one mass is {:.0}% of the land", 100.0 * biggest as f64 / total as f64));
             }
-            if home < 4000 {
+            if home < 2000 {
                 faults.push(format!("home is on {home} tiles"));
             }
             // Room for a town: twenty tiles square of grass within sixty
             // of the origin, with water within forty of it.
             let grass = |x0: i32, y0: i32| (x0..x0 + 20).all(|x| (y0..y0 + 20).all(|y| land[&(x, y)] == TerrainType::Grass));
             let wet = |x0: i32, y0: i32| (x0 - 40..x0 + 60).any(|x| (y0 - 40..y0 + 60).any(|y| !dry(land[&(x, y)])));
-            if !(-60..40).step_by(4).any(|x| (-60..40).step_by(4).any(|y| grass(x, y) && wet(x, y))) {
+            if !(-60..40).step_by(2).any(|x| (-60..40).step_by(2).any(|y| grass(x, y) && wet(x, y))) {
                 faults.push("no grass for a town by the water near the origin".into());
             }
             eprintln!("seed {seed}: land {:.1}%, {masses} masses, home {home}{}", share * 100.0, faults.iter().map(|f| format!("; {f}")).collect::<String>());
