@@ -260,18 +260,25 @@ pub fn spawn(world: &mut World, events: &mut EventQueue, now: GameTime) {
     }
     world.town.spawned += 1;
     let homes: Vec<GridCoord> = of_kind(&world.map, BuildingKind::House).into_iter().map(|(_, p)| p).collect();
-    let hamlet = world.town.spawned >= 8 && world.town.spawned % 7 == 1;
+    let start = world.town.start.unwrap();
+    // Now and then, once the town has a body, a hamlet of its own further
+    // out: three cottages together, a second core to grow.
+    let hamlet = homes.len() >= 24 && world.town.spawned % 16 == 0;
     let mut placed = None;
     if !hamlet && !homes.is_empty() {
-        for _ in 0..60 {
-            let h = homes[(world.town.roll() * homes.len() as f64) as usize % homes.len()];
-            let at = GridCoord { x: h.x + ((world.town.roll() - 0.5) * 7.0).round() as i32, y: h.y + ((world.town.roll() - 0.5) * 7.0).round() as i32 };
-            let by_road = world.map.site_for(at, BuildingKind::House).is_some();
-            if by_road || world.town.roll() < 0.35 {
-                placed = house(world, at, now);
-                if placed.is_some() {
-                    break;
-                }
+        // Beside a house the town already has, by a street, the nearer its
+        // middle the likelier: of three drawn, the one nearest where it
+        // began. Off the street only right beside a house.
+        for k in 0..80 {
+            let h = (0..3).map(|_| homes[(world.town.roll() * homes.len() as f64) as usize % homes.len()]).min_by_key(|h| (h.x - start.x).abs().max((h.y - start.y).abs())).unwrap();
+            let r = if k < 60 { 3.5 } else { 1.5 };
+            let at = GridCoord { x: h.x + ((world.town.roll() - 0.5) * 2.0 * r).round() as i32, y: h.y + ((world.town.roll() - 0.5) * 2.0 * r).round() as i32 };
+            if k < 60 && world.map.site_for(at, BuildingKind::House).is_none() {
+                continue;
+            }
+            placed = house(world, at, now);
+            if placed.is_some() {
+                break;
             }
         }
     }
@@ -285,12 +292,23 @@ pub fn spawn(world: &mut World, events: &mut EventQueue, now: GameTime) {
                 GameObject::Building(ref b) => Some(b.tiles.iter().map(|t| (t.x - at.x).abs().max((t.y - at.y).abs()) + if b.kind == BuildingKind::House { 0 } else { 2 }).min()?),
                 _ => None,
             }).min().unwrap_or(99);
-            if (6..=12).contains(&near) && best.is_none_or(|b| near > b.0) && world.map.terrain.get(&(at.x, at.y)) == Some(&land::TerrainType::Grass) {
+            if (if hamlet { 12..=20 } else { 4..=10 }).contains(&near) && best.is_none_or(|b| near < b.0) && world.map.terrain.get(&(at.x, at.y)) == Some(&land::TerrainType::Grass) {
                 best = Some((near, at));
             }
         }
         if let Some((_, at)) = best {
             placed = house(world, at, now);
+            // Two neighbours with it, a hamlet and not a lone house.
+            if placed.is_some() && hamlet {
+                let mut more = 0;
+                for (dx, dy) in [(2, 0), (-2, 0), (0, 2), (0, -2), (2, 2), (-2, -2), (2, -2), (-2, 2)] {
+                    if more < 2 && house(world, GridCoord { x: at.x + dx, y: at.y + dy }, now).is_some_and(|id| { events.wake(0, id); true }) {
+                        more += 1;
+                        world.town.arrived += LEVELS[1].people;
+                        world.town.allowance += HOUSE_ROADS;
+                    }
+                }
+            }
         }
     }
     if let Some(id) = placed {
