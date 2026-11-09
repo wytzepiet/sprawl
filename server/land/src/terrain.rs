@@ -42,14 +42,14 @@ const COVE: f64 = -0.15;
 const BEACH: f64 = 0.07;
 /// Home, the origin: the seed's noise is read from the first place on a
 /// spiral out from the noise's own middle, a step of `STEP` tiles, with dry
-/// ground `DRY` tiles all round it, water nearest it between `SHORE`
-/// tiles. Round it the land is calmed, out to `HOME` and fading over as
-/// far again: no range, little wood, so the first town has open grass
-/// between it and its water.
+/// low ground, neither water nor mountain, `DRY` tiles all round it and water nearest it between `SHORE`
+/// tiles, and land a third of the way round it `REACH` out, so it is not
+/// an islet: room for a few streets and no more, so the first town works
+/// round the land as every later one does.
 const STEP: f64 = 24.0;
-const DRY: f64 = 14.0;
-const SHORE: (f64, f64) = (16.0, 32.0);
-const HOME: f64 = 14.0;
+const DRY: f64 = 6.0;
+const REACH: f64 = 32.0;
+const SHORE: (f64, f64) = (8.0, 20.0);
 
 fn elev(t: TerrainType) -> i32 {
     match t {
@@ -96,9 +96,11 @@ impl Layers {
                 let (dx, dy) = spiral(ring, i);
                 self.home = (dx as f64 * STEP, dy as f64 * STEP);
                 let wet = |(x, y): (f64, f64)| self.height(x, y) < 0.0;
-                let dry = [DRY / 2.0, DRY].iter().all(|&r| !round(r, 16).any(wet)) && !wet((0.0, 0.0));
+                let low = |(x, y): (f64, f64)| (0.0..HILL).contains(&self.height(x, y));
+                let dry = [DRY / 2.0, DRY].iter().all(|&r| round(r, 16).all(low)) && low((0.0, 0.0));
                 let shore = (SHORE.0 as i32..=SHORE.1 as i32).step_by(4).find(|&r| round(r as f64, 32).any(wet));
-                if dry && shore.is_some_and(|r| r as f64 > SHORE.0) {
+                let some = round(REACH, 24).filter(|&p| !wet(p)).count() >= 8;
+                if dry && some && shore.is_some_and(|r| r as f64 > SHORE.0) {
                     return self.home;
                 }
             }
@@ -121,14 +123,13 @@ impl Layers {
     fn tile(&self, x: i32, y: i32) -> TerrainType {
         let (fx, fy) = (x as f64, y as f64);
         let e = self.height(fx, fy);
-        let home = 1.0 - ((fx.hypot(fy) - HOME) / HOME).clamp(0.0, 1.0);
         let (nx, ny) = (fx + self.home.0, fy + self.home.1);
-        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]) - 1.2 * home;
+        let m = self.moisture.get([nx / 100.0, ny / 100.0]) + 0.5 * self.moisture.get([nx / 16.0, ny / 16.0]);
         if e < 0.0 {
             TerrainType::Water
         } else if e < BEACH && self.coves.get([nx * COVES, ny * COVES]) > COVE {
             TerrainType::Beach
-        } else if e - home > HILL {
+        } else if e > HILL {
             TerrainType::Mountain
         } else if m > WOOD {
             TerrainType::Forest
@@ -308,7 +309,9 @@ mod tests {
 
     /// Every seed's map is broken land: between a fifth and a half of it
     /// land, in many masses, none of them most of it; and home on one big
-    /// enough for a town (forty-odd tiles square and more: rivers may bound it), with open grass for a town and water near it. The first
+    /// enough for a town to start on (thirty tiles square and more).
+    /// Whether the town finds its shore there is `town::start`'s to say,
+    /// and the bot's (`cargo test bot -- --ignored`). The first
     /// twenty seeds stand for all. Twenty maps take a while, so this runs
     /// on request; DRAW=1 draws the seeds that fail.
     #[test]
@@ -348,15 +351,8 @@ mod tests {
             if biggest * 2 > total {
                 faults.push(format!("one mass is {:.0}% of the land", 100.0 * biggest as f64 / total as f64));
             }
-            if home < 2000 {
+            if home < 800 {
                 faults.push(format!("home is on {home} tiles"));
-            }
-            // Room for a town: twenty tiles square of grass within sixty
-            // of the origin, with water within forty of it.
-            let grass = |x0: i32, y0: i32| (x0..x0 + 20).all(|x| (y0..y0 + 20).all(|y| land[&(x, y)] == TerrainType::Grass));
-            let wet = |x0: i32, y0: i32| (x0 - 40..x0 + 60).any(|x| (y0 - 40..y0 + 60).any(|y| !dry(land[&(x, y)])));
-            if !(-60..40).step_by(2).any(|x| (-60..40).step_by(2).any(|y| grass(x, y) && wet(x, y))) {
-                faults.push("no grass for a town by the water near the origin".into());
             }
             eprintln!("seed {seed}: land {:.1}%, {masses} masses, home {home}{}", share * 100.0, faults.iter().map(|f| format!("; {f}")).collect::<String>());
             if !faults.is_empty() {
