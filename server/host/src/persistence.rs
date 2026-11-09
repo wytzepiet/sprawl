@@ -40,6 +40,9 @@ const MIGRATIONS: &[Migration] = &[
     // A trip's parking legs are curves from pose to pose, not a driver's
     // moves; no save keeps a trip (`kept`), so nothing saved changes.
     Some(|_, _| {}),
+    // The land is broken up, rivers and all: every seed's map is another,
+    // and what stood on the old one would stand in the water.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

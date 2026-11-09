@@ -1,5 +1,5 @@
-//! The land: the islands a seed raises from the sea, and the mountains
-//! eroded on them. It knows nothing of what is built there, so the world
+//! The land: the broken land a seed raises from the sea, rivers and all,
+//! and the mountains eroded on it. It knows nothing of what is built there, so the world
 //! (`sprawl::world`) reads it and never the other way round.
 
 use serde::{Deserialize, Serialize};
