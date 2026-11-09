@@ -43,16 +43,6 @@ const MIGRATIONS: &[Migration] = &[
     // The land is broken up, rivers and all: every seed's map is another,
     // and what stood on the old one would stand in the water.
     None,
-    // Broken smaller, and home hemmed in by water.
-    None,
-    // Land and water even, winding through each other.
-    None,
-    // The land's grain finer, in regions.
-    None,
-    // Mountains on every region's high ground.
-    None,
-    // Wider beaches, on most coasts.
-    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
