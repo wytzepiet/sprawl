@@ -20,6 +20,10 @@ const NONE_MS: [GameTime; 2] = [30_000, 60_000];
 /// Crates a lorry carries: what fits on its bed (`onBed` in the client's
 /// `motion.ts`).
 const LOAD: usize = 3;
+/// How long a family's car holds a bay at a shop, once there: the bay is
+/// booked for the visit, not the drive, so a shop's three bays serve the
+/// street rather than whoever set out first.
+const SHOP_STAY: GameTime = 20_000;
 /// A worker's shift, and their rest at home between shifts. A maker
 /// loses only the time its workers spend on the road.
 const SHIFT_MS: GameTime = 160_000;
@@ -117,7 +121,7 @@ fn set_out(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Ent
             let errands = family_errands(world, car, owner, now);
             let tried = !errands.is_empty();
             for (to, want) in errands {
-                if trip(world, events, car, owner, to, now) {
+                if trip(world, events, car, owner, to, SHOP_STAY, now) {
                     if let Some(h) = world.map.building_mut(owner).and_then(|b| b.home.as_mut()) {
                         for w in h.wants.iter_mut().filter(|w| w.by.is_none() && want.contains(&w.good)) {
                             w.by = Some(car);
@@ -136,7 +140,7 @@ fn set_out(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Ent
             // Each place that has it, or makes it, nearest first, until
             // one has room for the lorry.
             for (to, want) in lorry_errands(world, owner) {
-                if trip(world, events, car, owner, to, now) {
+                if trip(world, events, car, owner, to, GameTime::MAX, now) {
                     world.town.errands.insert(car, Errand::Fetch { to, want, got: Vec::new(), extra: Vec::new(), at: None, last: now });
                     return;
                 }
@@ -149,7 +153,7 @@ fn set_out(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Ent
     if role == CarRole::Private && world.town.rest.get(&car).is_none_or(|&r| r <= now) {
         if let Some(job) = job(world, car, owner) {
             commuting(world, car, true);
-            if trip(world, events, car, owner, job, now) {
+            if trip(world, events, car, owner, job, GameTime::MAX, now) {
                 world.town.errands.insert(car, Errand::Work { job, at: None });
                 return;
             }
@@ -296,7 +300,7 @@ fn fetch(world: &mut World, events: &mut EventQueue, car: EntityId, owner: Entit
     // A lorry waiting on an empty yard while another has some goes there.
     if lorry && got.is_empty() && took.is_empty()
         && let Some(&g) = want.first()
-        && let Some(other) = sources(world, owner, g).into_iter().filter(|&o| o != to && stock(&world.map, o, g) >= 1.0).collect::<Vec<_>>().into_iter().find(|&o| trip(world, events, car, to, o, now))
+        && let Some(other) = sources(world, owner, g).into_iter().filter(|&o| o != to && stock(&world.map, o, g) >= 1.0).collect::<Vec<_>>().into_iter().find(|&o| trip(world, events, car, to, o, GameTime::MAX, now))
     {
         world.town.errands.insert(car, Errand::Fetch { to: other, want, got, extra, at: None, last: now });
         return;
@@ -345,7 +349,7 @@ fn pantry(world: &mut World, home: EntityId, shop: EntityId) -> Vec<Good> {
 /// there, it is home at once.
 fn go_home(world: &mut World, events: &mut EventQueue, car: EntityId, owner: EntityId, from: Option<EntityId>, now: GameTime) {
     if let Some(from) = from
-        && trip(world, events, car, from, owner, now)
+        && trip(world, events, car, from, owner, GameTime::MAX, now)
     {
         return;
     }
@@ -393,7 +397,7 @@ fn off_shift(world: &mut World, events: &mut EventQueue, car: EntityId, owner: E
     let rest = REST_MS as f64 * (0.7 + 0.6 * world.town.roll());
     world.town.rest.insert(car, now + rest as GameTime);
     world.town.errands.remove(&car);
-    if let Some((to, want)) = family_errands(world, car, owner, now).into_iter().find(|(to, _)| trip(world, events, car, job, *to, now)) {
+    if let Some((to, want)) = family_errands(world, car, owner, now).into_iter().find(|(to, _)| trip(world, events, car, job, *to, SHOP_STAY, now)) {
         if let Some(h) = world.map.building_mut(owner).and_then(|b| b.home.as_mut()) {
             for w in h.wants.iter_mut().filter(|w| w.by.is_none() && want.contains(&w.good)) {
                 w.by = Some(car);
@@ -428,9 +432,9 @@ fn job(world: &mut World, car: EntityId, home: EntityId) -> Option<EntityId> {
 }
 
 /// A drive from one building to another: whether it set off.
-fn trip(world: &mut World, events: &mut EventQueue, car: EntityId, from: EntityId, to: EntityId, now: GameTime) -> bool {
+fn trip(world: &mut World, events: &mut EventQueue, car: EntityId, from: EntityId, to: EntityId, stay: GameTime, now: GameTime) -> bool {
     let Some(door) = world.map.street_of(from) else { return false };
-    world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, door, to, now, GameTime::MAX))
+    world.drive(events, |t, e| traffic::car::spawn::start_trip(t, e, car, door, to, now, stay))
 }
 
 fn commuting(world: &mut World, car: EntityId, on: bool) {

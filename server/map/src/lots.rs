@@ -172,9 +172,6 @@ pub struct Stats {
     pub squeezed: u32,
 }
 
-/// How much longer a spot is held than the visit is planned to take.
-pub const SLACK: GameTime = 10 * 60 * 1000;
-
 /// What a car holds at a lot: a spot, or the door.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Claim {
@@ -416,7 +413,7 @@ impl Map {
 
     /// The bays cars park in: a house's drive, or the kerb before anything
     /// else.
-    fn bays(&self, gate: (GridCoord, EntityId), tiles: &[GridCoord], kind: model::BuildingKind) -> Vec<KerbBay> {
+    pub(crate) fn bays(&self, gate: (GridCoord, EntityId), tiles: &[GridCoord], kind: model::BuildingKind) -> Vec<KerbBay> {
         match kind {
             model::BuildingKind::House => self.drive_bays(gate),
             _ if kerbed(kind) => self.kerb_bays(tiles, kind, self.door_way(gate), fronted(kind).then_some(gate.0)),

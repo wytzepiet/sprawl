@@ -902,6 +902,8 @@ pub enum ClientMessage {
     Undo,
     /// A card of the pick on the table taken.
     Pick(u8),
+    /// A lorry from the hand, for this building to run.
+    AddLorry { #[ts(type = "number")] building: EntityId },
     /// Sim steps per tick: 0 pauses, 1 plays, 2 and 4 are fast.
     SetSpeed(u32),
     /// As fast as the game goes until this sim time, then speed 1. Dev-only.
@@ -952,6 +954,8 @@ pub struct Town {
     pub roads: u32,
     /// Buildings in hand, to place.
     pub hand: Vec<(BuildingKind, u32)>,
+    /// Lorries in hand, for a building to take on.
+    pub lorries: u32,
     /// The road tools the town has: the street, the bulldozer, and those
     /// picked since.
     pub tools: Vec<Unlock>,
@@ -995,6 +999,9 @@ pub enum Offer {
     Roads(u32),
     /// A road tool, for good.
     Tool(Unlock),
+    /// So many more lorries, each for a building that runs one to take on
+    /// a second.
+    Lorry(u32),
 }
 
 /// A road tool to unlock (the street and the bulldozer come with the town).

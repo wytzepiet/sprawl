@@ -13,7 +13,8 @@ use crate::Traffic;
 /// Returns false when the trip cannot start — the car is already out, the
 /// destination has no driveway, no route exists, or something is sitting
 /// where this car would pull in. The caller decides when to try again;
-/// nothing is queued here.
+/// nothing is queued here. The place there is the car's for `stay` once
+/// it arrives (`GameTime::MAX`: until it leaves).
 pub fn start_trip(
     world: &mut Traffic,
     events: &mut EventQueue,
@@ -21,7 +22,7 @@ pub fn start_trip(
     from_node: EntityId,
     dest_building: EntityId,
     now: GameTime,
-    until: GameTime,
+    stay: GameTime,
 ) -> bool {
     let leaves = match world.map.objects.get(car_id).map(|e| &e.object) {
         Some(GameObject::Car(c)) => c.spot,
@@ -37,7 +38,7 @@ pub fn start_trip(
         world.map.leave_by(car_id, side);
     }
     let out = world.map.way_out(car_id).unwrap_or_default();
-    depart(world, events, car_id, out, leaves, from_node, dest_building, now, until)
+    depart(world, events, car_id, out, leaves, from_node, dest_building, now, stay)
 }
 
 /// A trip out by a given way: lot nodes, the street node last, from where
@@ -52,7 +53,7 @@ pub fn depart(
     from_node: EntityId,
     dest_building: EntityId,
     now: GameTime,
-    until: GameTime,
+    stay: GameTime,
 ) -> bool {
     let role = match world.map.objects.get(car_id).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.trip.is_none() => c.role,
@@ -76,9 +77,11 @@ pub fn depart(
 
     // Nothing else can refuse the trip now, so the place at the far end is
     // claimed, and the one here let go of: booked from the earliest the car
-    // could be there, on empty roads, to when the driver plans to leave.
+    // could be there, on empty roads, for its stay, and as long again as
+    // the drive for the roads not being empty.
     let free_ms = ((ways.street.len() - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
-    let Some((path, to_lot)) = world.map.way_in(dest_building, car_id, &ways, now + free_ms, until.saturating_add(map::lots::SLACK)) else { return false };
+    let until = now.saturating_add(2 * free_ms).saturating_add(stay);
+    let Some((path, to_lot)) = world.map.way_in(dest_building, car_id, &ways, now + free_ms, until) else { return false };
     let backs_in = world.map.reverse_tail(car_id);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());

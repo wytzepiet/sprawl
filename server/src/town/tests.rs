@@ -76,8 +76,8 @@ fn a_town_begins_by_the_water() {
 }
 
 /// Nobody wants what no shop has: a street of houses without a fishery
-/// waits for one, and houses take up bread only as loaves reach the
-/// shop's shelf, one family a loaf.
+/// waits for one; and houses take up bread only once their shop has some
+/// on the shelf, and only as many as the town's bakers can bake for.
 #[test]
 fn demand_waits_for_supply() {
     let mut world = street();
@@ -90,16 +90,23 @@ fn demand_waits_for_supply() {
     assert!(hs.iter().all(|&h| game.world.map.building(h).is_some()), "a family left over fish nobody makes");
     assert!(homes(&game.world).iter().all(|h| h.wants.is_empty() && h.due.is_empty()));
     assert!(game.world.town.met.contains(&BuildingKind::Fishery));
-    // Two loaves to spare: two houses take up bread, the others wait on.
+    // Loaves on the shelf, and nobody to bake more: nobody takes up bread.
     for &h in &hs {
         game.world.map.building_mut(h).unwrap().home.as_mut().unwrap().level = 2;
     }
     let shop = build(&mut game.world, 12, BuildingKind::Shop);
     game.world.map.building_mut(shop).unwrap().stocks.insert(Good::Bread, model::Stock { level: 2.0, cap: 4.0 });
+    let took = |game: &Game| homes(&game.world).iter().filter(|h| h.due.contains_key(&Good::Bread)).count();
     let now = game.now;
-    game.run_to(now + 60_000);
-    let took = homes(&game.world).iter().filter(|h| h.due.contains_key(&Good::Bread)).count();
-    assert_eq!(took, 2);
+    game.run_to(now + 20_000);
+    assert_eq!(took(&game), 0);
+    // A bakery that could bake enough for all four, out of the way of
+    // the street so nobody is off at work in it.
+    game.world.map.raise(BuildingKind::Bakery, vec![GridCoord { x: 18, y: -5 }, GridCoord { x: 19, y: -5 }], 0);
+    game.world.map.building_mut(shop).unwrap().stocks.insert(Good::Bread, model::Stock { level: 8.0, cap: 8.0 });
+    let now = game.now;
+    game.run_to(now + 20_000);
+    assert_eq!(took(&game), 4);
 }
 
 /// Wanting what the town has never made brings its chain to hand from

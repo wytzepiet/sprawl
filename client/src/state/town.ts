@@ -6,7 +6,7 @@ import type { Town } from "../generated";
  * The town as its mayor sees it, as the last update had it: its people,
  * the road it has left, what is in hand, the pick on the table, the day.
  */
-const NONE: Town = { people: 0, roads: 0, hand: [], tools: [], toward: 0, step: 10, left: 0, offer: [], day: 0, streak: 0, status: 0, dawn: null, start: null };
+const NONE: Town = { people: 0, roads: 0, hand: [], lorries: 0, tools: [], toward: 0, step: 10, left: 0, offer: [], day: 0, streak: 0, status: 0, dawn: null, start: null };
 const [town, setTown] = createSignal<Town>(NONE);
 export { town, setTown };
 

@@ -4,7 +4,9 @@ import { BLUEPRINTS, GOODS } from "../blueprints";
 import { select } from "../state/selection";
 import { selected } from "../state/selection";
 import { eachEntity, getEntity, reached } from "../state/gameObjects";
-import { now } from "../state/town";
+import { now, town } from "../state/town";
+import { useGame } from "../state/gameObjects";
+import { LORRY_COLOR } from "./Picks";
 import { BAD, Bar, GOOD, Press, Row, Section, Ticks, ROUND } from "./kit";
 import { PATIENCE_MS } from "../generated/rows";
 import type { JSX } from "solid-js";
@@ -150,6 +152,9 @@ function BuildingLines(props: { b: Building; id: number }) {
           </Row>
         </Section>
       </Show>
+      <Show when={bp().lorries > 0}>
+        <Lorries id={props.id} docks={bp().docks} />
+      </Show>
       <Show when={!props.b.home && stocks(props.b.stocks).length > 0}>
         <Section title={bp().seats > 0 ? "Yard" : "Shelves"}>
           <For each={stocks(props.b.stocks)}>
@@ -163,6 +168,33 @@ function BuildingLines(props: { b: Building; id: number }) {
         </Section>
       </Show>
     </>
+  );
+}
+
+/** A building's lorries, one to a dock it has, and one from the hand to
+ *  give it while it has a dock without. */
+function Lorries(props: { id: number; docks: number }) {
+  const { send } = useGame();
+  const n = () => {
+    now();
+    let k = 0;
+    eachEntity((e) => {
+      const c = e.object.kind === "Car" ? (e.object.data as Car) : null;
+      if (c && c.owner === props.id && c.role === "Truck") k++;
+    });
+    return k;
+  };
+  return (
+    <Section title="Lorries">
+      <Row label={`${n()} of ${props.docks}`}>
+        <Ticks n={n()} of={props.docks} color={LORRY_COLOR} w={Math.min(120, props.docks * 18)} />
+      </Row>
+      <Show when={town().lorries > 0 && n() < props.docks}>
+        <Press round={12} pad={{ x: 12, y: 8 }} fill={LORRY_COLOR} align="center" onTap={() => send({ type: "AddLorry", data: { building: props.id } })}>
+          <Text size={15} weight={600} ink="white">{town().lorries > 1 ? `Give it a lorry (${town().lorries} in hand)` : "Give it the lorry in hand"}</Text>
+        </Press>
+      </Show>
+    </Section>
   );
 }
 

@@ -475,6 +475,9 @@ impl Map {
             // straight past them: at a corner, a junction or a dead end
             // there is nowhere for them to swing round, and nowhere to load.
             Some((street, gate)) if model::blueprint::fronted(kind) && self.dock_bays((gate, street), kind).len() < model::blueprint::blueprint(kind).docks() => Err("Its lorries need a straight street past its front"),
+            // Nor where no car can stop beside it: one at a time at its
+            // door, a shop serves a street like a market stall with a queue.
+            Some((street, gate)) if crate::lots::kerbed(kind) && self.bays((gate, street), &tiles, kind).is_empty() => Err("Nowhere to park beside it: a street needs to run straight along a side"),
             Some(_) => Ok(tiles),
             None if model::blueprint::fronted(kind) => Err("No street before its front"),
             None => Err("No street beside it"),

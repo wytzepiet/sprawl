@@ -23,6 +23,10 @@ roads: number,
  */
 hand: Array<[BuildingKind, number]>, 
 /**
+ * Lorries in hand, for a building to take on.
+ */
+lorries: number, 
+/**
  * The road tools the town has: the street, the bulldozer, and those
  * picked since.
  */

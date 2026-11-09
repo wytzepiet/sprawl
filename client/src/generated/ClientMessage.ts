@@ -6,4 +6,4 @@ import type { ChunkBounds } from "./ChunkBounds";
 import type { GridCoord } from "./GridCoord";
 import type { Stroke } from "./Stroke";
 
-export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Draw", "data": Stroke } | { "type": "Ask", "data": Ask } | { "type": "Place", "data": { kind: BuildingKind, at: GridCoord, facing: number | null, } } | { "type": "Raze", "data": { building: number, } } | { "type": "Undo" } | { "type": "Pick", "data": number } | { "type": "SetSpeed", "data": number } | { "type": "RunTo", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds };
+export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Draw", "data": Stroke } | { "type": "Ask", "data": Ask } | { "type": "Place", "data": { kind: BuildingKind, at: GridCoord, facing: number | null, } } | { "type": "Raze", "data": { building: number, } } | { "type": "Undo" } | { "type": "Pick", "data": number } | { "type": "AddLorry", "data": { building: number, } } | { "type": "SetSpeed", "data": number } | { "type": "RunTo", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds };

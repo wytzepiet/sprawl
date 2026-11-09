@@ -247,7 +247,7 @@ fn pick(game: &mut Game) {
     // Road, when the grid is running out of it; else a building the town
     // is short of; else whatever is first.
     let road = offer.iter().position(|o| matches!(o, Offer::Roads(_))).filter(|_| game.world.town.roads(&game.world.map) < 25);
-    let n = road.or_else(|| offer.iter().position(|o| matches!(o, Offer::Building(..)))).or_else(|| offer.iter().position(|o| matches!(o, Offer::Roads(_)))).unwrap_or(0);
+    let n = road.or_else(|| offer.iter().position(|o| matches!(o, Offer::Building(..) | Offer::Lorry(_)))).or_else(|| offer.iter().position(|o| matches!(o, Offer::Roads(_)))).unwrap_or(0);
     let mut c = picks::candidates(&game.world, game.now);
     c.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut why: BTreeMap<String, u32> = BTreeMap::new();
@@ -258,6 +258,19 @@ fn pick(game: &mut Game) {
     }
     println!("  pick {:?} of {:?}; top {:?}; waits {:?}", offer[n], offer, &c[..3.min(c.len())], why);
     game.command(ME, ClientMessage::Pick(n as u8));
+    // A lorry to the shop with the least on its shelves for what its
+    // houses want.
+    while game.world.town.lorries > 0 {
+        let map = &game.world.map;
+        let best = of_kind(map, BuildingKind::Shop).into_iter().map(|(id, _)| id).filter(|&id| map.street_of(id).is_some() && map.objects.fleet(id).count() < 2).min_by_key(|&id| map.building(id).map_or(0, |b| (b.stocks.values().map(|s| s.level / s.cap.max(1.0)).sum::<f64>() * 100.0) as i64));
+        let Some(id) = best else { break };
+        println!("  lorry to shop {id}");
+        let had = game.world.town.lorries;
+        game.command(ME, ClientMessage::AddLorry { building: id });
+        if game.world.town.lorries == had {
+            break;
+        }
+    }
 }
 
 /// How long families' shopping takes, door to door, and how much of it at
@@ -412,7 +425,7 @@ fn report(game: &Game) {
         println!("    moving {} mean speed {:.2} stopped {}", speeds.len(), speeds.iter().sum::<f64>() / n, speeds.iter().filter(|&&v| v < 0.05).count());
     }
     let rates = picks::rates(world);
-    println!("    rates/min (want, make): {}", rates.iter().map(|(g, (w, m))| format!("{g:?} {w:.1}/{m:.1}")).collect::<Vec<_>>().join(", "));
+    println!("    rates/min (taken, could, make): {}", rates.iter().map(|(g, f)| format!("{g:?} {:.1}/{:.1}/{:.1}", f.taken, f.could, f.make)).collect::<Vec<_>>().join(", "));
     for e in map.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         if b.kind == BuildingKind::House {
@@ -456,6 +469,7 @@ fn bot() {
     let mut before = wants_of(&game.world);
     let mut trips = Trips::default();
     let mut follow: Option<EntityId> = None;
+    let mut stops: BTreeMap<String, u64> = BTreeMap::new();
     let end = (days * DAY_MS as f64) as GameTime;
     while game.now < end {
         pick(&mut game);
@@ -490,6 +504,7 @@ fn bot() {
         }
         before = wants_of(&game.world);
         trips.watch(&game.world, game.now);
+        heat(&game.world, game.now, &mut stops);
         if follow.is_none() && std::env::var("FOLLOW").is_ok() && game.now as f64 > DAY_MS as f64 * std::env::var("FOLLOW").unwrap().parse::<f64>().unwrap_or(2.5) {
             follow = of_kind(&game.world.map, BuildingKind::House).into_iter().filter_map(|(h, _)| game.world.map.objects.fleet(h).next()).last();
             println!("following {follow:?}");
@@ -512,6 +527,19 @@ fn bot() {
                 draw(&game.world.map, game.world.town.start.unwrap(), 16);
             }
         }
+    }
+    let total: u64 = stops.values().sum();
+    let moving = stops.get("~moving").copied().unwrap_or(0);
+    println!("car-seconds: moving {moving}, stopped {}", total - moving);
+    let mut v: Vec<(String, u64)> = stops.into_iter().filter(|(k, _)| k != "~moving").collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut by: BTreeMap<String, u64> = BTreeMap::new();
+    for (k, n) in &v {
+        *by.entry(k.split(" @").next().unwrap_or("").to_string()).or_default() += n;
+    }
+    println!("  by kind: {by:?}");
+    for (k, n) in v.iter().take(15) {
+        println!("  stopped {n:6}s {k}");
     }
 }
 
@@ -538,6 +566,7 @@ fn bot_join() {
 /// The town round a tile, a character a tile: streets, buildings by
 /// their kind's first letter, water.
 pub(super) fn draw(map: &Map, c: GridCoord, r: i32) {
+    println!("         {}", (c.x - r..=c.x + r).map(|x| char::from(b'0' + x.rem_euclid(10) as u8)).collect::<String>());
     for y in c.y - r..=c.y + r {
         let row: String = (c.x - r..=c.x + r).map(|x| {
             if let Some(&id) = map.occupied.get(&(x, y)) {
@@ -661,4 +690,23 @@ fn drawn(trip: &model::Trip, p: f64) -> Option<([f64; 2], [f64; 2])> {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let m = dx.hypot(dy).max(1e-9);
     Some((c, [dx / m, dy / m]))
+}
+
+/// Every car on the road now, three seconds' worth: moving, or stopped
+/// where and why.
+fn heat(world: &World, now: GameTime, stops: &mut BTreeMap<String, u64>) {
+    for e in world.map.objects.iter() {
+        let GameObject::Car(ref c) = e.object else { continue };
+        let Some(t) = &c.trip else { continue };
+        let (p, v) = t.at(now);
+        if v > 0.05 {
+            *stops.entry("~moving".into()).or_default() += 3;
+            continue;
+        }
+        let i = t.along.iter().position(|&a| a >= p).unwrap_or(t.along.len()).min(t.route_positions.len().saturating_sub(1));
+        let q = t.route_positions.get(i).map_or((0, 0), |q| (q[0].floor() as i32, q[1].floor() as i32));
+        let why = t.why.as_ref().map_or("-".to_string(), |w| format!("{:?}", w.0).split('(').next().unwrap_or("").to_string());
+        let k = if t.route_index <= t.from_lot + 1 { "leaving" } else if t.route_index + 1 >= t.route.len() - t.to_lot { "arriving" } else { "on way" };
+        *stops.entry(format!("{why} {k} @{},{}", q.0, q.1)).or_default() += 3;
+    }
 }

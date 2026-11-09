@@ -34,7 +34,7 @@ pub const LEVELS: [Level; 5] = [
 
 /// How long a family waits on a want before it moves down, or out. The
 /// clock stops at night, when the shops are shut.
-pub const PATIENCE_MS: GameTime = 150_000;
+pub const PATIENCE_MS: GameTime = 240_000;
 /// How often a family looks at what it wants.
 const TURN_MS: GameTime = 2_000;
 /// How far a family drives to a shop, in tiles across and along.
@@ -57,7 +57,9 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     let quiet = !loud_near(world, id);
     let night = dark(now);
     let away = world.map.objects.fleet(id).all(|car| super::errands::at_work(world, car));
-    let spare = &mut world.town.spare;
+    // What a shop within reach has on its shelves, for a family to take up.
+    let shelved: Vec<Good> = of_kind(&world.map, BuildingKind::Shop).into_iter().filter(|&(s, _)| apart(&world.map, s, id) <= REACH && reaches(&world.map, s, id)).flat_map(|(s, _)| world.map.building(s).map_or(Vec::new(), |b| b.stocks.iter().filter(|(_, st)| st.level >= 1.0).map(|(&g, _)| g).collect())).collect();
+    let room = &mut world.town.room;
     let Some(h) = world.map.building_mut(id).and_then(|b| b.home.as_mut()) else { return };
     // At night the clock stops, and while everyone is at work: nothing
     // comes due, and nobody minds the wait.
@@ -76,9 +78,12 @@ pub fn turn(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     for &(good, every) in level.wants {
         let due = match h.due.get(&good) {
             Some(&due) => due,
-            None => match spare.get_mut(&good).filter(|n| **n > 0) {
+            // Taken up once its shop has it on the shelf, while the town
+            // makes more of it than its families eat: past that, the
+            // family waits to hear of it, and the town of a maker short.
+            None => match room.get_mut(&good).filter(|n| **n >= 60_000.0 / every as f64 && shelved.contains(&good)) {
                 Some(n) => {
-                    *n -= 1;
+                    *n -= 60_000.0 / every as f64;
                     now
                 }
                 // None to spare: the town hears of it, nobody waits.
@@ -352,21 +357,6 @@ fn loud_near(world: &World, id: EntityId) -> bool {
         GameObject::Building(ref o) if e.id != id && model::blueprint::blueprint(o.kind).loud => o.tiles.iter().any(|t| mine.iter().any(|m| (m.x - t.x).abs().max((m.y - t.y).abs()) <= 2)),
         _ => false,
     })
-}
-
-/// What the town's shops have to spare of each good: on their shelves,
-/// past what its families already wait on.
-pub fn spare(world: &mut World) {
-    let mut n: BTreeMap<Good, f64> = BTreeMap::new();
-    for e in world.map.objects.iter() {
-        let GameObject::Building(ref b) = e.object else { continue };
-        match &b.home {
-            Some(h) => h.wants.iter().for_each(|w| *n.entry(w.good).or_default() -= 1.0),
-            None if b.kind == BuildingKind::Shop => b.stocks.iter().for_each(|(&g, s)| *n.entry(g).or_default() += s.level.floor()),
-            None => {}
-        }
-    }
-    world.town.spare = n.into_iter().filter(|&(_, v)| v >= 1.0).map(|(g, v)| (g, v as u32)).collect();
 }
 
 // ---- shops ---------------------------------------------------------------

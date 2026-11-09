@@ -30,6 +30,7 @@ pub(crate) fn handle_player_action(
             crate::town::pick(world, n, now);
             None
         }
+        ClientMessage::AddLorry { building } => crate::town::add_lorry(world, events, building, now),
         ClientMessage::SetSpeed(_) | ClientMessage::RunTo(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ask(_) => {
             unreachable!("handled by Game::command")
         }

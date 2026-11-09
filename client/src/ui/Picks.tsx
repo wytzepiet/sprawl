@@ -18,6 +18,10 @@ const TOOL: Record<Unlock, { id: string; label: string; about: string }> = {
 };
 const road = (id: string) => ROAD_KINDS.find((r) => r.id === id) ?? ROAD_KINDS[0];
 
+/** A lorry, side on: its box, its cab, two wheels. */
+export const LORRY_GLYPH = "M1.5 5h12v11h-12zM13.5 8.5h4.5l3.5 4V16h-8zM6 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM19.5 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z";
+export const LORRY_COLOR = "#4F7CAC";
+
 /** The houses waiting on a good now (their pins up), or growing with it. */
 function waiting(good: Good, growing: boolean): number {
   // Read again as the buildings change: the entities are not a signal.
@@ -73,6 +77,8 @@ function look(o: Offer): { color: string; glyph: string; label: string; about: s
       const t = TOOL[o.data];
       return { color: road(t.id).color, glyph: road(t.id).glyph, label: t.label, about: t.about };
     }
+    case "Lorry":
+      return { color: LORRY_COLOR, glyph: LORRY_GLYPH, label: "A second lorry", about: "Give a shop or maker another, where goods sit waiting to be fetched" };
   }
 }
 

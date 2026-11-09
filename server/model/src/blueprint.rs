@@ -66,9 +66,10 @@ impl Blueprint {
         self.seats as usize + self.customers as usize
     }
 
-    /// The vehicles it comes with.
+    /// The vehicles it comes with: one lorry, if it runs any; a dock
+    /// for each it may run (`lorries`), the rest a mayor's pick.
     pub fn vehicles(&self) -> Vec<CarRole> {
-        let mut v = vec![CarRole::Truck; self.lorries as usize];
+        let mut v = vec![CarRole::Truck; self.lorries.min(1) as usize];
         if self.farm {
             v.push(CarRole::Tractor);
         }

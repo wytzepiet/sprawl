@@ -5,4 +5,4 @@ import type { Unlock } from "./Unlock";
 /**
  * A card of a pick.
  */
-export type Offer = { "kind": "Building", "data": [BuildingKind, number] } | { "kind": "Roads", "data": number } | { "kind": "Tool", "data": Unlock };
+export type Offer = { "kind": "Building", "data": [BuildingKind, number] } | { "kind": "Roads", "data": number } | { "kind": "Tool", "data": Unlock } | { "kind": "Lorry", "data": number };

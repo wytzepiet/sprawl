@@ -68,6 +68,9 @@ pub struct Town {
     pub allowance: u32,
     /// Buildings in hand, to place.
     pub hand: BTreeMap<BuildingKind, u32>,
+    /// Lorries in hand, for a building to take on (`add_lorry`).
+    #[serde(default)]
+    pub lorries: u32,
     /// Road tools picked.
     pub tools: BTreeSet<Unlock>,
     /// Kinds the town has met: wanted, or what a wanted kind is made from.
@@ -101,10 +104,11 @@ pub struct Town {
     /// When each worker may go to work again. Not saved.
     #[serde(skip)]
     rest: BTreeMap<EntityId, GameTime>,
-    /// What the shops have to spare of each good, for families to take up
-    /// (`homes::spare`). Not saved: counted every look.
+    /// What the town's makers could make of each good, a minute, past what
+    /// its families eat, for more to take it up (`picks::rates`). Not
+    /// saved: counted every look.
     #[serde(skip)]
-    spare: BTreeMap<Good, u32>,
+    room: BTreeMap<Good, f64>,
     /// What moved, by step and good, for the bot to read. Not saved.
     #[serde(skip)]
     pub tally: BTreeMap<(&'static str, Good), u32>,
@@ -125,6 +129,7 @@ impl Town {
             people: people(map),
             roads: self.roads(map),
             hand: self.hand.iter().filter(|(_, n)| **n > 0).map(|(&k, &n)| (k, n)).collect(),
+            lorries: self.lorries,
             tools: self.tools.iter().copied().collect(),
             toward: self.arrived.saturating_sub(self.picked),
             step: PICK_STEP,
@@ -235,7 +240,7 @@ pub fn building_wake(world: &mut World, events: &mut EventQueue, id: EntityId, n
 /// placed or reached wakes.
 fn look(world: &mut World, events: &mut EventQueue, now: GameTime) {
     homes::catchment(world);
-    homes::spare(world);
+    world.town.room = picks::rates(world).into_iter().map(|(g, f)| (g, f.make - f.taken)).collect();
     standing(world);
     picks::release(world);
     events.wake(LOOK_MS, LOOK);
@@ -307,6 +312,7 @@ pub fn placed(world: &mut World, events: &mut EventQueue, id: EntityId) {
 pub fn raze(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime) {
     let Some(b) = world.map.building(id) else { return };
     let (kind, at) = (b.kind, b.tiles[0]);
+    world.town.lorries += trucks(&world.map, id).saturating_sub(1);
     errands::forget(world, id);
     world.map.remove_building(id);
     if kind == BuildingKind::House {
@@ -314,6 +320,37 @@ pub fn raze(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameT
     } else {
         *world.town.hand.entry(kind).or_default() += 1;
     }
+}
+
+/// A lorry from the hand taken on by a building that runs fewer than it
+/// has docks for: its next errand runs beside the first's. Refused, why.
+pub fn add_lorry(world: &mut World, events: &mut EventQueue, id: EntityId, now: GameTime) -> Option<model::News> {
+    let refuse = |why: &str| Some(model::News { text: "No lorry for it".into(), sub: why.into(), at: 0 });
+    let Some(b) = world.map.building(id) else { return refuse("nothing there") };
+    let row = model::blueprint::blueprint(b.kind);
+    if world.town.lorries == 0 {
+        return refuse("a pick brings one");
+    }
+    if row.lorries == 0 {
+        return refuse("it runs no lorries");
+    }
+    if world.map.street_of(id).is_none() {
+        return refuse("no road to it yet");
+    }
+    if trucks(&world.map, id) >= row.docks() as u32 {
+        return refuse("its docks are full");
+    }
+    world.town.lorries -= 1;
+    let at = world.map.objects.get(id).and_then(|e| e.position);
+    let car = world.map.insert_at(GameObject::Car(model::Car::new(id, model::CarRole::Truck)), at);
+    world.map.park_in_lot(id, car, now);
+    events.wake(0, car);
+    None
+}
+
+/// The lorries a building runs.
+fn trucks(map: &Map, id: EntityId) -> u32 {
+    map.objects.fleet(id).filter(|&c| map.car(c).is_some_and(|c| c.role == model::CarRole::Truck)).count() as u32
 }
 
 /// A card of the pick taken.
@@ -331,10 +368,11 @@ fn stock(map: &Map, id: EntityId, good: Good) -> f64 {
     map.building(id).and_then(|b| b.stocks.get(&good)).map_or(0.0, |s| s.level)
 }
 
-/// Tiles across and along between two buildings.
+/// Tiles between two buildings, across or along, whichever is more: as
+/// the client measures a shop's reach.
 fn apart(map: &Map, a: EntityId, b: EntityId) -> i32 {
     match (map.objects.get(a).and_then(|e| e.position), map.objects.get(b).and_then(|e| e.position)) {
-        (Some(p), Some(q)) => (p.x - q.x).abs() + (p.y - q.y).abs(),
+        (Some(p), Some(q)) => (p.x - q.x).abs().max((p.y - q.y).abs()),
         _ => i32::MAX,
     }
 }
