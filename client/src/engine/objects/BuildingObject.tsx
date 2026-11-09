@@ -15,7 +15,7 @@ import { HOUSES } from "./house";
 import { FARM } from "./farm";
 import { CLAY_PIT, SAND_PIT } from "./quarry";
 import { SAWMILL, WOODCUTTER } from "./sawmill";
-import { BAKERY, CEMENT, MACHINE, STEELWORKS } from "./works";
+import { BAKERY, BRICKWORKS, GLASSWORKS, SHEEP_FARM, TAILOR, WORKSHOP } from "./trades";
 import { glow, glowing, placing } from "./finishes";
 import type { Built } from "./kit";
 import { clearProps, placeProps } from "../props";
@@ -45,13 +45,15 @@ function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Bui
   }
   if (kind === "Shop") return ["shopHall", SHOP_HALL, gate, -0.5];
   if (kind === "Fishery") return ["fishery", FISHERY, gate, -0.5];
-  if (kind === "Farm" || kind === "SheepFarm") return ["farm", FARM, gate, -0.5];
+  if (kind === "Farm") return ["farm", FARM, gate, -0.5];
+  if (kind === "SheepFarm") return ["sheepFarm", SHEEP_FARM, gate, -0.5];
+  if (kind === "Tailor") return ["tailor", TAILOR, gate, -0.5];
   if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate, -0.5];
   if (kind === "ClayPit") return ["clayPit", CLAY_PIT, gate, -0.5];
   if (kind === "SandPit") return ["sandPit", SAND_PIT, gate, -0.5];
-  if (kind === "Bakery" || kind === "Tailor" || kind === "FireStation") return ["bakery", BAKERY, gate, -0.5];
-  // Two rows deep. Until each has its own model, the nearest of the kit's.
-  const works: Partial<Record<Building["kind"], [string, Built]>> = { Sawmill: ["sawmill", SAWMILL], Brickworks: ["cement", CEMENT], Glassworks: ["steelworks", STEELWORKS], Workshop: ["machine", MACHINE] };
+  if (kind === "Bakery" || kind === "FireStation") return ["bakery", BAKERY, gate, -0.5];
+  // Two rows deep.
+  const works: Partial<Record<Building["kind"], [string, Built]>> = { Sawmill: ["sawmill", SAWMILL], Brickworks: ["brickworks", BRICKWORKS], Glassworks: ["glassworks", GLASSWORKS], Workshop: ["workshop", WORKSHOP] };
   const w = works[kind];
   return w ? [w[0], w[1], gate, 0] : null;
 }
