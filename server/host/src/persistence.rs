@@ -47,6 +47,8 @@ const MIGRATIONS: &[Migration] = &[
     None,
     // Land and water even, winding through each other.
     None,
+    // The land's grain finer, in regions.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;
