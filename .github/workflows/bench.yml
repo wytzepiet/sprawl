@@ -32,12 +32,26 @@ on:
         description: Also on Test Lab's phones (five a day, free)
         type: boolean
         default: false
+      fetch:
+        description: Only fetch an earlier phone run's files, from this gs:// folder
+        default: ''
 
 env:
   URL: ${{ inputs.url }}
   WHERE: ${{ inputs.where || '6,80,15' }}${{ inputs.town && format('&town={0}', inputs.town) || '' }}
 
 jobs:
+  fetch:
+    if: inputs.fetch != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: google-github-actions/auth@v2
+        with: { credentials_json: '${{ secrets.GCP_SA_KEY }}' }
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: mkdir -p files && gcloud storage cp -r "${{ inputs.fetch }}/*" files/ && find files -name '*.png' -delete
+      - uses: actions/upload-artifact@v4
+        with: { name: fetched, path: files }
+
   phones:
     if: inputs.phones
     runs-on: ubuntu-24.04
@@ -67,7 +81,7 @@ jobs:
           # Each phone's screens and log, as the run's artifact.
           bucket=$(grep -o 'storage/browser/[^]]*' testlab.log | head -1 | sed 's#storage/browser/#gs://#; s#/$##')
           mkdir -p screens && gcloud storage cp -r "$bucket/*" screens/ || true
-          find screens -type f ! -name '*.png' ! -name '*.txt' ! -name 'logcat' -delete
+          find screens -type f ! -name '*.png' ! -name '*.txt' ! -name '*.pftrace' ! -name 'logcat' -delete
       - uses: actions/upload-artifact@v4
         with: { name: phones, path: screens }
       - uses: oven-sh/setup-bun@v2
@@ -84,7 +98,7 @@ jobs:
   # throttles, for numbers that compare run to run.
   gpu:
     # A power run is the phones' meters alone.
-    if: ${{ !contains(inputs.where, 'power') }}
+    if: ${{ !contains(inputs.where, 'power') && inputs.fetch == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
