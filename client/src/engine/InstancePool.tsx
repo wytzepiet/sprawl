@@ -13,7 +13,7 @@ import { useDayNight, type Casters } from "./DayNightCycle";
 import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
-import { live, stale } from "./still";
+import { live, livened, stale } from "./still";
 
 /**
  * One draw call per bucket, however many instances it holds. Thin instances
@@ -256,7 +256,7 @@ export class InstancePool {
   flush(): void {
     for (const [key, bucket] of this.buckets) {
       if (!bucket.dirty) continue;
-      if (!bucket.live) stale();
+      (bucket.live ? livened : stale)();
       if (bucket.count === 0) {
         if (bucket.castShadow) this.casters.remove(bucket.mesh);
         drop(this.scene, bucket.mesh);

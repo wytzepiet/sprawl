@@ -110,8 +110,9 @@ const RETRY_MS = 10_000;
  *  frame slides the still picture (`still.ts`) and draws the cars over it. */
 const MOVING_FPS = 60;
 /** Frames a second while it stands still. Cars and water move a few pixels a
- *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
-const STILL_FPS = PHONE ? 20 : 30;
+ *  frame, smooth enough at 30; a pan moves every pixel, and wants 60.
+ *  `?stillfps=<n>`. */
+const STILL_FPS = Number(new URLSearchParams(location.search).get("stillfps")) || (PHONE ? 20 : 30);
 /** How long the view counts as moving after it last moved. A drag's pointer
  *  events do not land before every tick: one that finds the camera where the
  *  last frame left it would fall back to the still rate mid-pan, and the pan

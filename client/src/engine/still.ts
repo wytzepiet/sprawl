@@ -75,8 +75,16 @@ const MOVING_MS = 50;
 /** Something still changed: drawn again at most this often. */
 const CHANGED_MS = 100;
 /** And again this often whatever happened: the sun moves, and whatever was
- *  not told to the picture (`stale`) is in it this soon. */
-const EVERY_MS = 500;
+ *  not told to the picture (`stale`) is in it this soon. `?every=<ms>`. */
+const knobs = new URLSearchParams(location.search);
+const EVERY_MS = Number(knobs.get("every") ?? 500);
+/** `?skipidle=1`: a frame with nothing to show, neither the view moved nor
+ *  anything live nor still, nor the sun's redraw due, is not drawn at all,
+ *  and what moves on the GPU alone (the water, the fans) stands still. */
+const SKIP_IDLE = knobs.get("skipidle") === "1";
+let lively = false;
+/** Something live moved: this frame is drawn. */
+export const livened = () => void (lively = true);
 
 /** Meshes drawn every frame, over the picture and never into it. */
 const lives = new WeakSet<Mesh>();
@@ -604,6 +612,8 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         (moving
           ? since >= MOVING_MS && !holds(inverse)
           : here !== from || ((staleSince < Infinity || holding() !== content) && since >= CHANGED_MS) || since >= EVERY_MS);
+      if (SKIP_IDLE && !due && !moving && !lively && staleSince === Infinity && holding() === content) return;
+      lively = false;
       if (due) {
         lastDue = true;
         perfCount(always ? "still.always" : here !== from ? "still.moved" : since >= EVERY_MS ? "still.sun" : "still.changed", 1);
