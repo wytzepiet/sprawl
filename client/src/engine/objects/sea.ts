@@ -79,8 +79,9 @@ function flatbed(l: number): Shape {
     side(W - 2 * WALL, WALL, 0, (l - WALL) / 2, 0.16),
   ]);
 }
-/** A flatbed `l` long (`bedLength` in `motion.ts`). */
-export const bedShape = (l: number) => ({ key: `bed_${l.toFixed(3)}`, geo: flatbed(l) });
+/** A flatbed `l` long (`bedLength` in `motion.ts`), in a bucket of its own
+ *  where it stands still. */
+export const bedShape = (l: number, moves: boolean) => ({ key: `bed_${l.toFixed(3)}${moves ? "" : "p"}`, geo: flatbed(l), moves });
 
 /** A lorry's or a van's cab end, CAB long: the cab-over cab at the front,
  *  `CAB_BLOCK` of it, its windows a dark band under the roof; behind it

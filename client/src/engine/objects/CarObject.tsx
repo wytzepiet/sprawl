@@ -46,7 +46,8 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
 
 /** A bucket of a vehicle's shape in its colour, its material lacquered
  *  and its edges rounded tight (a lit bucket's is the town's,
- *  `InstancePool`); its key. */
+ *  `InstancePool`), drawn every frame if what is in it moves and into the
+ *  still picture if not; its key. */
 export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true, moves = true): string {
   pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
   const bucket = pool.finish(key)!;
@@ -64,9 +65,9 @@ export const setCarColour = (f: typeof carColour) => (carColour = f);
  *  not (`mountCar`). */
 function carBucket(pool: InstancePool, id: number, parked: boolean, car?: Car): string {
   const given = car && carColour?.(car);
-  if (given) return paint(pool, `car_x${[given.r, given.g, given.b].map((v) => Math.round(v * 255)).join("_")}${parked ? "p" : ""}`, carGeo, given, CLEAR_COAT);
+  if (given) return paint(pool, `car_x${[given.r, given.g, given.b].map((v) => Math.round(v * 255)).join("_")}${parked ? "p" : ""}`, carGeo, given, CLEAR_COAT, true, !parked);
   const c = colourOf(id);
-  return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], CLEAR_COAT);
+  return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], CLEAR_COAT, true, !parked);
 }
 
 /** Where an instance stands: its pose, its base (or middle) `z` up, its
@@ -86,26 +87,26 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
 
 /** A shape with colours of its own (`sea.ts`, `goods.ts`) standing at a
  *  pose, its base at `z`, in its own finish or a vehicle's paint, casting
- *  a shadow unless it lies too flat to. It is
+ *  a shadow unless it lies too flat to, moving unless it says not. It is
  *  the world's: no building's look is on it. */
-export const placeShape = (pool: InstancePool, { key, geo, coat, cast }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean }, p: Pose, z: number, moves = true) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast, moves) }], p, z);
+export const placeShape = (pool: InstancePool, { key, geo, coat, cast, moves }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean; moves?: boolean }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast, moves) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs
  *  above that, if it shines one. Standing still, in buckets of their own:
- *  a bucket where one moves is drawn into the shadow map every frame, and
- *  one where all stand still is not. */
+ *  a bucket where one moves is drawn, and into the shadow map, every
+ *  frame, and one where all stand still into the still picture. */
 function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { key: string; z: number; light?: number } {
   const p = parked ? "p" : "";
   switch (car.role) {
     case "Ferry":
-      return { key: paint(pool, "ferry" + p, FERRY_SHAPE, LIVERY.ferry), z: DECK_Z };
+      return { key: paint(pool, "ferry" + p, FERRY_SHAPE, LIVERY.ferry, PAINT_COAT, true, !parked), z: DECK_Z };
     case "Truck":
     case "Van":
-      return { key: paint(pool, "lorry_cab" + p, LORRY_SHAPE, LIVERY.cab), z: GROUND, light: CAB_LIGHT };
+      return { key: paint(pool, "lorry_cab" + p, LORRY_SHAPE, LIVERY.cab, PAINT_COAT, true, !parked), z: GROUND, light: CAB_LIGHT };
     case "Tractor":
       // A box in the farm's green until it has a shape of its own.
-      return { key: paint(pool, "tractor" + p, vanGeo, LIVERY.tractor), z: CAR_Z, light: 0 };
+      return { key: paint(pool, "tractor" + p, vanGeo, LIVERY.tractor, PAINT_COAT, true, !parked), z: CAR_Z, light: 0 };
     default:
       return { key: carBucket(pool, id, parked, car), z: CAR_Z, light: 0 };
   }
@@ -131,7 +132,7 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const look = bodyOf(pool, id, car, !moving);
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
   const bedL = bedLength(car.role);
-  const bed = first.m.bed ? placeShape(pool, bedShape(bedL), first.m.bed, GROUND + first.lift) : null;
+  const bed = first.m.bed ? placeShape(pool, bedShape(bedL, moving), first.m.bed, GROUND + first.lift) : null;
   // What stands on its deck, each what and where it is: at the berth the
   // harbour's forklifts change it (`deckSeen`).
   const deck: { key: string; it: ReturnType<typeof place> }[] = [];
@@ -140,7 +141,7 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     if (moving && want.length === deck.length) return want.forEach((d, k) => deck[k].it.move(d.at));
     const keep = new Map(deck.splice(0).map((d) => [d.key, d.it]));
     for (const d of want) {
-      const it = keep.get(d.key) ?? (d.good ? placeShape(pool, itemOf(d.good, moving), d.at, DECK_Z) : place(pool, [{ key: carBucket(pool, d.settler!, false) }], d.at, DECK_Z + CAR.h / 2));
+      const it = keep.get(d.key) ?? (d.good ? placeShape(pool, itemOf(d.good, moving), d.at, DECK_Z) : place(pool, [{ key: carBucket(pool, d.settler!, !moving) }], d.at, DECK_Z + CAR.h / 2));
       keep.delete(d.key);
       deck.push({ key: d.key, it });
     }

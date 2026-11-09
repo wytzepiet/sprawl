@@ -155,7 +155,7 @@ export function mountBuilding(
   const built = whole && keepWhole(entry.id, JSON.stringify([whole[0], whole[2], o, dx, dy]), theme, () => {
     const [key, it, side] = whole;
     const finishes = placed_(key, it)(ctx.engine, side).map((finish) => {
-      const one = placeShape(pool, finish, { at: o, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012, false);
+      const one = placeShape(pool, { ...finish, moves: false }, { at: o, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
       if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
       return one;
     });

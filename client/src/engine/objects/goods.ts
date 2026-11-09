@@ -92,7 +92,7 @@ export const ITEMS: Record<Good, { key: string; geo: Shape; h: number }> = {
 
 /** A good's package to place: in a bucket of its own where it stands
  *  still, one where it moves (`bodyOf` in `CarObject.tsx`). */
-export const itemOf = (g: Good, moving: boolean) => ({ key: ITEMS[g].key + (moving ? "" : "p"), geo: ITEMS[g].geo });
+export const itemOf = (g: Good, moving: boolean) => ({ key: ITEMS[g].key + (moving ? "" : "p"), geo: ITEMS[g].geo, moves: moving });
 
 /** A forklift: a yellow body, its counterweight at the back, a seat
  *  under a dark guard, the mast at its front and the forks before it,
