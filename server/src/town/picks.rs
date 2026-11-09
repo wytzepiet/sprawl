@@ -105,7 +105,7 @@ pub(super) fn candidates(world: &World, now: model::GameTime) -> Vec<(Offer, f64
     let mut haul = 0.0;
     for (id, _) in of_kind(map, BuildingKind::House) {
         let Some(h) = map.building(id).and_then(|b| b.home.as_ref()) else { continue };
-        jammed += h.wants.iter().filter(|w| w.by.is_some() && now >= w.since + super::homes::PATIENCE_MS / 3).count() as f64;
+        jammed += h.wants.iter().filter(|w| w.by.is_some() && now >= w.since + super::homes::PATIENCE_MS / 2).count() as f64;
         let waits = h.wants.iter().filter(|w| w.by.is_none() && now >= w.since + super::homes::PATIENCE_MS / 3).map(|w| (w.good, 3.0)).chain(h.growing.iter().flat_map(|g| g.iter().filter(|(_, s)| s.short() >= 1.0).map(|(&g, _)| (g, 1.0))));
         for (g, w) in waits.collect::<Vec<_>>() {
             match short_of(world, &rates, id, g) {
@@ -125,10 +125,20 @@ pub(super) fn candidates(world: &World, now: model::GameTime) -> Vec<(Offer, f64
     if room {
         cands.push((Offer::Lorry(1), 1.0 + haul * 2.0));
     }
+    // Every lorry it may run running: another shop, with its own.
+    // And a shop to every dozen houses or so: past that its bays and its
+    // lorries are a queue.
+    let shops = of_kind(map, BuildingKind::Shop).len().max(1) as f64;
+    let crowd = (homes.len() as f64 / shops - 12.0).max(0.0) * 0.5;
+    if let Some(c) = cands.iter_mut().find(|c| c.0 == Offer::Building(BuildingKind::Shop, 1)) {
+        c.1 += 2.0 * (crowd + if room { 0.0 } else { haul });
+    }
     let roads = world.town.roads(map);
     cands.push((Offer::Roads(PICK_ROADS), (if roads < 10 { 8.0 } else { 2.0 }) + jammed));
     let status = world.town.status;
-    for (u, from, w) in [(Unlock::Priority, 0, 2.0), (Unlock::Lights, 1, 2.0), (Unlock::OneWay, 1, 1.5), (Unlock::Overpass, 1, 2.5), (Unlock::Wide, 2, 1.5)] {
+    // Road tools once a town has the traffic for them: a hamlet's lanes
+    // want more road, not lights.
+    for (u, from, w) in [(Unlock::Priority, 1, 2.0), (Unlock::Overpass, 2, 2.5), (Unlock::Lights, 2, 2.0), (Unlock::OneWay, 2, 1.5), (Unlock::Wide, 3, 1.5)] {
         if status >= from && !world.town.tools.contains(&u) {
             cands.push((Offer::Tool(u), w + jammed));
         }

@@ -1,6 +1,7 @@
 import { Box, Ink, Melt } from "~ui";
 import Feed from "./Feed";
 import Pins from "./Pins";
+import Flows from "./Flows";
 import Pings from "./Pings";
 import Held from "./Held";
 import Clock from "./Clock";
@@ -19,6 +20,7 @@ import { bezel, CORNER, view, wide, WINDOW } from "./kit";
 export default function Hud() {
   return (
     <>
+      <Flows />
       <Pins />
       <Pings />
       <Held />

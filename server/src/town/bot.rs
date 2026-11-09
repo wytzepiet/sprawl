@@ -403,6 +403,27 @@ fn report(game: &Game) {
         people(map), &levels[1..], world.town.left, oldest / 1000, world.town.roads(map),
         world.town.hand.iter().filter(|(_, n)| **n > 0).collect::<Vec<_>>()
     );
+    {
+        // Where each house stands on its way up.
+        let mut stage: BTreeMap<String, u32> = BTreeMap::new();
+        for (id, _) in of_kind(map, BuildingKind::House) {
+            let Some(h) = map.building(id).and_then(|b| b.home.as_ref()) else { continue };
+            let level = &homes::LEVELS[h.level as usize];
+            let k = if level.grow.is_empty() {
+                "top".to_string()
+            } else if let Some(g) = &h.growing {
+                format!("growing short {}", g.values().map(|s| s.short()).sum::<f64>())
+            } else if let Some((g, _)) = level.wants.iter().find(|(g, _)| !h.due.contains_key(g)) {
+                format!("never had {g:?}")
+            } else if h.fed < level.after {
+                format!("fed {}/{}", h.fed, level.after)
+            } else {
+                "loud?".into()
+            };
+            *stage.entry(format!("L{} {k}", h.level)).or_default() += 1;
+        }
+        println!("    stages: {stage:?}");
+    }
     println!("    tally: {}", world.town.tally.iter().map(|((k, g), n)| format!("{k} {g:?} {n}")).collect::<Vec<_>>().join(", "));
     {
         let mut st: BTreeMap<&str, u32> = BTreeMap::new();
