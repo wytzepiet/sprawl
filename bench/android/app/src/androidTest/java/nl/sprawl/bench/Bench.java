@@ -19,6 +19,16 @@ public class Bench {
     UiAutomation shell = InstrumentationRegistry.getInstrumentation().getUiAutomation();
     String url = InstrumentationRegistry.getArguments().getString("url");
     String tab = InstrumentationRegistry.getArguments().getString("tab") + "-" + android.os.Build.MODEL.replaceAll("[^A-Za-z0-9]", "-");
+    // The phone's own meters, every few seconds, the page's phases told by
+    // the clock: energy by rail (CPU clusters, GPU, memory, display) and the
+    // temperatures. First half a minute of the home screen alone, lit.
+    sh(shell, "mkdir -p /sdcard/Download/bench\nsvc power stayon true\ninput keyevent KEYCODE_WAKEUP\n");
+    String meters = "/sdcard/Download/bench/" + tab + "-power.txt";
+    long began = System.currentTimeMillis();
+    for (long at = 0; at < 30_000; at += 5_000) {
+      measure(shell, meters);
+      Thread.sleep(Math.max(0, began + at + 5_000 - System.currentTimeMillis()));
+    }
     // Chrome reads its flags from here when it is the debug app.
     sh(shell, "echo '_ --disable-fre --no-default-browser-check --no-first-run' > /data/local/tmp/chrome-command-line\n"
         + "am set-debug-app --persistent com.android.chrome\n"
@@ -28,12 +38,23 @@ public class Bench {
         + "svc power stayon true\n"
         + "am start -a android.intent.action.VIEW -d '" + url + "&tab=" + tab + "' com.android.chrome\n");
     // What the screen showed, for the run's files (bench.yml pulls this folder).
-    sh(shell, "mkdir -p /sdcard/Download/bench\n");
-    for (int s = 15; s <= 525; s += 30) {
-      Thread.sleep(s == 15 ? 15_000 : 30_000);
-      sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + s + "s.png\n");
+    long opened = System.currentTimeMillis();
+    for (long at = 5_000; at <= 570_000; at += 5_000) {
+      Thread.sleep(Math.max(0, opened + at - System.currentTimeMillis()));
+      measure(shell, meters);
+      if (at % 30_000 == 15_000) sh(shell, "screencap -p /sdcard/Download/bench/" + tab + "-" + at / 1000 + "s.png\n");
     }
-    Thread.sleep(5_000);
+  }
+
+  /** One reading of every meter the shell may read, appended. */
+  private static void measure(UiAutomation shell, String file) throws Exception {
+    sh(shell, "{ echo \"@@ $(date +%s.%N)\"\n"
+        + "dumpsys android.hardware.power.stats.IPowerStats/default\n"
+        + "echo '## powerstats'; dumpsys powerstats | grep -iA40 'energy' | head -80\n"
+        + "echo '## thermal'; dumpsys thermalservice | grep -A40 'Current temperatures from HAL' | head -45\n"
+        + "echo '## battery'; cat /sys/class/power_supply/battery/current_now /sys/class/power_supply/battery/voltage_now /sys/class/power_supply/battery/status\n"
+        + "echo '## top'; top -b -n 1 -m 6 | tail -8\n"
+        + "} >> " + file + " 2>&1\n");
   }
 
   /** A script for the shell, as the shell user; executeShellCommand alone splits on spaces and quotes nothing. */

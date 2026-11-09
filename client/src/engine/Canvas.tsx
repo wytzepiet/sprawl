@@ -117,6 +117,8 @@ const STILL_FPS = PHONE ? 20 : 30;
  *  last frame left it would fall back to the still rate mid-pan, and the pan
  *  stutters between 60 and 30. */
 const MOVING_LINGER_MS = 100;
+/** The bench's power run holds the frame rate here, whatever moves: 0 draws nothing. */
+export const forced: { fps: number | null } = { fps: null };
 /** Work that can wait (`budget.ts`) runs in each tick until this long after
  *  the tick began, leaving a 60 Hz frame room to spare. */
 const WORK_MS = 10;
@@ -225,8 +227,8 @@ export default function Canvas(props: ParentProps) {
       if (held) return;
       if (where() !== seen) lastMoved = now;
       const moving = now - lastMoved < MOVING_LINGER_MS;
-      const fps = moving ? MOVING_FPS : STILL_FPS;
-      if (now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
+      const fps = forced.fps ?? (moving ? MOVING_FPS : STILL_FPS);
+      if (fps === 0 || now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
       lastFrame = now;
       const was = where();
