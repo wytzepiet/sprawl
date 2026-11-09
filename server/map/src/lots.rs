@@ -423,7 +423,8 @@ impl Map {
 
     /// A house's drive: two spots side by side, from the street node its
     /// door opens onto to its tile, turned into from the street as into a
-    /// bay at the kerb, where that street runs on either side of it.
+    /// bay at the kerb, where that street runs on either side of it
+    /// (`across`).
     fn drive_bays(&self, (tile, street): (GridCoord, EntityId)) -> Vec<KerbBay> {
         let Some(s) = self.node_pos(street) else { return Vec::new() };
         let d = [s[0] - (tile.x as f64 + 0.5), s[1] - (tile.y as f64 + 0.5)];
@@ -433,13 +434,12 @@ impl Map {
         }
         let y = [d[0] / l, d[1] / l];
         let frame = Frame { o: s, x: [-y[1], y[0]], y };
-        let Some(p) = self.objects.get(street).and_then(|e| e.position) else { return Vec::new() };
         let (ux, uy) = (frame.x[0].round() as i32, frame.x[1].round() as i32);
-        let arm = |k: i32| self.road_node_at(GridCoord { x: p.x + k * ux, y: p.y + k * uy }).filter(|&n| self.arms_of(street, false).contains(&n));
+        let Some((back, on)) = self.across(street, (ux, uy)) else { return Vec::new() };
         [LANE, -LANE]
             .iter()
             .filter_map(|&x| {
-                let sides = self.sides(frame, &square(x, 1.0 - SPOT_OUT, false), street, arm(-1), arm(1));
+                let sides = self.sides(frame, &square(x, 1.0 - SPOT_OUT, false), street, back, on);
                 (!sides.is_empty()).then(|| KerbBay { at: frame.at((x, -(1.0 - SPOT_OUT))), sides })
             })
             .collect()
@@ -449,12 +449,9 @@ impl Map {
     /// along +x first, entering from `back`, and then from along -x,
     /// entering from `on`, each where the street is driven that way past
     /// `here`; and each one's exits that the street can be driven along.
-    fn sides(&self, frame: Frame, places: &[Place; 2], here: EntityId, back: Option<EntityId>, on: Option<EntityId>) -> Vec<KerbSide> {
+    fn sides(&self, frame: Frame, places: &[Place; 2], here: EntityId, back: EntityId, on: EntityId) -> Vec<KerbSide> {
         // Driven +x past `here`, and -x.
-        let ways = [(back, on), (on, back)].map(|(a, b)| match (a, b) {
-            (Some(a), Some(b)) => (self.edges.contains_key(&(a, here)) && self.edges.contains_key(&(here, b))).then_some((a, b)),
-            _ => None,
-        });
+        let ways = [(back, on), (on, back)].map(|(a, b)| (self.edges.contains_key(&(a, here)) && self.edges.contains_key(&(here, b))).then_some((a, b)));
         (0..2)
             .filter_map(|k| {
                 let place = &places[k];
@@ -477,9 +474,9 @@ impl Map {
     /// as its long side holds (`bays_along`), on the side its door opens
     /// onto first, then on the sides with a street all along them, the
     /// fullest first, until it has them. A side's bays lie evenly along it,
-    /// within the building's walls, each on a street (not a through road)
-    /// running straight past the tile it is before: clear of junctions,
-    /// bends and ends. Flats park along the kerb; everything else nose in,
+    /// within the building's walls, each on a street or main road running
+    /// past the tile it is before, straight, round a bend or through a
+    /// junction (`across`), not where it ends. Flats park along the kerb; everything else nose in,
     /// square to the street, close to the road, a strip of pavement between
     /// the bays and the building, where a car can turn into it from the
     /// street: swung out to the middle of the road, a quarter turn in, and
@@ -555,13 +552,13 @@ impl Map {
             let t = run[k];
             // The street beside the tile, running along (ux, uy).
             let r = GridCoord { x: t.x + dx, y: t.y + dy };
-            let Some(here) = self.road_node_at(r).filter(|&n| self.runs_straight(n, (ux, uy))) else { continue };
             // The bay's frame: along the way that has this kerb on its
             // right, out toward the street.
             let (vx, vy) = (-dy, dx);
+            let Some(here) = self.road_node_at(r) else { continue };
+            let Some((back, on)) = self.across(here, (vx, vy)) else { continue };
             let frame = Frame { o: [r.x as f64 + 0.5 + ux as f64 * a, r.y as f64 + 0.5 + uy as f64 * a], x: [vx as f64, vy as f64], y: [dx as f64, dy as f64] };
-            let arm = |s: i32| self.road_node_at(GridCoord { x: r.x + s * vx, y: r.y + s * vy }).filter(|&n| self.arms_of(here, false).contains(&n));
-            let sides = self.sides(frame, &square(0.0, SQUARE, false), here, arm(-1), arm(1));
+            let sides = self.sides(frame, &square(0.0, SQUARE, false), here, back, on);
             if !sides.is_empty() {
                 bays.push(KerbBay { at: frame.at((0.0, -SQUARE)), sides });
             }
@@ -569,17 +566,26 @@ impl Map {
         bays
     }
 
-    /// A street node the street runs straight through along (ux, uy): its
-    /// two arms the two nodes either side, and nothing else, and no
-    /// building on it.
-    fn runs_straight(&self, node: EntityId, (ux, uy): (i32, i32)) -> bool {
-        let Some(p) = self.objects.get(node).and_then(|e| e.position) else { return false };
-        let mut arms = self.arms_of(node, false);
-        arms.sort_unstable();
-        arms.dedup();
-        self.is_street(node)
-            && arms.len() == 2
-            && arms.iter().all(|&a| self.objects.get(a).and_then(|e| e.position).is_some_and(|q| (q.x - p.x, q.y - p.y) == (ux, uy) || (q.x - p.x, q.y - p.y) == (-ux, -uy)))
+    /// The arms a car drives past a place beside this node along (ux,
+    /// uy) by: the one it comes from behind, and the one it goes on to
+    /// ahead, each the nearest that way of whatever arms the node has, so a
+    /// bend or a junction serves as well as a straight run. None where it
+    /// is no street, or ends on one side.
+    fn across(&self, node: EntityId, (ux, uy): (i32, i32)) -> Option<(EntityId, EntityId)> {
+        let p = self.objects.get(node)?.position?;
+        if !self.is_street(node) {
+            return None;
+        }
+        let arms = self.arms_of(node, false);
+        let way = |s: i32| {
+            arms.iter()
+                .filter_map(|&a| Some((a, self.objects.get(a)?.position?)))
+                .map(|(a, q)| (a, (q.x - p.x) * ux + (q.y - p.y) * uy, (q.x - p.x) * uy - (q.y - p.y) * ux))
+                .filter(|&(_, along, _)| along * s > 0)
+                .min_by_key(|&(a, _, off)| (off.abs(), a))
+                .map(|(a, ..)| a)
+        };
+        Some((way(-1)?, way(1)?))
     }
 
     /// A fronted building's docks: square to the street at its gate, side
@@ -592,20 +598,16 @@ impl Map {
         if dx.abs() + dy.abs() != 1 {
             return Vec::new();
         }
-        let (ux, uy) = (dy.abs(), dx.abs());
-        if !self.runs_straight(street, (ux, uy)) {
-            return Vec::new();
-        }
         // The street's frame at the gate: along it with the building on
         // its right, out toward the street; its middle line at y = 0.
         let (vx, vy) = (-dy, dx);
+        let Some((back, on)) = self.across(street, (vx, vy)) else { return Vec::new() };
         let frame = Frame { o: [r.x as f64 + 0.5, r.y as f64 + 0.5], x: [vx as f64, vy as f64], y: [dx as f64, dy as f64] };
         let n = model::blueprint::blueprint(kind).docks();
-        let arm = |s: i32| self.road_node_at(GridCoord { x: r.x + s * vx, y: r.y + s * vy }).filter(|&a| self.arms_of(street, false).contains(&a));
         let mut bays = Vec::new();
         for i in 0..n {
             let x = dock_at(i, n);
-            let sides = self.sides(frame, &square(x, DOCK, true), street, arm(-1), arm(1));
+            let sides = self.sides(frame, &square(x, DOCK, true), street, back, on);
             if !sides.is_empty() {
                 bays.push(KerbBay { at: frame.at((x, -DOCK)), sides });
             }
@@ -1224,6 +1226,21 @@ mod tests {
         let docks = world.lot_mut(shop).unwrap().docks();
         let at: Vec<[f64; 2]> = world.lot_mut(shop).unwrap().spots.iter().skip(docks).map(|s| s.pose.at).collect();
         assert!(at.iter().all(|p| (p[1] - at[0][1]).abs() < 1e-9) || at.iter().all(|p| (p[0] - at[0][0]).abs() < 1e-9), "all on one side: {at:?}");
+    }
+
+    /// A maker's street need not run straight past its gate, nor be a
+    /// street: on a bend, or on a main road, it has every dock it asks for.
+    #[test]
+    fn a_maker_docks_on_a_bend_and_on_a_main_road() {
+        let docks = model::blueprint::blueprint(BuildingKind::Sawmill).docks();
+        let mut bend = Map::meadow(-4..20, -6..8);
+        bend.place_road_path(&[(0, 0), (6, 0), (7, -1), (9, -3)].map(|(x, y)| GridCoord { x, y }));
+        let depot = bend.place_on_street(GridCoord { x: 5, y: 1 }, BuildingKind::Sawmill).expect("placed by the bend");
+        assert_eq!(bend.lot_mut(depot).unwrap().docks(), docks, "docks on the bend");
+        let mut main = Map::meadow(-4..40, -4..8);
+        main.place_road_path_of(&(-4..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>(), true);
+        let depot = main.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Sawmill).expect("placed on the main road");
+        assert_eq!(main.lot_mut(depot).unwrap().docks(), docks, "docks on the main road");
     }
 
     /// A maker's docks are notches in its front at its gate. A truck goes

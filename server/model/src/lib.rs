@@ -188,8 +188,8 @@ pub struct RoadNode {
     pub joined: bool,
     /// The neighbours the way to is a road rather than a street: a through
     /// road, which the streets that meet it give way to. Both ends hold it.
-    /// A node on one is a road's: buildings front streets only, no driveway
-    /// is ever laid onto a road, and nothing arrives beside one.
+    /// The mayor's buildings may front one as they do a street; the town's
+    /// own families never settle beside one.
     #[serde(default)]
     #[ts(type = "Array<number>")]
     pub road: Vec<EntityId>,

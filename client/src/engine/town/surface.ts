@@ -93,12 +93,13 @@ function band([fx, fy]: [number, number], a0: number, a1: number, half: number, 
   return fx ? [lo, 0.5 - half, hi, 0.5 + half, bit] : [0.5 - half, lo, 0.5 + half, hi, bit];
 }
 
-/** A street tile the street runs straight through along (ux, uy): its
- *  two links that way and back, and no other (`runs_straight`). */
-function straight(town: Town, c: number, r: number, ux: number, uy: number) {
-  if (town.tile(c, r).kind !== "road" || town.through(c, r)) return false;
-  const links = EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
-  return links.length === 2 && town.linked(c, r, c + ux, r + uy) && town.linked(c, r, c - ux, r - uy);
+/** A road tile a car drives past a place beside it along (ux, uy) by: a
+ *  link behind it and one ahead, straight, round a bend or through a
+ *  junction (`across` in `lots.rs`). */
+function across(town: Town, c: number, r: number, ux: number, uy: number) {
+  if (town.tile(c, r).kind !== "road") return false;
+  const links = EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => dc * ux + dr * uy);
+  return links.some((a) => a > 0) && links.some((a) => a < 0);
 }
 
 /** Kerb bays as the server lays them (`lots.rs`): square to the kerb, a
@@ -137,13 +138,13 @@ const DOCK_CLEAR = 0.4;
  * A building's bays at the kerb, as the server lays them (`kerb_bays`):
  * as many as its blueprint asks, on the side its door opens onto first,
  * then on the sides with a street all along them, the fullest first, until
- * it has them; each where the street runs straight past. Along a side
+ * it has them; each where a road runs on past it either way. Along a side
  * evenly about its middle, or, on a front's gate's side, out either way
  * from the gate's docks, clear of where a truck swings in.
  */
 export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?: [number, number], gate?: GridCoord): Bay[] {
   const { bays: need, docks } = BLUEPRINTS[kind];
-  const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
+  const street = (x: number, y: number) => town.tile(x, y).kind === "road";
   const sides = FACINGS.map(([dx, dy]) => {
     const run = sideOf(tiles, [dx, dy]);
     const [ux, uy] = [Math.abs(dy), Math.abs(dx)];
@@ -166,7 +167,7 @@ export function baysOf(town: Town, tiles: GridCoord[], kind: BuildingKind, door?
       const k = Math.min(Math.floor(u), len - 1);
       const a = u - k - 0.5;
       const [c, r] = [run[k].x + dx, run[k].y + dy];
-      if (!straight(town, c, r, ux, uy)) continue;
+      if (!across(town, c, r, ux, uy)) continue;
       bays.push({ x: c + 0.5 + ux * a - dx * SQUARE, y: r + 0.5 + uy * a - dy * SQUARE, angle: Math.atan2(-dy, -dx), road: [c, r], side: [-dx, -dy], a });
     }
     return { other: !ours, broken: !whole, bays };
@@ -552,11 +553,9 @@ export function shapeOf(surface: Surface): Polygon[] {
 const LINE = 0.028;
 const DASH = 0.26;
 const CLEAR = 0.32;
-/** A priority road's edge lines: this far in from its edge, this wide;
- *  across a side road's mouth, in blocks this long. */
+/** A priority road's edge lines: this far in from its edge, this wide. */
 const EDGE_IN = 0.06;
 const EDGE_LINE = 0.03;
-const BLOCK = 0.07;
 
 /** A dash's distance in, `s` along from a seam: dashes centred on seams. */
 const dashed = (s: number, dash: number) => dash / 2 - Math.abs((((s + dash) % (2 * dash)) + 2 * dash) % (2 * dash) - dash);
@@ -569,8 +568,8 @@ const dashed = (s: number, dash: number) => dash / 2 - Math.abs((((s + dash) % (
  * not painted (`interchange/flow.ts` shows it while building). At a junction, a two-way's middle is dashed
  * along each arm from short of the middle; at lights, a stop line across
  * each way in. A priority road has a solid line along each edge, carried
- * on through its junctions, in blocks across a side road's mouth; the
- * side road's way in, shark's teeth. Drives are painted nothing.
+ * on through its junctions and across a side road's mouth. Drives are
+ * painted nothing.
  */
 export function paintOf(surface: Surface): (x: number, y: number) => number {
   const { through, ways, light } = surface;
@@ -618,48 +617,15 @@ export function paintOf(surface: Surface): (x: number, y: number) => number {
     }
   }
   if (through && junction) {
-    // The priority road through the junction: its edges carried on, in
-    // blocks on the side a road joins it from.
+    // The priority road through the junction: its edges carried on,
+    // solid across a side road's mouth.
     const main = roads.filter(([, , on]) => on);
     if (main.length === 2) {
       const path = pathOf(p, main[0], main[1], false);
-      const k = path.pts.length >> 1;
-      const [ux, uy] = wayAt(path, k);
-      const [cx, cy] = path.pts[k];
-      const joined = [1, -1].map((s) => roads.some(([dc, dr, on]) => !on && ((p[0] + dc / 2 - cx) * -uy + (p[1] + dr / 2 - cy) * ux) * s > 0));
       marks.push((x, y) => {
         const n = near(path, x, y);
-        const s = n.side >= 0 ? 0 : 1;
-        const line = EDGE_LINE / 2 - Math.abs(Math.abs(n.side) - (n.half - EDGE_IN));
-        return joined[s] ? Math.min(line, dashed(n.along, BLOCK)) : line;
+        return EDGE_LINE / 2 - Math.abs(Math.abs(n.side) - (n.half - EDGE_IN));
       });
-    }
-    // Where a street meets a priority road, shark's teeth across the
-    // street's way in: a row of triangles pointing at whoever must give way.
-    if (!light) {
-      for (const [dc, dr, on, flow] of roads) {
-        if (on || flow === "o") continue;
-        const len = Math.hypot(dc, dr);
-        const [ux, uy] = [dc / len, dr / len];
-        // Across the way in: the whole of a one-way, the right half of a
-        // two-way as its traffic comes in (`bezier.rs`'s side, of -u).
-        const hw = halfOf(flow);
-        const [lo, hi] = flow === "i" ? [-hw, hw] : [0, hw];
-        const n = Math.max(1, Math.floor((hi - lo) / TOOTH[0]));
-        const base = (hi - lo) / n;
-        for (let k = 0; k < n; k++) {
-          const [t0, t1] = [lo + k * base + base * 0.12, lo + (k + 1) * base - base * 0.12];
-          marks.push((x, y) => {
-            const [px, py] = [x - p[0], y - p[1]];
-            const along = px * ux + py * uy - CLEAR;
-            const across = px * uy - py * ux;
-            // Its base at CLEAR, its point out along the arm.
-            const t = (across - t0) / (t1 - t0);
-            const reach = TOOTH[1] * (1 - Math.abs(2 * t - 1));
-            return Math.min(along, reach - along, (t1 - t0) / 2 - Math.abs(across - (t0 + t1) / 2));
-          });
-        }
-      }
     }
   }
   // At a junction, a two-way's middle, and the line between a road of
@@ -707,8 +673,6 @@ const TRACK = 0.05;
 
 /** A stop line's width along its way. */
 const STOP = 0.05;
-/** A give-way tooth: its base across, and how far it reaches along. */
-const TOOTH: [number, number] = [0.105, 0.13];
 
 
 /** An edge of a tile's asphalt, as drawn for its instance (x and y the

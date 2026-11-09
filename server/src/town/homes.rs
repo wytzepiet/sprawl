@@ -231,6 +231,10 @@ pub fn house(world: &mut World, at: GridCoord, now: GameTime) -> Option<EntityId
         return None;
     }
     let tiles = [at];
+    // Nobody settles on a main road, though the mayor may build on one.
+    if map.by_main_road(&tiles) {
+        return None;
+    }
     let facing = map.site_for(at, BuildingKind::House).or_else(|| (0..4).find(|&f| map.may_stand_on(&tiles, BuildingKind::House, f)))?;
     let id = map.place_building(at, BuildingKind::House, facing)?;
     if loud_near(world, id) {
