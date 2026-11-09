@@ -747,7 +747,8 @@ mod tests {
 
     /// The farm from the save of 2026-09-15: a diagonal highway on both
     /// flanks a tile off the plot, on open grass, the farm placed beside
-    /// it and reached by a door drawn later. Its tractor stands in a dock,
+    /// it, its door straight off the highway, as a main road serves as a
+    /// street does; a lane drawn later changes nothing. Its tractor stands in a dock,
     /// and its land, though both flanks are lane and not field, lies
     /// behind the barn across the lane.
     #[test]
@@ -758,7 +759,7 @@ mod tests {
         world.place_road_path_of(&[(61, 42), (62, 43), (62, 44), (63, 45), (64, 46), (65, 47)].map(|(x, y)| GridCoord { x, y }), true);
         let farm = world.place_building(GridCoord { x: 60, y: 45 }, BuildingKind::Farm, 0).expect("the farm");
         world.finish(farm);
-        assert!(world.street_of(farm).is_none(), "served before any door");
+        assert!(world.street_of(farm).is_some(), "the highway serves it");
         world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
         world.place_road_at(GridCoord { x: 61, y: 44 }, 0, crate::decks::MIDDLE, GridCoord { x: 61, y: 45 }, 0, crate::decks::MIDDLE, false, false);
         let t = tractor(&world, farm);

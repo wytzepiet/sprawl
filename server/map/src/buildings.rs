@@ -73,20 +73,30 @@ impl Map {
     }
 
 
-    /// May a plot take its access from this road?
+    /// May a plot take its access from this road node?
     ///
-    /// A street, rather than a road or a driveway. A road is a through route
-    /// nothing fronts onto. A driveway stands on a building's own tile — that
-    /// is exactly what makes it that building's — so it is already spoken
-    /// for, and a plot fronting onto one would run its door through somebody
-    /// else's hallway.
+    /// Any road but a driveway: a street or a main road alike. A driveway
+    /// stands on a building's own tile — that is exactly what makes it that
+    /// building's — so it is already spoken for, and a plot fronting onto
+    /// one would run its door through somebody else's hallway.
     ///
     /// This is where access rules about a road belong, and the only place
-    /// they belong.
+    /// they belong. Who would rather not live on a main road is the
+    /// family's to say (`town::homes::house`).
     pub fn is_street(&self, id: EntityId) -> bool {
         let Some(entry) = self.objects.get(id) else { return false };
-        let (Some(pos), GameObject::RoadNode(node)) = (entry.position, &entry.object) else { return false };
-        node.road.is_empty() && !self.occupied.contains_key(&(pos.x, pos.y))
+        let (Some(pos), GameObject::RoadNode(_)) = (entry.position, &entry.object) else { return false };
+        !self.occupied.contains_key(&(pos.x, pos.y))
+    }
+
+    /// Does a main road run on or beside any of these tiles?
+    pub fn by_main_road(&self, tiles: &[GridCoord]) -> bool {
+        tiles.iter().any(|t| {
+            (-1..=1).any(|dx| (-1..=1).any(|dy| {
+                let n = self.road_node_at(GridCoord { x: t.x + dx, y: t.y + dy });
+                matches!(n.and_then(|n| self.objects.get(n)).map(|e| &e.object), Some(GameObject::RoadNode(r)) if !r.road.is_empty())
+            }))
+        })
     }
 
     /// Is the only thing standing here a road that dead-ends on this tile?
@@ -435,10 +445,8 @@ impl Map {
     /// May a kind be placed round `at` facing this way, and if not, why,
     /// in the words the hand's preview says it in (`Map::placing`): open
     /// land under the whole plot, or a road's dead end it stands over, or
-    /// for a harbour the sea (`pier`); a street before its front, its
-    /// yard's if it keeps one, or all along one side for one that parks at
-    /// the kerb; and a harbour's quay on open sea, which brings its own
-    /// street.
+    /// for a harbour the sea (`pier`); and a street or main road before
+    /// its front, or beside it for one with no front.
     pub fn fit(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
         use model::blueprint::Ground;
         let tiles = Self::plot_at(kind, at, facing);
@@ -470,14 +478,11 @@ impl Map {
             Ground::Clay if tiles.iter().filter(|t| self.deposits.get(&(t.x, t.y)) == Some(&land::Deposit::Clay)).count() * 2 < tiles.len() => return Err("It digs clay: put it on the ochre ground"),
             _ => {}
         }
+        // Its door is the whole of what it asks of the street: its docks
+        // and bays are laid wherever the street gives room for them, and
+        // laid again whenever it changes (`lot_mut`), so the same rule holds
+        // for a building placed and one whose street is redrawn after.
         match self.driveway_for(&tiles, kind, facing) {
-            // A front's lorries back into its docks off a street running
-            // straight past them: at a corner, a junction or a dead end
-            // there is nowhere for them to swing round, and nowhere to load.
-            Some((street, gate)) if model::blueprint::fronted(kind) && self.dock_bays((gate, street), kind).len() < model::blueprint::blueprint(kind).docks() => Err("Its lorries need a straight street past its front"),
-            // Nor where no car can stop beside it: one at a time at its
-            // door, a shop serves a street like a market stall with a queue.
-            Some((street, gate)) if crate::lots::kerbed(kind) && self.bays((gate, street), &tiles, kind).is_empty() => Err("Nowhere to park beside it: a street needs to run straight along a side"),
             Some(_) => Ok(tiles),
             None if model::blueprint::fronted(kind) => Err("No street before its front"),
             None => Err("No street beside it"),
