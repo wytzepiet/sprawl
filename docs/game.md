@@ -45,7 +45,9 @@ is reached only by sea.
 
 **The land is broken.** Land and water wind through each other, a
 few dozen tiles of land between the water, so no tile is much more than
-twenty from it; some regions are mostly land and some mostly water.
+twenty from it; some regions are mostly land and some mostly water. Mountains are the
+high ground of every stretch of land, so no region is plainly the
+better one to build in.
 Rivers cross the land and run on into the sea, so a town soon meets
 water on more than one side and grows over it by bridges. It is one
 height of noise cut at its middle, with a river noise carved into it;
