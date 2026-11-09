@@ -43,16 +43,18 @@ is no fog and no survey. You can look anywhere, and what you see is the
 map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
 
-**The map is mostly sea.** Several islands of different sizes and
-different land, in one connected ocean that every coast can sail to,
-because ships are how towns reach each other and the world. Land is a
-sixth to a quarter of the map, in four to eight islands, the origin's the
-biggest, with the origin forty tiles in from its coast on open grass;
-each island has a character, most grass with some wood, some forest,
-some mountain, and lakes inland but none on the sea. Each island is a
-coast drawn round a centre and the map bent, so no sea is ever shut in
-(`terrain.rs`). `every_seed_is_islands_in_one_ocean` checks it on the
-first twenty seeds.
+**The land is broken.** Land and water wind through each other, a
+few dozen tiles of land between the water, so no tile is much more than
+twenty from it; some regions are mostly land and some mostly water. Mountains are the
+high ground of every stretch of land, so no region is plainly the
+better one to build in.
+Rivers cross the land and run on into the sea, so a town soon meets
+water on more than one side and grows over it by bridges. It is one
+height of noise cut at its middle, with a river noise carved into it;
+water is the sea where it reaches the map's edge and a lake where it
+does not (`terrain.rs`). Home is the first spot on the noise with open
+grass round it and water sixteen to thirty tiles off.
+`every_seed_is_broken_land` checks it on the first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a

@@ -126,10 +126,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   game needs passes the suite and leaves a server that will not build.
 - **Does every seed still start?** After touching `terrain.rs`, `cargo
   test every_seed -- --ignored` checks the first
-  twenty seeds are islands in one ocean and seats their starting towns;
-  `DRAW=1` draws the ones that fail. It also finds ships' ways from the
-  home coast to the edge and to every island, and times them (50 ms
-  budget).
+  twenty seeds are broken land, many masses and none most of it, with
+  home on one and open grass by the water for its town; `DRAW=1` draws
+  the ones that fail.
 - **Does it still look right?** `bun run shots` builds the test towns in
   `server/fixtures/*.txt` (a map in text; the key is in
   `server/map/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
@@ -292,7 +291,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   world starts over, saying so. Seed 7 has
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; every seed's origin is
-  forty tiles in from its island's coast. `SPRAWL_ALL=1` gives a
+  open grass with water sixteen to thirty tiles off. `SPRAWL_ALL=1` gives a
   bottomless treasury. Any fixed seed gives the same map back, so a
   change in behaviour is a change in the code. `SPRAWL_SEED=7 cargo test
   draw_the_land -- --ignored --nocapture` prints the whole map, sixteen
