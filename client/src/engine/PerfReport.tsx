@@ -26,6 +26,13 @@ export function perfCount(name: string, by = 1) {
   if (run) counts.set(name, (counts.get(name) ?? 0) + by);
 }
 
+/** When the still picture was drawn again (`still.ts`): the samples that
+ *  fall in these are also tallied apart, to see where a redraw's time goes. */
+let spans: [number, number][] = [];
+export function perfSpan(start: number, end: number) {
+  if (run) spans.push([start, end]);
+}
+
 /** How often the tab reports, and how finely it samples its JavaScript. */
 const EVERY_MS = 5000;
 const SAMPLE_MS = 5;
@@ -151,24 +158,39 @@ export default function PerfReport() {
   const tally = (trace: ProfilerTrace) => {
     const own = new Map<string, number>();
     const all = new Map<string, number>();
+    const redrawOwn = new Map<string, number>();
+    const redrawAll = new Map<string, number>();
+    const windows = spans;
+    spans = [];
+    const inRedraw = (t: number) => windows.some(([a, b]) => t >= a && t <= b);
+    let redrawBusy = 0;
     const name = (f: ProfilerTrace["frames"][number]) => `${f.name || "(anon)"} ${f.resourceId !== undefined ? trace.resources[f.resourceId].split("/").pop()!.split("?")[0] : ""}:${f.line ?? ""}`;
     for (const s of trace.samples) {
       if (s.stackId === undefined) continue;
       let at: number | undefined = s.stackId;
       const seen = new Set<string>();
       let first = true;
+      const redraw = inRedraw(s.timestamp);
+      if (redraw) redrawBusy += SAMPLE_MS;
       while (at !== undefined) {
         const stack: ProfilerTrace["stacks"][number] = trace.stacks[at];
         const n = name(trace.frames[stack.frameId]);
         if (first) own.set(n, (own.get(n) ?? 0) + SAMPLE_MS);
         if (!seen.has(n)) all.set(n, (all.get(n) ?? 0) + SAMPLE_MS);
+        if (redraw && first) redrawOwn.set(n, (redrawOwn.get(n) ?? 0) + SAMPLE_MS);
+        if (redraw && !seen.has(n)) redrawAll.set(n, (redrawAll.get(n) ?? 0) + SAMPLE_MS);
         seen.add(n);
         first = false;
         at = stack.parentId;
       }
     }
     const top = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]).slice(0, 25);
-    return { busyMs: trace.samples.filter((s) => s.stackId !== undefined).length * SAMPLE_MS, own: top(own), all: top(all) };
+    return {
+      busyMs: trace.samples.filter((s) => s.stackId !== undefined).length * SAMPLE_MS,
+      own: top(own),
+      all: top(all),
+      redraw: { busyMs: redrawBusy, spans: windows.length, ms: Math.round(windows.reduce((t, [a, b]) => t + b - a, 0)), own: top(redrawOwn), all: [...redrawAll].sort((a, b) => b[1] - a[1]).slice(0, 60) },
+    };
   };
 
   const report = async () => {

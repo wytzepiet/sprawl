@@ -1,4 +1,4 @@
-import { perfCount } from "./PerfReport";
+import { perfCount, perfSpan } from "./PerfReport";
 import {
   addTaskAtStart,
   createGeometryRendererTask,
@@ -464,6 +464,9 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
   // When the picture was last drawn, from where, and what of the scene it held.
   let [drawn, from, content] = [-Infinity, "", ""];
   let [lastCall, lastDue] = [0, false];
+  // The slowest redraw yet, for the bench: its counts are summed, so the
+  // worst is counted as how far each redraw raised it.
+  let worst = 0;
   const view = () => {
     const c = camera();
     return `${c.position.x},${c.position.y},${c.position.z},${c.fov},${surface.canvas.width},${surface.canvas.height}`;
@@ -610,7 +613,14 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
         main.enabled = false;
         if (shadows) setShadowStaticOnly(shadows, true);
         hold(true);
+        const began = performance.now();
         render();
+        const took = performance.now() - began;
+        perfSpan(began, began + took);
+        perfCount("still.redrawCpuMs", took);
+        perfCount("still.redraws", 1);
+        perfCount("still.redrawWorstMs", Math.max(0, took - worst));
+        worst = Math.max(worst, took);
         hold(false);
         // Drawn in the shade of a sun's map not drawn for it (its casters still
         // loading): drawn again soon, as anything changed is.
@@ -629,7 +639,10 @@ export function createStill(engine: EngineContext, scene: SceneContext): Still {
       }
       shade();
       pack();
+      const began = performance.now();
       render();
+      perfCount("frame.renderCpuMs", performance.now() - began);
+      perfCount("frame.renders", 1);
     },
   };
 }

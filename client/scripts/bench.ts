@@ -71,6 +71,15 @@ for (const s of summarise(reports)) {
   for (const r of mine) if (typeof r.profile !== "string") for (const [what, ms] of r.profile.own) own.set(what, (own.get(what) ?? 0) + ms);
   const top = [...own].sort((a, b) => b[1] - a[1]).slice(0, 6);
   if (top.length) console.log(`       JS: ${top.map(([w, ms]) => `${w} ${ms}`).join(", ")}`);
+  // Where a still redraw's JavaScript went, with what each function called.
+  const redraws = mine.flatMap((r) => (typeof r.profile === "string" || !r.profile.redraw ? [] : [r.profile.redraw]));
+  const spans = redraws.reduce((a, r) => a + r.spans, 0);
+  if (spans && process.env.REDRAW) {
+    const inc = new Map<string, number>();
+    for (const r of redraws) for (const [what, ms] of r.all) inc.set(what, (inc.get(what) ?? 0) + ms);
+    console.log(`       redraws ${spans}, ${f1(redraws.reduce((a, r) => a + r.ms, 0) / spans)} ms each, sampled busy ${f1(redraws.reduce((a, r) => a + r.busyMs, 0) / spans)} ms each; per redraw, with callees:`);
+    for (const [what, ms] of [...inc].sort((a, b) => b[1] - a[1]).slice(0, 45)) console.log(`         ${f1(ms / spans).padStart(6)} ms  ${what}`);
+  }
   const counted = new Map<string, number>();
   for (const r of mine) for (const [k, v] of Object.entries(r.counts ?? {})) counted.set(k, (counted.get(k) ?? 0) + v);
   if (counted.size) console.log(`       counted: ${[...counted].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}`);

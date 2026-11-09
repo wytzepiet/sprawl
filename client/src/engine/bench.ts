@@ -39,7 +39,15 @@ export interface Report {
   long: { ms: number; scripts: { ms: number; what: string }[] }[];
   errors?: Record<string, number>;
   counts: Record<string, number>;
-  profile: { busyMs: number; own: [string, number][]; all: [string, number][] } | "unavailable";
+  profile:
+    | {
+        busyMs: number;
+        own: [string, number][];
+        all: [string, number][];
+        /** The samples taken while the still picture was drawn again. */
+        redraw?: { busyMs: number; spans: number; ms: number; own: [string, number][]; all: [string, number][] };
+      }
+    | "unavailable";
   agent: string;
 }
 
