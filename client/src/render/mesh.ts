@@ -1,4 +1,6 @@
 import type { Engine } from "./engine";
+import type { OwnPbrMaterial } from "./material";
+import { dirtyMaterials } from "./pass";
 import type { Scene } from "./scene";
 
 const VERTEX = GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST;
@@ -175,8 +177,11 @@ export function disposeMeshGpu(mesh: Mesh): void {
   gpu.world.destroy();
 }
 
-/** Its bindings made again: a texture of its material's was replaced. */
+/** Its bindings made again, and its material's UBO written again, as Lite
+ *  writes it with them: a texture of its material's was replaced (the atlas
+ *  grown, and its grid with it). */
 export function markMeshRenderableDirty(mesh: Mesh): void {
+  if ((mesh.material as { plugins?: unknown } | null)?.plugins) dirtyMaterials.add(mesh.material as OwnPbrMaterial);
   mesh._changed(true);
 }
 
