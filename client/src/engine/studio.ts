@@ -159,5 +159,6 @@ export function createStudio(main: Engine) {
   };
 }
 
-/** The next moment the browser has nothing better to do. */
-const idle = () => new Promise<void>((done) => requestIdleCallback(() => done(), { timeout: 200 }));
+/** The next moment the browser has nothing better to do: Safari has no
+ *  `requestIdleCallback`, and waits a moment instead. */
+const idle = () => new Promise<void>((done) => (typeof requestIdleCallback === "function" ? requestIdleCallback(() => done(), { timeout: 200 }) : setTimeout(done, 50)));

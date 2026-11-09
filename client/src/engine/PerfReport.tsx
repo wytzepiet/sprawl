@@ -4,7 +4,8 @@ import { isGpuTimingSupported, setGpuTimingEnabled } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { eye } from "./Camera";
 import { groundCover } from "./view";
-import { lightOf, PHASES, summarise, type Report } from "./bench";
+import { lightOf, PHASES as LOOKED, POWER, summarise, type Report } from "./bench";
+import { forced } from "./Canvas";
 import { pinTimeOfDay } from "./DayNightCycle";
 import { beamCount } from "./lights";
 import { useGame } from "../state/gameObjects";
@@ -12,6 +13,7 @@ import { simNow } from "../network/clock";
 import type { CostReport } from "./cost";
 
 const params = new URLSearchParams(location.search);
+const PHASES = params.has("power") ? POWER : LOOKED;
 /**
  * The bench's run, by name: `?bench` (a name made up) or `?bench&tab=<name>`,
  * in any build, on any device. `?bench=x,y,half` where it looks.
@@ -88,12 +90,14 @@ export default function PerfReport() {
   // lived through at once, so the streets are full when the bench begins.
   const { send } = useGame();
   let filled = 0;
-  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + TRAFFIC_MS) }), 1000);
+  if (params.has("town")) setTimeout(() => send({ type: "RunTo", data: (filled = simNow() + (PHASES === POWER ? TRAFFIC_MS / 2 : TRAFFIC_MS)) }), 1000);
   const look = () => {
     if (phase >= PHASES.length) return;
     const t = (performance.now() - phaseBegan) / 1000;
     pinTimeOfDay(lightOf(PHASES[phase]));
     const p = PHASES[phase].replace("n-", "");
+    // Looked at once and left: the rest of the power run stands still.
+    if (POWER === PHASES && p !== "pan") return void (p === "settle" && eye.look(x, y, h));
     if (p === "pan") eye.look(x + h * 3 * Math.sin((Math.PI * t) / 7.5), y, h);
     else if (p === "zoom") eye.look(x, y, h * 2 ** (1.2 * Math.sin((2 * Math.PI * t) / 5)));
     else eye.look(x, y, p === "far" ? h * FAR : h);
@@ -205,6 +209,8 @@ export default function PerfReport() {
     // the town is drawn: five seconds with no drawing of it.
     if (!(PHASES[phase] === "settle" && PHASES[phase + 1] !== "settle" && (simNow() < filled || body.counts["town.draws"]))) phase++;
     phaseBegan = performance.now();
+    // Set here, not as the frame is drawn: a frame not drawn would never set it back.
+    forced.fps = PHASES[phase] === "off" ? 0 : PHASES[phase] === "f60" ? 60 : null;
     if (phase === PHASES.length) {
       clearInterval(timer);
       setDone(sent);
@@ -212,6 +218,8 @@ export default function PerfReport() {
       // as a street is built, by day, the shadows on, and by night, the
       // lights on; and the whole town by day, where the most is drawn. The
       // run is over once that is in.
+      forced.fps = null;
+      if (PHASES === POWER) return;
       eye.look(x, y, h / 2);
       const meter = (window as { sprawlCost?: (rounds: number) => Promise<CostReport> }).sprawlCost;
       const post = (phase: string) => (cost: CostReport) => fetch("/perf", { method: "POST", body: JSON.stringify({ at: new Date().toISOString(), tab: run, phase, cost }) });
