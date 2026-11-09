@@ -51,6 +51,8 @@ const MIGRATIONS: &[Migration] = &[
     None,
     // Mountains on every region's high ground.
     None,
+    // Wider beaches, on most coasts.
+    None,
 ];
 
 pub const SAVE_VERSION: u32 = MIGRATIONS.len() as u32;

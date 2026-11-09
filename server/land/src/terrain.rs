@@ -38,8 +38,8 @@ const WOOD: f64 = 0.15;
 /// Only in some stretches of a shore, coves, has the water left a beach:
 /// ground this low, where a noise this fine is over this.
 const COVES: f64 = 0.04;
-const COVE: f64 = 0.05;
-const BEACH: f64 = 0.02;
+const COVE: f64 = -0.15;
+const BEACH: f64 = 0.07;
 /// Home, the origin: the seed's noise is read from the first place on a
 /// spiral out from the noise's own middle, a step of `STEP` tiles, with dry
 /// ground `DRY` tiles all round it, water nearest it between `SHORE`
