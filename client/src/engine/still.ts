@@ -34,7 +34,7 @@ import {
   type ShadowGenerator,
   type Texture2D,
 } from "./gpu";
-import { _vis } from "./gpu";
+import { _vis, NEW, ownStill, stalePicture } from "./gpu";
 import { meshOf } from "./geometry";
 import { CONTRAST, TONE } from "./toneMap";
 
@@ -104,6 +104,7 @@ let staleSince = Infinity;
 /** Something still has changed: the picture is drawn again soon. */
 export function stale() {
   staleSince = Math.min(staleSince, performance.now());
+  if (NEW) stalePicture();
 }
 
 const VIEW_UNIFORMS = [
@@ -351,6 +352,8 @@ type Eye = ReturnType<typeof createFreeCamera>;
 /** Set up before the scene is registered: the picture's pass is a task of
  *  the scene's frame graph, which records its tasks then. */
 export function createStill(engine: EngineContext, scene: SceneContext): Still {
+  // Our own renderer keeps the picture itself (`render/frame.ts`).
+  if (NEW) return ownStill(scene as never, isStill as never);
   const surface = engine.surfaces[0];
   const picture = createSurfaceRenderTargetTexture(
     engine,
