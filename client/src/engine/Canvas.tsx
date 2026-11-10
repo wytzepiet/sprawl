@@ -120,6 +120,10 @@ const STILL_FPS = Number(new URLSearchParams(location.search).get("stillfps")) |
 const MOVING_LINGER_MS = 100;
 /** The bench's power run holds the frame rate here, whatever moves: 0 draws nothing. */
 export const forced: { fps: number | null } = { fps: null };
+/** A frame drawn now, not at the next tick, as the frame rate allows: a
+ *  drag calls it on each pointer move, so the map is drawn where the
+ *  pointer just went, and the tick after finds the frame done. */
+export const drawNow = { run: () => {} };
 /** Work that can wait (`budget.ts`) runs in each tick until this long after
  *  the tick began, leaving a 60 Hz frame room to spare. */
 const WORK_MS = 10;
@@ -222,9 +226,7 @@ export default function Canvas(props: ParentProps) {
       const c = scene.camera;
       return c ? `${c.worldMatrixVersion},${c.fov}` : "";
     };
-    const frame = (now: number) => {
-      if (!running) return;
-      requestAnimationFrame(frame);
+    const draw = (now: number) => {
       if (held) return;
       if (where() !== seen) lastMoved = now;
       const moving = now - lastMoved < MOVING_LINGER_MS;
@@ -256,7 +258,13 @@ export default function Canvas(props: ParentProps) {
       // good, the town and every update waiting on it.
       work(performance.now() + Math.max(WORK_MS, delta * WORK_SHARE));
     };
+    const frame = (now: number) => {
+      if (!running) return;
+      requestAnimationFrame(frame);
+      draw(now);
+    };
     requestAnimationFrame(frame);
+    drawNow.run = () => running && draw(performance.now());
 
     if (import.meta.env.DEV) {
       (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => (document.querySelectorAll<HTMLElement>(".ink").forEach((e) => (e.style.display = "none")), true) };
