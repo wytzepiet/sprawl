@@ -3,7 +3,8 @@ import type { OwnPbrMaterial } from "./material";
 import { dirtyMaterials } from "./pass";
 import type { Scene } from "./scene";
 
-const VERTEX = GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST;
+/** A vertex buffer, read as storage too where its instances are culled (`cull.ts`). */
+const VERTEX = GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
 
 /** What a mesh holds on the GPU: its buffers by the name the shaders know
  *  them by ("position", "normal", "uv", "color", "instances",
@@ -15,7 +16,9 @@ export interface MeshGpu {
   buffers: Map<string, GPUBuffer>;
   /** `drawIndexedIndirect`'s five words: the instance count changes without re-encoding. */
   args: GPUBuffer;
+  /** Its world, whether it is shaded, and its geometry's sphere (centre, radius). */
   world: GPUBuffer;
+  sphere: [number, number, number, number];
   group: GPUBindGroup | null;
 }
 
@@ -88,7 +91,7 @@ export class Mesh {
     const gpu = this._gpu;
     if (this._dirty.world) {
       const p = this.position;
-      device.queue.writeBuffer(gpu.world, 0, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, p.x, p.y, p.z, 1, this.receiveShadows ? 1 : 0, 0, 0, 0]));
+      device.queue.writeBuffer(gpu.world, 0, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, p.x, p.y, p.z, 1, this.receiveShadows ? 1 : 0, 0, 0, 0, ...gpu.sphere]));
       this._dirty.world = false;
     }
     const ti = this.thinInstances;
@@ -147,16 +150,32 @@ export function createMeshFromData(
     vertexCount: positions.length / 3,
     index: buffer(engine, indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST),
     buffers,
-    args: buffer(engine, new Uint32Array([indices.length, 1, 0, 0, 0]), GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST),
-    world: engine._device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    args: buffer(engine, new Uint32Array([indices.length, 1, 0, 0, 0]), GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST),
+    world: engine._device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    sphere: sphereOf(positions),
     group: null,
   };
   return new Mesh(engine, name, gpu);
 }
 
+/** The sphere round the middle of a geometry's box. */
+function sphereOf(p: Float32Array): [number, number, number, number] {
+  const [lo, hi] = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
+  for (let i = 0; i < p.length; i++) (lo[i % 3] = Math.min(lo[i % 3]!, p[i]!)), (hi[i % 3] = Math.max(hi[i % 3]!, p[i]!));
+  if (!p.length) return [0, 0, 0, 0];
+  const c = [0, 1, 2].map((k) => (lo[k]! + hi[k]!) / 2) as [number, number, number];
+  let r = 0;
+  for (let i = 0; i < p.length; i += 3) r = Math.max(r, Math.hypot(p[i]! - c[0], p[i + 1]! - c[1], p[i + 2]! - c[2]));
+  return [...c, r];
+}
+
 /** Positions written over in place, from `vertexOffset`. */
 export function updateMeshPositions(engine: Engine, mesh: Mesh, positions: Float32Array, vertexOffset = 0, count?: number, sourceOffset = 0): void {
   const n = count ?? positions.length / 3 - sourceOffset;
+  const s = mesh._gpu.sphere;
+  for (let i = sourceOffset; i < sourceOffset + n; i++) s[3] = Math.max(s[3], Math.hypot(positions[i * 3]! - s[0], positions[i * 3 + 1]! - s[1], positions[i * 3 + 2]! - s[2]));
+  mesh._dirty.world = true;
+  engine._dirtyMeshes.add(mesh);
   engine._device.queue.writeBuffer(mesh._gpu.buffers.get("position")!, vertexOffset * 12, positions.buffer, positions.byteOffset + sourceOffset * 12, n * 12);
   mesh._changed(false);
 }
