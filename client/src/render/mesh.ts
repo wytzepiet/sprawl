@@ -3,8 +3,7 @@ import type { OwnPbrMaterial } from "./material";
 import { dirtyMaterials } from "./pass";
 import type { Scene } from "./scene";
 
-/** A vertex buffer, read as storage too where its instances are culled (`cull.ts`). */
-const VERTEX = GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+const VERTEX = GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST;
 
 /** What a mesh holds on the GPU: its buffers by the name the shaders know
  *  them by ("position", "normal", "uv", "color", "instances",
@@ -16,8 +15,8 @@ export interface MeshGpu {
   buffers: Map<string, GPUBuffer>;
   /** `drawIndexedIndirect`'s five words: the instance count changes without re-encoding. */
   args: GPUBuffer;
-  /** Its world, whether it is shaded, and its geometry's sphere (centre, radius). */
   world: GPUBuffer;
+  /** Its geometry's sphere, centre and radius, as its instances are culled (`cull.ts`). */
   sphere: [number, number, number, number];
   group: GPUBindGroup | null;
 }
@@ -40,6 +39,8 @@ export class Mesh {
   _scenes = new Set<Scene>();
   /** Bumped when what it is drawn with is new (`_remade`): its buffers, its material's bindings. */
   _version = 0;
+  /** The plugins' attributes as last given, read again as its instances are culled. */
+  _attributes = new Map<string, Float32Array>();
   /** What the GPU must be given before the next frame. */
   _dirty = { world: true, instances: false, colors: false };
   readonly position: { x: number; y: number; z: number };
@@ -91,7 +92,7 @@ export class Mesh {
     const gpu = this._gpu;
     if (this._dirty.world) {
       const p = this.position;
-      device.queue.writeBuffer(gpu.world, 0, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, p.x, p.y, p.z, 1, this.receiveShadows ? 1 : 0, 0, 0, 0, ...gpu.sphere]));
+      device.queue.writeBuffer(gpu.world, 0, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, p.x, p.y, p.z, 1, this.receiveShadows ? 1 : 0, 0, 0, 0]));
       this._dirty.world = false;
     }
     const ti = this.thinInstances;
@@ -150,8 +151,8 @@ export function createMeshFromData(
     vertexCount: positions.length / 3,
     index: buffer(engine, indices, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST),
     buffers,
-    args: buffer(engine, new Uint32Array([indices.length, 1, 0, 0, 0]), GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST),
-    world: engine._device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    args: buffer(engine, new Uint32Array([indices.length, 1, 0, 0, 0]), GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST),
+    world: engine._device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     sphere: sphereOf(positions),
     group: null,
   };
@@ -174,14 +175,13 @@ export function updateMeshPositions(engine: Engine, mesh: Mesh, positions: Float
   const n = count ?? positions.length / 3 - sourceOffset;
   const s = mesh._gpu.sphere;
   for (let i = sourceOffset; i < sourceOffset + n; i++) s[3] = Math.max(s[3], Math.hypot(positions[i * 3]! - s[0], positions[i * 3 + 1]! - s[1], positions[i * 3 + 2]! - s[2]));
-  mesh._dirty.world = true;
-  engine._dirtyMeshes.add(mesh);
   engine._device.queue.writeBuffer(mesh._gpu.buffers.get("position")!, vertexOffset * 12, positions.buffer, positions.byteOffset + sourceOffset * 12, n * 12);
   mesh._changed(false);
 }
 
 /** A plugin's attribute buffer, grown when it must be. */
 export function setMeshAttribute(engine: Engine, mesh: Mesh, name: string, data: Float32Array): void {
+  mesh._attributes.set(name, data);
   if (grow(mesh, name, data.byteLength)) mesh._remade();
   engine._device.queue.writeBuffer(mesh._gpu.buffers.get(name)!, 0, data.buffer, data.byteOffset, data.byteLength);
   mesh._changed(false);

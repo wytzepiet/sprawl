@@ -28,7 +28,8 @@ export interface Draw {
   pipeline: GPURenderPipeline;
   groups: GPUBindGroup[];
   buffers: GPUBuffer[];
-  /** How each buffer is laid out: which are per instance, and their strides. */
+  /** Each buffer's name and how it is laid out: which are per instance, and their strides. */
+  names: string[];
   layouts: GPUVertexBufferLayout[];
   mesh: Mesh;
 }
@@ -81,9 +82,12 @@ export class DrawList {
   }
 
   /** Its meshes' thin instances (or these meshes') culled to `vp`'s view, before a pass draws them. */
-  cull(encoder: GPUCommandEncoder, vp: ArrayLike<number>, meshes: Iterable<Mesh> = this.order) {
+  cull(vp: ArrayLike<number>, meshes: Iterable<Mesh> = this.order) {
     this.fresh();
-    this.culler?.run(encoder, vp, meshes);
+    if (!this.culler) return;
+    const began = performance.now();
+    this.culler.run(vp, meshes);
+    count("cullMs", performance.now() - began);
   }
 
   /** Each mesh drawn and its bundle (the probe's). */
@@ -153,7 +157,7 @@ export class DrawList {
     shared.forEach((g, i) => g && encoder.setBindGroup(i === 0 ? 0 : 3, g));
     encoder.setPipeline(d.pipeline);
     d.groups.forEach((g, i) => encoder.setBindGroup(i + 1, g));
-    const culled = this.culler && mesh.thinInstances && d.layouts.length ? this.culler.make(mesh, d.layouts, d.buffers) : { buffers: d.buffers, args: mesh._gpu.args };
+    const culled = this.culler && mesh.thinInstances && d.layouts.length ? this.culler.make(mesh, d.names, d.layouts, d.buffers) : { buffers: d.buffers, args: mesh._gpu.args };
     culled.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
     encoder.setIndexBuffer(mesh._gpu.index, "uint32");
     encoder.drawIndexedIndirect(culled.args, 0);
@@ -302,5 +306,5 @@ function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): 
     };
   });
   if (!pipeline) return pipeline;
-  return { pipeline, groups: [materialGroup(engine, m, c, groupLayouts[1]!), meshGroup(engine, mesh)], buffers: buffers as GPUBuffer[], layouts: c.vertexBuffers, mesh };
+  return { pipeline, groups: [materialGroup(engine, m, c, groupLayouts[1]!), meshGroup(engine, mesh)], buffers: buffers as GPUBuffer[], names: c.bufferOrder, layouts: c.vertexBuffers, mesh };
 }

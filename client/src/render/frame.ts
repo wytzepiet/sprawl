@@ -410,7 +410,7 @@ function makeFrame(scene: Scene): Frame {
       const shadowing = !!gen?.enabled && !!fit;
       if (shadowing && staticDue) {
         staticDue = false;
-        shadowStill.cull(encoder, fit!.caster);
+        shadowStill.cull(fit!.caster);
         shadowPass(encoder, maps!.still, shadowStill);
         relightDue = true;
         engine._drew = Math.max(engine._drew, 2);
@@ -458,7 +458,7 @@ function makeFrame(scene: Scene): Frame {
         const g = picture!.sets[1 - front]!;
         const load = next.done.size ? ("load" as const) : ("clear" as const);
         const { some, left } = gbuffer.share(next.done, next.frames--, next.vp);
-        gbuffer.cull(encoder, next.vp, some);
+        gbuffer.cull(next.vp, some);
         const pass = encoder.beginRenderPass({
           colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: load, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
           depthStencilAttachment: { view: g.depth.createView(), depthClearValue: 0, depthLoadOp: load, depthStoreOp: "store" },
@@ -553,7 +553,7 @@ type Begin = (e: { writes: GPURenderPassTimestampWrites; beginRenderPass(d: GPUR
  *  alone (all its chunks in one pass), each list whole, and an empty pass,
  *  timed by the GPU, told to the bench in us as `own.probe.<list>.<kind>`. */
 function probe(device: GPUDevice, lists: [string, DrawList, Begin][]) {
-  const kind = (name: string) => name.replace(/[-_]?-?\d+(,-?\d+)*$/, "").replace(/^chunk_-?\d+,-?\d+_/, "chunk_").replace(/^inst_house.*/, "inst_house").replace(/^inst_(shop|woodcutter|depot|farm|sawmill|quarry|flats)?.*/, "inst_$1");
+  const kind = (name: string) => name.replace(/[-_]?-?\d+(,-?\d+)*$/, "").replace(/^chunk_-?\d+,-?\d+_/, "chunk_").replace(/^inst_(house|shop|woodcutter|depot|farm|sawmill|quarry|flats)?.*/, "inst_$1");
   const jobs: [string, string, GPURenderBundle[], Begin][] = [];
   for (const [l, list, begin] of lists) {
     const by = new Map<string, GPURenderBundle[]>();
