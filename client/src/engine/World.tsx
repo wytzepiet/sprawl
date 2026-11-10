@@ -12,14 +12,15 @@ import {
   getEntity,
   getObjectsAt,
   reached,
+  type Change,
 } from "../state/gameObjects";
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
-import type { Operation, GameObjectEntry } from "../generated";
+import type { GameObjectEntry } from "../generated";
 
 import type { Building, RoadNode } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
-import { forgetCar, mountCar } from "./objects/CarObject";
+import { forgetCar, mountCar, pedal } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
 import { aim, placed, setPlaced } from "../ui/buildMode";
@@ -134,7 +135,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
    * its walls are mounted one by one; anything built, a road or a building,
    * has the town drawn again, and the trees make way.
    */
-  function processOps(ops: Operation[]) {
+  function processOps(ops: Change[]) {
     for (const op of ops) {
       const key = String(op.op === "Upsert" ? op.data.id : op.data);
       const existing = mounted.get(key);
@@ -150,6 +151,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
       // only joined, leaves it standing as it was.
       const same = now !== undefined && was === now;
       perfCount(`ops.${entry?.object.kind ?? "deleted"}`);
+      if (existing && entry && pedal(entry)) continue;
       // One that stands as it stood may still look otherwise, its shelves
       // bare or stocked, or its street newly joined to the world: its
       // colour, and the town not drawn again.

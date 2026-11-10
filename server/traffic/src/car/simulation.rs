@@ -1375,8 +1375,10 @@ fn settle(world: &mut Traffic, events: &mut EventQueue, h: &Here, trip: &Trip, o
         }
     }
 
-    let entry = if accel_changed || lanes_changed {
+    let entry = if lanes_changed {
         world.map.objects.get_mut(car_id)
+    } else if accel_changed {
+        world.map.objects.get_mut_pedal(car_id)
     } else {
         world.map.objects.get_mut_silent(car_id)
     };

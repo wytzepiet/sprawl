@@ -118,13 +118,14 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
 
 /// A message on to what the socket sends next: an update straight after
 /// another is merged into it, its ops after theirs and the rest as of the
-/// later; anything else keeps its place.
+/// later, the town as the later has it or else the earlier; anything else
+/// keeps its place.
 fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
     match (out.last_mut(), msg) {
         (Some(ServerMessage::Update(last)), ServerMessage::Update(su)) => {
             let mut ops = std::mem::take(&mut last.ops);
             ops.extend(su.ops);
-            *last = StateUpdate { ops, ..su };
+            *last = StateUpdate { ops, town: su.town.or(last.town.take()), island: su.island.or(last.island.take()), ..su };
         }
         (_, msg) => out.push(msg),
     }

@@ -54,13 +54,12 @@ function flush(force = false) {
   }
 }
 
-// Each message once the last is done: what comes while the wasm loads
-// (the bench's `RunTo`, a view's chunks) waits for the game, not lost. A
-// throw is thrown again outside the chain, for the page's `onerror`.
-let done: Promise<unknown> = Promise.resolve();
-self.onmessage = (e: MessageEvent<ToWorker>) =>
-  void (done = done.then(() => take(e.data)).catch((err) => setTimeout(() => { throw err; })));
-async function take(m: ToWorker) {
+// Each message after the one before: what comes while the game loads (the
+// bench's `RunTo`) waits for it rather than being dropped.
+let queue = Promise.resolve();
+self.onmessage = (e: MessageEvent<ToWorker>) => void (queue = queue.then(() => handle(e.data)));
+
+async function handle(m: ToWorker) {
   if (m.type === "open") {
     await init();
     web = new Web(m.name, m.text);

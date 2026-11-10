@@ -15,15 +15,20 @@ export function measure(points: P[]) {
     const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
     return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
   };
-  /** The first point at or past a distance along. */
+  /** The first point at or past a distance along: looked for among the
+   *  few round the one found last, where it is when that is a vehicle's
+   *  pose a frame on, or else along the whole. */
+  let last = 1;
   const index = (s: number) => {
     let lo = 1, hi = points.length - 1;
+    const a = Math.max(1, last - 4), b = Math.min(hi, last + 4);
+    if (d[a - 1] < s && s <= d[b]) (lo = a), (hi = b);
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
       if (d[mid] < s) lo = mid + 1;
       else hi = mid;
     }
-    return lo;
+    return (last = lo);
   };
   const at = (s: number): P => {
     if (s <= 0) {

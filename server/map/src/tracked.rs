@@ -19,6 +19,9 @@ pub struct Tracked {
     /// good, as a car's owner is.
     kinds: BTreeMap<BuildingKind, BTreeSet<EntityId>>,
     dirty: HashSet<EntityId>,
+    /// The vehicles whose driver only touched the pedal (`get_mut_pedal`):
+    /// those of them not also `dirty` are sent as a `Pedal`.
+    pedalled: HashSet<EntityId>,
     removed: Vec<EntityId>,
     persist_dirty: HashSet<EntityId>,
     persist_removed: Vec<EntityId>,
@@ -34,6 +37,7 @@ impl Tracked {
             fleets: HashMap::default(),
             kinds: BTreeMap::new(),
             dirty: HashSet::default(),
+            pedalled: HashSet::default(),
             removed: Vec::new(),
             persist_dirty: HashSet::default(),
             persist_removed: Vec::new(),
@@ -101,6 +105,16 @@ impl Tracked {
     }
 
 
+    /// A vehicle's trip, its pedal to be changed and nothing else of it:
+    /// its way stays as the client was last sent it.
+    pub fn get_mut_pedal(&mut self, id: EntityId) -> Option<&mut GameObjectEntry> {
+        if self.data.contains_key(&id) {
+            self.pedalled.insert(id);
+            self.persist_dirty.insert(id);
+        }
+        self.data.get_mut(&id)
+    }
+
     pub fn get_mut_silent(&mut self, id: EntityId) -> Option<&mut GameObjectEntry> {
         self.data.get_mut(&id)
     }
@@ -126,17 +140,20 @@ impl Tracked {
             self.roads.remove(&id);
             self.things.remove(&id);
             self.dirty.remove(&id);
+            self.pedalled.remove(&id);
             self.removed.push(id);
             self.persist_dirty.remove(&id);
             self.persist_removed.push(id);
         }
     }
 
-    /// Returns (changed_ids, removed_ids) and clears both sets. For network flush.
-    pub fn drain_dirty(&mut self) -> (Vec<EntityId>, Vec<EntityId>) {
+    /// What changed, what only had its pedal touched, and what went, each
+    /// cleared. For network flush.
+    pub fn drain_dirty(&mut self) -> (Vec<EntityId>, Vec<EntityId>, Vec<EntityId>) {
+        let pedalled: Vec<EntityId> = self.pedalled.drain().filter(|id| !self.dirty.contains(id)).collect();
         let changed: Vec<EntityId> = self.dirty.drain().collect();
         let removed = std::mem::take(&mut self.removed);
-        (changed, removed)
+        (changed, pedalled, removed)
     }
 
     /// Returns (changed_ids, removed_ids) for persistence and clears the persist sets.

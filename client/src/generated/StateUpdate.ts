@@ -4,4 +4,10 @@ import type { Clock } from "./Clock";
 import type { Operation } from "./Operation";
 import type { Town } from "./Town";
 
-export type StateUpdate = { ops: Array<Operation>, clock: Clock, town: Town, island: ChunkBounds, };
+export type StateUpdate = { ops: Array<Operation>, clock: Clock, 
+/**
+ * The town and the island's extent, where they are news to the
+ * client: the first update, and any after the town changed. Most
+ * updates are a car's pedal, twenty a second, and the town as it was.
+ */
+town: Town | null, island: ChunkBounds | null, };

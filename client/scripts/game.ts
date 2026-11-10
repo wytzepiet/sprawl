@@ -1,6 +1,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { PORT } from "./lib";
 import { CHUNK_SIZE } from "../src/engine/objects/terrainGeometry";
+import { pedalled } from "../src/state/gameObjects";
 import type { ClientMessage, GameObjectEntry, ServerMessage } from "../src/generated";
 
 /**
@@ -19,7 +20,11 @@ export async function connect(o: { tiles: [number, number][]; pad?: number; play
     const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as ServerMessage;
     if (msg.type === "Update") {
       Object.assign(clock, msg.data.clock, { heard: Date.now() });
-      for (const op of msg.data.ops) op.op === "Upsert" ? entities.set(op.data.id, op.data) : entities.delete(op.data);
+      for (const op of msg.data.ops) {
+        if (op.op === "Delete") entities.delete(op.data);
+        else if (op.op === "Upsert") entities.set(op.data.id, op.data);
+        else if (entities.has(op.data.id)) entities.set(op.data.id, pedalled(entities.get(op.data.id), op.data)!);
+      }
     }
     o.hear?.(msg);
   };

@@ -49,8 +49,8 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
  *  `InstancePool`), drawn every frame if what is in it moves and into the
  *  still picture if not; its key. */
 export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true, moves = true): string {
-  pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
-  const bucket = pool.finish(key)!;
+  if (pool.finish(key)) return key;
+  const bucket = pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
   bucket.bevel.width = ROUNDING;
   lacquer(bucket.material, "car");
   return key;
@@ -119,14 +119,10 @@ function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { ke
  *  distance eased (`follow`) and lifted over decks and slopes. */
 export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: EngineContext): () => void {
   const id = entry.id;
-  const car = entry.object.data as Car;
-  const trip = follow(id, car);
-  const now = () => {
-    const t = simNow();
-    const along = trip?.(t);
-    return { m: moment(id, car, t, along?.dist), lift: along?.lift ?? 0 };
-  };
-  const first = now();
+  let car = entry.object.data as Car;
+  let trip = follow(id, car);
+  const now = (t: number, along = trip?.(t)) => ({ m: moment(id, car, t, along?.dist), lift: along?.lift ?? 0, dist: along?.dist });
+  const first = now(simNow());
   if (!first.m) return () => {};
   const moving = !!(car.trip || car.run || car.sail);
   const look = bodyOf(pool, id, car, !moving);
@@ -137,7 +133,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   // harbour's forklifts change it (`deckSeen`).
   const deck: { key: string; it: ReturnType<typeof place> }[] = [];
   const stow = (m: Moment) => {
-    const want = (m.deck ?? []).map((d) => ({ ...d, key: `${d.good ?? d.settler}@${d.at.at[0].toFixed(3)},${d.at.at[1].toFixed(3)}` }));
+    if (!m.deck) return;
+    const want = m.deck.map((d) => ({ ...d, key: `${d.good ?? d.settler}@${d.at.at[0].toFixed(3)},${d.at.at[1].toFixed(3)}` }));
     if (moving && want.length === deck.length) return want.forEach((d, k) => deck[k].it.move(d.at));
     const keep = new Map(deck.splice(0).map((d) => [d.key, d.it]));
     for (const d of want) {
@@ -169,6 +166,9 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedL, k), lift));
   };
   load(first.m, first.lift, simNow());
+  // Where it was last drawn: a trip's car that has come no further along
+  // its way than this is drawn there still, its pose its distance's.
+  let last = first;
   carPoses.set(id, first.m.body.at);
   parts.set(id, [...body.parts, ...(bed?.parts ?? [])]);
   // On a run the farm's field turns behind the tractor to what the job
@@ -189,9 +189,12 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     const clock = performance.now();
     if (at && !ctx.cull.sees(at[0], at[1]) && clock - worked < OUT_OF_VIEW_MS) return;
     worked = clock;
-    const { m, lift } = now();
+    const t = simNow();
+    const along = trip?.(t);
+    if (along && last.m && Math.abs(along.dist - (last.dist ?? NaN)) < STILL) return load(last.m, last.lift, t);
+    const { m, lift } = (last = now(t, along));
     if (!m) return;
-    load(m, lift, simNow());
+    load(m, lift, t);
     stow(m);
     if (!moving) return;
     body.move(m.body, lift);
@@ -199,8 +202,10 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     carPoses.set(id, m.body.at);
     light(m, lift);
   }) : () => {};
+  pedals.set(id, (next) => !!next.trip && next.trip.route_positions === car.trip?.route_positions && ((car = next), (trip = follow(id, car)), true));
   return () => {
     stop();
+    pedals.delete(id);
     unbeam(id);
     for (const it of [body, bed, ...deck.map((d) => d.it), ...aboard.map((a) => a.it)]) it?.remove();
     if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
@@ -208,6 +213,13 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     parts.delete(id);
   };
 }
+
+/** Each mounted car on a trip, told a touch of its pedal (`pedalled`): its
+ *  trip's place and pace taken up, its way and all else as it was. */
+const pedals = new Map<number, (car: Car) => boolean>();
+/** Whether a car's change is only its pedal, and its mount has taken it
+ *  up: else it is to be mounted again. */
+export const pedal = (entry: GameObjectEntry) => entry.object.kind === "Car" && !!pedals.get(entry.id)?.(entry.object.data);
 
 /** Each car on a trip: where it is drawn along its drive, kept across the
  *  server's updates, which are just when its pedal changes. */
@@ -266,6 +278,9 @@ function liftOf(t: Car["trip"] & {}): (dist: number) => number {
   };
 }
 
+/** How little a trip's car may come along its way, in tiles, and be drawn
+ *  where it was: far less than a pixel at any zoom. */
+const STILL = 1e-4;
 /** How often a vehicle out of view is worked out. */
 const OUT_OF_VIEW_MS = 400;
 

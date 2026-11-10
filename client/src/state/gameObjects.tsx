@@ -21,6 +21,7 @@ import type { Building,
   ChunkBounds,
   ChunkCoord,
   Operation,
+  Pedal,
   TerrainChunk,
   ServerMessage,
 } from "../generated";
@@ -61,7 +62,8 @@ let buildingListener: BuildingListener | null = null;
 export function setBuildingListener(fn: BuildingListener | null) {
   buildingListener = fn;
 }
-function trackSign(entry: GameObjectEntry | undefined, id: number) {
+/** Whether it carried a sign, or does now. */
+function trackSign(entry: GameObjectEntry | undefined, id: number): boolean {
   const was = signedEntries.has(id);
   const before = signedEntries.get(id);
   if (entry?.object.kind === "Building") buildingListener?.(before, entry);
@@ -74,7 +76,7 @@ function trackSign(entry: GameObjectEntry | undefined, id: number) {
   } else {
     signedEntries.delete(id);
   }
-  if (was || signedEntries.has(id)) setSignsVersion((v) => v + 1);
+  return was || signedEntries.has(id);
 }
 const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
 /**
@@ -133,7 +135,7 @@ export function listenHints(fn: HintListener): () => void {
 
 // --- Ops listener for ECS ---
 
-type OpsListener = (ops: Operation[]) => void;
+type OpsListener = (ops: Change[]) => void;
 let opsListener: OpsListener | null = null;
 export function setOpsListener(fn: OpsListener | null) {
   opsListener = fn;
@@ -176,7 +178,7 @@ const [builtVersion, setBuiltVersion] = createSignal(0);
 export { builtVersion };
 
 /** An op kept: the entity, and where it stands. Nobody told. */
-function keep(op: Operation) {
+function keep(op: Change) {
   const id = op.op === "Upsert" ? op.data.id : op.data;
   const existing = entities.get(String(id));
   if (existing?.position) {
@@ -197,22 +199,23 @@ function keep(op: Operation) {
 
 /** Ops kept, and everyone told: the signs, what is built, the scene.
  *  `was`, the kind each entity was before them. */
-function announce(ops: Operation[], was: (string | undefined)[]) {
-  let built = false;
+function announce(ops: Change[], was: (string | undefined)[]) {
+  let [built, signs] = [false, false];
   ops.forEach((op, i) => {
     const is = op.op === "Upsert" ? op.data.object.kind : undefined;
     if ([was[i], is].some((k) => k === "RoadNode" || k === "Building")) built = true;
-    if (is === "RoadNode" || was[i] === "RoadNode") setSignsVersion((v) => v + 1);
-    trackSign(op.op === "Upsert" ? op.data : undefined, op.op === "Upsert" ? op.data.id : op.data);
+    if (trackSign(op.op === "Upsert" ? op.data : undefined, idOf(op)) || is === "RoadNode" || was[i] === "RoadNode") signs = true;
   });
+  // Once for them all: every sign is looked at again on it.
+  if (signs) setSignsVersion((v) => v + 1);
   if (built) setBuiltVersion((v) => v + 1);
   if (ops.length) opsListener?.(ops);
 }
 
 const kindOf = (id: number) => entities.get(String(id))?.object.kind;
-const idOf = (op: Operation) => (op.op === "Upsert" ? op.data.id : op.data);
+const idOf = (op: Change) => (op.op === "Upsert" ? op.data.id : op.data);
 
-function applyOps(ops: Operation[]) {
+function applyOps(ops: Change[]) {
   const was = ops.map((op) => kindOf(idOf(op)));
   for (const op of ops) keep(op);
   announce(ops, was);
@@ -240,7 +243,7 @@ export function guess(g: Guess) {
 /** The game's ops, under what the hand guessed: an entity a guess
  *  changed keeps the guess shown, and what the game said of it is put
  *  by; then every guess made again on what the game now says. */
-function applyHeard(ops: Operation[]) {
+function applyHeard(ops: Change[]) {
   if (!guesses.length && !said.size) return applyOps(ops);
   const built = (k: string | undefined) => k === "RoadNode" || k === "Building";
   const stirs = ops.some((op) => said.has(idOf(op)) || built(kindOf(idOf(op))) || (op.op === "Upsert" && built(op.data.object.kind)));
@@ -287,7 +290,7 @@ function reguess() {
   }
   // An entity the guesses leave as the game said it is no longer theirs.
   for (const [id, e] of said) if (JSON.stringify(e ?? undefined) === JSON.stringify(entities.get(String(id)))) said.delete(id);
-  const ops: Operation[] = [];
+  const ops: Change[] = [];
   const was: (string | undefined)[] = [];
   for (const [id, e] of before) {
     const now = entities.get(String(id));
@@ -302,9 +305,29 @@ function reguess() {
 const OPS_A_PART = 64;
 function* applying(ops: Operation[]) {
   for (let i = 0; i < ops.length; i += OPS_A_PART) {
-    applyHeard(ops.slice(i, i + OPS_A_PART));
+    applyHeard(driven(ops.slice(i, i + OPS_A_PART)));
     yield;
   }
+}
+
+/** What the game said of an entity, whole or gone. */
+export type Change = Exclude<Operation, { op: "Pedal" }>;
+
+/** Ops as they land, each pedal as the vehicle it moves (`pedalled`): a
+ *  message says one thing of an entity, so the one held is the one moved. */
+function driven(ops: Operation[]): Change[] {
+  return ops.flatMap((op): Change[] => {
+    if (op.op !== "Pedal") return [op];
+    const data = pedalled(entities.get(String(op.data.id)), op.data);
+    return data ? [{ op: "Upsert", data }] : [];
+  });
+}
+
+/** A vehicle on a trip, its pedal touched: its trip at the pedal's place
+ *  and pace, and its way, every array of it, as it was. */
+export function pedalled(e: GameObjectEntry | undefined, { id: _, position, ...pedal }: Pedal): GameObjectEntry | undefined {
+  if (e?.object.kind !== "Car" || !e.object.data.trip) return undefined;
+  return { ...e, position, object: { kind: "Car", data: { ...e.object.data, trip: { ...e.object.data.trip, ...pedal } } } };
 }
 
 // --- Context (thin — just what UI needs) ---
@@ -334,8 +357,8 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
-        setIsland(msg.data.island);
-        setTown(msg.data.town);
+        if (msg.data.island) setIsland(msg.data.island);
+        if (msg.data.town) setTown(msg.data.town);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops));
         break;
