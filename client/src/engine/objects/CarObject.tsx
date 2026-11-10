@@ -121,12 +121,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const id = entry.id;
   const car = entry.object.data as Car;
   const trip = follow(id, car);
-  const now = () => {
-    const t = simNow();
-    const along = trip?.(t);
-    return { m: moment(id, car, t, along?.dist), lift: along?.lift ?? 0 };
-  };
-  const first = now();
+  const now = (t: number, along = trip?.(t)) => ({ m: moment(id, car, t, along?.dist), lift: along?.lift ?? 0, dist: along?.dist });
+  const first = now(simNow());
   if (!first.m) return () => {};
   const moving = !!(car.trip || car.run || car.sail);
   const look = bodyOf(pool, id, car, !moving);
@@ -169,6 +165,9 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedL, k), lift));
   };
   load(first.m, first.lift, simNow());
+  // Where it was last drawn: a trip's car that has come no further along
+  // its way than this is drawn there still, its pose its distance's.
+  let last = first;
   carPoses.set(id, first.m.body.at);
   parts.set(id, [...body.parts, ...(bed?.parts ?? [])]);
   // On a run the farm's field turns behind the tractor to what the job
@@ -189,9 +188,12 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     const clock = performance.now();
     if (at && !ctx.cull.sees(at[0], at[1]) && clock - worked < OUT_OF_VIEW_MS) return;
     worked = clock;
-    const { m, lift } = now();
+    const t = simNow();
+    const along = trip?.(t);
+    if (along && last.m && Math.abs(along.dist - (last.dist ?? NaN)) < STILL) return load(last.m, last.lift, t);
+    const { m, lift } = (last = now(t, along));
     if (!m) return;
-    load(m, lift, simNow());
+    load(m, lift, t);
     stow(m);
     if (!moving) return;
     body.move(m.body, lift);
@@ -266,6 +268,9 @@ function liftOf(t: Car["trip"] & {}): (dist: number) => number {
   };
 }
 
+/** How little a trip's car may come along its way, in tiles, and be drawn
+ *  where it was: far less than a pixel at any zoom. */
+const STILL = 1e-4;
 /** How often a vehicle out of view is worked out. */
 const OUT_OF_VIEW_MS = 400;
 
