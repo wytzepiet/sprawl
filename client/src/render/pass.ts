@@ -69,6 +69,14 @@ export class DrawList {
     this.engine.drawCallCount += this.bundles.length;
   }
 
+  /** Each mesh drawn and its bundle (the probe's). */
+  bundlesOf(): [Mesh, GPURenderBundle][] {
+    return [...this.drawn].flatMap((m) => {
+      const e = this.encoded.get(m);
+      return e ? [[m, e.bundle] as [Mesh, GPURenderBundle]] : [];
+    });
+  }
+
   private gather() {
     this.dirty = false;
     this.waiting = -1;

@@ -493,8 +493,49 @@ function makeFrame(scene: Scene): Frame {
       pass.end();
       count("frames", 1);
       count("frameMs", performance.now() - began);
+      if (PROBE && now - probedAt > 60_000 && now > 40_000 && picture && maps) {
+        probedAt = now;
+        probe(device, [
+          ["g", gbuffer, (e) => e.beginRenderPass({
+            colorAttachments: [picture!.albedo, picture!.normal, picture!.extra].map((t) => ({ view: t.createView(), loadOp: "clear" as const, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
+            depthStencilAttachment: { view: picture!.depth.createView(), depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" },
+            timestampWrites: e.writes,
+          })],
+          ["s", shadowStill, (e) => e.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: layerView(maps!.still), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" }, timestampWrites: e.writes })],
+        ]);
+      }
     },
   };
+}
+
+const PROBE = knobs.has("probe");
+let probedAt = -Infinity;
+type Begin = (e: { beginRenderPass(d: GPURenderPassDescriptor): GPURenderPassEncoder; writes: GPURenderPassTimestampWrites }) => GPURenderPassEncoder;
+/** `?probe`: each mesh of the G-buffer and the still map drawn alone, and
+ *  each list whole, timed by the GPU, told to the bench in us as
+ *  `own.probe.<list>.<mesh kind>`. */
+function probe(device: GPUDevice, lists: [string, DrawList, Begin][]) {
+  const jobs = lists.flatMap(([l, list, begin]) => [...list.bundlesOf().map(([m, b]) => [l, m.name.replace(/[-_]?\d+(,-?\d+)*$/, ""), [b], begin] as const), [l, "ALL", list.bundlesOf().map(([, b]) => b), begin] as const]);
+  const n = jobs.length;
+  const set = device.createQuerySet({ type: "timestamp", count: 2 * n });
+  const resolve = device.createBuffer({ size: 16 * n, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+  const read = device.createBuffer({ size: 16 * n, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const encoder = device.createCommandEncoder();
+  jobs.forEach(([, , bundles, begin], i) => {
+    const pass = begin({ beginRenderPass: (d) => encoder.beginRenderPass(d), writes: { querySet: set, beginningOfPassWriteIndex: 2 * i, endOfPassWriteIndex: 2 * i + 1 } });
+    pass.executeBundles(bundles);
+    pass.end();
+  });
+  encoder.resolveQuerySet(set, 0, 2 * n, resolve, 0);
+  encoder.copyBufferToBuffer(resolve, 0, read, 0, 16 * n);
+  device.queue.submit([encoder.finish()]);
+  void read.mapAsync(GPUMapMode.READ).then(() => {
+    const t = new BigInt64Array(read.getMappedRange());
+    jobs.forEach(([l, name], i) => count(`probe.${l}.${name}`, Number(t[2 * i + 1]! - t[2 * i]!) / 1000));
+    read.destroy();
+    resolve.destroy();
+    set.destroy();
+  });
 }
 
 /**
