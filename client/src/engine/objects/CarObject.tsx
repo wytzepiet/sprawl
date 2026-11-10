@@ -133,7 +133,8 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   // harbour's forklifts change it (`deckSeen`).
   const deck: { key: string; it: ReturnType<typeof place> }[] = [];
   const stow = (m: Moment) => {
-    const want = (m.deck ?? []).map((d) => ({ ...d, key: `${d.good ?? d.settler}@${d.at.at[0].toFixed(3)},${d.at.at[1].toFixed(3)}` }));
+    if (!m.deck) return;
+    const want = m.deck.map((d) => ({ ...d, key: `${d.good ?? d.settler}@${d.at.at[0].toFixed(3)},${d.at.at[1].toFixed(3)}` }));
     if (moving && want.length === deck.length) return want.forEach((d, k) => deck[k].it.move(d.at));
     const keep = new Map(deck.splice(0).map((d) => [d.key, d.it]));
     for (const d of want) {
