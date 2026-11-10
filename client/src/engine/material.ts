@@ -32,8 +32,6 @@ const OPEN: MaterialPlugin = {
 const FADE_REACH = 2.5;
 const FADE_ABOVE = 0.25;
 const FADE_MOST = 0.75;
-/** A trial (`?fade=0`): no fade, to time what its discard costs. */
-const FADE = new URLSearchParams(globalThis.location?.search ?? "").get("fade") !== "0";
 /** No higher than this, in tiles, stands anything that fades. */
 const FADE_TOP = 12;
 /** What fades stands still, drawn into the still picture, which is drawn
@@ -85,7 +83,7 @@ function close(tint: { value: Rgb }): MaterialPlugin {
         ? {
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let townOff = input.worldPos.xy - material.townFade.xy - material.townFade.zw * input.worldPos.z;
 let townFaded = (1. - smoothstep(material.townFadeR * 0.6, material.townFadeR + 1e-4, length(townOff))) * step(${FADE_ABOVE.toFixed(3)}, input.worldPos.z) * ${FADE_MOST.toFixed(3)};
-${FADE ? "if (townFaded > fract(52.9829189 * fract(dot(input.clipPos.xy, vec2f(0.06711056, 0.00583715))))) { discard; }" : ""}
+if (townFaded > fract(52.9829189 * fract(dot(input.clipPos.xy, vec2f(0.06711056, 0.00583715))))) { discard; }
 baseColor = pow(max(baseColor * material.townTint.rgb, vec3f(0.0)), vec3f(2.2));
 roughness = mix(roughness, ${GLOSS.toFixed(3)}, townShine);`,
           }

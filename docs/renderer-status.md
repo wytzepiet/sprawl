@@ -27,9 +27,10 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   35% of the picture draws the whole picture into a second G-buffer, a
   share of its meshes a frame over six frames (three while the view moves,
   three for a change; `?spread=`), shown once whole. A whole picture close
-  in on 30-metro costs ~30 ms of a 3070's time (gpu-42803739738: the
-  houses' leaves 5, their walls 5, pavement 7, hedges 5, the still map
-  4-10; Lite's whole frame there ~7.6). Relight into rgba16float on each picture shown or still
+  in on 30-metro costs 6-8.5 ms of a 3070's time, the still map 1-2 of it
+  (gpu-42808667842; timed a mesh a pass, `?split=1`, the shares read
+  leaves 5, walls 5, pavement 7, hedges 5, but every pass loads and stores
+  the whole G-buffer, so their sum is several times the real cost). Relight into rgba16float on each picture shown or still
   map draw and every `?relight=` ms (1000),
   composite (still.ts's `find`, car shadows exact in linear, the still map
   and the surface read only where the live map shades, headlights, tone map
@@ -54,8 +55,9 @@ ours or Lite's per symbol; ours is `client/src/render/`.
 
 ## Measured on a desktop card (RunPod, 30-metro at 65,-46,14, CPU 4× throttled)
 
-- A whole G-buffer costs ~30 ms of the GPU (`?probe`, since removed, drew
-  each mesh alone with timestamps: the 36 house meshes ~0.5 ms each, ~18 in
+- A whole G-buffer costs 6-8.5 ms of the GPU (gpu-42808667842). Drawn a mesh
+  a pass it read ~30 (`?probe`, since removed, and `?split=1`; each pass
+  loads and stores the whole G-buffer, so read the shares, not the sum: the 36 house meshes ~0.5 ms each, ~18 in
   all, their instances town-wide; pavement 6, hedges 4, ground 2, road
   lines 1.5; the still map ~5 in all). A frame with a whole picture in it
   was 40–60 ms; one without, 1–1.7 ms; a relight 3, a still map 10–14 with
@@ -123,3 +125,10 @@ each, against ~4 ms for a whole list before.
   across plugin sets.
 - G-buffer albedo is linear rgba8unorm: dark colours could band; storing it
   as sqrt would cost nothing.
+
+- Tried and dropped (2026-11-10, same city and route): no alpha test and no
+  fade discard in the G-buffer (`gpu-42808673272`), and what stands up drawn
+  before what lies flat (`gpu-42809305983`). Neither drew a picture faster:
+  against the still map's own time on the same pod, both came out 10-40%
+  slower, and pods differ by twice that between runs, so a gain under ~2×
+  does not show on one run each.

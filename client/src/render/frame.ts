@@ -48,17 +48,13 @@ const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
 /** A picture is drawn over this many frames (`?spread=`), half as many
  *  while the view moves (the screen is past the edge of the last in some
  *  five frames at a pan's fastest), its meshes a share each, into a
- *  G-buffer of its own while the last is shown: a town's picture is 30 ms
- *  of a desktop card's time, and drawn in one frame it dropped frames. */
+ *  G-buffer of its own while the last is shown: a city's picture is 6 to 8 ms
+ *  of a desktop card's time, a phone's several times that. */
 const SPREAD = Math.max(1, Number(knobs.get("spread") ?? 6));
-/** A trial (`?tall=1`): what stands up (a house, a hedge, a tree, its
- *  shape over half a tile high) drawn into the picture before what lies
- *  flat (the ground, roads, paving, in their own order among themselves),
- *  so the GPU can skip the flat pixels the tall ones already cover. */
-const TALL_FIRST = knobs.get("tall") === "1";
-const tall = (m: Mesh) => m._local[5]! - m._local[2]! > 0.5;
-/** Timed, a picture's meshes each in a pass of their own (`?split=0`: not, its whole cost as it is). */
-const SPLIT = knobs.get("split") !== "0";
+/** Timed with `?split=1`, a picture's meshes each in a pass of their own,
+ *  to tell each kind's share; each pass loads and stores the whole G-buffer,
+ *  so the picture's own total is then several times what it costs. */
+const SPLIT = knobs.get("split") === "1";
 /** Something built or taken away is drawn again where it is, in the
  *  picture shown, in one frame (`patch.ts`), if that is at most `PATCH` of
  *  the picture; else a picture over `CHANGED` frames. Either begun the
@@ -232,9 +228,9 @@ function makeFrame(scene: Scene): Frame {
   }
 
   // What each pass draws.
-  const ordered = (wants: (m: Mesh) => boolean, tallFirst = false) =>
+  const ordered = (wants: (m: Mesh) => boolean) =>
     function* (): Iterable<[Mesh, unknown]> {
-      const list = scene.meshes.filter(wants).sort((a, b) => (tallFirst ? +!tall(a) - +!tall(b) : 0) || a.renderOrder - b.renderOrder);
+      const list = scene.meshes.filter(wants).sort((a, b) => a.renderOrder - b.renderOrder);
       for (const m of list) yield [m, m.material];
     };
   const wants = {
@@ -245,7 +241,7 @@ function makeFrame(scene: Scene): Frame {
   };
   const shadowStill = new DrawList(engine, "shadow", SHADOW, ordered(wants.shadowStill), () => [sunUbo.group]);
   const shadowLive = new DrawList(engine, "shadow", SHADOW, ordered(wants.shadowLive), () => [sunUbo.group]);
-  const gbuffer = new DrawList(engine, "gbuffer", GBUFFER, ordered(wants.gbuffer, TALL_FIRST), () => [eyeUbo.group]);
+  const gbuffer = new DrawList(engine, "gbuffer", GBUFFER, ordered(wants.gbuffer), () => [eyeUbo.group]);
   const forward = new DrawList(engine, "forward", forwardTo(surface.format), ordered(wants.forward), () => [camera.group, resources!.forward]);
   const lists: [DrawList, (m: Mesh) => boolean][] = [
     [shadowStill, wants.shadowStill],

@@ -271,9 +271,6 @@ const HOOKS = {
 } as const;
 type Hook = (typeof HOOKS)[keyof typeof HOOKS];
 
-/** A trial (`?cut=0`): the G-buffer's alpha test left out, to time what it costs. */
-const CUT = new URLSearchParams(globalThis.location?.search ?? "").get("cut") !== "0";
-
 const FLOATS: Record<string, number> = { f32: 1, "vec2<f32>": 2, "vec3<f32>": 3, "vec4<f32>": 4 };
 
 /** Each hook's code, in priority order; the vertex hooks from the vertex
@@ -434,7 +431,7 @@ var color = emissive + vec3f(1.0);
 ${h.NI}
 _r_c1 = color;
 }
-${CUT ? "if (!(alpha > 0.4)) { discard; }" : ""}
+if (!(alpha > 0.4)) { discard; }
 let _r_lit = _r_c1 - _r_c0;
 let _r_glow = max(_r_c0, vec3f(0.0));
 return _r_GBuffer(vec4f(baseColor, (_r_lit.r + _r_lit.g + _r_lit.b) / 3.0), vec4f(N * 0.5 + 0.5, roughness), vec4f(_r_glow / (1.0 + _r_glow), metallic));
