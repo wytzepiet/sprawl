@@ -54,8 +54,13 @@ function flush(force = false) {
   }
 }
 
-self.onmessage = async (e: MessageEvent<ToWorker>) => {
-  const m = e.data;
+// Each message once the last is done: what comes while the wasm loads
+// (the bench's `RunTo`, a view's chunks) waits for the game, not lost. A
+// throw is thrown again outside the chain, for the page's `onerror`.
+let done: Promise<unknown> = Promise.resolve();
+self.onmessage = (e: MessageEvent<ToWorker>) =>
+  void (done = done.then(() => take(e.data)).catch((err) => setTimeout(() => { throw err; })));
+async function take(m: ToWorker) {
   if (m.type === "open") {
     await init();
     web = new Web(m.name, m.text);
@@ -79,4 +84,4 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
   else if (m.type === "note") web.note(m.note);
   else if (m.type === "replay") return post({ type: "replay", json: web.replay() });
   if (m.type !== "msg") flush(true);
-};
+}
