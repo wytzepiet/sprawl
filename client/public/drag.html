@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Drag test</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #eee; font: 14px system-ui, sans-serif; touch-action: none; user-select: none; }
+  #stage { position: fixed; inset: 0; }
+  #stage > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #dom { background-image: linear-gradient(#0000 calc(100% - 2px), #fff4 0), linear-gradient(90deg, #0000 calc(100% - 2px), #fff4 0), conic-gradient(#2a6 25%, #284 0 50%, #2a6 0 75%, #284 0); background-size: 64px 64px, 64px 64px, 256px 256px; will-change: transform; inset: -2000px; width: auto; height: auto; }
+  #bar { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 1; }
+  #bar button { background: #000c; color: #eee; border: 1px solid #555; border-radius: 8px; padding: 8px 10px; font: inherit; cursor: pointer; }
+  #bar button.on { background: #eee; color: #000; }
+  #note { position: fixed; bottom: 12px; left: 12px; right: 12px; background: #000c; padding: 8px 10px; border-radius: 8px; z-index: 1; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="bar"></div>
+<div id="note"></div>
+<script type="module">
+// The same green grid, dragged, drawn six ways: which one stays under the mouse?
+const ways = {
+  dom: "Plain page: a CSS transform, moved by the browser's compositor. The floor any page can reach.",
+  canvas: "2D canvas, drawn again on each mouse move.",
+  desync: "2D canvas in low-latency mode (desynchronized): Chrome puts it on screen without the compositor.",
+  gpu: "WebGPU, drawn once a frame (requestAnimationFrame), as the game does.",
+  gpunow: "WebGPU, drawn straight away on each mouse move.",
+  predict: "WebGPU once a frame, aimed where the browser predicts the mouse will be (getPredictedEvents).",
+};
+const stage = document.getElementById("stage"), bar = document.getElementById("bar"), note = document.getElementById("note");
+let way = location.hash.slice(1) in ways ? location.hash.slice(1) : "dom";
+let off = { x: 0, y: 0 }, last = null, ahead = { x: 0, y: 0 }, stop = () => {};
+
+for (const k of Object.keys(ways)) {
+  const b = document.createElement("button");
+  b.textContent = k;
+  b.onclick = () => { location.hash = k; start(k); };
+  bar.append(b);
+}
+
+addEventListener("pointerdown", (e) => { if (e.target.closest("#bar")) return; last = { x: e.clientX, y: e.clientY }; stage.setPointerCapture?.(e.pointerId); });
+addEventListener("pointerup", () => (last = null));
+addEventListener("pointermove", (e) => {
+  if (!last) return;
+  off.x += e.clientX - last.x; off.y += e.clientY - last.y;
+  last = { x: e.clientX, y: e.clientY };
+  const p = e.getPredictedEvents?.().at(-1);
+  ahead = p ? { x: p.clientX - e.clientX, y: p.clientY - e.clientY } : { x: 0, y: 0 };
+  onMove();
+});
+let onMove = () => {};
+
+const dpr = () => Math.min(devicePixelRatio, 2);
+function sized(c) { c.width = innerWidth * dpr(); c.height = innerHeight * dpr(); return c; }
+
+async function start(k) {
+  stop(); stop = () => {}; onMove = () => {};
+  stage.replaceChildren();
+  way = k;
+  [...bar.children].forEach((b) => b.classList.toggle("on", b.textContent === k));
+  note.textContent = ways[k];
+  if (k === "dom") {
+    const d = Object.assign(document.createElement("div"), { id: "dom" });
+    stage.append(d);
+    onMove = () => (d.style.transform = `translate(${off.x % 256}px, ${off.y % 256}px)`);
+    onMove();
+    return;
+  }
+  if (k === "canvas" || k === "desync") {
+    const c = sized(document.createElement("canvas"));
+    stage.append(c);
+    const g = c.getContext("2d", { desynchronized: k === "desync", alpha: false });
+    const draw = () => {
+      const s = dpr(), t = 64 * s;
+      g.fillStyle = "#284"; g.fillRect(0, 0, c.width, c.height);
+      const ox = ((off.x * s) % (4 * t) + 4 * t) % (4 * t) - 4 * t, oy = ((off.y * s) % (4 * t) + 4 * t) % (4 * t) - 4 * t;
+      for (let y = oy, j = 0; y < c.height; y += t, j++) for (let x = ox, i = 0; x < c.width; x += t, i++) {
+        if ((Math.floor(i / 2) + Math.floor(j / 2)) % 2 === 0) { g.fillStyle = "#2a6"; g.fillRect(x, y, t, t); }
+        g.fillStyle = "#fff4"; g.fillRect(x + t - 2 * s, y, 2 * s, t); g.fillRect(x, y + t - 2 * s, t, 2 * s);
+      }
+    };
+    onMove = draw; draw();
+    return;
+  }
+  // WebGPU: one full-screen triangle drawing the grid from an offset uniform.
+  if (!navigator.gpu) return void (note.textContent = "No WebGPU here.");
+  const adapter = await navigator.gpu.requestAdapter(), device = await adapter.requestDevice();
+  if (way !== k) return;
+  const c = sized(document.createElement("canvas"));
+  stage.append(c);
+  const ctx = c.getContext("webgpu"), format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: "opaque" });
+  const module = device.createShaderModule({ code: `
+    @group(0) @binding(0) var<uniform> u: vec4f;
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+      let p = vec2f(f32((i << 1) & 2), f32(i & 2)); return vec4f(p * 2 - 1, 0, 1);
+    }
+    @fragment fn fs(@builtin(position) q: vec4f) -> @location(0) vec4f {
+      let p = (q.xy / u.z - u.xy);
+      let cell = floor(p / 128.0);
+      let light = (i32(cell.x) + i32(cell.y)) % 2 == 0;
+      var col = select(vec3f(0.13, 0.53, 0.27), vec3f(0.13, 0.67, 0.4), light);
+      let f = fract(p / 64.0) * 64.0;
+      if (f.x > 62.0 || f.y > 62.0) { col = mix(col, vec3f(1), 0.27); }
+      return vec4f(col, 1);
+    }` });
+  const pipe = device.createRenderPipeline({ layout: "auto", vertex: { module, entryPoint: "vs" }, fragment: { module, entryPoint: "fs", targets: [{ format }] } });
+  const ubo = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const group = device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubo } }] });
+  const draw = () => {
+    const a = k === "predict" ? ahead : { x: 0, y: 0 };
+    device.queue.writeBuffer(ubo, 0, new Float32Array([off.x + a.x + 1e5, off.y + a.y + 1e5, dpr(), 0]));
+    const enc = device.createCommandEncoder();
+    const pass = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 1] }] });
+    pass.setPipeline(pipe); pass.setBindGroup(0, group); pass.draw(3); pass.end();
+    device.queue.submit([enc.finish()]);
+  };
+  if (k === "gpunow") { onMove = draw; draw(); return; }
+  let on = true;
+  const tick = () => { if (!on) return; draw(); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+  stop = () => (on = false);
+}
+start(way);
+</script>
+</body>
+</html>
