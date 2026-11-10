@@ -1,5 +1,5 @@
 import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "@babylonjs/lite";
-import { SCENE_BYTES, SCENE_OFFSETS } from "./compose";
+import { FORWARD_GROUP, SCENE_BYTES, SCENE_OFFSETS, TILE } from "./compose";
 import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, RELIGHT } from "./deferred";
 import { brdfLut } from "./env";
 import type { Mesh } from "./mesh";
@@ -84,6 +84,9 @@ function makeFrame(scene: Scene): Frame {
   const lightData = new Float32Array(MAX_LIGHTS * LIGHT_FLOATS);
   const lightBuffer = device.createBuffer({ size: lightData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   let [lamps, beams, lightsSeen] = [0, 0, -1];
+  /** The lights by the screen's tiles, for the composite and the forward
+   *  pass; the lamps by the picture's, for the relight. */
+  const [screenBins, pictureBins] = [binner(device, lightData), binner(device, lightData)];
 
   // The targets, made as their sizes say.
   const texture = (w: number, h: number, format: GPUTextureFormat, layers = 1) =>
@@ -101,18 +104,7 @@ function makeFrame(scene: Scene): Frame {
 
   // The forward pass's group 3, and the relight's and composite's group, made again when what they bind is new.
   let resources: { key: string; forward: GPUBindGroup; relight: GPUBindGroup | null; composite: GPUBindGroup | null } | null = null;
-  const FORWARD_LAYOUT = layoutOf(device, {
-    entries: [
-      { binding: 0, visibility: 2, texture: { sampleType: "depth", viewDimension: "2d-array" } },
-      { binding: 1, visibility: 2, texture: { sampleType: "depth", viewDimension: "2d-array" } },
-      { binding: 2, visibility: 2, sampler: { type: "comparison" } },
-      { binding: 3, visibility: 2, buffer: { type: "read-only-storage" } },
-      { binding: 4, visibility: 2, texture: { viewDimension: "cube" } },
-      { binding: 5, visibility: 2, sampler: {} },
-      { binding: 6, visibility: 2, texture: {} },
-      { binding: 7, visibility: 2, sampler: {} },
-    ],
-  });
+  const FORWARD_LAYOUT = layoutOf(device, FORWARD_GROUP);
   const deferredEntries = (lit: boolean): GPUBindGroupLayoutEntry[] => [
     { binding: 0, visibility: 2, buffer: { type: "uniform" } },
     ...[1, 2, 3].map((binding) => ({ binding, visibility: 2, texture: { sampleType: "unfilterable-float" as const } })),
@@ -126,6 +118,7 @@ function makeFrame(scene: Scene): Frame {
     { binding: 11, visibility: 2, texture: {} },
     { binding: 12, visibility: 2, sampler: {} },
     ...(lit ? [{ binding: 13, visibility: 2, texture: { sampleType: "unfilterable-float" as const } }] : []),
+    { binding: 14, visibility: 2, buffer: { type: "read-only-storage" } },
   ];
   const [RELIGHT_LAYOUT, COMPOSITE_LAYOUT] = [layoutOf(device, { entries: deferredEntries(false) }), layoutOf(device, { entries: deferredEntries(true) })];
   const fullscreen = (code: string, layout: GPUBindGroupLayout, format: GPUTextureFormat, depth: boolean) => {
@@ -143,7 +136,7 @@ function makeFrame(scene: Scene): Frame {
 
   function bindResources() {
     const sky = scene._env?.view ?? blankSky.createView({ dimension: "cube" });
-    const key = [maps?.still.label, maps?.size, picture?.w, picture?.h, scene._env?.texture.label, !!scene._env].join();
+    const key = [maps?.still.label, maps?.size, picture?.w, picture?.h, scene._env?.texture.label, !!scene._env, screenBins.buffer.size, pictureBins.buffer.size].join();
     if (resources?.key === key) return;
     const [still, live] = [arrayView(maps!.still), arrayView(maps!.live)];
     const common = [
@@ -165,9 +158,9 @@ function makeFrame(scene: Scene): Frame {
     ];
     resources = {
       key,
-      forward: device.createBindGroup({ layout: FORWARD_LAYOUT, entries: common.map((e) => ({ binding: e.binding - 5, resource: e.resource })) }),
-      relight: gbuffer && device.createBindGroup({ layout: RELIGHT_LAYOUT, entries: [...gbuffer, ...common] }),
-      composite: gbuffer && device.createBindGroup({ layout: COMPOSITE_LAYOUT, entries: [...gbuffer, ...common, { binding: 13, resource: picture!.lit.createView() }] }),
+      forward: device.createBindGroup({ layout: FORWARD_LAYOUT, entries: [...common.map((e) => ({ binding: e.binding - 5, resource: e.resource })), { binding: 8, resource: { buffer: screenBins.buffer } }] }),
+      relight: gbuffer && device.createBindGroup({ layout: RELIGHT_LAYOUT, entries: [...gbuffer, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }] }),
+      composite: gbuffer && device.createBindGroup({ layout: COMPOSITE_LAYOUT, entries: [...gbuffer, ...common, { binding: 13, resource: picture!.lit.createView() }, { binding: 14, resource: { buffer: screenBins.buffer } }] }),
     };
     forward.dirty = true;
   }
@@ -279,7 +272,6 @@ function makeFrame(scene: Scene): Frame {
     u.set("screen", [w, h, 1 / w, 1 / h]);
     if (fit) u.set("shadowMatrix", fit.matrix);
     u.set("shadowInfo", [gen?.enabled ? 0 : 1, gen?.mapSize ?? 1, 1 / (gen?.mapSize ?? 1), 0]);
-    new Uint32Array(u.data.buffer)[SCENE_OFFSETS.get("lightCount")! / 4] = lamps + beams;
   }
 
   /** The lamps and headlights lit now, packed: lamps first, then headlights. */
@@ -367,6 +359,8 @@ function makeFrame(scene: Scene): Frame {
       const vp = Float32Array.from(getViewProjectionMatrix(cam, w / h) as ArrayLike<number>);
       const inverse = Float32Array.from((invertMat4(vp as never) ?? vp) as ArrayLike<number>);
       pack();
+      screenBins.fill(vp, w, h, lamps, beams);
+      bindResources();
 
       // The picture, when due.
       const here = `${cam.position.x},${cam.position.y},${cam.position.z},${cam.fov},${w},${h}`;
@@ -455,7 +449,6 @@ function makeFrame(scene: Scene): Frame {
       put("image", [ip.exposure, ip.contrast ?? 1, 0.8, 0]);
       put("screen", [w, h, 0, 0]);
       put("clear", [clear.r, clear.g, clear.b, 1]);
-      put("counts", [lamps, lamps, beams, 0]);
       if (scene._env) put("sh", scene._env.sh);
       device.queue.writeBuffer(frameBuffer, 0, frameData);
       if (relightDue || now - relitAt >= RELIGHT_MS) {
@@ -463,6 +456,8 @@ function makeFrame(scene: Scene): Frame {
         relightDue = false;
         relitAt = now;
         relightPipeline ??= fullscreen(RELIGHT, RELIGHT_LAYOUT, "rgba16float", false);
+        pictureBins.fill(stillVp!, picture!.w, picture!.h, lamps, 0);
+        bindResources();
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: picture!.lit.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
         pass.setPipeline(relightPipeline);
         pass.setBindGroup(0, resources!.relight!);
@@ -486,6 +481,77 @@ function makeFrame(scene: Scene): Frame {
       pass.end();
       count("frames", 1);
       count("frameMs", performance.now() - began);
+    },
+  };
+}
+
+/**
+ * Lights by the tiles of a target they may reach (compose.ts's `binsAt`):
+ * the box round each light's reach, seen through `vp`, marks the tiles it
+ * covers, so a pixel loops over its tile's few lights, not all of them.
+ * `lights` holds `lamps` then `beams`, `LIGHT_FLOATS` apiece.
+ */
+function binner(device: GPUDevice, lights: Float32Array) {
+  let data = new Uint32Array(0);
+  let buffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  let rects = new Int32Array(0);
+  let cursor = new Uint32Array(0);
+  /** The tiles last written with no lights at all: nothing to write while none come. */
+  let emptyFor = -1;
+  return {
+    get buffer() {
+      return buffer;
+    },
+    fill(vp: ArrayLike<number>, w: number, h: number, lamps: number, beams: number) {
+      const [tx, ty] = [Math.ceil(w / TILE), Math.ceil(h / TILE)];
+      const tiles = tx * ty;
+      const n = lamps + beams;
+      if (!n && emptyFor === tiles) return;
+      if (rects.length < n * 4) rects = new Int32Array(n * 8);
+      if (cursor.length < tiles * 2) cursor = new Uint32Array(tiles * 2);
+      cursor.fill(0, 0, tiles * 2);
+      // Each light's tiles, and how many each tile has of lamps and of headlights.
+      for (let i = 0; i < n; i++) {
+        const [px, py, pz, r] = [lights[i * LIGHT_FLOATS]!, lights[i * LIGHT_FLOATS + 1]!, lights[i * LIGHT_FLOATS + 2]!, lights[i * LIGHT_FLOATS + 3]!];
+        let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+        for (let k = 0; k < 8; k++) {
+          const [x, y, z] = [px + (k & 1 ? r : -r), py + (k & 2 ? r : -r), pz + (k & 4 ? r : -r)];
+          const cw = vp[3]! * x + vp[7]! * y + vp[11]! * z + vp[15]!;
+          if (cw <= 1e-6) {
+            [x0, y0, x1, y1] = [-Infinity, -Infinity, Infinity, Infinity];
+            break;
+          }
+          const sx = ((vp[0]! * x + vp[4]! * y + vp[8]! * z + vp[12]!) / cw) * 0.5 + 0.5;
+          const sy = 0.5 - ((vp[1]! * x + vp[5]! * y + vp[9]! * z + vp[13]!) / cw) * 0.5;
+          [x0, x1, y0, y1] = [Math.min(x0, sx * w), Math.max(x1, sx * w), Math.min(y0, sy * h), Math.max(y1, sy * h)];
+        }
+        const at = i * 4;
+        [rects[at], rects[at + 1], rects[at + 2], rects[at + 3]] = [Math.max(0, Math.floor(x0 / TILE)), Math.max(0, Math.floor(y0 / TILE)), Math.min(tx - 1, Math.floor(x1 / TILE)), Math.min(ty - 1, Math.floor(y1 / TILE))];
+        const kind = i < lamps ? 0 : 1;
+        for (let y = rects[at + 1]!; y <= rects[at + 3]!; y++) for (let x = rects[at]!; x <= rects[at + 2]!; x++) cursor[(y * tx + x) * 2 + kind]!++;
+      }
+      // The headers, then each tile's lamps and headlights after them.
+      let total = tiles * 4;
+      for (let t = 0; t < tiles; t++) total += cursor[t * 2]! + cursor[t * 2 + 1]!;
+      if (data.length < total) {
+        data = new Uint32Array(2 ** Math.ceil(Math.log2(total)));
+        buffer.destroy();
+        buffer = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      }
+      let next = tiles * 4;
+      for (let t = 0; t < tiles; t++) {
+        const [l, b] = [cursor[t * 2]!, cursor[t * 2 + 1]!];
+        [data[t * 4], data[t * 4 + 1], data[t * 4 + 2], data[t * 4 + 3]] = [next, l, b, 0];
+        [cursor[t * 2], cursor[t * 2 + 1]] = [next, next + l];
+        next += l + b;
+      }
+      for (let i = 0; i < n; i++) {
+        const at = i * 4;
+        const kind = i < lamps ? 0 : 1;
+        for (let y = rects[at + 1]!; y <= rects[at + 3]!; y++) for (let x = rects[at]!; x <= rects[at + 2]!; x++) data[cursor[(y * tx + x) * 2 + kind]!++] = i;
+      }
+      device.queue.writeBuffer(buffer, 0, data, 0, total);
+      emptyFor = n ? -1 : tiles;
     },
   };
 }

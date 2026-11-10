@@ -20,9 +20,10 @@ import { enabledPlugins, type OwnPbrMaterial } from "./material";
  * - group 2: binding 0 `mesh`: `world`, and `receiveShadows` (0 or 1).
  * - group 3, forward only: 0 `shadowStatic`, 1 `shadowLive`
  *   (texture_depth_2d_array, one layer), 2 `shadowSampler` (comparison,
- *   "less"), 3 `lights` (storage, `scene.lightCount` of them), 4 `sky`
- *   (texture_cube, mipmapped, prefiltered), 5 `skySampler`, 6 `brdfLUT`
- *   (Lite's `generateBrdfLut`), 7 `brdfSampler` (bilinear, clamped).
+ *   "less"), 3 `lights` (storage), 4 `sky` (texture_cube, mipmapped,
+ *   prefiltered), 5 `skySampler`, 6 `brdfLUT` (Lite's `generateBrdfLut`),
+ *   7 `brdfSampler` (bilinear, clamped), 8 `bins`: the lights by screen
+ *   tile (`BIN_WGSL`).
  */
 export type Pass = "gbuffer" | "shadow" | "forward";
 
@@ -102,7 +103,6 @@ const SCENE_FIELDS: Field[] = [
   { name: "shadowMatrix", type: "mat4x4f" },
   /** darkness, mapSize, 1 / mapSize, frustumEdgeFalloff (Lite's shadowsInfo; darkness 1 while shadows are off). */
   { name: "shadowInfo", type: "vec4f" },
-  { name: "lightCount", type: "u32" },
 ];
 const SCENE = struct(SCENE_FIELDS);
 
@@ -117,6 +117,20 @@ export const SCENE_OFFSETS: ReadonlyMap<string, number> = SCENE.offsets;
  *  intensity; direction.xyz, cos(angle / 2), or w < 0 for a point light.
  *  Only lights with intensity and range above 0. */
 const LIGHT_WGSL = `struct _r_Light { position: vec4f, color: vec4f, direction: vec4f }`;
+
+/** The lights are binned by the tile of the screen they may reach, this
+ *  many pixels square (`frame.ts`): a pixel shades only its tile's. */
+export const TILE = 64;
+/** `bins` at a group and binding: a tile's header, four words, row by
+ *  row (its first index in `bins`, its lamps, its headlights, 0); then the
+ *  indices into `lights`, a tile's lamps before its headlights. And
+ *  `_r_binAt`, a pixel's header on a target this wide. */
+export const binsAt = (group: number, binding: number) => `@group(${group}) @binding(${binding}) var<storage, read> bins: array<u32>;
+fn _r_binAt(p: vec2f, width: f32) -> vec3u {
+let t = vec2u(p) / ${TILE}u;
+let at = (t.y * u32(ceil(width / ${TILE}.)) + t.x) * 4u;
+return vec3u(bins[at], bins[at + 1u], bins[at + 2u]);
+}`;
 
 /** Lite's BRDF (pbr-template.ts), every pass, as Lite has it in every pass. */
 const BRDF = `const PI: f32 = 3.14159265358979323846;
@@ -149,6 +163,7 @@ const FORWARD_BINDINGS = `${LIGHT_WGSL}
 @group(3) @binding(5) var skySampler: sampler;
 @group(3) @binding(6) var brdfLUT: texture_2d<f32>;
 @group(3) @binding(7) var brdfSampler: sampler;
+${binsAt(3, 8)}
 fn _r_shadowOf(map: texture_depth_2d_array, worldPos: vec3f) -> f32 {
 let posFromLight = scene.shadowMatrix * vec4f(worldPos, 1.0);
 let clipSpace = posFromLight.xyz / posFromLight.w;
@@ -193,8 +208,9 @@ let _r_D = distributionGGX(clamp(dot(N, _r_H), 0.0000001, 1.0), _r_directAlphaG)
 let _r_G = geometrySmithGGX(_r_NdotL, NdotV, _r_directAlphaG);
 _r_specular += fresnelSchlick(saturate(dot(V, _r_H)), colorF0, colorF90) * _r_D * _r_G * _r_NdotL * scene.sunColor.rgb * _r_sf;
 }
-for (var _r_i = 0u; _r_i < scene.lightCount; _r_i++) {
-let _r_light = lights[_r_i];
+let _r_bin = _r_binAt(input.clipPos.xy, scene.screen.x);
+for (var _r_i = _r_bin.x; _r_i < _r_bin.x + _r_bin.y + _r_bin.z; _r_i++) {
+let _r_light = lights[bins[_r_i]];
 let _r_toLight = _r_light.position.xyz - input.worldPos;
 let _r_d2 = dot(_r_toLight, _r_toLight);
 let _r_dist = sqrt(_r_d2);
@@ -475,18 +491,21 @@ export function bindGroupLayouts({ pass, materialTextures }: Composed): GPUBindG
     },
     { entries: [uniform(both)] },
   ];
-  if (pass === "forward")
-    groups.push({
-      entries: [
-        { binding: 0, visibility: FRAGMENT, texture: { sampleType: "depth", viewDimension: "2d-array" } },
-        { binding: 1, visibility: FRAGMENT, texture: { sampleType: "depth", viewDimension: "2d-array" } },
-        { binding: 2, visibility: FRAGMENT, sampler: { type: "comparison" } },
-        { binding: 3, visibility: FRAGMENT, buffer: { type: "read-only-storage" } },
-        { binding: 4, visibility: FRAGMENT, texture: { viewDimension: "cube" } },
-        { binding: 5, visibility: FRAGMENT, sampler: {} },
-        { binding: 6, visibility: FRAGMENT, texture: {} },
-        { binding: 7, visibility: FRAGMENT, sampler: {} },
-      ],
-    });
+  if (pass === "forward") groups.push(FORWARD_GROUP);
   return groups;
 }
+
+/** The forward pass's group 3 (see the top of this file). */
+export const FORWARD_GROUP: GPUBindGroupLayoutDescriptor = {
+  entries: [
+    { binding: 0, visibility: FRAGMENT, texture: { sampleType: "depth", viewDimension: "2d-array" } },
+    { binding: 1, visibility: FRAGMENT, texture: { sampleType: "depth", viewDimension: "2d-array" } },
+    { binding: 2, visibility: FRAGMENT, sampler: { type: "comparison" } },
+    { binding: 3, visibility: FRAGMENT, buffer: { type: "read-only-storage" } },
+    { binding: 4, visibility: FRAGMENT, texture: { viewDimension: "cube" } },
+    { binding: 5, visibility: FRAGMENT, sampler: {} },
+    { binding: 6, visibility: FRAGMENT, texture: {} },
+    { binding: 7, visibility: FRAGMENT, sampler: {} },
+    { binding: 8, visibility: FRAGMENT, buffer: { type: "read-only-storage" } },
+  ],
+};

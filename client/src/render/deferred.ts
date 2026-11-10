@@ -1,4 +1,5 @@
 import { TONE } from "../engine/toneMap";
+import { binsAt } from "./compose";
 
 /**
  * The still picture's shaders: the relight (the G-buffer lit into the lit
@@ -27,8 +28,6 @@ export const FRAME_FIELDS = [
   ["screen", 4],
   /** What shows where nothing was drawn. */
   ["clear", 4],
-  /** The lamps' count, the headlights' first and count, in the light list (as floats). */
-  ["counts", 4],
   ["sh", 36],
 ] as const;
 export const FRAME_OFFSETS = new Map<string, number>();
@@ -39,7 +38,7 @@ export const FRAME_FLOATS = at;
 const COMMON = /* wgsl */ `
 struct F {
   seen: mat4x4f, seenInverse: mat4x4f, stillView: mat4x4f, stillInverse: mat4x4f, shadowMatrix: mat4x4f,
-  eye: vec4f, sunDir: vec4f, sunColor: vec4f, shadowInfo: vec4f, image: vec4f, screen: vec4f, clear: vec4f, counts: vec4f,
+  eye: vec4f, sunDir: vec4f, sunColor: vec4f, shadowInfo: vec4f, image: vec4f, screen: vec4f, clear: vec4f,
   sh: array<vec4f, 9>,
 }
 struct Light { position: vec4f, color: vec4f, direction: vec4f }
@@ -56,6 +55,7 @@ struct Light { position: vec4f, color: vec4f, direction: vec4f }
 @group(0) @binding(10) var skySampler: sampler;
 @group(0) @binding(11) var brdfLUT: texture_2d<f32>;
 @group(0) @binding(12) var brdfSampler: sampler;
+${binsAt(0, 14)}
 const PI: f32 = 3.14159265358979323846;
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   return vec4f(f32((i << 1u) & 2u) * 2. - 1., f32(i & 2u) * 2. - 1., 0., 1.);
@@ -178,7 +178,8 @@ export const RELIGHT = /* wgsl */ `${COMMON}
   let envReflectance = ((1.0 - s.F0) * brdf.x + s.F0 * brdf.y) * clamp((NdotVU + 1.) * (NdotVU + 1.) - 1.0 + 1., 0.0, 1.0);
   let energy = 1.0 + s.F0 * (1.0 / max(brdf.y, 0.001) - 1.0);
   var color = irradiance * s.albedo + env * envReflectance * energy + direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade);
-  for (var i = 0u; i < u32(f.counts.x); i++) { color += lamp(s, lights[i], V); }
+  let bin = _r_binAt(p.xy, size.x);
+  for (var i = bin.x; i < bin.x + bin.y; i++) { color += lamp(s, lights[bins[i]], V); }
   return vec4f(s.lit * color + s.glow, 1.);
 }`;
 
@@ -236,13 +237,12 @@ struct Out { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, };
   let moving = shadowOf(shadowLive, at);
   var lost = 0.;
   if (moving < 1.) { lost = max(shadowOf(shadowStatic, at) - moving, 0.); }
-  let beams = u32(f.counts.z);
-  if (lost > 0. || beams > 0u) {
+  let bin = _r_binAt(p.xy, f.screen.x);
+  if (lost > 0. || bin.z > 0u) {
     let s = surfaceAt(found.texel, at);
     let V = normalize(found.eye - at);
     if (lost > 0.) { color = max(color - s.lit * direct(s, f.sunDir.xyz, V, f.sunColor.rgb * lost), vec3f(0.)); }
-    let first = u32(f.counts.y);
-    for (var i = first; i < first + beams; i++) { color += s.lit * lamp(s, lights[i], V); }
+    for (var i = bin.x + bin.y; i < bin.x + bin.y + bin.z; i++) { color += s.lit * lamp(s, lights[bins[i]], V); }
   }
   color = toneMap(color * f.image.x);
   color = clamp(pow(color, vec3f(1.0 / 2.2)), vec3f(0.0), vec3f(1.0));
