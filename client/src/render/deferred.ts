@@ -224,21 +224,26 @@ struct Out { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, };
 @fragment fn fs(@builtin(position) p: vec4f) -> Out {
   let found = find(p.xy);
   let at = found.at;
-  let still = shadowOf(shadowStatic, at);
-  let moving = shadowOf(shadowLive, at);
   var out: Out;
   if (found.depth <= 0.) {
     out.color = f.clear;
     out.depth = 0.;
     return out;
   }
-  let s = surfaceAt(found.texel, at);
-  let V = normalize(found.eye - at);
   var color = textureLoad(lit, found.texel, 0).rgb;
-  let lost = max(still - moving, 0.);
-  if (lost > 0.) { color = max(color - s.lit * direct(s, f.sunDir.xyz, V, f.sunColor.rgb * lost), vec3f(0.)); }
-  let first = u32(f.counts.y);
-  for (var i = first; i < first + u32(f.counts.z); i++) { color += s.lit * lamp(s, lights[i], V); }
+  // Only where something moving shades it, the still map read, and only
+  // there or under a headlight, the surface.
+  let moving = shadowOf(shadowLive, at);
+  var lost = 0.;
+  if (moving < 1.) { lost = max(shadowOf(shadowStatic, at) - moving, 0.); }
+  let beams = u32(f.counts.z);
+  if (lost > 0. || beams > 0u) {
+    let s = surfaceAt(found.texel, at);
+    let V = normalize(found.eye - at);
+    if (lost > 0.) { color = max(color - s.lit * direct(s, f.sunDir.xyz, V, f.sunColor.rgb * lost), vec3f(0.)); }
+    let first = u32(f.counts.y);
+    for (var i = first; i < first + beams; i++) { color += s.lit * lamp(s, lights[i], V); }
+  }
   color = toneMap(color * f.image.x);
   color = clamp(pow(color, vec3f(1.0 / 2.2)), vec3f(0.0), vec3f(1.0));
   let hc = color * color * (3.0 - 2.0 * color);
