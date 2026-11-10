@@ -55,6 +55,12 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   slower by it: 2–7 fps for a minute. With the change drawn once things are
   quiet or once a second, the town is in after ~55 s, as with Lite
   (gpu-42737950480 against gpu-42734853840).
+- After both, and the weighted spread (gpu-42746470444, with the client
+  JS work merged): the town in at ~25 s and 59–60 fps from then; every
+  phase 59–60 fps by day and night but zoom (~50, Lite's 47–50); frames
+  over 34 ms 0–3 per 5 s; a picture's frames ~10 ms of the GPU, a few
+  over 16. Against Lite (gpu-42734850087): frame JS 3.4 against 6.8 ms
+  still, GPU 1.2 against 1.1, 19–25 draws against 194.
 - Hitches seen with ours in one run (frames over 34 ms, ~20 per 5 s, with
   the main thread and the GPU idle: long animation frames with no script)
   were not there in the next (2–4 per 5 s, as Lite's): they follow the
