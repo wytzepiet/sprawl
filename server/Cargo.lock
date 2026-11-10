@@ -953,8 +953,10 @@ dependencies = [
 name = "sprawl-web"
 version = "0.1.0"
 dependencies = [
+ "fixed",
  "interchange",
  "js-sys",
+ "land",
  "map",
  "model",
  "rmp-serde",

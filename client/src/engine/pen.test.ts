@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { decode, encode } from "@msgpack/msgpack";
-import init, { Web } from "../wasm/sprawl_web.js";
-import type { ClientMessage, GameObjectEntry, GridCoord, RoadNode, ServerMessage, Tool } from "../generated";
+import init, { Planner, Web } from "../wasm/sprawl_web.js";
+import { forPlanner } from "../state/planner";
+import type { ClientMessage, GameObjectEntry, GridCoord, RoadNode, ServerMessage, Stroke, Tool } from "../generated";
 import { Pen, type Place } from "./pen";
 import type { Side } from "./tiles";
 
@@ -22,6 +23,9 @@ beforeAll(async () => {
  *  down from y 0 to -20; a case's tiles are written down the page, y
  *  for -y. */
 const FIELD = ["# Field", "@gate 1 both", ...Array.from({ length: 21 }, (_, r) => (r === 10 ? "1" : ".") + ".".repeat(20))].join("\n");
+
+/** How many times the client's planner was asked beside the game. */
+let planned = 0;
 
 type Entry = GameObjectEntry & { object: { kind: "RoadNode"; data: RoadNode } };
 
@@ -46,7 +50,13 @@ class Table {
     this.hear();
   }
 
+  /** The game's planner, run as the client runs it (`state/planner.ts`):
+   *  told what the client is, and asked what the game is, it answers the same. */
+  planner = new Planner();
+  asked: Stroke | null = null;
+
   send(msg: ClientMessage) {
+    if (msg.type === "Ask" && msg.data.type === "Reach" && msg.data.data.tool !== "Demolish") this.asked = structuredClone(msg.data.data);
     this.web.send(encode(msg));
     this.hear();
   }
@@ -55,6 +65,16 @@ class Table {
     this.web.tick();
     for (const bytes of this.web.drain() as Uint8Array[]) {
       const msg = decode(bytes) as ServerMessage;
+      if (msg.type === "Hint" && msg.data.type === "Reach" && this.asked?.id === msg.data.data.id && this.asked.tiles.length === msg.data.data.len) {
+        // The level's edge is the game's alone: the planner's runs go on past it.
+        const ours = decode(this.planner.reach(encode(this.asked))) as typeof msg;
+        if (ours.type !== "Hint" || ours.data.type !== "Reach") throw new Error("no reach");
+        const theirs = msg.data.data.ways;
+        expect(ours.data.data.ways.map((w, i) => w.slice(0, theirs[i].length))).toEqual(theirs);
+        planned++;
+      }
+      const told = forPlanner(msg);
+      if (told) this.planner.hear(told);
       if (msg.type === "Hint") this.hand.hear(msg.data);
       if (msg.type !== "Update") continue;
       for (const op of msg.data.ops) {
@@ -442,4 +462,8 @@ describe("one-ways side by side", () => {
       expect(t.on(4, 5)).toHaveLength(2);
       expect(t.on(9, 5)).toHaveLength(2);
     });
+});
+
+test("the client's planner was asked as the game was", () => {
+  expect(planned).toBeGreaterThan(50);
 });

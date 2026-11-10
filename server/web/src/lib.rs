@@ -7,6 +7,8 @@ use model::ClientMessage;
 use interchange::replay::{Input, Session};
 use wasm_bindgen::prelude::*;
 
+pub mod plan;
+
 /// How fast a test plays: steps a tick.
 const TEST_SPEED: u32 = 12;
 

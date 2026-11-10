@@ -403,7 +403,9 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   // Every message counted as the game counts what it has done (`Seen`),
   // whoever sends it on this line.
   const raw = line.send.bind(line);
-  const send = (line.send = (msg: ClientMessage) => raw(msg) && ++sent > 0);
+  // What the line answers itself is said as the game would, and not
+  // counted: the game never had it.
+  const send = (line.send = (msg: ClientMessage) => line.answer?.(msg, (h) => hintListeners.forEach((f) => f(h))) || (raw(msg) && ++sent > 0));
   onCleanup(() => line.close());
 
   // Built by hand, as Solid compiles it: this module is also the engine's,

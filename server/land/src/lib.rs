@@ -44,6 +44,11 @@ impl TerrainType {
             TerrainType::Sea => 5,
         }
     }
+
+    /// The tile a byte of the wire stands for; none for `TILE_ABSENT`.
+    pub fn from_byte(b: u8) -> Option<TerrainType> {
+        [TerrainType::Water, TerrainType::Beach, TerrainType::Grass, TerrainType::Forest, TerrainType::Mountain, TerrainType::Sea].get(b as usize).copied()
+    }
 }
 
 /// What lies under a tile that a works can take out: iron ore and coal

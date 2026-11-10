@@ -46,7 +46,7 @@ pub const STEPS: [Step; 8] = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)
 /// How many tiles straight on a drag is told it may go: the hand walks
 /// them without waiting to be told again, and shows them laid before the
 /// game has (`client/src/state/guess.ts`).
-pub const RUN: usize = 24;
+pub const RUN: usize = 6;
 
 /// Where a drag may go on from its last tile (`hint.rs`): for each of the
 /// eight steps, where it would stand on each tile straight on that way, as
