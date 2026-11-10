@@ -10,7 +10,7 @@ use fixed::HashMap;
 use land::{TerrainType, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE};
 use map::tracked::Tracked;
 use map::Map;
-use model::{EntityId, GameObject, GameObjectEntry, Hint, Operation, ServerMessage, Stroke};
+use model::{Ask, EntityId, GameObject, GameObjectEntry, Hint, Operation, ServerMessage, Stroke};
 use sprawl::world::World;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,11 +77,13 @@ impl Planner {
         rmp_serde::to_vec_named(&self.drawn(stroke)).unwrap_or_default()
     }
 
-    /// For a drag drawn, where it may go on: the server's `Hint::Reach`, as
-    /// its socket would carry it.
-    pub fn reach(&mut self, stroke: &[u8]) -> Vec<u8> {
-        let Ok(stroke) = rmp_serde::from_slice::<Stroke>(stroke) else { return Vec::new() };
-        rmp_serde::to_vec_named(&ServerMessage::Hint(self.reached(stroke))).unwrap_or_default()
+    /// What the hand asks (an `Ask`, as the socket carries it) answered as
+    /// the server answers it (`hint::answer`): where a drag drawn may go
+    /// on, on the drag's world; where one may start, or a building stand,
+    /// on the copy as heard. The `Hint`, as its socket would carry it.
+    pub fn ask(&mut self, ask: &[u8]) -> Vec<u8> {
+        let Ok(ask) = rmp_serde::from_slice::<Ask>(ask) else { return Vec::new() };
+        rmp_serde::to_vec_named(&ServerMessage::Hint(self.answered(ask))).unwrap_or_default()
     }
 }
 
@@ -143,10 +145,15 @@ impl Planner {
         Laid { id, put, drop, fresh: self.fresh() }
     }
 
-    pub fn reached(&mut self, stroke: Stroke) -> Hint {
-        let world = self.drag(stroke.id);
-        let ways = sprawl::draw::reach(world, HAND, &stroke);
-        Hint::Reach { id: stroke.id, len: stroke.tiles.len() as u32, ways }
+    pub fn answered(&mut self, ask: Ask) -> Hint {
+        let world = match &ask {
+            Ask::Reach(stroke) => self.drag(stroke.id),
+            _ => {
+                self.prepare();
+                self.ready.as_mut().unwrap()
+            }
+        };
+        sprawl::hint::answer(world, HAND, ask)
     }
 
     /// The first id the copy has that the server never sent.
@@ -194,6 +201,37 @@ mod tests {
         p
     }
 
+    /// Where a building would stand, held over each tile round the roads,
+    /// and where a drag or a building may start in the view: as the server says.
+    #[test]
+    fn the_planner_places_as_the_server_does() {
+        use model::{Area, BuildingKind, Holding};
+        let mut fits = 0;
+        for name in ["06-shops", "13-block", "26-diagonals"] {
+            let text = std::fs::read_to_string(format!("{}/../fixtures/{name}.txt", env!("CARGO_MANIFEST_DIR"))).unwrap();
+            let world = server(&text);
+            let mut planner = told(&world);
+            let json = |h: Hint| serde_json::to_string(&h).unwrap();
+            let tiles: Vec<GridCoord> = world.map.objects.roads().filter_map(|e| e.position).step_by(5).map(|p| GridCoord { x: p.x + 1, y: p.y + 1 }).collect();
+            for &at in &tiles {
+                for kind in [BuildingKind::House, BuildingKind::Shop, BuildingKind::Farm] {
+                    for facing in [None, Some(1)] {
+                        let ask = Ask::Placing { kind, at, facing };
+                        let ours = planner.answered(ask.clone());
+                        fits += matches!(&ours, Hint::Placing(p) if p.why.is_none()) as u32;
+                        assert_eq!(json(ours), json(sprawl::hint::answer(&world, HAND, ask)), "{name}: {kind:?} at {at:?} {facing:?}");
+                    }
+                }
+            }
+            let area = Area { x0: -40, y0: -40, x1: 40, y1: 40 };
+            for hand in [Holding::Tool { tool: Tool::Street, road: false, want: 0 }, Holding::Building { kind: BuildingKind::House, facing: None }] {
+                let ask = Ask::Starts { hand, area };
+                assert_eq!(json(planner.answered(ask.clone())), json(sprawl::hint::answer(&world, HAND, ask)), "{name}: starts");
+            }
+        }
+        assert!(fits > 10, "{fits}");
+    }
+
     /// Every road node: where it stands, and how many ways on and in.
     fn roads(world: &World) -> Vec<(i32, i32, u8, [i8; 2], usize, usize)> {
         let mut out: Vec<_> = world.map.objects.roads().filter_map(|e| match &e.object {
@@ -238,7 +276,7 @@ mod tests {
                             if n > 1 {
                                 planner.drawn(stroke.clone());
                             }
-                            let Hint::Reach { ways: ours, .. } = planner.reached(stroke) else { unreachable!() };
+                            let Hint::Reach { ways: ours, .. } = planner.answered(Ask::Reach(stroke)) else { unreachable!() };
                             assert_eq!(roads(&planner.world.as_ref().unwrap().0), roads(&world), "{name}: laid from {at:?} by ({dx},{dy}) at {want}, {n} tiles");
                             assert_eq!(ours, theirs, "{name}: from {at:?} by ({dx},{dy}) at {want}, {n} tiles");
                             asked += 1;
@@ -273,7 +311,7 @@ mod timing {
                 let tiles = (0..n).map(|k| Spot { at: GridCoord { x: at.x + k, y: at.y + id as i32 }, want: 0 }).collect();
                 let stroke = Stroke { id, tool: Tool::Street, road: false, tiles, start: None };
                 p.drawn(stroke.clone());
-                p.reached(stroke);
+                p.answered(Ask::Reach(stroke));
                 first.get_or_insert(t.elapsed());
             }
             println!("{} entries: begun {:?}, ten tiles {:?}", p.built.len(), first.unwrap(), t.elapsed());

@@ -14,7 +14,7 @@ const handle = ({ data }: MessageEvent) => {
     clearTimeout(preparing);
     preparing = setTimeout(() => planner!.prepare(), 100) as unknown as number;
   } else if (data.draw) postMessage({ laid: planner.draw(data.draw) });
-  else if (data.reach) postMessage({ asked: data.asked, hint: planner.reach(data.reach) });
+  else if (data.ask) postMessage({ asked: data.asked, hint: planner.ask(data.ask) });
 };
 onmessage = handle;
 

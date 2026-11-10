@@ -1,5 +1,5 @@
 import { lag } from "../engine/lag";
-import { hearPlanner, planDraw, planReach, type Laid } from "./planner";
+import { hearPlanner, planAsk, planDraw, type Laid } from "./planner";
 import {
   createContext,
   useContext,
@@ -415,11 +415,13 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   // whoever sends it on this line.
   const raw = line.send.bind(line);
   // A drag of road drawn by the game's own planner as well, and shown as
-  // it lays it; where it may go on, asked of it if the game is far, said
-  // as the game would and not counted: the game never had it.
+  // it lays it; what the hand asks, asked of it if the game is far (but
+  // where the eraser may go, which reads what it has taken), said as the
+  // game would and not counted: the game never had it.
   const send = (line.send = (msg: ClientMessage) => {
     if (msg.type === "Draw") planDraw(msg.data);
-    if (line.far && msg.type === "Ask" && msg.data.type === "Reach" && msg.data.data.tool !== "Demolish" && planReach(msg.data.data, (h) => hintListeners.forEach((f) => f(h)))) return true;
+    const ours = msg.type === "Ask" && !(msg.data.type === "Reach" && msg.data.data.tool === "Demolish");
+    if (line.far && ours && planAsk(msg.data, (h) => hintListeners.forEach((f) => f(h)))) return true;
     return raw(msg) && ++sent > 0;
   });
   onCleanup(() => line.close());

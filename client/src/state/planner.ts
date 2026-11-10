@@ -1,12 +1,13 @@
 import { decode, encode } from "@msgpack/msgpack";
-import type { GameObjectEntry, Hint, ServerMessage, Stroke } from "../generated";
+import type { Ask, GameObjectEntry, Hint, ServerMessage, Stroke } from "../generated";
 
 /**
  * The game's own road planner, run here (`server/web/src/plan.rs`, in a
  * worker of its own), on a copy of the map as this client was sent it
  * (its roads, buildings and ground): a drag drawn on it as the game draws
- * it, shown at once as what it laid (`Laid`, the hand's guess), and where
- * it may go on, asked of it rather than of a server a round trip away.
+ * it, shown at once as what it laid (`Laid`, the hand's guess); and what
+ * the hand asks (where a drag may go on or start, where a building would
+ * stand), asked of it rather than of a server a round trip away.
  * Until it has loaded, the game is asked and nothing is guessed.
  */
 let worker: Worker | null = null;
@@ -60,11 +61,11 @@ export function planDraw(stroke: Stroke) {
   if (ready && worker) worker.postMessage({ draw: encode(stroke) });
 }
 
-/** Where a drag of road may go on, as the game would answer, told to
- *  `reply`; false while the planner loads. */
-export function planReach(stroke: Stroke, reply: (h: Hint) => void): boolean {
+/** What the hand asks, answered as the game would, told to `reply`;
+ *  false while the planner loads. */
+export function planAsk(ask: Ask, reply: (h: Hint) => void): boolean {
   if (!ready || !worker) return false;
   replies.set(++asked, reply);
-  worker.postMessage({ asked, reach: encode(stroke) });
+  worker.postMessage({ asked, ask: encode(ask) });
   return true;
 }

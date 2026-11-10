@@ -68,7 +68,7 @@ class Table {
       const msg = decode(bytes) as ServerMessage;
       if (msg.type === "Hint" && msg.data.type === "Reach" && this.asked?.id === msg.data.data.id && this.asked.tiles.length === msg.data.data.len) {
         // The level's edge is the game's alone: the planner's runs go on past it.
-        const ours = decode(this.planner.reach(encode(this.asked))) as typeof msg;
+        const ours = decode(this.planner.ask(encode({ type: "Reach", data: this.asked }))) as typeof msg;
         if (ours.type !== "Hint" || ours.data.type !== "Reach") throw new Error("no reach");
         const theirs = msg.data.data.ways;
         expect(ours.data.data.ways.map((w, i) => w.slice(0, theirs[i].length))).toEqual(theirs);
