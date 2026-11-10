@@ -83,7 +83,7 @@ export const enablePixelTextureMipmaps = pick(lite.enablePixelTextureMipmaps, ow
 export const releaseTexture = pick(lite.releaseTexture, own.releaseTexture);
 export const updateTexture2DFromPixels = pick(lite.updateTexture2DFromPixels, own.updateTexture2DFromPixels);
 /** Ours alone: the still picture inside the renderer (`still.ts`). */
-export const { ownStill, stalePicture } = own;
+export const { ownStill, stalePicture, holdPicture } = own;
 export { _vis } from "@babylonjs/lite/src/engine/engine";
 export type {
   ClusteredLightContainer,

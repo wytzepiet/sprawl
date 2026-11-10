@@ -1,4 +1,4 @@
-import { addToScene, markMaterialUboDirty, type MaterialPlugin, type Mesh } from "./gpu";
+import { addToScene, holdPicture, markMaterialUboDirty, type MaterialPlugin, type Mesh } from "./gpu";
 import { night } from "./lights";
 import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
@@ -128,6 +128,7 @@ export class TownLayer {
   private pieces = new Map<string, TownMaterial>();
   private stopTints: () => void;
   private stopGlow: () => void;
+  private stopHold: () => void;
 
   constructor(
     private ctx: EngineContext,
@@ -145,6 +146,9 @@ export class TownLayer {
       if (night.on !== glow) markMaterialUboDirty(this.masses), (glow = night.on), stale();
     });
     this.roads = new RoadTiles(ctx.engine, ctx.scene);
+    // A road's asphalt is laid at once, its paving when the worker has
+    // drawn it: the picture waits for both.
+    this.stopHold = holdPicture(() => !this.settled);
     const { r, g, b } = theme.paved;
     this.concrete = new Decks(ctx.engine, ctx.scene, casters, rgb(r, g, b));
   }
@@ -588,6 +592,7 @@ export class TownLayer {
     this.concrete.dispose();
     this.stopTints();
     this.stopGlow();
+    this.stopHold();
     this.worker.terminate();
     this.heldWorker.terminate();
   }

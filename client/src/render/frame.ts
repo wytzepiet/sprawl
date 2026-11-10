@@ -47,19 +47,25 @@ const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
  *  of a desktop card's time, and drawn in one frame it dropped frames. */
 const SPREAD = Math.max(1, Number(knobs.get("spread") ?? 6));
 /** A picture for something built or taken away, the view still, over
- *  `CHANGED` frames: begun once nothing still has changed for `QUIET_MS`,
- *  so a road's paving and its asphalt, which come a moment apart, are not
- *  shown one without the other; or once a change has waited `STALE_MS`, so
- *  a road drawn tile by tile is seen as it goes, and a town streaming in, a
- *  change every frame, is drawn four times a second, not every frame. */
-const [CHANGED, QUIET_MS, STALE_MS] = [3, 50, 250];
+ *  `CHANGED` frames: begun the frame after, unless what is changing is
+ *  still being made (`holdPicture`: the town's paving comes from a worker
+ *  a moment after a road's asphalt, and one shown without the other
+ *  flashed); then once it is made, or once the change has waited
+ *  `STALE_MS`, so a road drawn tile by tile is seen as it goes, and a town
+ *  streaming in, a change every frame, is drawn four times a second. */
+const [CHANGED, STALE_MS] = [3, 250];
 
-/** Since when something still has changed that no picture begun since holds, and when it last did. */
-let [staleSince, changedAt] = [Infinity, -Infinity];
+/** Since when something still has changed that no picture begun since holds. */
+let staleSince = Infinity;
+/** What says it is still being made, and a picture of a change waits for. */
+const making = new Set<() => boolean>();
+export function holdPicture(busy: () => boolean): () => void {
+  making.add(busy);
+  return () => void making.delete(busy);
+}
 /** Something still has changed that the renderer was not told of: the picture is drawn again soon. */
 export function stalePicture() {
-  changedAt = performance.now();
-  staleSince = Math.min(staleSince, changedAt);
+  staleSince = Math.min(staleSince, performance.now());
 }
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
@@ -396,7 +402,7 @@ function makeFrame(scene: Scene): Frame {
       const moving = here !== lastView;
       lastView = here;
       const since = now - drawnAt;
-      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && (now - changedAt >= QUIET_MS || now - staleSince >= STALE_MS))));
+      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && (now - staleSince >= STALE_MS || ![...making].some((busy) => busy())))));
 
       // The sun's maps: the still one as the sun turns, and as what casts
       // changed, with the picture that shows it; the live one as what moves does.

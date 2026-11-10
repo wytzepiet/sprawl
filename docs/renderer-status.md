@@ -14,14 +14,15 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   when the sun turns past `refitAngle`, and with the next picture when a
   still caster changed), live map (live casters, in a frame one of them
   changed), G-buffer of still meshes at 1.24× only when the view or they
-  change (the sun never): as the view leaves the picture's margin, or
-  once nothing still has changed for 50 ms, or 250 ms at most while
-  changes keep coming. It is drawn into a second G-buffer, a share of its
-  meshes a frame over six frames (three while the view moves, three for a
-  change; `?spread=`), and shown once whole. A change used to wait for
-  100 ms of quiet, or a second: a road drawn tile by tile showed a second
-  late (Wytze, 2026-11-10). Waiting for no quiet at all showed a road's
-  paving a moment before its asphalt. Relight into rgba16float on each picture shown or still
+  change (the sun never): as the view leaves the picture's margin, or the
+  frame after a still change, unless the town is still drawing its paving
+  (`holdPicture`, `TownLayer.settled`), then once it is, or 250 ms at most
+  while changes keep coming. It is drawn into a second G-buffer, a share
+  of its meshes a frame over six frames (three while the view moves, three
+  for a change; `?spread=`), and shown once whole. A change used to wait
+  for 100 ms of quiet, or a second: a road drawn tile by tile showed a
+  second late (Wytze, 2026-11-10). Waiting for nothing showed a road's
+  asphalt, laid at once, a moment before its paving, from the worker. Relight into rgba16float on each picture shown or still
   map draw and every `?relight=` ms (1000),
   composite (still.ts's `find`, car shadows exact in linear, the still map
   and the surface read only where the live map shades, headlights, tone map
