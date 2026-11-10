@@ -49,8 +49,8 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
  *  `InstancePool`), drawn every frame if what is in it moves and into the
  *  still picture if not; its key. */
 export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true, moves = true): string {
-  pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
-  const bucket = pool.finish(key)!;
+  if (pool.finish(key)) return key;
+  const bucket = pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
   bucket.bevel.width = ROUNDING;
   lacquer(bucket.material, "car");
   return key;
