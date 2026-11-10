@@ -70,13 +70,19 @@ export class DrawList {
     this.engine.drawCallCount += this.bundles.length;
   }
 
-  /** Some of it into a pass: of the meshes not yet `done`, a share as if
-   *  the rest were spread over `frames` frames; how many are left. */
+  /** Some of it into a pass: of the meshes not yet `done`, in order, a
+   *  share of their weight as if the rest were spread over `frames`
+   *  frames; how many are left. A mesh weighs its triangles drawn (its
+   *  instances' too: the town's houses are most of a picture) and a
+   *  screenful's worth of pixels it may cover. */
   drawSome(pass: GPURenderPassEncoder, done: Set<Mesh>, frames: number): number {
     if (this.waiting >= 0 && this.waiting !== epoch) this.dirty = true;
     if (this.dirty) this.gather();
     const todo = this.order.filter((m) => !done.has(m));
-    const n = frames <= 1 ? todo.length : Math.ceil(todo.length / frames);
+    const weight = (m: Mesh) => m._gpu.indexCount * (m.thinInstances?.count ?? 1) + 30_000;
+    const share = todo.reduce((t, m) => t + weight(m), 0) / Math.max(1, frames);
+    let [n, sum] = [0, 0];
+    while (n < todo.length && (frames <= 1 || sum < share)) sum += weight(todo[n++]!);
     const some = todo.slice(0, n);
     for (const m of some) done.add(m);
     if (some.length) pass.executeBundles(some.map((m) => this.encoded.get(m)!.bundle));

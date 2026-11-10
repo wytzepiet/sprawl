@@ -128,8 +128,10 @@ jobs:
           done
           [ -n "${id:-}" ] || { echo "no GPU free"; exit 1; }
           echo "POD=$id" >> $GITHUB_ENV
-          # Its last report is what each kind costs; fifteen minutes is plenty.
-          for _ in $(seq 90); do
+          # Its last report is what each kind costs. A test town's settle
+          # waits for eight minutes of its traffic, at up to fifty times
+          # speed, which a pod's two cores may not reach: up to 25 minutes.
+          for _ in $(seq 150); do
             curl -s "$URL/perf?tab=gpu-$GITHUB_RUN_ID" | grep -q '"phase":"cost"' && break
             sleep 10
           done
