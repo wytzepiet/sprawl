@@ -6,9 +6,12 @@ import type { Mesh } from "./mesh";
 import { isShaderMaterial, shaderDraw } from "./shader";
 
 /**
- * A pass's draws, kept as one render bundle: re-encoded only when what it
- * draws changed (a mesh in or out, shown or hidden, a buffer or material
- * new, a pipeline ready), and replayed every time it is drawn.
+ * A pass's draws, a render bundle a mesh: a mesh's encoded again only when
+ * what it is drawn with changed (its version bumped: a buffer or material
+ * new; the pass's shared groups new; a pipeline it waited on ready), and
+ * the list of them gathered again only when what is drawn changed (a mesh
+ * in or out, shown or hidden, emptied or filled). A pan that hides a chunk
+ * encodes nothing; an empty pool draws nothing.
  */
 
 /** What a pass draws into, part of every pipeline's key. */
@@ -27,14 +30,24 @@ export interface Draw {
   mesh: Mesh;
 }
 
+/** A mesh's bundle in a list, and what it was encoded with. */
+interface Encoded {
+  bundle: GPURenderBundle;
+  version: number;
+  material: unknown;
+  shared: (GPUBindGroup | null)[];
+  /** The epoch it was encoded at: a shader material's textures change without its mesh knowing. */
+  epoch: number;
+}
+
 export class DrawList {
-  private bundle: GPURenderBundle | null = null;
-  private count = 0;
-  /** What it draws changed since it was encoded. */
+  private bundles: GPURenderBundle[] = [];
+  private encoded = new WeakMap<Mesh, Encoded>();
+  /** What it draws changed since it was gathered. */
   dirty = true;
-  /** The epoch it was encoded at, if a draw in it was left out for a pipeline or binds a shader material's textures. */
+  /** The epoch it was gathered at, if a draw in it was left out for a pipeline or binds a shader material's textures. */
   private waiting = -1;
-  /** The meshes it drew, at their last encoding. */
+  /** The meshes it drew, at their last gathering. */
   drawn = new Set<Mesh>();
 
   constructor(
@@ -47,44 +60,55 @@ export class DrawList {
     private shared: () => (GPUBindGroup | null)[],
   ) {}
 
-  /** Replay it into a pass, encoding it again first if it changed. */
+  /** Replay it into a pass, gathering it again first if it changed. */
   draw(pass: GPURenderPassEncoder) {
     if (this.waiting >= 0 && this.waiting !== epoch) this.dirty = true;
-    if (this.dirty) this.encode();
-    if (!this.bundle) return;
-    pass.executeBundles([this.bundle]);
-    this.engine.drawCallCount += this.count;
+    if (this.dirty) this.gather();
+    if (!this.bundles.length) return;
+    pass.executeBundles(this.bundles);
+    this.engine.drawCallCount += this.bundles.length;
   }
 
-  private encode() {
-    const began = performance.now();
+  private gather() {
     this.dirty = false;
     this.waiting = -1;
-    const device = this.engine._device;
-    const encoder = device.createRenderBundleEncoder({ colorFormats: this.targets.colors.map((c) => c.format), depthStencilFormat: this.targets.depth });
     const shared = this.shared();
-    shared.forEach((g, i) => g && encoder.setBindGroup(i === 0 ? 0 : 3, g));
-    let last: GPURenderPipeline | null = null;
-    this.count = 0;
+    this.bundles.length = 0;
     this.drawn.clear();
     for (const [mesh, material] of this.meshes()) {
-      const d = drawOf(this.engine, this, mesh, material);
-      if (!d) {
-        if (d === undefined) this.waiting = epoch;
-        continue;
+      if (mesh.thinInstances?.count === 0) continue;
+      const shader = isShaderMaterial(material);
+      let e = this.encoded.get(mesh);
+      if (!e || e.version !== mesh._version || e.material !== material || e.shared.some((g, i) => g !== shared[i]) || (shader && e.epoch !== epoch)) {
+        e = this.encode(mesh, material, shared);
+        if (!e) continue;
       }
-      if (isShaderMaterial(material)) this.waiting = epoch;
-      if (d.pipeline !== last) encoder.setPipeline((last = d.pipeline));
-      d.groups.forEach((g, i) => encoder.setBindGroup(i + 1, g));
-      d.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
-      encoder.setIndexBuffer(mesh._gpu.index, "uint32");
-      encoder.drawIndexedIndirect(mesh._gpu.args, 0);
-      this.count++;
+      if (shader) this.waiting = epoch;
+      this.bundles.push(e.bundle);
       this.drawn.add(mesh);
     }
-    this.bundle = encoder.finish();
+  }
+
+  private encode(mesh: Mesh, material: unknown, shared: (GPUBindGroup | null)[]): Encoded | undefined {
+    const began = performance.now();
+    this.encoded.delete(mesh);
+    const d = drawOf(this.engine, this, mesh, material);
+    if (!d) {
+      if (d === undefined) this.waiting = epoch;
+      return undefined;
+    }
+    const encoder = this.engine._device.createRenderBundleEncoder({ colorFormats: this.targets.colors.map((c) => c.format), depthStencilFormat: this.targets.depth });
+    shared.forEach((g, i) => g && encoder.setBindGroup(i === 0 ? 0 : 3, g));
+    encoder.setPipeline(d.pipeline);
+    d.groups.forEach((g, i) => encoder.setBindGroup(i + 1, g));
+    d.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
+    encoder.setIndexBuffer(mesh._gpu.index, "uint32");
+    encoder.drawIndexedIndirect(mesh._gpu.args, 0);
+    const e: Encoded = { bundle: encoder.finish(), version: mesh._version, material, shared, epoch };
+    this.encoded.set(mesh, e);
     count("bundles", 1);
     count("bundleMs", performance.now() - began);
+    return e;
   }
 }
 

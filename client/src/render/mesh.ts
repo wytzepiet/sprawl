@@ -35,7 +35,7 @@ export class Mesh {
   thinInstances?: ThinInstances;
   /** The scenes it is in, told when it changes. */
   _scenes = new Set<Scene>();
-  /** Bumped when what it is drawn with is new: its buffers, its material's bindings. */
+  /** Bumped when what it is drawn with is new (`_remade`): its buffers, its material's bindings. */
   _version = 0;
   /** What the GPU must be given before the next frame. */
   _dirty = { world: true, instances: false, colors: false };
@@ -66,15 +66,20 @@ export class Mesh {
   set material(m: unknown) {
     if (m === this._material) return;
     this._material = m;
-    this._changed(true);
+    this._remade();
   }
 
-  /** Something about it changed: what it is drawn with (`drawn`), or only
+  /** Something about it changed: whether it is drawn (`drawn`), or only
    *  what it shows (`moved`, its world written before the next frame). */
   _changed(drawn: boolean, moved = false) {
     if (moved) (this._dirty.world = true), this.engine._dirtyMeshes.add(this);
-    if (drawn) this._version++;
     for (const s of this._scenes) s._meshChanged(this, drawn);
+  }
+
+  /** What it is drawn with is new: its draws are encoded again. */
+  _remade() {
+    this._version++;
+    this._changed(true);
   }
 
   /** Written to the GPU as the frame begins. */
@@ -89,14 +94,14 @@ export class Mesh {
     const ti = this.thinInstances;
     if (ti && this._dirty.instances) {
       const floats = ti.count * 16;
-      if (grow(this, "instances", floats * 4)) this._changed(true);
+      if (grow(this, "instances", floats * 4)) this._remade();
       const data = ti.matrices instanceof Float32Array ? ti.matrices : Float32Array.from(ti.matrices);
       if (floats) device.queue.writeBuffer(gpu.buffers.get("instances")!, 0, data.buffer, data.byteOffset, Math.min(floats, data.length) * 4);
       device.queue.writeBuffer(gpu.args, 4, new Uint32Array([ti.count]));
       this._dirty.instances = false;
     }
     if (ti?.colors && this._dirty.colors) {
-      if (grow(this, "instanceColors", ti.colors.byteLength)) this._changed(true);
+      if (grow(this, "instanceColors", ti.colors.byteLength)) this._remade();
       device.queue.writeBuffer(gpu.buffers.get("instanceColors")!, 0, ti.colors.buffer, ti.colors.byteOffset, ti.colors.byteLength);
       this._dirty.colors = false;
     }
@@ -158,7 +163,7 @@ export function updateMeshPositions(engine: Engine, mesh: Mesh, positions: Float
 
 /** A plugin's attribute buffer, grown when it must be. */
 export function setMeshAttribute(engine: Engine, mesh: Mesh, name: string, data: Float32Array): void {
-  if (grow(mesh, name, data.byteLength)) mesh._changed(true);
+  if (grow(mesh, name, data.byteLength)) mesh._remade();
   engine._device.queue.writeBuffer(mesh._gpu.buffers.get(name)!, 0, data.buffer, data.byteOffset, data.byteLength);
   mesh._changed(false);
 }
@@ -182,26 +187,28 @@ export function disposeMeshGpu(mesh: Mesh): void {
  *  grown, and its grid with it). */
 export function markMeshRenderableDirty(mesh: Mesh): void {
   if ((mesh.material as { plugins?: unknown } | null)?.plugins) dirtyMaterials.add(mesh.material as OwnPbrMaterial);
-  mesh._changed(true);
+  mesh._remade();
 }
 
 /** The matrices it is drawn at, kept as the CPU's copy, `count` of them. */
 export function setThinInstances(mesh: Mesh, matrices: Float32Array | Float64Array, count: number): void {
-  const had = !!mesh.thinInstances;
-  mesh.thinInstances = { matrices, count, colors: mesh.thinInstances?.colors ?? null };
+  const had = mesh.thinInstances;
+  mesh.thinInstances = { matrices, count, colors: had?.colors ?? null };
   mesh._dirty.instances = true;
   mesh.engine._dirtyMeshes.add(mesh);
-  mesh._changed(!had);
+  had ? mesh._changed(!had.count !== !count) : mesh._remade();
 }
 
 /** The first `count` matrices drawn, written again from the same array. */
 export function setThinInstanceCount(mesh: Mesh, count: number): void {
   const ti = mesh.thinInstances;
   if (!ti) return;
+  // An empty mesh is not drawn at all: emptied or filled, the lists gather again.
+  const drawn = !ti.count !== !count;
   ti.count = count;
   mesh._dirty.instances = true;
   mesh.engine._dirtyMeshes.add(mesh);
-  mesh._changed(false);
+  mesh._changed(drawn);
 }
 
 export function setThinInstanceColors(mesh: Mesh, colors: Float32Array): void {
@@ -211,7 +218,7 @@ export function setThinInstanceColors(mesh: Mesh, colors: Float32Array): void {
   ti.colors = colors;
   mesh._dirty.colors = true;
   mesh.engine._dirtyMeshes.add(mesh);
-  if (!had) mesh._changed(true);
+  if (!had) mesh._remade();
 }
 
 export function flushThinInstances(mesh: Mesh): void {
