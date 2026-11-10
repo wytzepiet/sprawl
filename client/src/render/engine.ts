@@ -1,7 +1,7 @@
 import type { Mesh } from "./mesh";
 import type { Scene } from "./scene";
 import { drawScene } from "./frame";
-import { stats, writeDirtyMaterials } from "./pass";
+import { count, stats, writeDirtyMaterials } from "./pass";
 import { writeShaderUniforms } from "./shader";
 
 /** A canvas drawn to: the page's, or the studio's off the page. */
@@ -22,6 +22,8 @@ export interface Engine {
   _dirtyMeshes: Set<Mesh>;
   _timer: Timer | null;
   _timing: boolean;
+  /** The most a frame drew beyond its composite (`DREW`), for the GPU's time by kind. */
+  _drew: number;
   /** Pipelines by their composed key, built once for the engine. */
   _pipelines: Map<string, GPURenderPipeline | null>;
   /** Pipelines still being built: what waits on them (the studio) waits on this. */
@@ -51,6 +53,7 @@ export async function createEngine(canvas: HTMLCanvasElement, opts: { maxDeviceP
     _dirtyMeshes: new Set(),
     _timer: null,
     _timing: false,
+    _drew: 0,
     _pipelines: new Map(),
     _building: 0,
     stats,
@@ -92,6 +95,11 @@ export function resizeEngine(engine: Engine): void {
 /** The client resizes each frame itself (`resizeEngine`). */
 export const enableSurfaceResizeObserver = (_surface: Surface) => () => {};
 
+/** What a frame drew besides the composite and what moves, least to most:
+ *  the bench is told the GPU's time by it (`own.gpu.<kind>Ms`, and the frames
+ *  over 16 ms, `own.gpu.<kind>Slow`). */
+export const DREW = ["plain", "relight", "shadow", "picture"] as const;
+
 export const isGpuTimingSupported = (engine: Engine) => !!engine._timer;
 export const setGpuTimingEnabled = (engine: Engine, on: boolean) => void (engine._timing = on && !!engine._timer);
 export const waitForGpuIdle = (engine: Engine) => engine._device.queue.onSubmittedWorkDone();
@@ -101,6 +109,7 @@ export const disposeEngine = (engine: Engine) => engine._device.destroy();
 export function renderFrame(engine: Engine, _delta: number, surfaces: readonly Surface[] = engine.surfaces): void {
   const device = engine._device;
   engine.drawCallCount = 0;
+  engine._drew = 0;
   for (const m of engine._dirtyMeshes) m._flush();
   engine._dirtyMeshes.clear();
   writeDirtyMaterials(engine);
@@ -121,11 +130,17 @@ export function renderFrame(engine: Engine, _delta: number, surfaces: readonly S
   device.queue.submit([encoder.finish()]);
   if (timer) {
     timer.busy = true;
+    const kind = DREW[engine._drew];
     timer.read.mapAsync(GPUMapMode.READ).then(
       () => {
         const t = new BigInt64Array(timer.read.getMappedRange());
         const ms = Number(t[1] - t[0]) / 1e6;
-        if (ms >= 0 && ms < 1000) engine.gpuFrameTimeMs = ms;
+        if (ms >= 0 && ms < 1000) {
+          engine.gpuFrameTimeMs = ms;
+          count(`gpu.${kind}`);
+          count(`gpu.${kind}Ms`, ms);
+          if (ms > 16) count(`gpu.${kind}Slow`);
+        }
         timer.read.unmap();
         timer.busy = false;
       },

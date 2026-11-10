@@ -26,18 +26,26 @@ export interface Frame {
 /** The picture's margin past each edge of the screen, as a share of it (`still.ts`'s). */
 const MARGIN = 0.12;
 /** While the view moves the picture is slid, and drawn again only as the
- *  screen nears its edge or zooms in on it, at most this often; something
- *  still changed, at most this often. */
-const [EDGE, ZOOMED, MOVING_MS, CHANGED_MS] = [0.95, 1.25, 50, 100];
+ *  screen nears its edge or zooms in on it, at most this often. */
+const [EDGE, ZOOMED, MOVING_MS] = [0.95, 1.25, 50];
+/** Something still changed: drawn again once nothing has for `QUIET_MS`
+ *  (a build lands whole), or once it has waited `STALE_MS` (a town
+ *  streaming in, chunk after chunk every frame, is shown as it comes but
+ *  drawn once a second, not each frame: a picture a frame made every frame
+ *  slow, and the stream with it). */
+const [QUIET_MS, STALE_MS] = [100, 1000];
 const knobs = new URLSearchParams(globalThis.location?.search ?? "");
 /** The sun moves the light on the picture this often (`?relight=<ms>`). */
 const RELIGHT_MS = Number(knobs.get("relight") ?? 1000);
 /** The picture's size against the screen's (`?pictureScale=`). */
 const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
 
-let staleSince = Infinity;
+let [staleSince, changedAt] = [Infinity, -Infinity];
 /** Something still has changed that the renderer was not told of: the picture is drawn again soon. */
-export const stalePicture = () => void (staleSince = Math.min(staleSince, performance.now()));
+export function stalePicture() {
+  changedAt = performance.now();
+  staleSince = Math.min(staleSince, changedAt);
+}
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
 export const forcePicture = () => void (forced = true);
@@ -335,7 +343,7 @@ function makeFrame(scene: Scene): Frame {
     meshChanged(mesh, drawn) {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
       if (!stays(mesh)) return void (liveDue ||= casts(mesh));
-      if (deferred()) staleSince = Math.min(staleSince, performance.now());
+      if (deferred()) stalePicture();
       if (casts(mesh)) castersDue = true;
     },
     castersChanged() {
@@ -367,7 +375,8 @@ function makeFrame(scene: Scene): Frame {
       const moving = here !== lastView;
       lastView = here;
       const since = now - drawnAt;
-      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && since >= CHANGED_MS)));
+      const settled = now - changedAt >= QUIET_MS || now - staleSince >= STALE_MS;
+      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && settled)));
 
       // The sun's maps: the still one as the sun turns, and as what casts
       // changed, with the picture that shows it; the live one as what moves does.
@@ -382,6 +391,7 @@ function makeFrame(scene: Scene): Frame {
         staticDue = false;
         shadowPass(encoder, maps!.still, shadowStill);
         relightDue = true;
+        engine._drew = Math.max(engine._drew, 2);
         count("stillShadows", 1);
       }
       if (shadowing && deferred() && liveDue) {
@@ -429,6 +439,7 @@ function makeFrame(scene: Scene): Frame {
         pass.end();
         relightDue = true;
         scene._pictured();
+        engine._drew = 3;
         count("gbuffer", 1);
         count("gbufferMs", performance.now() - t0);
       }
@@ -463,6 +474,7 @@ function makeFrame(scene: Scene): Frame {
         pass.setBindGroup(0, resources!.relight!);
         pass.draw(3);
         pass.end();
+        engine._drew = Math.max(engine._drew, 1);
         count("relights", 1);
         count("relightMs", performance.now() - t0);
       }
