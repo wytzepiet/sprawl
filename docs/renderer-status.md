@@ -61,6 +61,26 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   over 34 ms 0–3 per 5 s; a picture's frames ~10 ms of the GPU, a few
   over 16. Against Lite (gpu-42734850087): frame JS 3.4 against 6.8 ms
   still, GPU 1.2 against 1.1, 19–25 draws against 194.
+- That probe timed each mesh in a pass of its own: a pass's own cost
+  (~0.05 ms) times a hundred pavement chunks was most of "pavement 6".
+  `?probe` now times each kind in one pass, each list whole, the list
+  reversed and an empty pass (`own.probe.<g|s>.<kind>`, us a probe). With
+  the thin instances culled to the picture's view and to the sun's box
+  (`cull.ts`, a compute pass before the list; gpu-42756517489,
+  gpu-42765780376): a whole picture 4.9–5.9 ms (houses 3.4–4.2, ground
+  0.6, hedges 0.35, pavement 0.33, roads 0.2, the rest under 0.1 each),
+  the still map 2.7–3.4 (houses 2.5–3.2). Drawn in reverse order the
+  picture costs 2% more: overdraw is not where it goes.
+- But a frame with a share of a picture in it still costs the GPU 10–13
+  ms (`own.gpu.picture`), as before the culling, and one with the still
+  map 10–11, against 1–2 for a plain frame: the draws in them are a few
+  ms, so most of such a frame is something else, fixed a frame (6 frames
+  a picture or 3 cost the same each). Culling on the CPU instead of in
+  dispatches changed nothing there (and cost 10 ms of JS a picture at 4×
+  throttle), so it is not the dispatches. Not yet found; next to look at:
+  the G-buffer pass's load/store of 3 targets and depth, the depth
+  textures' layout changes between being drawn and sampled, and the
+  GPU's clock as an idle card meets a burst.
 - Hitches seen with ours in one run (frames over 34 ms, ~20 per 5 s, with
   the main thread and the GPU idle: long animation frames with no script)
   were not there in the next (2–4 per 5 s, as Lite's): they follow the
