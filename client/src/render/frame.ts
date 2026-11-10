@@ -70,6 +70,8 @@ const [CHANGED, STALE_MS, PATCH] = [3, 250, 0.35];
 let staleSince = Infinity;
 /** Whether what changed cannot be told by what changed in the meshes. */
 let whole = false;
+/** Why the picture last begun is drawn whole (`?lag`). */
+let why = "";
 /** What says it is still being made, and a picture of a change waits for. */
 const making = new Set<() => boolean>();
 export function holdPicture(busy: () => boolean): () => void {
@@ -80,7 +82,7 @@ export function holdPicture(busy: () => boolean): () => void {
  *  is drawn again soon, whole. */
 export function stalePicture() {
   staleSince = Math.min(staleSince, performance.now());
-  whole = true;
+  [whole, why] = [true, "told"];
 }
 /** Meshes made anew in place of the ones of their names (a town's chunk
  *  drawn again), different from them only within `area` (x0 y0 x1 y1 in the
@@ -414,6 +416,7 @@ function makeFrame(scene: Scene): Frame {
    *  covers and the meshes seen over it, to be drawn again there; "nothing";
    *  or null where that cannot be told, or is too big to be worth it. */
   const patchOf = (): { rect: number[]; meshes: Mesh[] } | "nothing" | null => {
+    why = "first";
     if (!stillVp || !picture) return null;
     const area = nowhere();
     const now = gbuffer.share(new Set(), 1).some;
@@ -425,7 +428,7 @@ function makeFrame(scene: Scene): Frame {
     const fresh = new Map<Mesh, Seen>();
     for (const m of now) {
       const was = seen.get(m);
-      if (was && !changed(was, m, area)) return null;
+      if (was && !changed(was, m, area)) return (why = m.name), null;
       const s = see(m);
       const a = within.get(m.name);
       const old = a && !was ? goneBy.get(m.name) : undefined;
@@ -441,6 +444,7 @@ function makeFrame(scene: Scene): Frame {
     const rect = isEmpty(area) ? [0, 0, 0, 0] : rectOf(area);
     if (!rect) return null;
     const [w, h] = [rect[2]! - rect[0]!, rect[3]! - rect[1]!];
+    why = "big";
     if (w * h > PATCH * picture.w * picture.h) return null;
     seen = fresh;
     if (w <= 0 || h <= 0) return "nothing";
@@ -506,9 +510,12 @@ function makeFrame(scene: Scene): Frame {
       const viewDue = forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from);
       const waited = staleSince <= now && (now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
       // A change drawn again where it is, if it can be told where and is small.
-      const patch = deferred() && !viewDue && !next && waited && !whole ? patchOf() : null;
+      // Not while a picture is being drawn: it is diffed against as it
+      // was drawn, so what changes meanwhile is patched after it.
+      const tried = deferred() && !viewDue && !next && waited && !whole;
+      const patch = tried ? patchOf() : null;
       if (patch === "nothing") staleSince = Infinity;
-      else if (patch === null && waited) whole = true;
+      else if (tried && patch === null) whole = true;
       if (patch && patch !== "nothing" && castersDue) [staticDue, castersDue] = [true, false];
       const due = deferred() && (viewDue || (waited && whole));
 
@@ -554,7 +561,8 @@ function makeFrame(scene: Scene): Frame {
       // The next picture begun when due, the first at once; then a share
       // of its meshes each frame, and shown once all are in.
       if (due && !next) {
-        count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
+        why = forced ? "forced" : here !== from ? "moved" : `changed ${why}`;
+        count(`picture.${why.split(" ")[0]}`);
         [staleSince, whole] = [Infinity, false];
         [drawnAt, from] = [now, here];
         eye.position.set(cam.position.x, cam.position.y, cam.position.z);
@@ -597,7 +605,7 @@ function makeFrame(scene: Scene): Frame {
           [seen, within] = [next.seen, new Map()];
           next = null;
           relightDue = true;
-          scene._pictured();
+          scene._pictured(why);
           count("gbuffer", 1);
         }
       }
@@ -624,7 +632,7 @@ function makeFrame(scene: Scene): Frame {
         relightDue = true;
         engine._drew = 3;
         count("patches", 1);
-        scene._pictured();
+        scene._pictured("patch");
       }
 
       // The frame's uniforms, then the relight when due.

@@ -160,7 +160,7 @@ export interface Scene {
   /** Which meshes stand still, when the still picture is ours; otherwise every mesh is drawn forward each frame. */
   _isStill: ((mesh: Mesh) => boolean) | null;
   /** Told when the still picture has been drawn. */
-  _pictured: () => void;
+  _pictured: (why: string) => void;
   _meshChanged(mesh: Mesh, drawn: boolean): void;
   _castersChanged(): void;
 }
