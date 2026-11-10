@@ -8,11 +8,12 @@ function tiles(at: [number, number][], capacity = 8) {
   const slots = new Float32Array(capacity);
   at.forEach(([x, y], i) => matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1], i * 16));
   const mesh = {
-    material: {},
+    material: { plugins: [{ getAttributes: () => [{ name: "roadSlot", perInstance: true }, { name: "bevelAt", buffer: "bevel" }] }] },
     _local: [0, 0, 0, 1, 1, 1],
     _reshaped: 0,
     _written: 0,
-    _attributes: new Map([["roadSlot", slots]]),
+    // A share of slot an instance, and the bevel's 15 floats a vertex, as roads.ts gives them.
+    _attributes: new Map([["roadSlot", slots], ["bevel", new Float32Array(4 * 15)]]),
     position: { x: 0, y: 0, z: 0 },
     thinInstances: { matrices, count: at.length, colors: null },
   };
@@ -56,5 +57,12 @@ test("a new material cannot be told by place", () => {
   const t = tiles([[0, 0]]);
   const was = see(t.mesh);
   (t.mesh as unknown as { material: unknown }).material = {};
+  expect(changed(was, t.mesh, nowhere())).toBe(false);
+});
+
+test("a per-vertex attribute given anew is a new shape", () => {
+  const t = tiles([[0, 0]]);
+  const was = see(t.mesh);
+  (t.mesh as unknown as { _attributes: Map<string, Float32Array> })._attributes.set("bevel", new Float32Array(4 * 15));
   expect(changed(was, t.mesh, nowhere())).toBe(false);
 });

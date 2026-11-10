@@ -30,6 +30,8 @@ export interface Seen {
   reshaped: number;
   written: number;
   position: [number, number, number];
+  /** Its per-vertex attributes as given: one given anew is a new shape. */
+  vertex: Map<string, Float32Array>;
   /** Drawn many times over: each instance's matrix, and its share of each attribute and colour. */
   matrices: Float64Array | null;
   count: number;
@@ -50,13 +52,20 @@ function instanceBox(l: Box, m: ArrayLike<number>, i: number, out: Box) {
   return out;
 }
 
+/** The attributes a mesh's material reads an instance at a time. */
+function perInstance(mesh: Mesh): Set<string> {
+  const plugins = (mesh.material as { plugins?: { getAttributes?: () => { name: string; buffer?: string; perInstance?: boolean }[] }[] } | null)?.plugins ?? [];
+  return new Set(plugins.flatMap((p) => (p.getAttributes?.() ?? []).filter((a) => a.perInstance).map((a) => a.buffer ?? a.name)));
+}
+
 /** Each per-instance array of a mesh drawn many times over, and how many
  *  floats an instance has of it; null if one is not a whole share each. */
 function sharesOf(mesh: Mesh): Map<string, { data: Float32Array; stride: number }> | null {
   const ti = mesh.thinInstances!;
   const capacity = Math.max(1, Math.floor(ti.matrices.length / 16));
   const out = new Map<string, { data: Float32Array; stride: number }>();
-  for (const [name, data] of [...mesh._attributes, ...(ti.colors ? [["colors", ti.colors] as const] : [])]) {
+  const each = perInstance(mesh);
+  for (const [name, data] of [...[...mesh._attributes].filter(([n]) => each.has(n)), ...(ti.colors ? [["colors", ti.colors] as const] : [])]) {
     const stride = data.length / capacity;
     if (!Number.isInteger(stride) || stride <= 0) return null;
     out.set(name, { data, stride });
@@ -79,7 +88,9 @@ export function see(mesh: Mesh): Seen {
   } else if (!isEmpty(l)) {
     for (let k = 0; k < 3; k++) [box[k], box[k + 3]] = [l[k]! + [p.x, p.y, p.z][k]!, l[k + 3]! + [p.x, p.y, p.z][k]!];
   }
-  return { box, material: mesh.material, reshaped: mesh._reshaped, written: mesh._written, position: [p.x, p.y, p.z], matrices, count: ti?.count ?? 0, shares };
+  const each = ti ? perInstance(mesh) : new Set<string>();
+  const vertex = new Map([...mesh._attributes].filter(([n]) => !each.has(n)));
+  return { box, material: mesh.material, reshaped: mesh._reshaped, written: mesh._written, position: [p.x, p.y, p.z], vertex, matrices, count: ti?.count ?? 0, shares };
 }
 
 /** Grows `out` round what changed in `mesh` since `was`; false if that cannot be told by place (its material or shape is new). */
@@ -87,6 +98,7 @@ export function changed(was: Seen, mesh: Mesh, out: Box): boolean {
   if (mesh.material !== was.material || mesh._reshaped !== was.reshaped) return false;
   const ti = mesh.thinInstances;
   if (!ti !== !was.matrices) return false;
+  if ([...was.vertex].some(([n, d]) => mesh._attributes.get(n) !== d)) return false;
   if (!ti) {
     const p = mesh.position;
     if (p.x === was.position[0] && p.y === was.position[1] && p.z === was.position[2] && mesh._written === was.written) return true;
