@@ -62,7 +62,8 @@ let buildingListener: BuildingListener | null = null;
 export function setBuildingListener(fn: BuildingListener | null) {
   buildingListener = fn;
 }
-function trackSign(entry: GameObjectEntry | undefined, id: number) {
+/** Whether it carried a sign, or does now. */
+function trackSign(entry: GameObjectEntry | undefined, id: number): boolean {
   const was = signedEntries.has(id);
   const before = signedEntries.get(id);
   if (entry?.object.kind === "Building") buildingListener?.(before, entry);
@@ -75,7 +76,7 @@ function trackSign(entry: GameObjectEntry | undefined, id: number) {
   } else {
     signedEntries.delete(id);
   }
-  if (was || signedEntries.has(id)) setSignsVersion((v) => v + 1);
+  return was || signedEntries.has(id);
 }
 const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
 /**
@@ -199,13 +200,14 @@ function keep(op: Change) {
 /** Ops kept, and everyone told: the signs, what is built, the scene.
  *  `was`, the kind each entity was before them. */
 function announce(ops: Change[], was: (string | undefined)[]) {
-  let built = false;
+  let [built, signs] = [false, false];
   ops.forEach((op, i) => {
     const is = op.op === "Upsert" ? op.data.object.kind : undefined;
     if ([was[i], is].some((k) => k === "RoadNode" || k === "Building")) built = true;
-    if (is === "RoadNode" || was[i] === "RoadNode") setSignsVersion((v) => v + 1);
-    trackSign(op.op === "Upsert" ? op.data : undefined, op.op === "Upsert" ? op.data.id : op.data);
+    if (trackSign(op.op === "Upsert" ? op.data : undefined, idOf(op)) || is === "RoadNode" || was[i] === "RoadNode") signs = true;
   });
+  // Once for them all: every sign is looked at again on it.
+  if (signs) setSignsVersion((v) => v + 1);
   if (built) setBuiltVersion((v) => v + 1);
   if (ops.length) opsListener?.(ops);
 }
