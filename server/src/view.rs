@@ -23,15 +23,16 @@ pub(crate) struct ClientState {
     pub(crate) told: u32,
 }
 
-/// Every update carries the ambient world state alongside its ops, so a client
+/// An update carries the ambient world state alongside its ops, so a client
 /// never has to ask for the island's extent or the town separately: this,
-/// its ops empty.
+/// its ops empty. What changed of the town is sent as it changes
+/// (`send_changes`); every other update leaves it out.
 pub fn state_update(world: &World, clk: Clock) -> StateUpdate {
     StateUpdate {
         ops: Vec::new(),
         clock: clk,
-        town: world.town.view(&world.map),
-        island: ChunkBounds { min_cx: land::terrain::CHUNKS_MIN, min_cy: land::terrain::CHUNKS_MIN, max_cx: land::terrain::CHUNKS_MAX, max_cy: land::terrain::CHUNKS_MAX },
+        town: Some(world.town.view(&world.map)),
+        island: Some(ChunkBounds { min_cx: land::terrain::CHUNKS_MIN, min_cy: land::terrain::CHUNKS_MIN, max_cx: land::terrain::CHUNKS_MAX, max_cy: land::terrain::CHUNKS_MAX }),
     }
 }
 
@@ -181,10 +182,6 @@ fn send_changes(
     let mut shared = Shared::new(world, clk);
 
     for (&client_id, cs) in clients.iter_mut() {
-        if cs.subscribed.is_none() {
-            continue;
-        }
-
         let mut ops = Vec::new();
 
         for coord in &cs.known_chunks {
@@ -230,8 +227,11 @@ fn send_changes(
                 ops.push(Operation::Delete(*id));
             }
         }
-        if !ops.is_empty() || stirred {
+        // The town to everyone, as it changes; else the ops alone.
+        if stirred {
             outbox.push((client_id, shared.update(ops)));
+        } else if !ops.is_empty() {
+            outbox.push((client_id, ServerMessage::Update(StateUpdate { ops, clock: clk, town: None, island: None })));
         }
     }
 }

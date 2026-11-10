@@ -83,7 +83,7 @@ const game = await connect({
     // The town spending of its own accord, as the news tells a player.
     if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
     if (msg.type !== "Update") return;
-    town = msg.data.town;
+    town = msg.data.town ?? town;
     if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
     for (const op of msg.data.ops) {
       if (op.op !== "Upsert" || op.data.object.kind !== "Car" || !op.data.object.data.trip) continue;

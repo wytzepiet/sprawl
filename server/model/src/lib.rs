@@ -1056,8 +1056,11 @@ impl Unlock {
 pub struct StateUpdate {
     pub ops: Vec<Operation>,
     pub clock: Clock,
-    pub town: Town,
-    pub island: ChunkBounds,
+    /// The town and the island's extent, where they are news to the
+    /// client: the first update, and any after the town changed. Most
+    /// updates are a car's pedal, twenty a second, and the town as it was.
+    pub town: Option<Town>,
+    pub island: Option<ChunkBounds>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

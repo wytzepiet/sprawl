@@ -357,8 +357,8 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
-        setIsland(msg.data.island);
-        setTown(msg.data.town);
+        if (msg.data.island) setIsland(msg.data.island);
+        if (msg.data.town) setTown(msg.data.town);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops));
         break;
