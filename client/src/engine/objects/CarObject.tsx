@@ -119,8 +119,8 @@ function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { ke
  *  distance eased (`follow`) and lifted over decks and slopes. */
 export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: EngineContext): () => void {
   const id = entry.id;
-  const car = entry.object.data as Car;
-  const trip = follow(id, car);
+  let car = entry.object.data as Car;
+  let trip = follow(id, car);
   const now = (t: number, along = trip?.(t)) => ({ m: moment(id, car, t, along?.dist), lift: along?.lift ?? 0, dist: along?.dist });
   const first = now(simNow());
   if (!first.m) return () => {};
@@ -202,8 +202,10 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     carPoses.set(id, m.body.at);
     light(m, lift);
   }) : () => {};
+  pedals.set(id, (next) => !!next.trip && next.trip.route_positions === car.trip?.route_positions && ((car = next), (trip = follow(id, car)), true));
   return () => {
     stop();
+    pedals.delete(id);
     unbeam(id);
     for (const it of [body, bed, ...deck.map((d) => d.it), ...aboard.map((a) => a.it)]) it?.remove();
     if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
@@ -211,6 +213,13 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     parts.delete(id);
   };
 }
+
+/** Each mounted car on a trip, told a touch of its pedal (`pedalled`): its
+ *  trip's place and pace taken up, its way and all else as it was. */
+const pedals = new Map<number, (car: Car) => boolean>();
+/** Whether a car's change is only its pedal, and its mount has taken it
+ *  up: else it is to be mounted again. */
+export const pedal = (entry: GameObjectEntry) => entry.object.kind === "Car" && !!pedals.get(entry.id)?.(entry.object.data);
 
 /** Each car on a trip: where it is drawn along its drive, kept across the
  *  server's updates, which are just when its pedal changes. */
