@@ -54,8 +54,12 @@ function flush(force = false) {
   }
 }
 
-self.onmessage = async (e: MessageEvent<ToWorker>) => {
-  const m = e.data;
+// Each message after the one before: what comes while the game loads (the
+// bench's `RunTo`) waits for it rather than being dropped.
+let queue = Promise.resolve();
+self.onmessage = (e: MessageEvent<ToWorker>) => void (queue = queue.then(() => handle(e.data)));
+
+async function handle(m: ToWorker) {
   if (m.type === "open") {
     await init();
     web = new Web(m.name, m.text);
@@ -79,4 +83,4 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
   else if (m.type === "note") web.note(m.note);
   else if (m.type === "replay") return post({ type: "replay", json: web.replay() });
   if (m.type !== "msg") flush(true);
-};
+}
