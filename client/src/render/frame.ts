@@ -117,8 +117,10 @@ function makeFrame(scene: Scene): Frame {
    *  over the frames (`SPREAD`); and the light on the one shown. */
   let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture } | null = null;
   let front = 0;
-  /** The next picture as it is drawn: the meshes in it so far, and the frames left. */
-  let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[] } | null = null;
+  /** The next picture as it is drawn: the meshes in it so far, the frames
+   *  left, and whether it is one begun again (`meshChanged`). */
+  let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[]; again: boolean } | null = null;
+  let again = false;
   let screen: { w: number; h: number; depth: GPUTexture } | null = null;
   const compare = device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" });
   const linear = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" });
@@ -362,8 +364,14 @@ function makeFrame(scene: Scene): Frame {
     meshChanged(mesh, drawn) {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
       if (!stays(mesh)) return void (liveDue ||= casts(mesh));
-      if (deferred()) stalePicture();
       if (casts(mesh)) castersDue = true;
+      if (!deferred()) return;
+      stalePicture();
+      // Drawn already into the picture under way, that picture would show
+      // it as it was beside the rest as it is: a road's paving new, its
+      // asphalt old, for a frame. It is begun again at once; but only once,
+      // so a town streaming in, a change every frame, still sees pictures.
+      if (next?.done.has(mesh) && !next.again) [next, again, drawnAt] = [null, true, -Infinity];
     },
     castersChanged() {
       shadowStill.dirty = shadowLive.dirty = true;
@@ -446,7 +454,8 @@ function makeFrame(scene: Scene): Frame {
         const vp = Float32Array.from(getViewProjectionMatrix(eye, picture!.w / picture!.h) as ArrayLike<number>);
         common(eyeUbo, vp, getViewMatrix(eye) as ArrayLike<number>, picture!.w, picture!.h, now);
         eyeUbo.write();
-        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1] };
+        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1], again };
+        again = false;
         forced = false;
       }
       if (next) {
