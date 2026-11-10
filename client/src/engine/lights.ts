@@ -58,10 +58,14 @@ export const unbeam = (id: number) => void beams.delete(id);
 /** How many vehicles are out with their lights, lit or not: the bench's count. */
 export const beamCount = () => beams.size;
 
-/** How on the lights are, 0 by day to 1 by night: what the lamps' heads
- *  glow with (`props.ts`); and whether they are held off whatever the
+/** How on the lights are, 0 by day to 1 by night, in `GLOWS` steps: what
+ *  windows and the lamps' heads glow with (`props.ts`), drawn into the
+ *  still picture, which a step draws again whole; and whether they are held off whatever the
  *  hour, to see what they cost (`cost.ts`). */
 export const night = { on: 0, off: false };
+/** Steps of dusk: each a whole picture, where every frame's change kept the
+ *  town drawn whole at dusk and dawn. */
+const GLOWS = 12;
 
 /** The night's lights, set up before the scene is registered; `dark` says
  *  how far toward night it is, 0 to 1. */
@@ -79,7 +83,7 @@ export function nightLights(ctx: EngineContext, dark: () => number): () => void 
   let [lit, beamed] = [0, 0];
   const stop = beforeRender(() => {
     const d = dark();
-    night.on = d;
+    night.on = Math.round(d * GLOWS) / GLOWS;
     const { cx, cy, radius } = groundCover(scene, canvas);
     const k = night.off ? 0 : d * Math.min(1, Math.max(0, (FARTHEST - radius) / (FARTHEST / 4)));
     let [n, b] = [0, 0];
