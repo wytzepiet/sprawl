@@ -168,6 +168,15 @@ function makeFrame(scene: Scene): Frame {
   let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[]; seen: Map<Mesh, Seen> } | null = null;
   /** What each mesh showed as it went into the picture shown, or was drawn again in it. */
   let seen = new Map<Mesh, Seen>();
+  /** Each mesh as last looked at: looked at again only once touched since. */
+  const looks = new WeakMap<Mesh, Seen>();
+  const look = (m: Mesh): Seen => {
+    const had = looks.get(m);
+    if (had?.touched === m._touched) return had;
+    const s = see(m);
+    looks.set(m, s);
+    return s;
+  };
   let screen: { w: number; h: number; depth: GPUTexture } | null = null;
   const compare = device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" });
   const linear = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" });
@@ -428,8 +437,9 @@ function makeFrame(scene: Scene): Frame {
     const fresh = new Map<Mesh, Seen>();
     for (const m of now) {
       const was = seen.get(m);
-      if (was && !changed(was, m, area)) return (why = m.name), null;
-      const s = see(m);
+      const same = was?.touched === m._touched;
+      if (was && !same && !changed(was, m, area)) return (why = m.name), null;
+      const s = same ? was! : look(m);
       const a = within.get(m.name);
       const old = a && !was ? goneBy.get(m.name) : undefined;
       if (a && old && !matched.has(old)) {
@@ -591,7 +601,7 @@ function makeFrame(scene: Scene): Frame {
           });
           gbuffer.drawSome(pass, group);
           pass.end();
-          for (const m of group) next!.seen.set(m, see(m));
+          for (const m of group) next!.seen.set(m, look(m));
           mark(engine, each.length > 1 ? `g.${kindOf(group[0]!)}` : "gbuffer");
         });
         engine._drew = 3;

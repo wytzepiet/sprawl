@@ -7,7 +7,8 @@ import type { Mesh } from "./mesh";
  *
  * As each mesh goes into the picture, what it showed is kept (`see`): its
  * box, and for one drawn many times over, each instance's matrix and its
- * share of each attribute. Against that, `changed` finds the instances that
+ * share of each attribute; kept until the mesh is touched again
+ * (`Mesh._touched`), so a picture looks again only at what changed. Against that, `changed` finds the instances that
  * moved, came, went or show something else, and grows a box round where
  * they were and where they are.
  */
@@ -25,6 +26,8 @@ export function grow(b: Box, o: Box) {
 
 /** What a mesh showed as it went into the picture. */
 export interface Seen {
+  /** The mesh's `_touched` as it was looked at: the same, it shows the same. */
+  touched: number;
   box: Box;
   material: unknown;
   reshaped: number;
@@ -90,7 +93,7 @@ export function see(mesh: Mesh): Seen {
   }
   const each = ti ? perInstance(mesh) : new Set<string>();
   const vertex = new Map([...mesh._attributes].filter(([n]) => !each.has(n)));
-  return { box, material: mesh.material, reshaped: mesh._reshaped, written: mesh._written, position: [p.x, p.y, p.z], vertex, matrices, count: ti?.count ?? 0, shares };
+  return { touched: mesh._touched, box, material: mesh.material, reshaped: mesh._reshaped, written: mesh._written, position: [p.x, p.y, p.z], vertex, matrices, count: ti?.count ?? 0, shares };
 }
 
 /** Grows `out` round what changed in `mesh` since `was`; false if that cannot be told by place (its material or shape is new). */

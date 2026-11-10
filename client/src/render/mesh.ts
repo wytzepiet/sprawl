@@ -36,6 +36,8 @@ export class Mesh {
   _scenes = new Set<Scene>();
   /** Bumped when what it is drawn with is new (`_remade`): its buffers, its material's bindings. */
   _version = 0;
+  /** Bumped when what it shows may have changed: the still picture looks at it again (`frame.ts`). */
+  _touched = 0;
   /** What the GPU must be given before the next frame. */
   _dirty = { world: true, instances: false, colors: false };
   /** Its vertices' box, x0 y0 z0 x1 y1 z1, before its world or instances
@@ -80,6 +82,7 @@ export class Mesh {
   /** Something about it changed: whether it is drawn (`drawn`), or only
    *  what it shows (`moved`, its world written before the next frame). */
   _changed(drawn: boolean, moved = false) {
+    this._touched++;
     if (moved) (this._dirty.world = true), this.engine._dirtyMeshes.add(this);
     for (const s of this._scenes) s._meshChanged(this, drawn);
   }
@@ -193,7 +196,8 @@ export function setMeshAttribute(engine: Engine, mesh: Mesh, name: string, data:
 export function setMeshVisible(mesh: Mesh, visible: boolean): void {
   if (mesh.visible === visible) return;
   mesh.visible = visible;
-  mesh._changed(true);
+  // Shown or hidden, it shows what it did: the lists alone are told.
+  for (const s of mesh._scenes) s._meshChanged(mesh, true);
 }
 
 export function disposeMeshGpu(mesh: Mesh): void {
@@ -244,5 +248,6 @@ export function setThinInstanceColors(mesh: Mesh, colors: Float32Array): void {
 
 export function flushThinInstances(mesh: Mesh): void {
   mesh._dirty.instances = true;
+  mesh._touched++;
   mesh._flush();
 }
