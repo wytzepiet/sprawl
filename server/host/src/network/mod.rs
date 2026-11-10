@@ -2,12 +2,12 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
 use model::{
-    ClientMessage, EntityId, OwnerId, ServerMessage, StateUpdate,
+    ClientMessage, EntityId, Operation, OwnerId, ServerMessage, StateUpdate,
 };
 
 /// One socket. Dies with the connection.
@@ -124,8 +124,12 @@ fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
     match (out.last_mut(), msg) {
         (Some(ServerMessage::Update(last)), ServerMessage::Update(su)) => {
             let mut ops = std::mem::take(&mut last.ops);
+            // A pedal goes after the ops: one the later ops say anew of is gone.
+            let said: HashSet<EntityId> = su.ops.iter().map(|op| match op { Operation::Upsert(e) => e.id, Operation::Delete(id) => *id }).collect();
+            let mut pedals: Vec<u8> = last.pedals.chunks(model::PEDAL).filter(|p| !said.contains(&(f64::from_le_bytes(p[..8].try_into().unwrap()) as EntityId))).flatten().copied().collect();
+            pedals.extend(su.pedals);
             ops.extend(su.ops);
-            *last = StateUpdate { ops, town: su.town.or(last.town.take()), island: su.island.or(last.island.take()), ..su };
+            *last = StateUpdate { ops, pedals, town: su.town.or(last.town.take()), island: su.island.or(last.island.take()), ..su };
         }
         (_, msg) => out.push(msg),
     }
@@ -134,7 +138,7 @@ fn queue(out: &mut Vec<ServerMessage>, msg: ServerMessage) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model::{Clock, Operation, DAY_MS};
+    use model::{Clock, DAY_MS};
     use land::ChunkCoord;
 
     /// A chunk unloaded between two updates goes out between them: merged
@@ -156,5 +160,19 @@ mod tests {
             })
             .collect();
         assert_eq!(shape, ["[1, 2]@2", "unload", "[3, 4]@4"]);
+    }
+
+    /// A car's pedal in one update, and the car said anew in the next:
+    /// merged, the pedal would land after what the later said of it.
+    #[test]
+    fn a_pedal_gives_way_to_what_comes_after() {
+        let world = sprawl::world::World::new();
+        let clk = Clock { now: 0, speed: 1, day_ms: DAY_MS };
+        let pedal = |id: EntityId| [(id as f64).to_le_bytes().as_slice(), &[0; model::PEDAL - 8]].concat();
+        let mut out = Vec::new();
+        queue(&mut out, ServerMessage::Update(StateUpdate { pedals: [pedal(5), pedal(6)].concat(), ..sprawl::view::state_update(&world, clk) }));
+        queue(&mut out, ServerMessage::Update(StateUpdate { ops: vec![Operation::Delete(5)], pedals: pedal(7), ..sprawl::view::state_update(&world, clk) }));
+        let [ServerMessage::Update(su)] = &out[..] else { panic!("one update") };
+        assert_eq!(su.pedals, [pedal(6), pedal(7)].concat());
     }
 }

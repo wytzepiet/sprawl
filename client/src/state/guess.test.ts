@@ -31,7 +31,7 @@ function table() {
   const told: Operation[][] = [];
   setOpsListener((ops) => void told.push(ops));
   const say = (m: ServerMessage) => (hear(m), work(Infinity));
-  const update = (ops: Operation[]) => say({ type: "Update", data: { ops, clock: { now: 0, speed: 0, day_ms: 1 }, town: {} as never, island: { min_cx: 0, min_cy: 0, max_cx: 0, max_cy: 0 } } });
+  const update = (ops: Operation[]) => say({ type: "Update", data: { ops, pedals: new Uint8Array(), clock: { now: 0, speed: 0, day_ms: 1 }, town: {} as never, island: { min_cx: 0, min_cy: 0, max_cx: 0, max_cy: 0 } } });
   say({ type: "Welcome", data: 1 });
   update([{ op: "Upsert", data: node(1, 0, []) }]);
   const roads = (x: number) => getObjectsAt(x, 0).filter((e) => e.object.kind === "RoadNode");

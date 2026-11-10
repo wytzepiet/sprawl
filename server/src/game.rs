@@ -103,7 +103,7 @@ impl Game {
     pub fn connect(&mut self, id: ClientId, owner: OwnerId) {
         self.send(id, ServerMessage::Welcome(owner));
         // Objects come with the first SetChunks.
-        let update = Shared::new(&self.world, self.clock()).update(vec![]);
+        let update = Shared::new(&self.world, self.clock()).update(vec![], Vec::new());
         self.send(id, update);
         self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default(), seen: 0, told: 0 });
     }
@@ -154,7 +154,7 @@ impl Game {
         // Paused, nothing goes dirty and no update would ever be sent — so
         // clients would keep extrapolating cars against a stopped world.
         // Push the new clock instead of waiting.
-        let update = Shared::new(&self.world, self.clock()).update(vec![]);
+        let update = Shared::new(&self.world, self.clock()).update(vec![], Vec::new());
         let ids: Vec<ClientId> = self.clients.keys().copied().collect();
         for id in ids {
             self.send(id, update.clone());
@@ -173,7 +173,7 @@ impl Game {
             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
             let chunks: Vec<ChunkCoord> = cs.known_chunks.drain().collect();
             if !ops.is_empty() {
-                self.outbox.push((*id, shared.update(ops)));
+                self.outbox.push((*id, shared.update(ops, Vec::new())));
             }
             for coord in chunks {
                 self.outbox.push((*id, ServerMessage::UnloadChunk(coord)));

@@ -192,7 +192,7 @@ mod tests {
     pub(super) fn told(world: &World) -> Planner {
         let mut p = Planner::new();
         let ops = world.map.objects.iter().chain(world.map.objects.roads()).filter(|e| matches!(e.object, GameObject::RoadNode(_) | GameObject::Building(_))).map(|e| Operation::Upsert(Box::new(e.clone()))).collect();
-        p.heard(ServerMessage::Update(StateUpdate { ops, clock: Clock { now: 0, speed: 1, day_ms: 1 }, town: None, island: None }));
+        p.heard(ServerMessage::Update(StateUpdate { ops, pedals: Vec::new(), clock: Clock { now: 0, speed: 1, day_ms: 1 }, town: None, island: None }));
         let chunk = |v: i32| v.div_euclid(CHUNK_SIZE);
         let chunks: std::collections::BTreeSet<(i32, i32)> = world.map.terrain.keys().map(|&(x, y)| (chunk(x), chunk(y))).collect();
         for (cx, cy) in chunks {
@@ -271,7 +271,7 @@ mod tests {
                                 let now = told(&world).built;
                                 let gone = planner.built.keys().filter(|id| !now.contains_key(id)).map(|&id| Operation::Delete(id));
                                 let ops = gone.chain(now.values().map(|e| Operation::Upsert(Box::new(e.clone())))).collect();
-                                planner.heard(ServerMessage::Update(StateUpdate { ops, clock: Clock { now: 0, speed: 1, day_ms: 1 }, town: None, island: None }));
+                                planner.heard(ServerMessage::Update(StateUpdate { ops, pedals: Vec::new(), clock: Clock { now: 0, speed: 1, day_ms: 1 }, town: None, island: None }));
                             }
                             if n > 1 {
                                 planner.drawn(stroke.clone());

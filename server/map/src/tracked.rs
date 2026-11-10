@@ -20,7 +20,7 @@ pub struct Tracked {
     kinds: BTreeMap<BuildingKind, BTreeSet<EntityId>>,
     dirty: HashSet<EntityId>,
     /// The vehicles whose driver only touched the pedal (`get_mut_pedal`):
-    /// those of them not also `dirty` are sent as a `Pedal`.
+    /// those of them not also `dirty` are sent as a pedal (`model::pedal`).
     pedalled: HashSet<EntityId>,
     removed: Vec<EntityId>,
     persist_dirty: HashSet<EntityId>,

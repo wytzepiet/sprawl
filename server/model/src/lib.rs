@@ -927,25 +927,28 @@ pub enum ClientMessage {
 pub enum Operation {
     Upsert(Box<GameObjectEntry>),
     Delete(#[ts(type = "number")] EntityId),
-    Pedal(Pedal),
 }
 
-/// A trip's driver at the pedal, its way as it was: how far along, how
-/// fast and how hard it speeds up or brakes, as of when, and the tile it is
-/// on. The client has the rest from the vehicle's last `Upsert`: a route is
-/// sent once, not again at every touch of the pedal: nine bytes in ten of
-/// what a busy town's traffic said.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Pedal {
-    #[ts(type = "number")]
-    pub id: EntityId,
-    pub position: Option<GridCoord>,
-    pub progress: f64,
-    pub speed: f64,
-    pub acceleration: f64,
-    #[ts(type = "number")]
-    pub updated_at: u64,
+/// The bytes of one touch of a trip's pedal in `StateUpdate::pedals`.
+pub const PEDAL: usize = 36;
+
+/// A trip's driver at the pedal, its way as it was, onto `out`: how far
+/// along, how fast and how hard it speeds up or brakes, as of when, and the
+/// tile it is on (`i32::MIN` for none), each little-endian: id f64,
+/// updated_at f64, x i32, y i32, progress f32, speed f32, acceleration
+/// f32, numbers as the client's own are. The
+/// client has the rest from the vehicle's last `Upsert`: a route is sent
+/// once, not again at every touch of the pedal, and the touches, most of
+/// what a busy town's traffic says, are read as they lie.
+pub fn pedal(out: &mut Vec<u8>, id: EntityId, position: Option<GridCoord>, t: &Trip) {
+    let (x, y) = position.map_or((i32::MIN, i32::MIN), |p| (p.x, p.y));
+    out.extend((id as f64).to_le_bytes());
+    out.extend((t.updated_at as f64).to_le_bytes());
+    out.extend(x.to_le_bytes());
+    out.extend(y.to_le_bytes());
+    for v in [t.progress, t.speed, t.acceleration] {
+        out.extend((v as f32).to_le_bytes());
+    }
 }
 
 /// Simulated time of one full day and night: four minutes watched at
@@ -1061,6 +1064,11 @@ pub struct StateUpdate {
     /// updates are a car's pedal, twenty a second, and the town as it was.
     pub town: Option<Town>,
     pub island: Option<ChunkBounds>,
+    /// Each car this client holds whose pedal alone changed, `PEDAL`
+    /// bytes a car (`pedal`), after the ops.
+    #[serde(with = "serde_bytes", default)]
+    #[ts(type = "Uint8Array")]
+    pub pedals: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

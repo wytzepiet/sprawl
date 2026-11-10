@@ -3,7 +3,7 @@
 
 use fixed::{HashMap, HashSet};
 use crate::game::ClientId;
-use model::{ChunkBounds, Clock, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Pedal, ServerMessage, StateUpdate};
+use model::{ChunkBounds, Clock, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
 use land::ChunkCoord;
 use map::chunk_of;
 use crate::world::World;
@@ -30,6 +30,7 @@ pub(crate) struct ClientState {
 pub fn state_update(world: &World, clk: Clock) -> StateUpdate {
     StateUpdate {
         ops: Vec::new(),
+        pedals: Vec::new(),
         clock: clk,
         town: Some(world.town.view(&world.map)),
         island: Some(ChunkBounds { min_cx: land::terrain::CHUNKS_MIN, min_cy: land::terrain::CHUNKS_MIN, max_cx: land::terrain::CHUNKS_MAX, max_cy: land::terrain::CHUNKS_MAX }),
@@ -49,9 +50,9 @@ impl<'a> Shared<'a> {
         Shared { world, clk, built: None }
     }
 
-    pub(crate) fn update(&mut self, ops: Vec<Operation>) -> ServerMessage {
+    pub(crate) fn update(&mut self, ops: Vec<Operation>, pedals: Vec<u8>) -> ServerMessage {
         let (world, clk) = (self.world, self.clk);
-        ServerMessage::Update(StateUpdate { ops, ..self.built.get_or_insert_with(|| state_update(world, clk)).clone() })
+        ServerMessage::Update(StateUpdate { ops, pedals, ..self.built.get_or_insert_with(|| state_update(world, clk)).clone() })
     }
 }
 
@@ -113,7 +114,7 @@ pub(crate) fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        outbox.push((client_id, shared.update(ops)));
+        outbox.push((client_id, shared.update(ops, Vec::new())));
     }
 }
 
@@ -182,7 +183,7 @@ fn send_changes(
     let mut shared = Shared::new(world, clk);
 
     for (&client_id, cs) in clients.iter_mut() {
-        let mut ops = Vec::new();
+        let (mut ops, mut pedals) = (Vec::new(), Vec::new());
 
         for coord in &cs.known_chunks {
             for &entry in by_chunk.get(coord).into_iter().flatten() {
@@ -191,17 +192,10 @@ fn send_changes(
             }
             // One it holds hears of the pedal alone; one it does not, all of it.
             for &entry in pedals_by_chunk.get(coord).into_iter().flatten() {
-                ops.push(match (cs.known.insert(entry.id), &entry.object) {
-                    (false, GameObject::Car(model::Car { trip: Some(t), .. })) => Operation::Pedal(Pedal {
-                        id: entry.id,
-                        position: entry.position,
-                        progress: t.progress,
-                        speed: t.speed,
-                        acceleration: t.acceleration,
-                        updated_at: t.updated_at,
-                    }),
-                    _ => Operation::Upsert(Box::new(entry.clone())),
-                });
+                match (cs.known.insert(entry.id), &entry.object) {
+                    (false, GameObject::Car(model::Car { trip: Some(t), .. })) => model::pedal(&mut pedals, entry.id, entry.position, t),
+                    _ => ops.push(Operation::Upsert(Box::new(entry.clone()))),
+                }
             }
         }
 
@@ -229,9 +223,9 @@ fn send_changes(
         }
         // The town to everyone, as it changes; else the ops alone.
         if stirred {
-            outbox.push((client_id, shared.update(ops)));
-        } else if !ops.is_empty() {
-            outbox.push((client_id, ServerMessage::Update(StateUpdate { ops, clock: clk, town: None, island: None })));
+            outbox.push((client_id, shared.update(ops, pedals)));
+        } else if !ops.is_empty() || !pedals.is_empty() {
+            outbox.push((client_id, ServerMessage::Update(StateUpdate { ops, pedals, clock: clk, town: None, island: None })));
         }
     }
 }

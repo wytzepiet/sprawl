@@ -23,7 +23,6 @@ import type { Building,
   ChunkBounds,
   ChunkCoord,
   Operation,
-  Pedal,
   TerrainChunk,
   ServerMessage,
 } from "../generated";
@@ -137,10 +136,15 @@ export function listenHints(fn: HintListener): () => void {
 
 // --- Ops listener for ECS ---
 
-type OpsListener = (ops: Change[]) => void;
+type OpsListener = (ops: Operation[]) => void;
 let opsListener: OpsListener | null = null;
 export function setOpsListener(fn: OpsListener | null) {
   opsListener = fn;
+}
+/** Told each car whose pedal alone was touched, kept as it now is. */
+let pedalListener: ((e: GameObjectEntry) => void) | null = null;
+export function setPedalListener(fn: typeof pedalListener) {
+  pedalListener = fn;
 }
 
 /** The ground of every chunk heard of, kept after it is out of view, since
@@ -180,7 +184,7 @@ const [builtVersion, setBuiltVersion] = createSignal(0);
 export { builtVersion };
 
 /** An op kept: the entity, and where it stands. Nobody told. */
-function keep(op: Change) {
+function keep(op: Operation) {
   const id = op.op === "Upsert" ? op.data.id : op.data;
   const existing = entities.get(String(id));
   if (existing?.position) {
@@ -201,7 +205,7 @@ function keep(op: Change) {
 
 /** Ops kept, and everyone told: the signs, what is built, the scene.
  *  `was`, the kind each entity was before them. */
-function announce(ops: Change[], was: (string | undefined)[]) {
+function announce(ops: Operation[], was: (string | undefined)[]) {
   let [built, signs] = [false, false];
   ops.forEach((op, i) => {
     const is = op.op === "Upsert" ? op.data.object.kind : undefined;
@@ -215,9 +219,9 @@ function announce(ops: Change[], was: (string | undefined)[]) {
 }
 
 const kindOf = (id: number) => entities.get(String(id))?.object.kind;
-const idOf = (op: Change) => (op.op === "Upsert" ? op.data.id : op.data);
+const idOf = (op: Operation) => (op.op === "Upsert" ? op.data.id : op.data);
 
-function applyOps(ops: Change[]) {
+function applyOps(ops: Operation[]) {
   const was = ops.map((op) => kindOf(idOf(op)));
   for (const op of ops) keep(op);
   announce(ops, was);
@@ -255,7 +259,7 @@ function laid(l: Laid) {
 /** The game's ops, under what the hand guessed: an entity a guess
  *  changed keeps the guess shown, and what the game said of it is put
  *  by; then every guess made again on what the game now says. */
-function applyHeard(ops: Change[]) {
+function applyHeard(ops: Operation[]) {
   if (!guesses.length && !said.size) return applyOps(ops);
   const built = (k: string | undefined) => k === "RoadNode" || k === "Building";
   const stirs = ops.some((op) => said.has(idOf(op)) || built(kindOf(idOf(op))) || (op.op === "Upsert" && built(op.data.object.kind)));
@@ -302,7 +306,7 @@ function reguess() {
   }
   // An entity the guesses leave as the game said it is no longer theirs.
   for (const [id, e] of said) if (JSON.stringify(e ?? undefined) === JSON.stringify(entities.get(String(id)))) said.delete(id);
-  const ops: Change[] = [];
+  const ops: Operation[] = [];
   const was: (string | undefined)[] = [];
   for (const [id, e] of before) {
     const now = entities.get(String(id));
@@ -313,31 +317,52 @@ function reguess() {
   announce(ops, was);
 }
 
-/** A message's ops, so many at a time. */
+/** A message's ops, so many at a time, and then its pedals. */
 const OPS_A_PART = 64;
-function* applying(ops: Operation[]) {
+function* applying(ops: Operation[], pedals: Uint8Array) {
   for (let i = 0; i < ops.length; i += OPS_A_PART) {
-    applyHeard(driven(ops.slice(i, i + OPS_A_PART)));
+    applyHeard(ops.slice(i, i + OPS_A_PART));
     yield;
   }
+  eachPedal(pedals, (id, p) => {
+    const was = entities.get(String(id));
+    const e = pedalled(was, p);
+    if (!e) return;
+    if (was!.position?.x === e.position?.x && was!.position?.y === e.position?.y) entities.set(String(id), e);
+    else keep({ op: "Upsert", data: e });
+    pedalListener?.(e);
+  });
 }
 
-/** What the game said of an entity, whole or gone. */
-export type Change = Exclude<Operation, { op: "Pedal" }>;
+/** A touch of a trip's pedal: its place and pace (`model::pedal`). */
+export interface Pedal {
+  position: GridCoord | null;
+  progress: number;
+  speed: number;
+  acceleration: number;
+  updated_at: number;
+}
+const PEDAL = 36;
+const NOWHERE = -0x80000000;
 
-/** Ops as they land, each pedal as the vehicle it moves (`pedalled`): a
- *  message says one thing of an entity, so the one held is the one moved. */
-function driven(ops: Operation[]): Change[] {
-  return ops.flatMap((op): Change[] => {
-    if (op.op !== "Pedal") return [op];
-    const data = pedalled(entities.get(String(op.data.id)), op.data);
-    return data ? [{ op: "Upsert", data }] : [];
-  });
+/** Each touch of the pedal in an update's block, read as it lies. */
+export function eachPedal(bytes: Uint8Array, f: (id: number, pedal: Pedal) => void) {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let o = 0; o < bytes.byteLength; o += PEDAL) {
+    const x = v.getInt32(o + 16, true);
+    f(v.getFloat64(o, true), {
+      updated_at: v.getFloat64(o + 8, true),
+      position: x === NOWHERE ? null : { x, y: v.getInt32(o + 20, true) },
+      progress: v.getFloat32(o + 24, true),
+      speed: v.getFloat32(o + 28, true),
+      acceleration: v.getFloat32(o + 32, true),
+    });
+  }
 }
 
 /** A vehicle on a trip, its pedal touched: its trip at the pedal's place
  *  and pace, and its way, every array of it, as it was. */
-export function pedalled(e: GameObjectEntry | undefined, { id: _, position, ...pedal }: Pedal): GameObjectEntry | undefined {
+export function pedalled(e: GameObjectEntry | undefined, { position, ...pedal }: Pedal): GameObjectEntry | undefined {
   if (e?.object.kind !== "Car" || !e.object.data.trip) return undefined;
   return { ...e, position, object: { kind: "Car", data: { ...e.object.data, trip: { ...e.object.data.trip, ...pedal } } } };
 }
@@ -373,7 +398,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         if (msg.data.island) setIsland(msg.data.island);
         if (msg.data.town) setTown(msg.data.town);
         // Many at once when the view travels: spread over frames, in order.
-        void spread(applying(msg.data.ops));
+        void spread(applying(msg.data.ops, msg.data.pedals));
         break;
       case "Seen":
         // After the ops before it, which wait their turn too.

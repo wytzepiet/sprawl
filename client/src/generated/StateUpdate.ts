@@ -10,4 +10,9 @@ export type StateUpdate = { ops: Array<Operation>, clock: Clock,
  * client: the first update, and any after the town changed. Most
  * updates are a car's pedal, twenty a second, and the town as it was.
  */
-town: Town | null, island: ChunkBounds | null, };
+town: Town | null, island: ChunkBounds | null, 
+/**
+ * Each car this client holds whose pedal alone changed, `PEDAL`
+ * bytes a car (`pedal`), after the ops.
+ */
+pedals: Uint8Array, };

@@ -8,14 +8,14 @@ import { TerrainChunks } from "./TerrainChunks";
 import {
   eachEntity,
   setOpsListener,
+  setPedalListener,
   setTerrainListener,
   getEntity,
   getObjectsAt,
   reached,
-  type Change,
 } from "../state/gameObjects";
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
-import type { GameObjectEntry } from "../generated";
+import type { GameObjectEntry, Operation } from "../generated";
 
 import type { Building, RoadNode } from "../generated";
 
@@ -135,7 +135,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
    * its walls are mounted one by one; anything built, a road or a building,
    * has the town drawn again, and the trees make way.
    */
-  function processOps(ops: Change[]) {
+  function processOps(ops: Operation[]) {
     for (const op of ops) {
       const key = String(op.op === "Upsert" ? op.data.id : op.data);
       const existing = mounted.get(key);
@@ -151,7 +151,6 @@ export default function World(props: { brush?: () => JSX.Element }) {
       // only joined, leaves it standing as it was.
       const same = now !== undefined && was === now;
       perfCount(`ops.${entry?.object.kind ?? "deleted"}`);
-      if (existing && entry && pedal(entry)) continue;
       // One that stands as it stood may still look otherwise, its shelves
       // bare or stocked, or its street newly joined to the world: its
       // colour, and the town not drawn again.
@@ -208,6 +207,8 @@ export default function World(props: { brush?: () => JSX.Element }) {
   }
 
   setOpsListener(processOps);
+  // A car not mounted to take its pedal is mounted as it now is.
+  setPedalListener((e) => void (pedal(e) || processOps([{ op: "Upsert", data: e }])));
   setTerrainListener({
     setChunk: (chunk) => {
       terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles, chunk.heights, chunk.deposits ?? new Uint8Array());
@@ -219,6 +220,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
 
   onCleanup(() => {
     setOpsListener(null);
+    setPedalListener(null);
     setTerrainListener(null);
     for (const m of mounted.values()) m.cleanup();
     mounted.clear();

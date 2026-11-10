@@ -29,7 +29,6 @@ export type * from "./News";
 export type * from "./Offer";
 export type * from "./Operation";
 export type * from "./Package";
-export type * from "./Pedal";
 export type * from "./Phase";
 export type * from "./Placing";
 export type * from "./Pose";
