@@ -1,3 +1,4 @@
+import { lag } from "./lag";
 import { perfCount, perfSpan } from "./PerfReport";
 import {
   addTaskAtStart,
@@ -357,7 +358,7 @@ type Eye = ReturnType<typeof createFreeCamera>;
  *  the scene's frame graph, which records its tasks then. */
 export function createStill(engine: EngineContext, scene: SceneContext): Still {
   // Our own renderer keeps the picture itself (`render/frame.ts`).
-  if (NEW) return ownStill(scene as never, isStill as never, () => void redraws++);
+  if (NEW) return ownStill(scene as never, isStill as never, () => void (redraws++, lag("shown", true)));
   const surface = engine.surfaces[0];
   const picture = createSurfaceRenderTargetTexture(
     engine,

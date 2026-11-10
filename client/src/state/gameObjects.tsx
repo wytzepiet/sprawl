@@ -1,3 +1,4 @@
+import { lag } from "../engine/lag";
 import {
   createContext,
   useContext,
@@ -236,6 +237,7 @@ let guessed = 0;
 
 /** The hand did this, just now, and sent it: shown at once. */
 export function guess(g: Guess) {
+  lag("guess");
   guesses.push({ seq: sent, at: performance.now(), g, ids: [] });
   reguess();
 }

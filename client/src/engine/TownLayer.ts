@@ -1,3 +1,4 @@
+import { lag } from "./lag";
 import { addToScene, holdPicture, markMaterialUboDirty, remadeWithin, type MaterialPlugin, type Mesh } from "./gpu";
 import { night } from "./lights";
 import { spread } from "./budget";
@@ -198,6 +199,7 @@ export class TownLayer {
   /** Something built changed on this tile: the road there and round it
    *  is drawn again, and the town, on the next frame. */
   touch(x: number, y: number) {
+    lag("touch");
     grow(this.touched, x, y);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) this.dirty.add(`${x + dx},${y + dy}`);
     for (let dy = -MARGIN; dy <= MARGIN; dy += MARGIN) for (let dx = -MARGIN; dx <= MARGIN; dx += MARGIN) this.stale.add(chunkOf(x + dx, y + dy));
@@ -384,6 +386,7 @@ export class TownLayer {
       .then(
         ({ chunks, window }) => {
           perfCount("town.mainMs", gathered);
+          lag("worker");
           // A chunk a part, in frames' spare time; the next drawing waits
           // for the last, so an older one never lands over a newer.
           const showing = function* (this: TownLayer) {
@@ -411,6 +414,7 @@ export class TownLayer {
       )
       .finally(() => {
         this.drawing = false;
+        lag("chunks");
         const took = performance.now() - started;
         perfCount("town.draws");
         perfCount("town.drawMs", took);
@@ -445,6 +449,7 @@ export class TownLayer {
     if (decked) this.concrete.rebuild(this.decks.values());
     this.dirty.clear();
     this.roads.flush();
+    lag("asphalt");
   }
 
   /** The whole world as a town, unbounded, in the fixture's frame turned

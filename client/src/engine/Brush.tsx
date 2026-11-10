@@ -2,6 +2,7 @@ import { createEffect, on, onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";
+import { lag, lagStart } from "./lag";
 import { builtVersion, getObjectsAt, guess, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
 import { Pen } from "./pen";
@@ -67,7 +68,7 @@ export function Brush() {
     } else if (h.type === "Starts" && h.data.hand.type === "Building") {
       if (fitsKey(h.data.hand.data.kind, h.data.hand.data.facing, h.data.area) === fitsAsked) (fits = h.data.tiles), draw();
     } else if (pen.hear(h)) {
-      if (h.type === "Reach") advance();
+      if (h.type === "Reach") lag("reach"), advance();
       else draw();
     }
   });
@@ -144,6 +145,7 @@ export function Brush() {
       if (at.x !== hover?.x || at.y !== hover?.y) (hover = at), aimAt();
       return;
     }
+    lagStart();
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
     const went = pen.drag(w.wx, w.wy);
