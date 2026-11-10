@@ -111,7 +111,7 @@ function changes(batch: Operation[]): string[] {
     if (op.op === "Upsert") {
       if (!known.has(op.data.id)) made.push(op.data);
       known.set(op.data.id, op.data);
-    } else if (known.has(op.data)) {
+    } else if (op.op === "Delete" && known.has(op.data)) {
       gone.push(known.get(op.data)!);
       known.delete(op.data);
     }

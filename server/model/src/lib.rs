@@ -927,6 +927,25 @@ pub enum ClientMessage {
 pub enum Operation {
     Upsert(Box<GameObjectEntry>),
     Delete(#[ts(type = "number")] EntityId),
+    Pedal(Pedal),
+}
+
+/// A trip's driver at the pedal, its way as it was: how far along, how
+/// fast and how hard it speeds up or brakes, as of when, and the tile it is
+/// on. The client has the rest from the vehicle's last `Upsert`: a route is
+/// sent once, not again at every touch of the pedal: nine bytes in ten of
+/// what a busy town's traffic said.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Pedal {
+    #[ts(type = "number")]
+    pub id: EntityId,
+    pub position: Option<GridCoord>,
+    pub progress: f64,
+    pub speed: f64,
+    pub acceleration: f64,
+    #[ts(type = "number")]
+    pub updated_at: u64,
 }
 
 /// Simulated time of one full day and night: four minutes watched at

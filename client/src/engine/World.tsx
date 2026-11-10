@@ -12,9 +12,10 @@ import {
   getEntity,
   getObjectsAt,
   reached,
+  type Change,
 } from "../state/gameObjects";
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
-import type { Operation, GameObjectEntry } from "../generated";
+import type { GameObjectEntry } from "../generated";
 
 import type { Building, RoadNode } from "../generated";
 
@@ -134,7 +135,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
    * its walls are mounted one by one; anything built, a road or a building,
    * has the town drawn again, and the trees make way.
    */
-  function processOps(ops: Operation[]) {
+  function processOps(ops: Change[]) {
     for (const op of ops) {
       const key = String(op.op === "Upsert" ? op.data.id : op.data);
       const existing = mounted.get(key);

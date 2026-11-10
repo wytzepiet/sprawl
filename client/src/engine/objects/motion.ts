@@ -68,6 +68,8 @@ export function driveOf(id: number, car: Car): Drive | null {
   if (!t) return void drives.delete(id), null;
   const me = drives.get(id);
   if (me?.car === car) return me.drive;
+  // A pedal touched keeps the very arrays of its way (`pedalled`).
+  if (me && me.car.trip?.route_positions === t.route_positions) return (me.car = car), me.drive;
   const rig = rigOf(car);
   const key = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig, t.lanes, t.shift?.along]);
   if (me?.key === key) return (me.car = car), me.drive;

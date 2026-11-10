@@ -59,7 +59,7 @@ class Table {
       if (msg.type !== "Update") continue;
       for (const op of msg.data.ops) {
         if (op.op === "Upsert") this.entities.set(op.data.id, op.data);
-        else this.entities.delete(op.data);
+        else if (op.op === "Delete") this.entities.delete(op.data);
       }
     }
   }

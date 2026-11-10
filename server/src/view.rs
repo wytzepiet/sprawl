@@ -3,7 +3,7 @@
 
 use fixed::{HashMap, HashSet};
 use crate::game::ClientId;
-use model::{ChunkBounds, Clock, EntityId, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
+use model::{ChunkBounds, Clock, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Pedal, ServerMessage, StateUpdate};
 use land::ChunkCoord;
 use map::chunk_of;
 use crate::world::World;
@@ -129,7 +129,7 @@ pub(crate) fn flush_dirty(
             outbox.push((id, ServerMessage::News(news.clone())));
         }
     }
-    let (changed, removed) = world.map.objects.drain_dirty();
+    let (changed, pedalled, removed) = world.map.objects.drain_dirty();
     let crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)> =
         std::mem::take(&mut world.map.chunk_crossings)
             .into_iter()
@@ -140,8 +140,8 @@ pub(crate) fn flush_dirty(
     let stirred = world.shown.as_ref() != Some(&town);
     world.shown = Some(town);
 
-    if !(changed.is_empty() && removed.is_empty() && crossings.is_empty() && !stirred) {
-        send_changes(world, clients, outbox, clk, &changed, &removed, &crossings, stirred);
+    if !(changed.is_empty() && pedalled.is_empty() && removed.is_empty() && crossings.is_empty() && !stirred) {
+        send_changes(world, clients, outbox, clk, &changed, &pedalled, &removed, &crossings, stirred);
     }
     // After what they changed: what the client guessed of them may go.
     for (&client_id, cs) in clients.iter_mut() {
@@ -159,6 +159,7 @@ fn send_changes(
     outbox: &mut Vec<(ClientId, ServerMessage)>,
     clk: Clock,
     changed: &[EntityId],
+    pedalled: &[EntityId],
     removed: &[EntityId],
     crossings: &[(EntityId, ChunkCoord, ChunkCoord)],
     stirred: bool,
@@ -167,11 +168,14 @@ fn send_changes(
     // every entity that changed. A client sees a handful of chunks; the world
     // can have hundreds of moving cars.
     let mut by_chunk: HashMap<ChunkCoord, Vec<&GameObjectEntry>> = HashMap::default();
-    for id in changed {
-        if let Some(entry) = world.map.objects.get(*id)
-            && let Some(pos) = entry.position
-        {
-            by_chunk.entry(chunk_of(pos)).or_default().push(entry);
+    let mut pedals_by_chunk: HashMap<ChunkCoord, Vec<&GameObjectEntry>> = HashMap::default();
+    for (ids, chunks) in [(changed, &mut by_chunk), (pedalled, &mut pedals_by_chunk)] {
+        for id in ids {
+            if let Some(entry) = world.map.objects.get(*id)
+                && let Some(pos) = entry.position
+            {
+                chunks.entry(chunk_of(pos)).or_default().push(entry);
+            }
         }
     }
     let mut shared = Shared::new(world, clk);
@@ -187,6 +191,20 @@ fn send_changes(
             for &entry in by_chunk.get(coord).into_iter().flatten() {
                 cs.known.insert(entry.id);
                 ops.push(Operation::Upsert(Box::new(entry.clone())));
+            }
+            // One it holds hears of the pedal alone; one it does not, all of it.
+            for &entry in pedals_by_chunk.get(coord).into_iter().flatten() {
+                ops.push(match (cs.known.insert(entry.id), &entry.object) {
+                    (false, GameObject::Car(model::Car { trip: Some(t), .. })) => Operation::Pedal(Pedal {
+                        id: entry.id,
+                        position: entry.position,
+                        progress: t.progress,
+                        speed: t.speed,
+                        acceleration: t.acceleration,
+                        updated_at: t.updated_at,
+                    }),
+                    _ => Operation::Upsert(Box::new(entry.clone())),
+                });
             }
         }
 
