@@ -11,6 +11,7 @@
  *   --t 0.95                         at this time of day (default noon)
  *   --town 15-city                   on that test town (`server/fixtures`),
  *                                    run in the tab, not the server's world
+ *   --params renderer=new            more of the page's query
  *   --read bench-k3x9a               a run another device made, as its
  *                                    screen showed it at the end
  *   --runs                           the runs that game has, newest last
@@ -28,6 +29,7 @@ const url = (word("--url") ?? CLIENT).replace(/\/$/, "");
 const read = word("--read");
 const town = word("--town");
 const t = flag("--t", 0.5);
+const params = word("--params");
 const fetchRuns = async (tab?: string): Promise<Report[]> =>
   (await (await fetch(`${url}/perf${tab ? `?tab=${tab}` : ""}`)).text())
     .split("\n")
@@ -94,7 +96,7 @@ if (!tab) {
   const browser = await launch();
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
   page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
-  await page.goto(`${url}/?t=${t}&bench=${where}&tab=${tab}${town ? `&town=${town}` : ""}`);
+  await page.goto(`${url}/?t=${t}&bench=${where}&tab=${tab}${town ? `&town=${town}` : ""}${params ? `&${params}` : ""}`);
   // A report every five seconds, a phase each.
   for (let n = 0; n < PHASES.length; ) {
     await page.waitForTimeout(5000);
