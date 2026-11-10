@@ -28,7 +28,7 @@ const gpu: Record<string, unknown> = {};
 for (const [, names] of readFileSync(new URL("../engine/gpu.ts", import.meta.url), "utf8").matchAll(/export \{([^}]*)\} from/g))
   for (const name of names!.split(",").map((n) => n.trim()).filter(Boolean)) gpu[name] = anything();
 for (const [, name] of readFileSync(new URL("../engine/gpu.ts", import.meta.url), "utf8").matchAll(/export const (\w+) = pick/g)) gpu[name!] = anything();
-Object.assign(gpu, { NEW: false, ownStill: anything(), stalePicture: anything(), holdPicture: anything() });
+Object.assign(gpu, { NEW: false, ownStill: anything(), stalePicture: anything(), holdPicture: anything(), remadeWithin: anything() });
 Object.assign(gpu, {
   createPbrMaterial: (props: Parameters<typeof createPbrMaterial>[0]) => {
     const m = createPbrMaterial(props);

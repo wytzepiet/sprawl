@@ -8,7 +8,7 @@ import type { Scene } from "./scene";
 export { createEngine, createSurface, disposeEngine, enableSurfaceResizeObserver, isGpuTimingSupported, renderFrame, resizeEngine, setGpuTimingEnabled, waitForGpuIdle } from "./engine";
 export { createCubeEnvironment, updateCubeEnvironment } from "./env";
 export { createPbrMaterial } from "./material";
-export { holdPicture, stalePicture } from "./frame";
+export { holdPicture, remadeWithin, stalePicture } from "./frame";
 export {
   createMeshFromData,
   disposeMeshGpu,

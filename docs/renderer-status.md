@@ -20,7 +20,8 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   at most. A change is drawn again where it is, in the picture shown, in
   one frame (`patch.ts`): each mesh's box, and each instance's matrix and
   attributes, are kept as it goes into the picture, and what differs since
-  is a box in the world; its rect of the picture is emptied and every mesh seen over it
+  is a box in the world (a town chunk drawn again counts only round the
+  tiles touched, `remadeWithin`, not its whole 34 tiles); its rect of the picture is emptied and every mesh seen over it
   drawn again there, scissored. A change that cannot be told by place (a
   new material, a new shape, a colour texture, the night) or covers over
   35% of the picture draws the whole picture into a second G-buffer, a

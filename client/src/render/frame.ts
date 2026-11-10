@@ -82,6 +82,20 @@ export function stalePicture() {
   staleSince = Math.min(staleSince, performance.now());
   whole = true;
 }
+/** Meshes made anew in place of the ones of their names (a town's chunk
+ *  drawn again), different from them only within `area` (x0 y0 x1 y1 in the
+ *  world): so a road laid is drawn again round itself, not over its whole
+ *  chunk. Told as they are made; read by the next patch, or forgotten by a
+ *  whole picture. */
+let within = new Map<string, number[]>();
+export function remadeWithin(names: string[], area: number[]) {
+  for (const n of names) within.set(n, area);
+}
+/** Box `b` cut to `area` (x0 y0 x1 y1), or nowhere. */
+const cut = (b: Box, a: number[]): Box => {
+  const c = [Math.max(b[0]!, a[0]!), Math.max(b[1]!, a[1]!), b[2]!, Math.min(b[3]!, a[2]!), Math.min(b[4]!, a[3]!), b[5]!];
+  return c[0]! > c[3]! || c[1]! > c[4]! ? nowhere() : c;
+};
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
 export const forcePicture = () => void (forced = true);
@@ -403,15 +417,27 @@ function makeFrame(scene: Scene): Frame {
     if (!stillVp || !picture) return null;
     const area = nowhere();
     const now = gbuffer.share(new Set(), 1).some;
+    // Gone, by name: what a mesh made in its place may differ from only within its area.
+    const here = new Set(now);
+    const gone = [...seen.keys()].filter((m) => !here.has(m));
+    const goneBy = new Map(gone.map((m) => [m.name, m]));
+    const matched = new Set<Mesh>();
     const fresh = new Map<Mesh, Seen>();
     for (const m of now) {
       const was = seen.get(m);
       if (was && !changed(was, m, area)) return null;
       const s = see(m);
-      if (!was) grow(area, s.box);
+      const a = within.get(m.name);
+      const old = a && !was ? goneBy.get(m.name) : undefined;
+      if (a && old && !matched.has(old)) {
+        grow(area, cut(s.box, a));
+        grow(area, cut(seen.get(old)!.box, a));
+        matched.add(old);
+      } else if (!was) grow(area, s.box);
       fresh.set(m, s);
     }
-    for (const [m, was] of seen) if (!fresh.has(m)) grow(area, was.box);
+    for (const m of gone) if (!matched.has(m)) grow(area, seen.get(m)!.box);
+    within.clear();
     const rect = isEmpty(area) ? [0, 0, 0, 0] : rectOf(area);
     if (!rect) return null;
     const [w, h] = [rect[2]! - rect[0]!, rect[3]! - rect[1]!];
@@ -568,7 +594,7 @@ function makeFrame(scene: Scene): Frame {
           put("stillView", stillVp);
           put("stillInverse", (invertMat4(stillVp as never) ?? stillVp) as ArrayLike<number>);
           put("eye", next.eye);
-          seen = next.seen;
+          [seen, within] = [next.seen, new Map()];
           next = null;
           relightDue = true;
           scene._pictured();

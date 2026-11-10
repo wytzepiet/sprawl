@@ -1,4 +1,4 @@
-import { addToScene, holdPicture, markMaterialUboDirty, type MaterialPlugin, type Mesh } from "./gpu";
+import { addToScene, holdPicture, markMaterialUboDirty, remadeWithin, type MaterialPlugin, type Mesh } from "./gpu";
 import { night } from "./lights";
 import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
@@ -38,6 +38,9 @@ const ROADS_A_TILE = 8;
 /** Ground round what is built the town is drawn over: its pavement and
  *  its trees. */
 const TOWN_MARGIN = 4;
+/** How far from a tile touched its chunk may look different, drawn again:
+ *  `touch`'s roads, the window's margin a tile's look reads, and room over. */
+const REACH = 8;
 /** The town round what is built, a margin wider; none, where nothing is. */
 const townOf = (built: Bounds): Bounds | null => (built[0] <= built[2] ? widen(built, TOWN_MARGIN) : null);
 /** A drawing slower than this is said so in the console, in development. */
@@ -110,6 +113,9 @@ export class TownLayer {
   private worker = new Worker(new URL("./townWorker.ts", import.meta.url), { type: "module" });
   private builder = Comlink.wrap<TownApi>(this.worker);
   private drawing = false;
+  /** The tiles touched since the town was last drawn, and the town's bounds it was drawn with. */
+  private touched: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
+  private town: Bounds | null = null;
   /** A building held over the map, drawn as it would stand: the chunks it
    *  changes drawn again with it in them, by a worker of their own, shown
    *  in place of the town's own, and its drive on the road tiles. One
@@ -192,6 +198,7 @@ export class TownLayer {
   /** Something built changed on this tile: the road there and round it
    *  is drawn again, and the town, on the next frame. */
   touch(x: number, y: number) {
+    grow(this.touched, x, y);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) this.dirty.add(`${x + dx},${y + dy}`);
     for (let dy = -MARGIN; dy <= MARGIN; dy += MARGIN) for (let dx = -MARGIN; dx <= MARGIN; dx += MARGIN) this.stale.add(chunkOf(x + dx, y + dy));
     this.settle();
@@ -358,6 +365,14 @@ export class TownLayer {
     for (const key of covered) if (!this.chunks.has(key)) this.stale.add(key);
     const todo = [...this.stale].filter((key) => covered.has(key));
     this.stale.clear();
+    // Where a chunk drawn again differs from the one it replaces: round
+    // the tiles touched, as far as their look reads, while the town's
+    // bounds, which every road's sidewalk reads, stay as they were.
+    const touched = this.touched;
+    this.touched = [Infinity, Infinity, -Infinity, -Infinity];
+    const same = String(town) === String(this.town);
+    this.town = town;
+    const within = same && touched[0] <= touched[2] ? widen(touched, REACH) : null;
     if (!todo.length) return;
 
     const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
@@ -376,6 +391,7 @@ export class TownLayer {
               const shown = performance.now();
               this.drop(c.key);
               const made = this.make(c, window, byId);
+              if (within) remadeWithin(made.meshes.map((m) => m.name), [within[0], within[1], within[2] + 1, within[3] + 1]);
               // Under a building held, it waits to be seen again.
               if (this.preview.has(c.key)) this.want(made, false);
               this.chunks.set(c.key, made);
@@ -390,6 +406,7 @@ export class TownLayer {
           console.error("[town] drawing failed, drawing again", e);
           perfCount("town.failures");
           for (const key of todo) this.stale.add(key);
+          this.town = null;
         },
       )
       .finally(() => {
