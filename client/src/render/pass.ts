@@ -47,8 +47,9 @@ export class DrawList {
   dirty = true;
   /** The epoch it was gathered at, if a draw in it was left out for a pipeline or binds a shader material's textures. */
   private waiting = -1;
-  /** The meshes it drew, at their last gathering. */
+  /** The meshes it drew, at their last gathering, and in their order. */
   drawn = new Set<Mesh>();
+  private order: Mesh[] = [];
 
   constructor(
     private engine: Engine,
@@ -69,12 +70,18 @@ export class DrawList {
     this.engine.drawCallCount += this.bundles.length;
   }
 
-  /** Each mesh drawn and its bundle (the probe's). */
-  bundlesOf(): [Mesh, GPURenderBundle][] {
-    return [...this.drawn].flatMap((m) => {
-      const e = this.encoded.get(m);
-      return e ? [[m, e.bundle] as [Mesh, GPURenderBundle]] : [];
-    });
+  /** Some of it into a pass: of the meshes not yet `done`, a share as if
+   *  the rest were spread over `frames` frames; how many are left. */
+  drawSome(pass: GPURenderPassEncoder, done: Set<Mesh>, frames: number): number {
+    if (this.waiting >= 0 && this.waiting !== epoch) this.dirty = true;
+    if (this.dirty) this.gather();
+    const todo = this.order.filter((m) => !done.has(m));
+    const n = frames <= 1 ? todo.length : Math.ceil(todo.length / frames);
+    const some = todo.slice(0, n);
+    for (const m of some) done.add(m);
+    if (some.length) pass.executeBundles(some.map((m) => this.encoded.get(m)!.bundle));
+    this.engine.drawCallCount += some.length;
+    return todo.length - n;
   }
 
   private gather() {
@@ -83,6 +90,7 @@ export class DrawList {
     const shared = this.shared();
     this.bundles.length = 0;
     this.drawn.clear();
+    this.order.length = 0;
     for (const [mesh, material] of this.meshes()) {
       if (mesh.thinInstances?.count === 0) continue;
       const shader = isShaderMaterial(material);
@@ -94,6 +102,7 @@ export class DrawList {
       if (shader) this.waiting = epoch;
       this.bundles.push(e.bundle);
       this.drawn.add(mesh);
+      this.order.push(mesh);
     }
   }
 
