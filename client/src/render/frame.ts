@@ -51,6 +51,8 @@ const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
  *  G-buffer of its own while the last is shown: a town's picture is 30 ms
  *  of a desktop card's time, and drawn in one frame it dropped frames. */
 const SPREAD = Math.max(1, Number(knobs.get("spread") ?? 6));
+/** Timed, a picture's meshes each in a pass of their own (`?split=0`: not, its whole cost as it is). */
+const SPLIT = knobs.get("split") !== "0";
 /** Something built or taken away is drawn again where it is, in the
  *  picture shown, in one frame (`patch.ts`), if that is at most `PATCH` of
  *  the picture; else a picture over `CHANGED` frames. Either begun the
@@ -547,7 +549,7 @@ function makeFrame(scene: Scene): Frame {
         const first = !next.done.size;
         const { some, left } = gbuffer.share(next.done, next.frames--);
         // Timed, each mesh in a pass of its own, its time told by its kind.
-        const each = timing(engine) ? some.map((m) => [m]) : [some];
+        const each = timing(engine) && SPLIT ? some.map((m) => [m]) : [some];
         each.forEach((group, i) => {
           const load = first && i === 0 ? ("clear" as const) : ("load" as const);
           const pass = encoder.beginRenderPass({
