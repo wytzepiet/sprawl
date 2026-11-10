@@ -32,6 +32,8 @@ const OPEN: MaterialPlugin = {
 const FADE_REACH = 2.5;
 const FADE_ABOVE = 0.25;
 const FADE_MOST = 0.75;
+/** No higher than this, in tiles, stands anything that fades. */
+const FADE_TOP = 12;
 /** What fades stands still, drawn into the still picture, which is drawn
  *  again at most this often (`still.ts`): the fade moves no oftener. */
 const FADE_MS = 100;
@@ -47,8 +49,16 @@ export function setFade(hand: { x: number; y: number } | null, eye: { x: number;
   const now = performance.now();
   if (now - faded < FADE_MS) return;
   faded = now;
+  // Where it faded and where it fades: round the hand, leaning toward the eye up to the tallest roof.
+  const box = [Infinity, Infinity, FADE_ABOVE, -Infinity, -Infinity, FADE_TOP];
+  for (const f of [fade, next])
+    for (const z of [0, FADE_TOP])
+      if (f.r > 0) {
+        const [x, y] = [f.x + f.leanX * z, f.y + f.leanY * z];
+        [box[0], box[1], box[3], box[4]] = [Math.min(box[0]!, x - f.r), Math.min(box[1]!, y - f.r), Math.max(box[3]!, x + f.r), Math.max(box[4]!, y + f.r)];
+      }
   Object.assign(fade, next);
-  stale();
+  stale(box);
   for (const ref of towns) {
     const m = ref.deref();
     if (m) markMaterialUboDirty(m);

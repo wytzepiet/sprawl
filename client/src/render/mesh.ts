@@ -38,6 +38,15 @@ export class Mesh {
   _version = 0;
   /** What the GPU must be given before the next frame. */
   _dirty = { world: true, instances: false, colors: false };
+  /** Its vertices' box, x0 y0 z0 x1 y1 z1, before its world or instances
+   *  move it; grown with any written over it. Bumped `_reshaped` as it is. */
+  _local = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  _reshaped = 0;
+  /** The plugins' attributes as last given, by name: an instance's share of
+   *  each says what it shows, besides its matrix (the still picture's diff). */
+  _attributes = new Map<string, Float32Array>();
+  /** Bumped as an attribute is written. */
+  _written = 0;
   readonly position: { x: number; y: number; z: number };
   private _material: unknown = null;
 
@@ -148,13 +157,27 @@ export function createMeshFromData(
     world: engine._device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     group: null,
   };
-  return new Mesh(engine, name, gpu);
+  const mesh = new Mesh(engine, name, gpu);
+  enclose(mesh._local, positions, 0, positions.length / 3);
+  return mesh;
+}
+
+/** The box grown round `n` positions from vertex `from`. */
+function enclose(box: number[], positions: Float32Array, from: number, n: number) {
+  for (let i = from; i < from + n; i++)
+    for (let k = 0; k < 3; k++) {
+      const v = positions[i * 3 + k]!;
+      if (v < box[k]!) box[k] = v;
+      if (v > box[k + 3]!) box[k + 3] = v;
+    }
 }
 
 /** Positions written over in place, from `vertexOffset`. */
 export function updateMeshPositions(engine: Engine, mesh: Mesh, positions: Float32Array, vertexOffset = 0, count?: number, sourceOffset = 0): void {
   const n = count ?? positions.length / 3 - sourceOffset;
   engine._device.queue.writeBuffer(mesh._gpu.buffers.get("position")!, vertexOffset * 12, positions.buffer, positions.byteOffset + sourceOffset * 12, n * 12);
+  enclose(mesh._local, positions, sourceOffset, n);
+  mesh._reshaped++;
   mesh._changed(false);
 }
 
@@ -162,6 +185,8 @@ export function updateMeshPositions(engine: Engine, mesh: Mesh, positions: Float
 export function setMeshAttribute(engine: Engine, mesh: Mesh, name: string, data: Float32Array): void {
   if (grow(mesh, name, data.byteLength)) mesh._remade();
   engine._device.queue.writeBuffer(mesh._gpu.buffers.get(name)!, 0, data.buffer, data.byteOffset, data.byteLength);
+  mesh._attributes.set(name, data);
+  mesh._written++;
   mesh._changed(false);
 }
 

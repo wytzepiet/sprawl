@@ -7,6 +7,7 @@ import { count, DrawList, layoutOf, type Targets } from "./pass";
 import type { Scene, ShadowGenerator } from "./scene";
 import { runTasks } from "./shader";
 import { mark, timing } from "./engine";
+import { changed, grow, isEmpty, nowhere, see, type Box, type Seen } from "./patch";
 
 /** A mesh's kind: its name with its chunk taken out (`cost.ts`'s). */
 const kindOf = (m: Mesh) => m.name.replace(/-?\d+(\.\d+)?/g, "").replace(/[,#]+/g, "").replace(/_+/g, "_");
@@ -50,26 +51,35 @@ const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
  *  G-buffer of its own while the last is shown: a town's picture is 30 ms
  *  of a desktop card's time, and drawn in one frame it dropped frames. */
 const SPREAD = Math.max(1, Number(knobs.get("spread") ?? 6));
-/** A picture for something built or taken away, the view still, over
- *  `CHANGED` frames: begun the frame after, unless what is changing is
+/** Something built or taken away is drawn again where it is, in the
+ *  picture shown, in one frame (`patch.ts`), if that is at most `PATCH` of
+ *  the picture; else a picture over `CHANGED` frames. Either begun the
+ *  frame after, unless what is changing is
  *  still being made (`holdPicture`: the town's paving comes from a worker
  *  a moment after a road's asphalt, and one shown without the other
  *  flashed); then once it is made, or once the change has waited
  *  `STALE_MS`, so a road drawn tile by tile is seen as it goes, and a town
  *  streaming in, a change every frame, is drawn four times a second. */
-const [CHANGED, STALE_MS] = [3, 250];
+const [CHANGED, STALE_MS, PATCH] = [3, 250, 0.35];
 
 /** Since when something still has changed that no picture begun since holds. */
 let staleSince = Infinity;
+/** Where what changed is, as told (`stalePicture`), besides what the meshes say; and whether that cannot be told. */
+let told = nowhere();
+let whole = false;
 /** What says it is still being made, and a picture of a change waits for. */
 const making = new Set<() => boolean>();
 export function holdPicture(busy: () => boolean): () => void {
   making.add(busy);
   return () => void making.delete(busy);
 }
-/** Something still has changed that the renderer was not told of: the picture is drawn again soon. */
-export function stalePicture() {
+/** Something still has changed that the renderer was not told of: the
+ *  picture is drawn again soon, where `box` says (in the world; `nowhere()`
+ *  if only what changed in its meshes shows it), or whole. */
+export function stalePicture(box?: Box) {
   staleSince = Math.min(staleSince, performance.now());
+  if (box) grow(told, box);
+  else whole = true;
 }
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
@@ -78,6 +88,14 @@ export const forcePicture = () => void (forced = true);
 const SHADOW: Targets = { colors: [], depth: "depth32float", depthWrite: true, depthCompare: "less-equal" };
 const GBUFFER: Targets = { colors: [{ format: "rgba8unorm" }, { format: "rgba8unorm" }, { format: "rgba8unorm" }], depth: "depth32float", depthWrite: true, depthCompare: "greater-equal" };
 const forwardTo = (format: GPUTextureFormat): Targets => ({ colors: [{ format }], depth: "depth32float", depthWrite: true, depthCompare: "greater-equal" });
+
+/** A rect of the G-buffer emptied, as its clear would: nothing, at the far depth. */
+const CLEAR = `@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+  let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
+  return vec4f(p * 2. - 1., 0., 1.);
+}
+struct G { @location(0) a: vec4f, @location(1) n: vec4f, @location(2) e: vec4f }
+@fragment fn fs() -> G { return G(vec4f(0.), vec4f(0.), vec4f(0.)); }`;
 
 const LIGHT_FLOATS = 12;
 const MAX_LIGHTS = 512;
@@ -130,7 +148,9 @@ function makeFrame(scene: Scene): Frame {
   let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture } | null = null;
   let front = 0;
   /** The next picture as it is drawn: the meshes in it so far, and the frames left. */
-  let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[] } | null = null;
+  let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[]; seen: Map<Mesh, Seen> } | null = null;
+  /** What each mesh showed as it went into the picture shown, or was drawn again in it. */
+  let seen = new Map<Mesh, Seen>();
   let screen: { w: number; h: number; depth: GPUTexture } | null = null;
   const compare = device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" });
   const linear = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" });
@@ -359,6 +379,56 @@ function makeFrame(scene: Scene): Frame {
     bindResources();
   }
 
+  /** A box in the world as a rect of the picture, x0 y0 x1 y1 in pixels, a
+   *  pixel's room round it; null if any of it is behind the eye. */
+  const rectOf = (b: Box): number[] | null => {
+    const [vp, pw, ph] = [stillVp!, picture!.w, picture!.h];
+    const r = [Infinity, Infinity, -Infinity, -Infinity];
+    for (let k = 0; k < 8; k++) {
+      const [x, y, z] = [b[k & 1 ? 3 : 0]!, b[k & 2 ? 4 : 1]!, b[k & 4 ? 5 : 2]!];
+      const cw = vp[3]! * x + vp[7]! * y + vp[11]! * z + vp[15]!;
+      if (cw <= 1e-6) return null;
+      const sx = ((vp[0]! * x + vp[4]! * y + vp[8]! * z + vp[12]!) / cw) * 0.5 + 0.5;
+      const sy = 0.5 - ((vp[1]! * x + vp[5]! * y + vp[9]! * z + vp[13]!) / cw) * 0.5;
+      [r[0], r[1], r[2], r[3]] = [Math.min(r[0]!, sx * pw), Math.min(r[1]!, sy * ph), Math.max(r[2]!, sx * pw), Math.max(r[3]!, sy * ph)];
+    }
+    return [Math.max(0, Math.floor(r[0]!) - 2), Math.max(0, Math.floor(r[1]!) - 2), Math.min(pw, Math.ceil(r[2]!) + 2), Math.min(ph, Math.ceil(r[3]!) + 2)];
+  };
+
+  /** What of the picture shown changed since it was drawn: the rect it
+   *  covers and the meshes seen over it, to be drawn again there; "nothing";
+   *  or null where that cannot be told, or is too big to be worth it. */
+  const patchOf = (): { rect: number[]; meshes: Mesh[] } | "nothing" | null => {
+    if (!stillVp || !picture) return null;
+    const area = told.slice();
+    const now = gbuffer.share(new Set(), 1).some;
+    const fresh = new Map<Mesh, Seen>();
+    for (const m of now) {
+      const was = seen.get(m);
+      if (was && !changed(was, m, area)) return null;
+      const s = see(m);
+      if (!was) grow(area, s.box);
+      fresh.set(m, s);
+    }
+    for (const [m, was] of seen) if (!fresh.has(m)) grow(area, was.box);
+    const rect = isEmpty(area) ? [0, 0, 0, 0] : rectOf(area);
+    if (!rect) return null;
+    const [w, h] = [rect[2]! - rect[0]!, rect[3]! - rect[1]!];
+    if (w * h > PATCH * picture.w * picture.h) return null;
+    seen = fresh;
+    if (w <= 0 || h <= 0) return "nothing";
+    // Every mesh whose box, seen from the eye, falls over the rect: what
+    // stands in front of the change as well as the change.
+    const over = (m: Mesh) => {
+      const b = fresh.get(m)!.box;
+      if (isEmpty(b)) return false;
+      const r = rectOf(b);
+      return !r || (r[0]! < rect[2]! && rect[0]! < r[2]! && r[1]! < rect[3]! && rect[1]! < r[3]!);
+    };
+    return { rect: [rect[0]!, rect[1]!, w, h], meshes: now.filter(over) };
+  };
+  let clearPipeline: GPURenderPipeline | null = null;
+
   const shadowPass = (encoder: GPUCommandEncoder, map: GPUTexture, list: DrawList) => {
     const pass = encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: layerView(map), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
     list.draw(pass);
@@ -375,7 +445,7 @@ function makeFrame(scene: Scene): Frame {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
       if (!stays(mesh)) return void (liveDue ||= casts(mesh));
       if (casts(mesh)) castersDue = true;
-      if (deferred()) stalePicture();
+      if (deferred()) stalePicture(nowhere());
     },
     castersChanged() {
       shadowStill.dirty = shadowLive.dirty = true;
@@ -406,7 +476,14 @@ function makeFrame(scene: Scene): Frame {
       const moving = here !== lastView;
       lastView = here;
       const since = now - drawnAt;
-      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && (now - staleSince >= STALE_MS || ![...making].some((busy) => busy())))));
+      const viewDue = forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from);
+      const waited = staleSince <= now && (now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
+      // A change drawn again where it is, if it can be told where and is small.
+      const patch = deferred() && !viewDue && !next && waited && !whole ? patchOf() : null;
+      if (patch === "nothing") [staleSince, told] = [Infinity, nowhere()];
+      else if (patch === null && waited) whole = true;
+      if (patch && patch !== "nothing" && castersDue) [staticDue, castersDue] = [true, false];
+      const due = deferred() && (viewDue || (waited && whole));
 
       // The sun's maps: the still one as the sun turns, and as what casts
       // changed, with the picture that shows it; the live one as what moves does.
@@ -451,7 +528,7 @@ function makeFrame(scene: Scene): Frame {
       // of its meshes each frame, and shown once all are in.
       if (due && !next) {
         count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
-        staleSince = Infinity;
+        [staleSince, told, whole] = [Infinity, nowhere(), false];
         [drawnAt, from] = [now, here];
         eye.position.set(cam.position.x, cam.position.y, cam.position.z);
         eye.target.set(cam.target.x, cam.target.y, cam.target.z);
@@ -461,7 +538,7 @@ function makeFrame(scene: Scene): Frame {
         const vp = Float32Array.from(getViewProjectionMatrix(eye, picture!.w / picture!.h) as ArrayLike<number>);
         common(eyeUbo, vp, getViewMatrix(eye) as ArrayLike<number>, picture!.w, picture!.h, now);
         eyeUbo.write();
-        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1] };
+        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1], seen: new Map() };
         forced = false;
       }
       if (next) {
@@ -479,6 +556,7 @@ function makeFrame(scene: Scene): Frame {
           });
           gbuffer.drawSome(pass, group);
           pass.end();
+          for (const m of group) next!.seen.set(m, see(m));
           mark(engine, each.length > 1 ? `g.${kindOf(group[0]!)}` : "gbuffer");
         });
         engine._drew = 3;
@@ -489,11 +567,37 @@ function makeFrame(scene: Scene): Frame {
           put("stillView", stillVp);
           put("stillInverse", (invertMat4(stillVp as never) ?? stillVp) as ArrayLike<number>);
           put("eye", next.eye);
+          seen = next.seen;
           next = null;
           relightDue = true;
           scene._pictured();
           count("gbuffer", 1);
         }
+      }
+      if (patch && patch !== "nothing") {
+        const g = picture!.sets[front]!;
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: "load" as const, storeOp: "store" as const })),
+          depthStencilAttachment: { view: g.depth.createView(), depthLoadOp: "load", depthStoreOp: "store" },
+        });
+        const [x, y, pw, ph] = patch.rect as [number, number, number, number];
+        pass.setScissorRect(x, y, pw, ph);
+        clearPipeline ??= device.createRenderPipeline({
+          layout: "auto",
+          vertex: { module: device.createShaderModule({ code: CLEAR }), entryPoint: "vs" },
+          fragment: { module: device.createShaderModule({ code: CLEAR }), entryPoint: "fs", targets: GBUFFER.colors.map((c) => ({ format: c.format })) },
+          depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "always" },
+        });
+        pass.setPipeline(clearPipeline);
+        pass.draw(3);
+        gbuffer.drawSome(pass, patch.meshes);
+        pass.end();
+        mark(engine, "patch");
+        [staleSince, told] = [Infinity, nowhere()];
+        relightDue = true;
+        engine._drew = 3;
+        count("patches", 1);
+        scene._pictured();
       }
 
       // The frame's uniforms, then the relight when due.

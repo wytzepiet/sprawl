@@ -67,7 +67,8 @@ export class Atlas {
   upload(): Texture2D {
     if (!this.stale) return this.texture;
     this.stale = false;
-    stale();
+    // A new shape shows only on the tiles given it, which say so themselves.
+    stale([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
     if (this.texture.height === this.rows * this.side) updateTexture2DFromPixels(this.engine, this.texture, this.data);
     else {
       // The old one is never destroyed: what is bound to it may stay

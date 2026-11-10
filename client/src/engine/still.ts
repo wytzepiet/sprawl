@@ -105,10 +105,12 @@ export const isStill = (mesh: Mesh) => !lives.has(mesh);
 export let redraws = 0;
 
 let staleSince = Infinity;
-/** Something still has changed: the picture is drawn again soon. */
-export function stale() {
+/** Something still has changed: the picture is drawn again soon; under
+ *  ours only round `box` in the world (x0 y0 z0 x1 y1 z1) if it is told,
+ *  and an empty box if what changed shows only in meshes that did. */
+export function stale(box?: number[]) {
   staleSince = Math.min(staleSince, performance.now());
-  if (NEW) stalePicture();
+  if (NEW) stalePicture(box);
 }
 
 const VIEW_UNIFORMS = [

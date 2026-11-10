@@ -14,15 +14,22 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   when the sun turns past `refitAngle`, and with the next picture when a
   still caster changed), live map (live casters, in a frame one of them
   changed), G-buffer of still meshes at 1.24× only when the view or they
-  change (the sun never): as the view leaves the picture's margin, or the
-  frame after a still change, unless the town is still drawing its paving
-  (`holdPicture`, `TownLayer.settled`), then once it is, or 250 ms at most
-  while changes keep coming. It is drawn into a second G-buffer, a share
-  of its meshes a frame over six frames (three while the view moves, three
-  for a change; `?spread=`), and shown once whole. A change used to wait
-  for 100 ms of quiet, or a second: a road drawn tile by tile showed a
-  second late (Wytze, 2026-11-10). Waiting for nothing showed a road's
-  asphalt, laid at once, a moment before its paving, from the worker. Relight into rgba16float on each picture shown or still
+  change (the sun never): as the view leaves the picture's margin; or, for
+  a still change, the frame after it unless the town is still drawing its
+  paving (`holdPicture`, `TownLayer.settled`), then once it is, or 250 ms
+  at most. A change is drawn again where it is, in the picture shown, in
+  one frame (`patch.ts`): each mesh's box, and each instance's matrix and
+  attributes, are kept as it goes into the picture, and what differs since
+  (and what `stalePicture(box)` was told: the hand's fade) is a box in the
+  world; its rect of the picture is emptied and every mesh seen over it
+  drawn again there, scissored. A change that cannot be told by place (a
+  new material, a new shape, a colour texture, the night) or covers over
+  35% of the picture draws the whole picture into a second G-buffer, a
+  share of its meshes a frame over six frames (three while the view moves,
+  three for a change; `?spread=`), shown once whole. A whole picture close
+  in on 30-metro costs ~30 ms of a 3070's time (gpu-42803739738: the
+  houses' leaves 5, their walls 5, pavement 7, hedges 5, the still map
+  4-10; Lite's whole frame there ~7.6). Relight into rgba16float on each picture shown or still
   map draw and every `?relight=` ms (1000),
   composite (still.ts's `find`, car shadows exact in linear, the still map
   and the surface read only where the live map shades, headlights, tone map
