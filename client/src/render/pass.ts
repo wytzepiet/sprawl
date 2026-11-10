@@ -3,7 +3,7 @@ import { bindGroupLayouts, compose, type Composed, type Pass, type VertexLayout 
 import type { Engine } from "./engine";
 import { materialTextures, writeMaterialUbo, type OwnPbrMaterial } from "./material";
 import type { Mesh } from "./mesh";
-import { planes, seen, type InstanceCuller } from "./cull";
+import type { InstanceCuller } from "./cull";
 import { isShaderMaterial, shaderDraw } from "./shader";
 
 /**
@@ -28,8 +28,7 @@ export interface Draw {
   pipeline: GPURenderPipeline;
   groups: GPUBindGroup[];
   buffers: GPUBuffer[];
-  /** Each buffer's name and how it is laid out: which are per instance, and their strides. */
-  names: string[];
+  /** How each buffer is laid out: which are per instance, and their strides. */
   layouts: GPUVertexBufferLayout[];
   mesh: Mesh;
 }
@@ -82,12 +81,9 @@ export class DrawList {
   }
 
   /** Its meshes' thin instances (or these meshes') culled to `vp`'s view, before a pass draws them. */
-  cull(vp: ArrayLike<number>, meshes: Iterable<Mesh> = this.order) {
+  cull(encoder: GPUCommandEncoder, vp: ArrayLike<number>, meshes: Iterable<Mesh> = this.order) {
     this.fresh();
-    if (!this.culler) return;
-    const began = performance.now();
-    this.culler.run(vp, meshes);
-    count("cullMs", performance.now() - began);
+    this.culler?.run(encoder, vp, meshes);
   }
 
   /** Each mesh drawn and its bundle (the probe's). */
@@ -100,15 +96,13 @@ export class DrawList {
 
   /** Of the meshes not yet `done`, in order, a share of their weight as if
    *  the rest were spread over `frames` frames, marked done; and how many
-   *  are left after them. A mesh weighs its triangles drawn (those of its
-   *  instances in `vp`'s view: the town's houses are most of a picture)
-   *  and a screenful's worth of pixels it may cover. */
-  share(done: Set<Mesh>, frames: number, vp: ArrayLike<number>): { some: Mesh[]; left: number } {
+   *  are left after them. A mesh weighs its triangles drawn (its
+   *  instances' too: the town's houses are most of a picture) and a
+   *  screenful's worth of pixels it may cover. */
+  share(done: Set<Mesh>, frames: number): { some: Mesh[]; left: number } {
     this.fresh();
     const todo = this.order.filter((m) => !done.has(m));
-    const sides = planes(vp);
-    const counted = new Map(todo.map((m) => [m, seen(m, sides)]));
-    const weight = (m: Mesh) => m._gpu.indexCount * counted.get(m)! + 30_000;
+    const weight = (m: Mesh) => m._gpu.indexCount * (m.thinInstances?.count ?? 1) + 30_000;
     const share = todo.reduce((t, m) => t + weight(m), 0) / Math.max(1, frames);
     let [n, sum] = [0, 0];
     while (n < todo.length && (frames <= 1 || sum < share)) sum += weight(todo[n++]!);
@@ -157,7 +151,7 @@ export class DrawList {
     shared.forEach((g, i) => g && encoder.setBindGroup(i === 0 ? 0 : 3, g));
     encoder.setPipeline(d.pipeline);
     d.groups.forEach((g, i) => encoder.setBindGroup(i + 1, g));
-    const culled = this.culler && mesh.thinInstances && d.layouts.length ? this.culler.make(mesh, d.names, d.layouts, d.buffers) : { buffers: d.buffers, args: mesh._gpu.args };
+    const culled = this.culler && mesh.thinInstances && d.layouts.length ? this.culler.make(mesh, d.layouts, d.buffers) : { buffers: d.buffers, args: mesh._gpu.args };
     culled.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
     encoder.setIndexBuffer(mesh._gpu.index, "uint32");
     encoder.drawIndexedIndirect(culled.args, 0);
@@ -306,5 +300,5 @@ function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): 
     };
   });
   if (!pipeline) return pipeline;
-  return { pipeline, groups: [materialGroup(engine, m, c, groupLayouts[1]!), meshGroup(engine, mesh)], buffers: buffers as GPUBuffer[], names: c.bufferOrder, layouts: c.vertexBuffers, mesh };
+  return { pipeline, groups: [materialGroup(engine, m, c, groupLayouts[1]!), meshGroup(engine, mesh)], buffers: buffers as GPUBuffer[], layouts: c.vertexBuffers, mesh };
 }

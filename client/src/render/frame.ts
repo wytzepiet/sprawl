@@ -410,7 +410,7 @@ function makeFrame(scene: Scene): Frame {
       const shadowing = !!gen?.enabled && !!fit;
       if (shadowing && staticDue) {
         staticDue = false;
-        shadowStill.cull(fit!.caster);
+        shadowStill.cull(encoder, fit!.caster);
         shadowPass(encoder, maps!.still, shadowStill);
         relightDue = true;
         engine._drew = Math.max(engine._drew, 2);
@@ -457,8 +457,8 @@ function makeFrame(scene: Scene): Frame {
         const t0 = performance.now();
         const g = picture!.sets[1 - front]!;
         const load = next.done.size ? ("load" as const) : ("clear" as const);
-        const { some, left } = gbuffer.share(next.done, next.frames--, next.vp);
-        gbuffer.cull(next.vp, some);
+        const { some, left } = gbuffer.share(next.done, next.frames--);
+        gbuffer.cull(encoder, next.vp, some);
         const pass = encoder.beginRenderPass({
           colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: load, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
           depthStencilAttachment: { view: g.depth.createView(), depthClearValue: 0, depthLoadOp: load, depthStoreOp: "store" },

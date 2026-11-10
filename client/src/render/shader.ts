@@ -138,7 +138,7 @@ export function shaderDraw(engine: Engine, targets: Targets, mesh: Mesh, m: Shad
       ]),
     ],
   });
-  return { pipeline, groups: [m.group], buffers: [mesh._gpu.buffers.get("position")!], names: [], layouts: [], mesh };
+  return { pipeline, groups: [m.group], buffers: [mesh._gpu.buffers.get("position")!], layouts: [], mesh };
 }
 
 /** Shader materials drawn: their uniforms written as the frame begins. */
