@@ -28,10 +28,11 @@ const ways = {
   gpu: "WebGPU, drawn once a frame (requestAnimationFrame), as the game does.",
   gpunow: "WebGPU, drawn straight away on each mouse move.",
   predict: "WebGPU once a frame, aimed where the browser predicts the mouse will be (getPredictedEvents).",
+  half: "WebGPU drawn on each move, aimed half way to the prediction, the aim eased so a wrong guess does not jump.",
 };
 const stage = document.getElementById("stage"), bar = document.getElementById("bar"), note = document.getElementById("note");
 let way = location.hash.slice(1) in ways ? location.hash.slice(1) : "dom";
-let off = { x: 0, y: 0 }, last = null, ahead = { x: 0, y: 0 }, stop = () => {};
+let off = { x: 0, y: 0 }, last = null, ahead = { x: 0, y: 0 }, eased = { x: 0, y: 0 }, stop = () => {};
 
 for (const k of Object.keys(ways)) {
   const b = document.createElement("button");
@@ -41,13 +42,14 @@ for (const k of Object.keys(ways)) {
 }
 
 addEventListener("pointerdown", (e) => { if (e.target.closest("#bar")) return; last = { x: e.clientX, y: e.clientY }; stage.setPointerCapture?.(e.pointerId); });
-addEventListener("pointerup", () => (last = null));
+addEventListener("pointerup", () => { last = null; eased = { x: 0, y: 0 }; onMove(); });
 addEventListener("pointermove", (e) => {
   if (!last) return;
   off.x += e.clientX - last.x; off.y += e.clientY - last.y;
   last = { x: e.clientX, y: e.clientY };
   const p = e.getPredictedEvents?.().at(-1);
   ahead = p ? { x: p.clientX - e.clientX, y: p.clientY - e.clientY } : { x: 0, y: 0 };
+  eased = { x: eased.x * 0.5 + ahead.x * 0.25, y: eased.y * 0.5 + ahead.y * 0.25 };
   onMove();
 });
 let onMove = () => {};
@@ -110,14 +112,14 @@ async function start(k) {
   const ubo = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const group = device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubo } }] });
   const draw = () => {
-    const a = k === "predict" ? ahead : { x: 0, y: 0 };
+    const a = k === "predict" ? ahead : k === "half" ? eased : { x: 0, y: 0 };
     device.queue.writeBuffer(ubo, 0, new Float32Array([off.x + a.x + 1e5, off.y + a.y + 1e5, dpr(), 0]));
     const enc = device.createCommandEncoder();
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 1] }] });
     pass.setPipeline(pipe); pass.setBindGroup(0, group); pass.draw(3); pass.end();
     device.queue.submit([enc.finish()]);
   };
-  if (k === "gpunow") { onMove = draw; draw(); return; }
+  if (k === "gpunow" || k === "half") { onMove = draw; draw(); return; }
   let on = true;
   const tick = () => { if (!on) return; draw(); requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
