@@ -197,6 +197,10 @@ function makeFrame(scene: Scene): Frame {
 
   // When each layer is due.
   let staticDue = true;
+  /** A still caster changed: the still map is drawn again with the next picture. */
+  let castersDue = true;
+  /** A live caster changed, or the sun's map moved: the live map is drawn again. */
+  let liveDue = true;
   let relightDue = true;
   let [drawnAt, from, lastView, relitAt] = [-Infinity, "", "", -Infinity];
   let fit: { dir: number[]; version: number; matrix: Float32Array; caster: Float32Array } | null = null;
@@ -309,7 +313,7 @@ function makeFrame(scene: Scene): Frame {
       const clear = device.createCommandEncoder();
       for (const t of [maps.still, maps.live]) clear.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: layerView(t), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } }).end();
       device.queue.submit([clear.finish()]);
-      staticDue = true;
+      staticDue = liveDue = true;
     }
     if (!screen || screen.w !== w || screen.h !== h) {
       screen?.depth.destroy();
@@ -338,13 +342,13 @@ function makeFrame(scene: Scene): Frame {
     },
     meshChanged(mesh, drawn) {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
-      if (!stays(mesh)) return;
+      if (!stays(mesh)) return void (liveDue ||= casts(mesh));
       if (deferred()) staleSince = Math.min(staleSince, performance.now());
-      if (casts(mesh)) staticDue = true;
+      if (casts(mesh)) castersDue = true;
     },
     castersChanged() {
       shadowStill.dirty = shadowLive.dirty = true;
-      staticDue = true;
+      castersDue = liveDue = true;
     },
 
     draw(encoder, target) {
@@ -364,8 +368,17 @@ function makeFrame(scene: Scene): Frame {
       const inverse = Float32Array.from((invertMat4(vp as never) ?? vp) as ArrayLike<number>);
       pack();
 
-      // The sun's maps: the still one when due, the live one every frame something casts.
-      if (gen && refit(gen)) staticDue = true;
+      // The picture, when due.
+      const here = `${cam.position.x},${cam.position.y},${cam.position.z},${cam.fov},${w},${h}`;
+      const moving = here !== lastView;
+      lastView = here;
+      const since = now - drawnAt;
+      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && since >= CHANGED_MS)));
+
+      // The sun's maps: the still one as the sun turns, and as what casts
+      // changed, with the picture that shows it; the live one as what moves does.
+      if (gen && refit(gen)) staticDue = liveDue = true;
+      if (castersDue && (due || !deferred())) [staticDue, castersDue] = [true, false];
       if (fit) {
         common(sunUbo, fit.caster, fit.matrix, w, h, now);
         sunUbo.write();
@@ -377,7 +390,11 @@ function makeFrame(scene: Scene): Frame {
         relightDue = true;
         count("stillShadows", 1);
       }
-      if (shadowing && deferred()) shadowPass(encoder, maps!.live, shadowLive);
+      if (shadowing && deferred() && liveDue) {
+        liveDue = false;
+        shadowPass(encoder, maps!.live, shadowLive);
+        count("liveShadows", 1);
+      }
 
       common(camera, vp, getViewMatrix(cam) as ArrayLike<number>, w, h, now);
       camera.write();
@@ -393,12 +410,6 @@ function makeFrame(scene: Scene): Frame {
         return;
       }
 
-      // The picture, when due.
-      const here = `${cam.position.x},${cam.position.y},${cam.position.z},${cam.fov},${w},${h}`;
-      const moving = here !== lastView;
-      lastView = here;
-      const since = now - drawnAt;
-      const due = forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && since >= CHANGED_MS));
       if (due) {
         const t0 = performance.now();
         count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
