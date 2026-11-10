@@ -24,8 +24,6 @@ export interface Engine {
   _timing: boolean;
   /** The most a frame drew beyond its composite (`DREW`), for the GPU's time by kind. */
   _drew: number;
-  /** A frame submitted and not yet done by the GPU (`ONE_AHEAD`). */
-  _queued: boolean;
   /** Pipelines by their composed key, built once for the engine. */
   _pipelines: Map<string, GPURenderPipeline | null>;
   /** Pipelines still being built: what waits on them (the studio) waits on this. */
@@ -56,7 +54,6 @@ export async function createEngine(canvas: HTMLCanvasElement, opts: { maxDeviceP
     _timer: null,
     _timing: false,
     _drew: 0,
-    _queued: false,
     _pipelines: new Map(),
     _building: 0,
     stats,
@@ -109,14 +106,8 @@ export const waitForGpuIdle = (engine: Engine) => engine._device.queue.onSubmitt
 export const disposeEngine = (engine: Engine) => engine._device.destroy();
 
 /** One frame of the given surfaces, in one submit. */
-/** `?inflight=1`: a frame is skipped while the last is still on the GPU, so
- *  frames never queue behind a slow one and what a drag shows is the
- *  pointer's latest place, not where it was frames ago. */
-const ONE_AHEAD = new URLSearchParams(globalThis.location?.search ?? "").get("inflight") === "1";
-
 export function renderFrame(engine: Engine, _delta: number, surfaces: readonly Surface[] = engine.surfaces): void {
   const device = engine._device;
-  if (ONE_AHEAD && engine._queued) return void count("skipped");
   engine.drawCallCount = 0;
   engine._drew = 0;
   for (const m of engine._dirtyMeshes) m._flush();
@@ -137,10 +128,6 @@ export function renderFrame(engine: Engine, _delta: number, surfaces: readonly S
     encoder.copyBufferToBuffer(timer.resolve, 0, timer.read, 0, 16);
   }
   device.queue.submit([encoder.finish()]);
-  if (ONE_AHEAD) {
-    engine._queued = true;
-    void device.queue.onSubmittedWorkDone().then(() => void (engine._queued = false));
-  }
   if (timer) {
     timer.busy = true;
     const kind = DREW[engine._drew];
