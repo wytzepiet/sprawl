@@ -14,11 +14,13 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   when the sun turns past `refitAngle`, and with the next picture when a
   still caster changed), live map (live casters, in a frame one of them
   changed), G-buffer of still meshes at 1.24× only when the view or they
-  change (the sun never): as the view leaves the picture's margin, or once
-  nothing still has changed for 100 ms, or a second at most while a town
-  streams in. It is drawn into a second G-buffer, a share of its meshes a
-  frame over six frames (three while the view moves; `?spread=`), and
-  shown once whole. Relight into rgba16float on each picture shown or still
+  change (the sun never): as the view leaves the picture's margin, or the
+  frame after a still change, at most every 250 ms while changes keep
+  coming. It is drawn into a second G-buffer, a share of its meshes a
+  frame over six frames (three while the view moves, three for a change;
+  `?spread=`), and shown once whole. A change used to wait until nothing
+  had changed for 100 ms, or a second: a road drawn tile by tile showed a
+  second late (Wytze, 2026-11-10). Relight into rgba16float on each picture shown or still
   map draw and every `?relight=` ms (1000),
   composite (still.ts's `find`, car shadows exact in linear, the still map
   and the surface read only where the live map shades, headlights, tone map

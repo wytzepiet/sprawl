@@ -35,12 +35,6 @@ const MARGIN = 0.12;
 /** While the view moves the picture is slid, and drawn again only as the
  *  screen nears its edge or zooms in on it, at most this often. */
 const [EDGE, ZOOMED, MOVING_MS] = [0.95, 1.25, 50];
-/** Something still changed: drawn again once nothing has for `QUIET_MS`
- *  (a build lands whole), or once it has waited `STALE_MS` (a town
- *  streaming in, chunk after chunk every frame, is shown as it comes but
- *  drawn once a second, not each frame: a picture a frame made every frame
- *  slow, and the stream with it). */
-const [QUIET_MS, STALE_MS] = [100, 1000];
 const knobs = new URLSearchParams(globalThis.location?.search ?? "");
 /** The sun moves the light on the picture this often (`?relight=<ms>`). */
 const RELIGHT_MS = Number(knobs.get("relight") ?? 1000);
@@ -52,12 +46,18 @@ const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
  *  G-buffer of its own while the last is shown: a town's picture is 30 ms
  *  of a desktop card's time, and drawn in one frame it dropped frames. */
 const SPREAD = Math.max(1, Number(knobs.get("spread") ?? 6));
+/** A picture for something built or taken away, the view still, begun the
+ *  frame after, over `CHANGED` frames: a road drawn tile by tile is seen as
+ *  it goes. While changes keep coming (a road drawn, a town streaming in,
+ *  a change every frame) one begins at most every `CHANGED_MS`: pictures
+ *  back to back kept a town loading at a few frames a second. */
+const [CHANGED, CHANGED_MS] = [3, 250];
 
-let [staleSince, changedAt] = [Infinity, -Infinity];
+/** Something still changed, and no picture begun since holds it. */
+let stale = false;
 /** Something still has changed that the renderer was not told of: the picture is drawn again soon. */
 export function stalePicture() {
-  changedAt = performance.now();
-  staleSince = Math.min(staleSince, changedAt);
+  stale = true;
 }
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
@@ -394,8 +394,7 @@ function makeFrame(scene: Scene): Frame {
       const moving = here !== lastView;
       lastView = here;
       const since = now - drawnAt;
-      const settled = now - changedAt >= QUIET_MS || now - staleSince >= STALE_MS;
-      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && settled)));
+      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (stale && since >= CHANGED_MS)));
 
       // The sun's maps: the still one as the sun turns, and as what casts
       // changed, with the picture that shows it; the live one as what moves does.
@@ -437,7 +436,7 @@ function makeFrame(scene: Scene): Frame {
       // of its meshes each frame, and shown once all are in.
       if (due && !next) {
         count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
-        staleSince = Infinity;
+        stale = false;
         [drawnAt, from] = [now, here];
         eye.position.set(cam.position.x, cam.position.y, cam.position.z);
         eye.target.set(cam.target.x, cam.target.y, cam.target.z);
@@ -447,7 +446,7 @@ function makeFrame(scene: Scene): Frame {
         const vp = Float32Array.from(getViewProjectionMatrix(eye, picture!.w / picture!.h) as ArrayLike<number>);
         common(eyeUbo, vp, getViewMatrix(eye) as ArrayLike<number>, picture!.w, picture!.h, now);
         eyeUbo.write();
-        next = { done: new Set(), frames: forced || !stillVp ? 1 : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1] };
+        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1] };
         forced = false;
       }
       if (next) {
