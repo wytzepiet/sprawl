@@ -19,7 +19,9 @@ const node = (id: number, x: number, links: number[], joined = true): GameObject
 });
 const GROUND = { h: 0, s: MIDDLE };
 const outs = (e: GameObjectEntry) => (e.object.data as RoadNode).outgoing;
-const link = (from: number, to: number) => ({ type: "Link" as const, from: { x: from, y: 0 }, pf: GROUND, to: { x: to, y: 0 }, pt: GROUND, tool: "Street" as const, road: false });
+/** A drag laid by the planner from road 1 at `from` on to a new road at
+ *  `to`: the planner's own id for it, 100, new to the game. */
+const link = (from: number, to: number) => ({ type: "Laid" as const, laid: { id: 1, put: [node(1, from, [100]), node(100, to, [1])], drop: [], fresh: 100 } });
 
 /** A game on the end of a line that answers when told to. */
 function table() {

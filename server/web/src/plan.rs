@@ -12,7 +12,8 @@ use map::tracked::Tracked;
 use map::Map;
 use model::{EntityId, GameObject, GameObjectEntry, Hint, Operation, ServerMessage, Stroke};
 use sprawl::world::World;
-use std::collections::BTreeMap;
+use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
 use traffic::event_queue::EventQueue;
 use wasm_bindgen::prelude::*;
 
@@ -30,6 +31,20 @@ pub struct Planner {
     ready: Option<World>,
     /// The copy made a world for a drag, and the drag laid on it.
     world: Option<(World, u32)>,
+    /// What the drag laid has changed of the copy, and taken from it.
+    touched: BTreeSet<EntityId>,
+}
+
+/// What a drag has laid so far, to show before the server says (the
+/// client's guess, `state/guess.ts`): the road nodes and buildings it
+/// changed or made, and those it took away. Ids from `fresh` on are the
+/// copy's own, new to the server.
+#[derive(Serialize)]
+pub struct Laid {
+    pub id: u32,
+    pub put: Vec<GameObjectEntry>,
+    pub drop: Vec<EntityId>,
+    pub fresh: EntityId,
 }
 
 #[wasm_bindgen]
@@ -55,8 +70,15 @@ impl Planner {
         }
     }
 
-    /// For a drag (a `Stroke`, as the socket would carry it), where it may
-    /// go on: the server's `Hint::Reach`, as its socket would carry it.
+    /// A drag (a `Stroke`, as the socket carries it) drawn, as the server
+    /// draws it: what it has laid (`Laid`), msgpack.
+    pub fn draw(&mut self, stroke: &[u8]) -> Vec<u8> {
+        let Ok(stroke) = rmp_serde::from_slice::<Stroke>(stroke) else { return Vec::new() };
+        rmp_serde::to_vec_named(&self.drawn(stroke)).unwrap_or_default()
+    }
+
+    /// For a drag drawn, where it may go on: the server's `Hint::Reach`, as
+    /// its socket would carry it.
     pub fn reach(&mut self, stroke: &[u8]) -> Vec<u8> {
         let Ok(stroke) = rmp_serde::from_slice::<Stroke>(stroke) else { return Vec::new() };
         rmp_serde::to_vec_named(&ServerMessage::Hint(self.reached(stroke))).unwrap_or_default()
@@ -96,22 +118,45 @@ impl Planner {
         }
     }
 
-    pub fn reached(&mut self, stroke: Stroke) -> Hint {
-        // A new drag: the world made again, of all heard so far.
-        if !matches!(self.world, Some((_, id)) if id == stroke.id) {
-            let world = self.ready.take().unwrap_or_else(|| self.made());
-            self.world = Some((world, stroke.id));
+    /// The world the drag `id` is laid on: for a new drag, made again of
+    /// all heard so far.
+    fn drag(&mut self, id: u32) -> &mut World {
+        if !matches!(self.world, Some((_, was)) if was == id) {
+            let mut world = self.ready.take().unwrap_or_else(|| self.made());
+            world.map.objects.drain_persist_dirty();
+            self.world = Some((world, id));
+            self.touched.clear();
         }
-        let (world, _) = self.world.as_mut().unwrap();
-        sprawl::draw::draw(world, &mut EventQueue::new(), HAND, stroke.clone(), 0);
+        &mut self.world.as_mut().unwrap().0
+    }
+
+    pub fn drawn(&mut self, stroke: Stroke) -> Laid {
+        let id = stroke.id;
+        let world = self.drag(id);
+        sprawl::draw::draw(world, &mut EventQueue::new(), HAND, stroke, 0);
+        let (changed, removed) = world.map.objects.drain_persist_dirty();
+        self.touched.extend(changed.into_iter().chain(removed));
+        let world = &self.world.as_ref().unwrap().0;
+        let built = |e: &&GameObjectEntry| matches!(e.object, GameObject::RoadNode(_) | GameObject::Building(_));
+        let put = self.touched.iter().filter_map(|&t| world.map.objects.get(t)).filter(built).cloned().collect();
+        let drop = self.touched.iter().copied().filter(|&t| world.map.objects.get(t).is_none() && self.built.contains_key(&t)).collect();
+        Laid { id, put, drop, fresh: self.fresh() }
+    }
+
+    pub fn reached(&mut self, stroke: Stroke) -> Hint {
+        let world = self.drag(stroke.id);
         let ways = sprawl::draw::reach(world, HAND, &stroke);
         Hint::Reach { id: stroke.id, len: stroke.tiles.len() as u32, ways }
     }
 
+    /// The first id the copy has that the server never sent.
+    fn fresh(&self) -> EntityId {
+        self.built.keys().next_back().map_or(1, |id| id + 1)
+    }
+
     /// The copy as a world, as a save is opened.
     fn made(&self) -> World {
-        let next = self.built.keys().next_back().map_or(1, |id| id + 1);
-        let mut map = Map::from_loaded(Tracked::load(self.built.values().cloned().collect(), next), 0);
+        let mut map = Map::from_loaded(Tracked::load(self.built.values().cloned().collect(), self.fresh()), 0);
         map.terrain = self.ground.clone();
         map.restore();
         let mut world = World::from(map);
@@ -149,6 +194,16 @@ mod tests {
         p
     }
 
+    /// Every road node: where it stands, and how many ways on and in.
+    fn roads(world: &World) -> Vec<(i32, i32, u8, [i8; 2], usize, usize)> {
+        let mut out: Vec<_> = world.map.objects.roads().filter_map(|e| match &e.object {
+            GameObject::RoadNode(n) => Some((e.position?.x, e.position?.y, n.height, n.side, n.outgoing.len(), n.incoming.len())),
+            _ => None,
+        }).collect();
+        out.sort();
+        out
+    }
+
     /// Every drag straight out of a road tile, eight ways, up to eight
     /// tiles, at each length: the planner tells what the server tells.
     #[test]
@@ -165,6 +220,8 @@ mod tests {
                     for want in [0, 2] {
                         id += 1;
                         let mut world = server(&text);
+                        // What the server laid of the last drag is taken back with it.
+                        planner = told(&base);
                         let tiles: Vec<Spot> = (0..8).map(|k| Spot { at: GridCoord { x: at.x + dx * k, y: at.y + dy * k }, want }).collect();
                         for n in 1..=tiles.len() {
                             let stroke = Stroke { id, tool: Tool::Street, road: false, tiles: tiles[..n].to_vec(), start: None };
@@ -178,7 +235,11 @@ mod tests {
                                 let ops = gone.chain(now.values().map(|e| Operation::Upsert(Box::new(e.clone())))).collect();
                                 planner.heard(ServerMessage::Update(StateUpdate { ops, clock: Clock { now: 0, speed: 1, day_ms: 1 }, town: None, island: None }));
                             }
+                            if n > 1 {
+                                planner.drawn(stroke.clone());
+                            }
                             let Hint::Reach { ways: ours, .. } = planner.reached(stroke) else { unreachable!() };
+                            assert_eq!(roads(&planner.world.as_ref().unwrap().0), roads(&world), "{name}: laid from {at:?} by ({dx},{dy}) at {want}, {n} tiles");
                             assert_eq!(ours, theirs, "{name}: from {at:?} by ({dx},{dy}) at {want}, {n} tiles");
                             asked += 1;
                         }
@@ -210,7 +271,9 @@ mod timing {
             let mut first = None;
             for n in 1..=10 {
                 let tiles = (0..n).map(|k| Spot { at: GridCoord { x: at.x + k, y: at.y + id as i32 }, want: 0 }).collect();
-                p.reached(Stroke { id, tool: Tool::Street, road: false, tiles, start: None });
+                let stroke = Stroke { id, tool: Tool::Street, road: false, tiles, start: None };
+                p.drawn(stroke.clone());
+                p.reached(stroke);
                 first.get_or_insert(t.elapsed());
             }
             println!("{} entries: begun {:?}, ten tiles {:?}", p.built.len(), first.unwrap(), t.elapsed());

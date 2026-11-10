@@ -1,15 +1,13 @@
 import { encode, decode } from "@msgpack/msgpack";
-import type { ClientMessage, Hint, ServerMessage } from "../generated";
-import { hearPlanner, planReach } from "../state/planner";
+import type { ClientMessage, ServerMessage } from "../generated";
 
 export interface Connection {
   /** False when the socket was not open and the message was dropped. */
   send(msg: ClientMessage): boolean;
-  /** Whether this is asked and answered here, not over the line, the
-   *  answer told to `reply`: a server is a round trip away, and where a
-   *  drag of road may go on is the game's own planner's to say
+  /** The game is a round trip away (a server, not a level's worker):
+   *  where a drag of road may go on is asked of its planner here
    *  (`state/planner.ts`). */
-  answer?(msg: ClientMessage, reply: (h: Hint) => void): boolean;
+  far?: boolean;
   close(): void;
 }
 
@@ -29,7 +27,6 @@ export function createConnection(
 
     ws.onmessage = (ev) => {
       const msg = decode(new Uint8Array(ev.data)) as ServerMessage;
-      hearPlanner(msg);
       onMessage(msg);
     };
 
@@ -52,7 +49,7 @@ export function createConnection(
       ws.send(encode(msg));
       return true;
     },
-    answer: (msg, reply) => msg.type === "Ask" && msg.data.type === "Reach" && msg.data.data.tool !== "Demolish" && planReach(msg.data.data, reply),
+    far: true,
     close() {
       closed = true;
       ws?.close();

@@ -110,7 +110,6 @@ export class Pen {
       s.start = to;
     } else {
       this.d.send({ type: "Draw", data: s });
-      this.d.guess({ type: "Link", from: cur, pf: this.place, to: next, pt: q, tool: s.tool, road: s.road });
     }
     this.place = q;
     this.current = next;

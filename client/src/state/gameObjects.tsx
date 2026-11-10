@@ -1,4 +1,5 @@
 import { lag } from "../engine/lag";
+import { hearPlanner, planDraw, planReach, type Laid } from "./planner";
 import {
   createContext,
   useContext,
@@ -242,6 +243,15 @@ export function guess(g: Guess) {
   reguess();
 }
 
+/** A drag as the planner laid it, in place of what it laid before. */
+function laid(l: Laid) {
+  lag("laid");
+  const at = guesses.findIndex((g) => g.g.type === "Laid" && g.g.laid.id === l.id);
+  if (at >= 0) guesses.splice(at, 1);
+  guesses.push({ seq: sent, at: performance.now(), g: { type: "Laid", laid: l }, ids: [] });
+  reguess();
+}
+
 /** The game's ops, under what the hand guessed: an entity a guess
  *  changed keeps the guess shown, and what the game said of it is put
  *  by; then every guess made again on what the game now says. */
@@ -356,6 +366,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   const [island, setIsland] = createSignal<ChunkBounds>(NO_ISLAND);
 
   const line = props.connect((msg) => {
+    hearPlanner(msg, laid);
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
@@ -403,9 +414,14 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
   // Every message counted as the game counts what it has done (`Seen`),
   // whoever sends it on this line.
   const raw = line.send.bind(line);
-  // What the line answers itself is said as the game would, and not
-  // counted: the game never had it.
-  const send = (line.send = (msg: ClientMessage) => line.answer?.(msg, (h) => hintListeners.forEach((f) => f(h))) || (raw(msg) && ++sent > 0));
+  // A drag of road drawn by the game's own planner as well, and shown as
+  // it lays it; where it may go on, asked of it if the game is far, said
+  // as the game would and not counted: the game never had it.
+  const send = (line.send = (msg: ClientMessage) => {
+    if (msg.type === "Draw") planDraw(msg.data);
+    if (line.far && msg.type === "Ask" && msg.data.type === "Reach" && msg.data.data.tool !== "Demolish" && planReach(msg.data.data, (h) => hintListeners.forEach((f) => f(h)))) return true;
+    return raw(msg) && ++sent > 0;
+  });
   onCleanup(() => line.close());
 
   // Built by hand, as Solid compiles it: this module is also the engine's,

@@ -57,6 +57,7 @@ class Table {
 
   send(msg: ClientMessage) {
     if (msg.type === "Ask" && msg.data.type === "Reach" && msg.data.data.tool !== "Demolish") this.asked = structuredClone(msg.data.data);
+    if (msg.type === "Draw") this.planner.draw(encode(msg.data));
     this.web.send(encode(msg));
     this.hear();
   }

@@ -960,6 +960,7 @@ dependencies = [
  "map",
  "model",
  "rmp-serde",
+ "serde",
  "serde_json",
  "sprawl",
  "traffic",
