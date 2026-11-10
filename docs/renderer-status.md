@@ -14,8 +14,12 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   when the sun turns past `refitAngle`, and with the next picture when a
   still caster changed), live map (live casters, in a frame one of them
   changed), G-buffer of still meshes at 1.24× only when the view or they
-  change (still.ts's triggers; the sun never), relight into rgba16float on
-  each G-buffer or still map draw and every `?relight=` ms (1000),
+  change (the sun never): as the view leaves the picture's margin, or once
+  nothing still has changed for 100 ms, or a second at most while a town
+  streams in. It is drawn into a second G-buffer, a share of its meshes a
+  frame over six frames (three while the view moves; `?spread=`), and
+  shown once whole. Relight into rgba16float on each picture shown or still
+  map draw and every `?relight=` ms (1000),
   composite (still.ts's `find`, car shadows exact in linear, the still map
   and the surface read only where the live map shades, headlights, tone map
   once, `frag_depth`) and the live meshes forward in the same pass.
@@ -32,9 +36,29 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   re-encode nothing.
 - `engine.stats` (and the bench's `own.*`): pipelines, bundles, bundleMs,
   gbuffer, gbufferMs, relights, relightMs, stillShadows, liveShadows,
-  frames, frameMs, picture.moved/changed/forced.
+  frames, frameMs, picture.moved/changed/forced; and the GPU's time by what
+  a frame drew, `gpu.<plain|relight|shadow|picture>` (frames timed),
+  `…Ms` and `…Slow` (over 16 ms).
 - still.ts under `?renderer=new`: `createStill` returns `ownStill`; `stale()`
   marks our picture due; each of our pictures bumps `redraws`.
+
+## Measured on a desktop card (RunPod, 30-metro at 65,-46,14, CPU 4× throttled)
+
+- A whole G-buffer costs ~30 ms of the GPU (`?probe`, since removed, drew
+  each mesh alone with timestamps: the 36 house meshes ~0.5 ms each, ~18 in
+  all, their instances town-wide; pavement 6, hedges 4, ground 2, road
+  lines 1.5; the still map ~5 in all). A frame with a whole picture in it
+  was 40–60 ms; one without, 1–1.7 ms; a relight 3, a still map 10–14 with
+  what else came in that frame. Hence the spread.
+- Loading: a still change waited 100 ms, so while a town streamed in (a
+  change every frame) every frame slower than that drew a picture, made
+  slower by it: 2–7 fps for a minute. With the change drawn once things are
+  quiet or once a second, the town is in after ~55 s, as with Lite
+  (gpu-42737950480 against gpu-42734853840).
+- Hitches seen with ours in one run (frames over 34 ms, ~20 per 5 s, with
+  the main thread and the GPU idle: long animation frames with no script)
+  were not there in the next (2–4 per 5 s, as Lite's): they follow the
+  machine, not the renderer.
 
 ## Measured (software GPU, 30-metro at 65,-46,14)
 
