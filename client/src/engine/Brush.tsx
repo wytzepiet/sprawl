@@ -1,9 +1,7 @@
 import { createEffect, on, onCleanup } from "solid-js";
-import { getCameraPosition } from "./gpu";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";
-import { setFade } from "./material";
 import { builtVersion, getObjectsAt, guess, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
 import { Pen } from "./pen";
@@ -32,7 +30,7 @@ import type { Area, Building, GridCoord, Tool } from "../generated";
  * presses on, and a drag from there lays more of it.
  */
 export function Brush() {
-  const { scene, canvas, beforeRender, afterRender } = useEngine();
+  const { scene, canvas, afterRender } = useEngine();
   const dots = new Dots(scene, canvas);
   const stopTick = afterRender(() => dots.frame());
   const { send } = useGame();
@@ -43,15 +41,8 @@ export function Brush() {
     return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
   };
 
-  /** The tile under the pointer, while it is over the map; and the pointer. */
+  /** The tile under the pointer, while it is over the map. */
   let hover: GridCoord | null = null;
-  let pointer: { clientX: number; clientY: number } | null = null;
-  // With a tool in hand, what stands between the eye and the ground under
-  // it fades, so where it lays a road is never hidden.
-  const stopFade = beforeRender(() => {
-    if (!scene.camera) return;
-    setFade(tool() !== null && pointer ? (({ wx, wy }) => ({ x: wx, y: wy }))(pick(pointer)) : null, getCameraPosition(scene.camera));
-  });
   /** Where the building in hand would stand there, asked of the game. */
   const aimAt = () => {
     const h = held();
@@ -148,7 +139,6 @@ export function Brush() {
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    pointer = { clientX: e.clientX, clientY: e.clientY };
     if (!pen.current) {
       const at = tileOf(e);
       if (at.x !== hover?.x || at.y !== hover?.y) (hover = at), aimAt();
@@ -220,7 +210,7 @@ export function Brush() {
   canvas.addEventListener("pointercancel", onTouchUp);
   canvas.addEventListener("wheel", onWheel, { passive: false, capture: true });
   window.addEventListener("keydown", onKey, { capture: true });
-  const onLeave = () => ((hover = null), (pointer = null), aimAt());
+  const onLeave = () => ((hover = null), aimAt());
   canvas.addEventListener("pointerleave", onLeave);
 
   // In development, the hand put in a pose a photograph cannot drag it
@@ -285,7 +275,6 @@ export function Brush() {
     stopHints();
     stopWatch();
     stopTick();
-    stopFade();
   });
 
   return dots.el;

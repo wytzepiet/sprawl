@@ -1,6 +1,5 @@
 import { createPbrMaterial, markMaterialUboDirty, type MaterialPlugin, type PbrMaterialProps, type Texture2D } from "./gpu";
 import { WHITE, type Rgb } from "./rgb";
-import { stale } from "./still";
 
 /**
  * The town's material: PBR, lit by the sun and by the sky round it
@@ -25,66 +24,19 @@ const OPEN: MaterialPlugin = {
   getCustomCode: (stage) => (stage === "fragment" ? { CUSTOM_FRAGMENT_MAIN_BEGIN: "var townShine: f32 = 0.0;" } : null),
 };
 
-/** Tall things fade where they stand between the eye and the hand: within
- *  this many tiles of the line from the ground under the pointer up toward
- *  the camera, above this height, in tiles, at most this much, dithered
- *  pixel by pixel. */
-const FADE_REACH = 2.5;
-const FADE_ABOVE = 0.25;
-const FADE_MOST = 0.75;
-/** No higher than this, in tiles, stands anything that fades. */
-const FADE_TOP = 12;
-/** What fades stands still, drawn into the still picture, which is drawn
- *  again at most this often (`still.ts`): the fade moves no oftener. */
-const FADE_MS = 100;
-const fade = { x: 0, y: 0, r: 0, leanX: 0, leanY: 0 };
-let faded = -Infinity;
-const towns = new Set<WeakRef<TownMaterial>>();
-
-/** Fade what stands between `eye` and the ground under the hand; `null`,
- *  nothing. Asked each frame, so a move held back is made the next. */
-export function setFade(hand: { x: number; y: number } | null, eye: { x: number; y: number; z: number }) {
-  const next = hand ? { x: hand.x, y: hand.y, r: FADE_REACH, leanX: (eye.x - hand.x) / eye.z, leanY: (eye.y - hand.y) / eye.z } : { ...fade, r: 0 };
-  if ((Object.keys(next) as (keyof typeof fade)[]).every((k) => next[k] === fade[k])) return;
-  const now = performance.now();
-  if (now - faded < FADE_MS) return;
-  faded = now;
-  // Where it faded and where it fades: round the hand, leaning toward the eye up to the tallest roof.
-  const box = [Infinity, Infinity, FADE_ABOVE, -Infinity, -Infinity, FADE_TOP];
-  for (const f of [fade, next])
-    for (const z of [0, FADE_TOP])
-      if (f.r > 0) {
-        const [x, y] = [f.x + f.leanX * z, f.y + f.leanY * z];
-        [box[0], box[1], box[3], box[4]] = [Math.min(box[0]!, x - f.r), Math.min(box[1]!, y - f.r), Math.max(box[3]!, x + f.r), Math.max(box[4]!, y + f.r)];
-      }
-  Object.assign(fade, next);
-  stale(box);
-  for (const ref of towns) {
-    const m = ref.deref();
-    if (m) markMaterialUboDirty(m);
-    else towns.delete(ref);
-  }
-}
-
-/** A town material's tint, its own: one shader for them all, a uniform each;
- *  and the fade round the hand, the same for all. */
+/** A town material's tint, its own: one shader for them all, a uniform each. */
 function close(tint: { value: Rgb }): MaterialPlugin {
   return {
     name: "TownClose",
     priority: 1e6,
-    getUniforms: () => ({ ubo: [{ name: "townTint", type: "vec4<f32>" }, { name: "townFade", type: "vec4<f32>" }, { name: "townFadeR", type: "f32" }] }),
+    getUniforms: () => ({ ubo: [{ name: "townTint", type: "vec4<f32>" }] }),
     writeUbo: (data, offsets) => {
       data.set([tint.value.r, tint.value.g, tint.value.b, 1], offsets.get("townTint")! / 4);
-      data.set([fade.x, fade.y, fade.leanX, fade.leanY], offsets.get("townFade")! / 4);
-      data[offsets.get("townFadeR")! / 4] = fade.r;
     },
     getCustomCode: (stage) =>
       stage === "fragment"
         ? {
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let townOff = input.worldPos.xy - material.townFade.xy - material.townFade.zw * input.worldPos.z;
-let townFaded = (1. - smoothstep(material.townFadeR * 0.6, material.townFadeR + 1e-4, length(townOff))) * step(${FADE_ABOVE.toFixed(3)}, input.worldPos.z) * ${FADE_MOST.toFixed(3)};
-if (townFaded > fract(52.9829189 * fract(dot(input.clipPos.xy, vec2f(0.06711056, 0.00583715))))) { discard; }
-baseColor = pow(max(baseColor * material.townTint.rgb, vec3f(0.0)), vec3f(2.2));
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `baseColor = pow(max(baseColor * material.townTint.rgb, vec3f(0.0)), vec3f(2.2));
 roughness = mix(roughness, ${GLOSS.toFixed(3)}, townShine);`,
           }
         : null,
@@ -104,9 +56,7 @@ export function townMaterial(plugins: MaterialPlugin[] = [], roughness = 0.9, te
     ...(texture ? { baseColorTexture: texture } : {}),
     plugins: [OPEN, ...plugins, close(town)],
   });
-  const made = Object.assign(material, { town });
-  towns.add(new WeakRef(made));
-  return made;
+  return Object.assign(material, { town });
 }
 
 /** Tint a town material: its colour multiplies whatever its plugins paint. */

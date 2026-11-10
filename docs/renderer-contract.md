@@ -365,7 +365,7 @@ out.<plugin varying>
 | File:line | Plugin (priority) | Hooks | Notes |
 |---|---|---|---|
 | material.ts:47 | OPEN (-1e6) | SV `var townShine: f32 = 0.0;` | |
-| material.ts:98 | TownClose (1e6) | AC | ubo `townTint vec4`, `townFade vec4`, `townFadeR f32`. Uses `input.worldPos` and `input.clipPos.xy` (dither discard). Ends with `baseColor = pow(max(baseColor*material.townTint.rgb,vec3(0)),vec3(2.2)); roughness = mix(roughness, 0.12, townShine);`. `setFade` marks every live town material dirty. |
+| material.ts:98 | TownClose (1e6) | AC | ubo `townTint vec4`. Ends with `baseColor = pow(max(baseColor*material.townTint.rgb,vec3(0)),vec3(2.2)); roughness = mix(roughness, 0.12, townShine);`. |
 | material.ts:107 | FLAT | NI `color = baseColor;` | unlit |
 | material.ts | CAST_ONLY | AC `discard;` | cast only, never seen (relies on rule 3) |
 | ground.ts:151 | ground (210) | VB, SV, AC | attrs `groundSlot groundLook groundGrass` (`vec4 perInstance`, buffer `"ground"`); 6 samplers; ubo `groundGrid vec2`, `groundTime f32`. SV uses textureSample/Level/Grad, dpdx and discard. AC writes `townShine`, `baseColor`, `roughness`, `N`. Thin instances with identity-scale matrices; renderOrder 120. |

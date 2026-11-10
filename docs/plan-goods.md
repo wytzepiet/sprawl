@@ -69,8 +69,7 @@ Mountains are terraces, each layer a flat top on a slate wall, and the
 coast's cliff is a wall from its lip into the water; both break along
 the slate. Faces turned from the camera are hidden behind the tops in
 front of them, so they hide nothing more and are not drawn short.
-Loading follows the tilted view's real footprint. With a tool in hand,
-tall things between the eye and the ground under the pointer fade.
+Loading follows the tilted view's real footprint.
 
 ## Goods you can see
 

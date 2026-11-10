@@ -68,8 +68,7 @@ const [CHANGED, STALE_MS, PATCH] = [3, 250, 0.35];
 
 /** Since when something still has changed that no picture begun since holds. */
 let staleSince = Infinity;
-/** Where what changed is, as told (`stalePicture`), besides what the meshes say; and whether that cannot be told. */
-let told = nowhere();
+/** Whether what changed cannot be told by what changed in the meshes. */
 let whole = false;
 /** What says it is still being made, and a picture of a change waits for. */
 const making = new Set<() => boolean>();
@@ -77,13 +76,11 @@ export function holdPicture(busy: () => boolean): () => void {
   making.add(busy);
   return () => void making.delete(busy);
 }
-/** Something still has changed that the renderer was not told of: the
- *  picture is drawn again soon, where `box` says (in the world; `nowhere()`
- *  if only what changed in its meshes shows it), or whole. */
-export function stalePicture(box?: Box) {
+/** Something still has changed that its meshes do not show: the picture
+ *  is drawn again soon, whole. */
+export function stalePicture() {
   staleSince = Math.min(staleSince, performance.now());
-  if (box) grow(told, box);
-  else whole = true;
+  whole = true;
 }
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
@@ -404,7 +401,7 @@ function makeFrame(scene: Scene): Frame {
    *  or null where that cannot be told, or is too big to be worth it. */
   const patchOf = (): { rect: number[]; meshes: Mesh[] } | "nothing" | null => {
     if (!stillVp || !picture) return null;
-    const area = told.slice();
+    const area = nowhere();
     const now = gbuffer.share(new Set(), 1).some;
     const fresh = new Map<Mesh, Seen>();
     for (const m of now) {
@@ -449,7 +446,7 @@ function makeFrame(scene: Scene): Frame {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
       if (!stays(mesh)) return void (liveDue ||= casts(mesh));
       if (casts(mesh)) castersDue = true;
-      if (deferred()) stalePicture(nowhere());
+      if (deferred()) staleSince = Math.min(staleSince, performance.now());
     },
     castersChanged() {
       shadowStill.dirty = shadowLive.dirty = true;
@@ -484,7 +481,7 @@ function makeFrame(scene: Scene): Frame {
       const waited = staleSince <= now && (now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
       // A change drawn again where it is, if it can be told where and is small.
       const patch = deferred() && !viewDue && !next && waited && !whole ? patchOf() : null;
-      if (patch === "nothing") [staleSince, told] = [Infinity, nowhere()];
+      if (patch === "nothing") staleSince = Infinity;
       else if (patch === null && waited) whole = true;
       if (patch && patch !== "nothing" && castersDue) [staticDue, castersDue] = [true, false];
       const due = deferred() && (viewDue || (waited && whole));
@@ -532,7 +529,7 @@ function makeFrame(scene: Scene): Frame {
       // of its meshes each frame, and shown once all are in.
       if (due && !next) {
         count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
-        [staleSince, told, whole] = [Infinity, nowhere(), false];
+        [staleSince, whole] = [Infinity, false];
         [drawnAt, from] = [now, here];
         eye.position.set(cam.position.x, cam.position.y, cam.position.z);
         eye.target.set(cam.target.x, cam.target.y, cam.target.z);
@@ -597,7 +594,7 @@ function makeFrame(scene: Scene): Frame {
         gbuffer.drawSome(pass, patch.meshes);
         pass.end();
         mark(engine, "patch");
-        [staleSince, told] = [Infinity, nowhere()];
+        staleSince = Infinity;
         relightDue = true;
         engine._drew = 3;
         count("patches", 1);
