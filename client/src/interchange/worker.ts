@@ -55,9 +55,10 @@ function flush(force = false) {
 }
 
 // Each message after the one before: what comes while the game loads (the
-// bench's `RunTo`) waits for it rather than being dropped.
+// bench's `RunTo`) waits for it rather than being dropped, and one that
+// throws is reported and leaves the queue running for the next.
 let queue = Promise.resolve();
-self.onmessage = (e: MessageEvent<ToWorker>) => void (queue = queue.then(() => handle(e.data)));
+self.onmessage = (e: MessageEvent<ToWorker>) => void (queue = queue.then(() => handle(e.data)).catch(reportError));
 
 async function handle(m: ToWorker) {
   if (m.type === "open") {
