@@ -457,7 +457,7 @@ function makeFrame(scene: Scene): Frame {
         const t0 = performance.now();
         const g = picture!.sets[1 - front]!;
         const load = next.done.size ? ("load" as const) : ("clear" as const);
-        const { some, left } = gbuffer.share(next.done, next.frames--);
+        const { some, left } = gbuffer.share(next.done, next.frames--, next.vp);
         gbuffer.cull(encoder, next.vp, some);
         const pass = encoder.beginRenderPass({
           colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: load, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),

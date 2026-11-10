@@ -3,7 +3,7 @@ import { bindGroupLayouts, compose, type Composed, type Pass, type VertexLayout 
 import type { Engine } from "./engine";
 import { materialTextures, writeMaterialUbo, type OwnPbrMaterial } from "./material";
 import type { Mesh } from "./mesh";
-import type { InstanceCuller } from "./cull";
+import { planes, seen, type InstanceCuller } from "./cull";
 import { isShaderMaterial, shaderDraw } from "./shader";
 
 /**
@@ -96,13 +96,15 @@ export class DrawList {
 
   /** Of the meshes not yet `done`, in order, a share of their weight as if
    *  the rest were spread over `frames` frames, marked done; and how many
-   *  are left after them. A mesh weighs its triangles drawn (its
-   *  instances' too: the town's houses are most of a picture) and a
-   *  screenful's worth of pixels it may cover. */
-  share(done: Set<Mesh>, frames: number): { some: Mesh[]; left: number } {
+   *  are left after them. A mesh weighs its triangles drawn (those of its
+   *  instances in `vp`'s view: the town's houses are most of a picture)
+   *  and a screenful's worth of pixels it may cover. */
+  share(done: Set<Mesh>, frames: number, vp: ArrayLike<number>): { some: Mesh[]; left: number } {
     this.fresh();
     const todo = this.order.filter((m) => !done.has(m));
-    const weight = (m: Mesh) => m._gpu.indexCount * (m.thinInstances?.count ?? 1) + 30_000;
+    const sides = planes(vp);
+    const counted = new Map(todo.map((m) => [m, seen(m, sides)]));
+    const weight = (m: Mesh) => m._gpu.indexCount * counted.get(m)! + 30_000;
     const share = todo.reduce((t, m) => t + weight(m), 0) / Math.max(1, frames);
     let [n, sum] = [0, 0];
     while (n < todo.length && (frames <= 1 || sum < share)) sum += weight(todo[n++]!);

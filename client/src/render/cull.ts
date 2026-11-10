@@ -147,6 +147,27 @@ export class InstanceCuller {
   }
 }
 
+/** How many of a mesh's thin instances stand in a view (`planes`), as the
+ *  GPU culls them but for their scale: what its draw will cost. */
+export function seen(mesh: Mesh, sides: Float32Array): number {
+  const ti = mesh.thinInstances;
+  if (!ti) return 1;
+  const [sx, sy, sz, sr] = mesh._gpu.sphere;
+  const p = mesh.position;
+  const r = sr + MARGIN;
+  const m = ti.matrices;
+  let n = 0;
+  next: for (let i = 0; i < ti.count; i++) {
+    const o = i * 16;
+    const x = m[o]! * sx + m[o + 4]! * sy + m[o + 8]! * sz + m[o + 12]! + p.x;
+    const y = m[o + 1]! * sx + m[o + 5]! * sy + m[o + 9]! * sz + m[o + 13]! + p.y;
+    const z = m[o + 2]! * sx + m[o + 6]! * sy + m[o + 10]! * sz + m[o + 14]! + p.z;
+    for (let k = 0; k < 16; k += 4) if (sides[k]! * x + sides[k + 1]! * y + sides[k + 2]! * z + sides[k + 3]! < -r) continue next;
+    n++;
+  }
+  return n;
+}
+
 /** A view's four sides, from its matrix (column major), each normalised:
  *  a point is inside where every `n · p + d` is at least 0. Near and far
  *  are left open: what is behind the eye is cut by the sides of a
