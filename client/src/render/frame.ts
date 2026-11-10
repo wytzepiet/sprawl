@@ -6,6 +6,10 @@ import type { Mesh } from "./mesh";
 import { count, DrawList, layoutOf, type Targets } from "./pass";
 import type { Scene, ShadowGenerator } from "./scene";
 import { runTasks } from "./shader";
+import { mark, timing } from "./engine";
+
+/** A mesh's kind: its name with its chunk taken out (`cost.ts`'s). */
+const kindOf = (m: Mesh) => m.name.replace(/-?\d+(\.\d+)?/g, "").replace(/[,#]+/g, "").replace(/_+/g, "_");
 
 /**
  * A scene's frame (docs/renderer-design.md, "The frame"). Where the still
@@ -416,6 +420,7 @@ function makeFrame(scene: Scene): Frame {
       if (shadowing && staticDue) {
         staticDue = false;
         shadowPass(encoder, maps!.still, shadowStill);
+        mark(engine, "stillShadow");
         relightDue = true;
         engine._drew = Math.max(engine._drew, 2);
         count("stillShadows", 1);
@@ -423,12 +428,14 @@ function makeFrame(scene: Scene): Frame {
       if (shadowing && deferred() && liveDue) {
         liveDue = false;
         shadowPass(encoder, maps!.live, shadowLive);
+        mark(engine, "liveShadow");
         count("liveShadows", 1);
       }
 
       common(camera, vp, getViewMatrix(cam) as ArrayLike<number>, w, h, now);
       camera.write();
       runTasks(scene, encoder, camera.group, () => resources!.forward, w, h);
+      mark(engine, "tasks");
 
       if (!deferred()) {
         const pass = encoder.beginRenderPass({
@@ -460,14 +467,20 @@ function makeFrame(scene: Scene): Frame {
       if (next) {
         const t0 = performance.now();
         const g = picture!.sets[1 - front]!;
-        const load = next.done.size ? ("load" as const) : ("clear" as const);
+        const first = !next.done.size;
         const { some, left } = gbuffer.share(next.done, next.frames--);
-        const pass = encoder.beginRenderPass({
-          colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: load, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
-          depthStencilAttachment: { view: g.depth.createView(), depthClearValue: 0, depthLoadOp: load, depthStoreOp: "store" },
+        // Timed, each mesh in a pass of its own, its time told by its kind.
+        const each = timing(engine) ? some.map((m) => [m]) : [some];
+        each.forEach((group, i) => {
+          const load = first && i === 0 ? ("clear" as const) : ("load" as const);
+          const pass = encoder.beginRenderPass({
+            colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: load, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
+            depthStencilAttachment: { view: g.depth.createView(), depthClearValue: 0, depthLoadOp: load, depthStoreOp: "store" },
+          });
+          gbuffer.drawSome(pass, group);
+          pass.end();
+          mark(engine, each.length > 1 ? `g.${kindOf(group[0]!)}` : "gbuffer");
         });
-        gbuffer.drawSome(pass, some);
-        pass.end();
         engine._drew = 3;
         count("gbufferMs", performance.now() - t0);
         if (!left) {
@@ -513,6 +526,7 @@ function makeFrame(scene: Scene): Frame {
         pass.setBindGroup(0, resources!.relight[front]!);
         pass.draw(3);
         pass.end();
+        mark(engine, "relight");
         engine._drew = Math.max(engine._drew, 1);
         count("relights", 1);
         count("relightMs", performance.now() - t0);

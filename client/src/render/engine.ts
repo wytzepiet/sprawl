@@ -37,6 +37,9 @@ interface Timer {
   resolve: GPUBuffer;
   read: GPUBuffer;
   busy: boolean;
+  /** This frame's parts, each ended by a timestamp (`mark`), while it is timed. */
+  parts: string[] | null;
+  encoder: GPUCommandEncoder | null;
 }
 
 export async function createEngine(canvas: HTMLCanvasElement, opts: { maxDevicePixelRatio?: number } = {}): Promise<Engine> {
@@ -62,10 +65,12 @@ export async function createEngine(canvas: HTMLCanvasElement, opts: { maxDeviceP
   surface.maxDevicePixelRatio = opts.maxDevicePixelRatio ?? 2;
   if (timed) {
     engine._timer = {
-      set: device.createQuerySet({ type: "timestamp", count: 2 }),
-      resolve: device.createBuffer({ size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
-      read: device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
+      set: device.createQuerySet({ type: "timestamp", count: MARKS }),
+      resolve: device.createBuffer({ size: MARKS * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+      read: device.createBuffer({ size: MARKS * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }),
       busy: false,
+      parts: null,
+      encoder: null,
     };
   }
   return engine;
@@ -100,6 +105,18 @@ export const enableSurfaceResizeObserver = (_surface: Surface) => () => {};
  *  over 16 ms, `own.gpu.<kind>Slow`). */
 export const DREW = ["plain", "relight", "shadow", "picture"] as const;
 
+const MARKS = 512;
+/** Whether this frame is being timed. */
+export const timing = (engine: Engine) => !!engine._timer?.parts;
+/** The end of a part of the frame being timed: the GPU's time for each,
+ *  by the frame's kind, is told to the bench as `own.gpu.<kind>.<part>Ms`. */
+export function mark(engine: Engine, part: string) {
+  const t = engine._timer;
+  if (!t?.parts || !t.encoder || t.parts.length >= MARKS - 2) return;
+  t.parts.push(part);
+  t.encoder.beginComputePass({ timestampWrites: { querySet: t.set, endOfPassWriteIndex: t.parts.length } }).end();
+}
+
 export const isGpuTimingSupported = (engine: Engine) => !!engine._timer;
 export const setGpuTimingEnabled = (engine: Engine, on: boolean) => void (engine._timing = on && !!engine._timer);
 export const waitForGpuIdle = (engine: Engine) => engine._device.queue.onSubmittedWorkDone();
@@ -116,16 +133,22 @@ export function renderFrame(engine: Engine, _delta: number, surfaces: readonly S
   writeShaderUniforms(engine);
   const encoder = device.createCommandEncoder();
   const timer = engine._timing && !engine._timer!.busy ? engine._timer! : null;
-  if (timer) encoder.beginComputePass({ timestampWrites: { querySet: timer.set, beginningOfPassWriteIndex: 0 } }).end();
+  if (timer) {
+    encoder.beginComputePass({ timestampWrites: { querySet: timer.set, beginningOfPassWriteIndex: 0 } }).end();
+    [timer.parts, timer.encoder] = [[], encoder];
+  }
   for (const surface of surfaces) {
     if (!surface._scenes.length) continue;
     const target = surface.context.getCurrentTexture();
     for (const scene of surface._scenes) drawScene(scene, encoder, target);
   }
+  const parts = timer?.parts ?? [];
   if (timer) {
-    encoder.beginComputePass({ timestampWrites: { querySet: timer.set, endOfPassWriteIndex: 1 } }).end();
-    encoder.resolveQuerySet(timer.set, 0, 2, timer.resolve, 0);
-    encoder.copyBufferToBuffer(timer.resolve, 0, timer.read, 0, 16);
+    const end = parts.length + 1;
+    encoder.beginComputePass({ timestampWrites: { querySet: timer.set, endOfPassWriteIndex: end } }).end();
+    encoder.resolveQuerySet(timer.set, 0, end + 1, timer.resolve, 0);
+    encoder.copyBufferToBuffer(timer.resolve, 0, timer.read, 0, (end + 1) * 8);
+    [timer.parts, timer.encoder] = [null, null];
   }
   device.queue.submit([encoder.finish()]);
   if (timer) {
@@ -134,8 +157,10 @@ export function renderFrame(engine: Engine, _delta: number, surfaces: readonly S
     timer.read.mapAsync(GPUMapMode.READ).then(
       () => {
         const t = new BigInt64Array(timer.read.getMappedRange());
-        const ms = Number(t[1] - t[0]) / 1e6;
+        const end = parts.length + 1;
+        const ms = Number(t[end]! - t[0]!) / 1e6;
         if (ms >= 0 && ms < 1000) {
+          [...parts, "rest"].forEach((part, i) => count(`gpu.${kind}.${part}Ms`, Number(t[i + 1]! - t[i]!) / 1e6));
           engine.gpuFrameTimeMs = ms;
           count(`gpu.${kind}`);
           count(`gpu.${kind}Ms`, ms);
