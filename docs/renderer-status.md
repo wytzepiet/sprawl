@@ -27,14 +27,13 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   the lamps by the picture's tile at each relight): a pixel loops over its
   tile's lights, not all of them (`binsAt` in compose.ts, `binner` in
   frame.ts).
-- Draws: a render bundle per mesh per pass, encoded again only when the
-  mesh's version is bumped (`_remade`: a buffer or material new) or the
-  pass's shared groups are new; a list gathers its bundles again, encoding
-  nothing, when only what is drawn changed (in/out, shown/hidden, emptied
-  or filled). A mesh with no instances is not drawn. Instance counts go
-  through `drawIndexedIndirect` args, so a car pool's count changes
-  re-encode nothing.
-- `engine.stats` (and the bench's `own.*`): pipelines, bundles, bundleMs,
+- Draws: recorded straight into each pass every frame, `drawIndexed` with
+  the instance count read then. No render bundles, indirect draws or GPU
+  culling: on an iPhone (Safari) those held a frame at 1.5-2.5 s; without
+  them it ran 56-60 fps at 1.4-2 ms of JS (2026-11-10). A mesh's draw is
+  made again only when its version is bumped or the pass's shared groups
+  are new; a mesh with no instances is not drawn.
+- `engine.stats` (and the bench's `own.*`): pipelines, encodes, encodeMs,
   gbuffer, gbufferMs, relights, relightMs, stillShadows, liveShadows,
   frames, frameMs, picture.moved/changed/forced; and the GPU's time by what
   a frame drew, `gpu.<plain|relight|shadow|picture>` (frames timed),

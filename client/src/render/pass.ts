@@ -3,16 +3,16 @@ import { bindGroupLayouts, compose, type Composed, type Pass, type VertexLayout 
 import type { Engine } from "./engine";
 import { materialTextures, writeMaterialUbo, type OwnPbrMaterial } from "./material";
 import type { Mesh } from "./mesh";
-import type { InstanceCuller } from "./cull";
 import { isShaderMaterial, shaderDraw } from "./shader";
 
 /**
- * A pass's draws, a render bundle a mesh: a mesh's encoded again only when
+ * A pass's draws, recorded into it each frame, direct (no render bundles,
+ * indirect draws or culling: Safari stalled on them, ~2 s a frame on an
+ * iPhone, and a frame here is a score of draws): a mesh's draw made again only when
  * what it is drawn with changed (its version bumped: a buffer or material
  * new; the pass's shared groups new; a pipeline it waited on ready), and
  * the list of them gathered again only when what is drawn changed (a mesh
- * in or out, shown or hidden, emptied or filled). A pan that hides a chunk
- * encodes nothing; an empty pool draws nothing.
+ * in or out, shown or hidden, emptied or filled). An empty pool draws nothing.
  */
 
 /** What a pass draws into, part of every pipeline's key. */
@@ -28,22 +28,12 @@ export interface Draw {
   pipeline: GPURenderPipeline;
   groups: GPUBindGroup[];
   buffers: GPUBuffer[];
-  /** How each buffer is laid out: which are per instance, and their strides. */
-  layouts: GPUVertexBufferLayout[];
   mesh: Mesh;
 }
 
-/** `?plain`: every draw recorded into its pass each frame, direct, its
- *  instance count read then, nothing culled: no render bundles, indirect
- *  draws or compute, for a browser that is slow at those (Safari's checks
- *  each indirect draw on the GPU). */
-export const PLAIN = new URLSearchParams(globalThis.location?.search ?? "").has("plain");
-
-/** A mesh's bundle in a list, and what it was encoded with. */
+/** A mesh's draw in a list, and what it was made with. */
 interface Encoded {
-  bundle: GPURenderBundle;
-  /** The same commands, into any encoder (`PLAIN`). */
-  record: (e: GPURenderPassEncoder | GPURenderBundleEncoder) => void;
+  record: (pass: GPURenderPassEncoder) => void;
   version: number;
   material: unknown;
   shared: (GPUBindGroup | null)[];
@@ -52,7 +42,6 @@ interface Encoded {
 }
 
 export class DrawList {
-  private bundles: GPURenderBundle[] = [];
   private encoded = new WeakMap<Mesh, Encoded>();
   /** What it draws changed since it was gathered. */
   dirty = true;
@@ -70,8 +59,6 @@ export class DrawList {
     private meshes: () => Iterable<[Mesh, unknown]>,
     /** Groups 0 and 3: the pass's scene, and its resources. */
     private shared: () => (GPUBindGroup | null)[],
-    /** Where its thin instances are culled to a view (`cull`) before it is drawn. */
-    private culler: InstanceCuller | null = null,
   ) {}
 
   /** Gathered again if what it draws changed. */
@@ -83,24 +70,7 @@ export class DrawList {
   /** Replay it into a pass, gathering it again first if it changed. */
   draw(pass: GPURenderPassEncoder) {
     this.fresh();
-    if (!this.bundles.length) return;
-    if (PLAIN) for (const m of this.order) this.encoded.get(m)!.record(pass);
-    else pass.executeBundles(this.bundles);
-    this.engine.drawCallCount += this.bundles.length;
-  }
-
-  /** Its meshes' thin instances (or these meshes') culled to `vp`'s view, before a pass draws them. */
-  cull(encoder: GPUCommandEncoder, vp: ArrayLike<number>, meshes: Iterable<Mesh> = this.order) {
-    this.fresh();
-    if (!PLAIN) this.culler?.run(encoder, vp, meshes);
-  }
-
-  /** Each mesh drawn and its bundle (the probe's). */
-  bundlesOf(): [Mesh, GPURenderBundle][] {
-    return this.order.flatMap((m) => {
-      const e = this.encoded.get(m);
-      return e ? [[m, e.bundle] as [Mesh, GPURenderBundle]] : [];
-    });
+    this.drawSome(pass, this.order);
   }
 
   /** Of the meshes not yet `done`, in order, a share of their weight as if
@@ -122,8 +92,7 @@ export class DrawList {
 
   /** These meshes of it into a pass. */
   drawSome(pass: GPURenderPassEncoder, some: Mesh[]) {
-    if (PLAIN) for (const m of some) this.encoded.get(m)!.record(pass);
-    else if (some.length) pass.executeBundles(some.map((m) => this.encoded.get(m)!.bundle));
+    for (const m of some) this.encoded.get(m)!.record(pass);
     this.engine.drawCallCount += some.length;
   }
 
@@ -131,7 +100,6 @@ export class DrawList {
     this.dirty = false;
     this.waiting = -1;
     const shared = this.shared();
-    this.bundles.length = 0;
     this.drawn.clear();
     this.order.length = 0;
     for (const [mesh, material] of this.meshes()) {
@@ -143,7 +111,6 @@ export class DrawList {
         if (!e) continue;
       }
       if (shader) this.waiting = epoch;
-      this.bundles.push(e.bundle);
       this.drawn.add(mesh);
       this.order.push(mesh);
     }
@@ -157,22 +124,18 @@ export class DrawList {
       if (d === undefined) this.waiting = epoch;
       return undefined;
     }
-    const culled = !PLAIN && this.culler && mesh.thinInstances && d.layouts.length ? this.culler.make(mesh, d.layouts, d.buffers) : { buffers: d.buffers, args: mesh._gpu.args };
-    const record = (encoder: GPURenderPassEncoder | GPURenderBundleEncoder) => {
+    const record = (encoder: GPURenderPassEncoder) => {
       shared.forEach((g, i) => g && encoder.setBindGroup(i === 0 ? 0 : 3, g));
       encoder.setPipeline(d.pipeline);
       d.groups.forEach((g, i) => encoder.setBindGroup(i + 1, g));
-      culled.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
+      d.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
       encoder.setIndexBuffer(mesh._gpu.index, "uint32");
-      if (PLAIN) encoder.drawIndexed(mesh._gpu.indexCount, mesh.thinInstances?.count ?? 1);
-      else encoder.drawIndexedIndirect(culled.args, 0);
+      encoder.drawIndexed(mesh._gpu.indexCount, mesh.thinInstances?.count ?? 1);
     };
-    const bundle = this.engine._device.createRenderBundleEncoder({ colorFormats: this.targets.colors.map((c) => c.format), depthStencilFormat: this.targets.depth });
-    record(bundle);
-    const e: Encoded = { bundle: bundle.finish(), record, version: mesh._version, material, shared, epoch };
+    const e: Encoded = { record, version: mesh._version, material, shared, epoch };
     this.encoded.set(mesh, e);
-    count("bundles", 1);
-    count("bundleMs", performance.now() - began);
+    count("encodes", 1);
+    count("encodeMs", performance.now() - began);
     return e;
   }
 }
@@ -314,5 +277,5 @@ function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): 
     };
   });
   if (!pipeline) return pipeline;
-  return { pipeline, groups: [materialGroup(engine, m, c, groupLayouts[1]!), meshGroup(engine, mesh)], buffers: buffers as GPUBuffer[], layouts: c.vertexBuffers, mesh };
+  return { pipeline, groups: [materialGroup(engine, m, c, groupLayouts[1]!), meshGroup(engine, mesh)], buffers: buffers as GPUBuffer[], mesh };
 }

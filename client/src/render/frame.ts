@@ -1,7 +1,6 @@
 import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "@babylonjs/lite";
 import { FORWARD_GROUP, SCENE_BYTES, SCENE_OFFSETS, TILE } from "./compose";
 import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, RELIGHT } from "./deferred";
-import { InstanceCuller } from "./cull";
 import { brdfLut } from "./env";
 import type { Mesh } from "./mesh";
 import { count, DrawList, layoutOf, type Targets } from "./pass";
@@ -204,10 +203,9 @@ function makeFrame(scene: Scene): Frame {
     gbuffer: (m: Mesh) => deferred() && shown(m) && stays(m),
     forward: (m: Mesh) => shown(m) && (!deferred() || !stays(m)),
   };
-  // The lists drawn once a picture cull their instances to its view, or to the sun's box.
-  const shadowStill = new DrawList(engine, "shadow", SHADOW, ordered(wants.shadowStill), () => [sunUbo.group], new InstanceCuller(device));
+  const shadowStill = new DrawList(engine, "shadow", SHADOW, ordered(wants.shadowStill), () => [sunUbo.group]);
   const shadowLive = new DrawList(engine, "shadow", SHADOW, ordered(wants.shadowLive), () => [sunUbo.group]);
-  const gbuffer = new DrawList(engine, "gbuffer", GBUFFER, ordered(wants.gbuffer), () => [eyeUbo.group], new InstanceCuller(device));
+  const gbuffer = new DrawList(engine, "gbuffer", GBUFFER, ordered(wants.gbuffer), () => [eyeUbo.group]);
   const forward = new DrawList(engine, "forward", forwardTo(surface.format), ordered(wants.forward), () => [camera.group, resources!.forward]);
   const lists: [DrawList, (m: Mesh) => boolean][] = [
     [shadowStill, wants.shadowStill],
@@ -410,7 +408,6 @@ function makeFrame(scene: Scene): Frame {
       const shadowing = !!gen?.enabled && !!fit;
       if (shadowing && staticDue) {
         staticDue = false;
-        shadowStill.cull(encoder, fit!.caster);
         shadowPass(encoder, maps!.still, shadowStill);
         relightDue = true;
         engine._drew = Math.max(engine._drew, 2);
@@ -458,7 +455,6 @@ function makeFrame(scene: Scene): Frame {
         const g = picture!.sets[1 - front]!;
         const load = next.done.size ? ("load" as const) : ("clear" as const);
         const { some, left } = gbuffer.share(next.done, next.frames--);
-        gbuffer.cull(encoder, next.vp, some);
         const pass = encoder.beginRenderPass({
           colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: load, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
           depthStencilAttachment: { view: g.depth.createView(), depthClearValue: 0, depthLoadOp: load, depthStoreOp: "store" },
@@ -529,59 +525,8 @@ function makeFrame(scene: Scene): Frame {
       pass.end();
       count("frames", 1);
       count("frameMs", performance.now() - began);
-      if (PROBE && now - probedAt > 60_000 && now > 40_000 && picture && maps && !next) {
-        probedAt = now;
-        const g = picture.sets[1 - front]!;
-        probe(device, [
-          ["g", gbuffer, (e) => e.beginRenderPass({
-            colorAttachments: [g.albedo, g.normal, g.extra].map((t) => ({ view: t.createView(), loadOp: "clear" as const, storeOp: "store" as const, clearValue: [0, 0, 0, 0] })),
-            depthStencilAttachment: { view: g.depth.createView(), depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" },
-            timestampWrites: e.writes,
-          })],
-          ["s", shadowStill, (e) => e.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: layerView(maps!.still), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" }, timestampWrites: e.writes })],
-        ]);
-        staticDue = true;
-      }
     },
   };
-}
-
-const PROBE = knobs.has("probe");
-let probedAt = -Infinity;
-type Begin = (e: { writes: GPURenderPassTimestampWrites; beginRenderPass(d: GPURenderPassDescriptor): GPURenderPassEncoder }) => GPURenderPassEncoder;
-/** `?probe`: each kind of mesh of the G-buffer and the still map drawn
- *  alone (all its chunks in one pass), each list whole, and an empty pass,
- *  timed by the GPU, told to the bench in us as `own.probe.<list>.<kind>`. */
-function probe(device: GPUDevice, lists: [string, DrawList, Begin][]) {
-  const kind = (name: string) => name.replace(/[-_]?-?\d+(,-?\d+)*$/, "").replace(/^chunk_-?\d+,-?\d+_/, "chunk_").replace(/^inst_(house|shop|woodcutter|depot|farm|sawmill|quarry|flats)?.*/, "inst_$1");
-  const jobs: [string, string, GPURenderBundle[], Begin][] = [];
-  for (const [l, list, begin] of lists) {
-    const by = new Map<string, GPURenderBundle[]>();
-    for (const [m, b] of list.bundlesOf()) (by.get(kind(m.name)) ?? by.set(kind(m.name), []).get(kind(m.name))!).push(b);
-    for (const [k, bs] of by) jobs.push([l, k, bs, begin]);
-    const all = list.bundlesOf().map(([, b]) => b);
-    jobs.push([l, "ALL", all, begin], [l, "REVERSED", [...all].reverse(), begin], [l, "EMPTY", [], begin]);
-  }
-  const n = jobs.length;
-  const set = device.createQuerySet({ type: "timestamp", count: 2 * n });
-  const resolve = device.createBuffer({ size: 16 * n, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
-  const read = device.createBuffer({ size: 16 * n, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-  const encoder = device.createCommandEncoder();
-  jobs.forEach(([, , bundles, begin], i) => {
-    const pass = begin({ beginRenderPass: (d) => encoder.beginRenderPass(d), writes: { querySet: set, beginningOfPassWriteIndex: 2 * i, endOfPassWriteIndex: 2 * i + 1 } });
-    pass.executeBundles(bundles);
-    pass.end();
-  });
-  encoder.resolveQuerySet(set, 0, 2 * n, resolve, 0);
-  encoder.copyBufferToBuffer(resolve, 0, read, 0, 16 * n);
-  device.queue.submit([encoder.finish()]);
-  void read.mapAsync(GPUMapMode.READ).then(() => {
-    const t = new BigInt64Array(read.getMappedRange());
-    jobs.forEach(([l, name], i) => count(`probe.${l}.${name}`, Number(t[2 * i + 1]! - t[2 * i]!) / 1000));
-    read.destroy();
-    resolve.destroy();
-    set.destroy();
-  });
 }
 
 /**
