@@ -46,18 +46,20 @@ const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
  *  G-buffer of its own while the last is shown: a town's picture is 30 ms
  *  of a desktop card's time, and drawn in one frame it dropped frames. */
 const SPREAD = Math.max(1, Number(knobs.get("spread") ?? 6));
-/** A picture for something built or taken away, the view still, begun the
- *  frame after, over `CHANGED` frames: a road drawn tile by tile is seen as
- *  it goes. While changes keep coming (a road drawn, a town streaming in,
- *  a change every frame) one begins at most every `CHANGED_MS`: pictures
- *  back to back kept a town loading at a few frames a second. */
-const [CHANGED, CHANGED_MS] = [3, 250];
+/** A picture for something built or taken away, the view still, over
+ *  `CHANGED` frames: begun once nothing still has changed for `QUIET_MS`,
+ *  so a road's paving and its asphalt, which come a moment apart, are not
+ *  shown one without the other; or once a change has waited `STALE_MS`, so
+ *  a road drawn tile by tile is seen as it goes, and a town streaming in, a
+ *  change every frame, is drawn four times a second, not every frame. */
+const [CHANGED, QUIET_MS, STALE_MS] = [3, 50, 250];
 
-/** Something still changed, and no picture begun since holds it. */
-let stale = false;
+/** Since when something still has changed that no picture begun since holds, and when it last did. */
+let [staleSince, changedAt] = [Infinity, -Infinity];
 /** Something still has changed that the renderer was not told of: the picture is drawn again soon. */
 export function stalePicture() {
-  stale = true;
+  changedAt = performance.now();
+  staleSince = Math.min(staleSince, changedAt);
 }
 /** The next picture is drawn whatever (the bench's cost meter). */
 let forced = false;
@@ -117,10 +119,8 @@ function makeFrame(scene: Scene): Frame {
    *  over the frames (`SPREAD`); and the light on the one shown. */
   let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture } | null = null;
   let front = 0;
-  /** The next picture as it is drawn: the meshes in it so far, the frames
-   *  left, and whether it is one begun again (`meshChanged`). */
-  let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[]; again: boolean } | null = null;
-  let again = false;
+  /** The next picture as it is drawn: the meshes in it so far, and the frames left. */
+  let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[] } | null = null;
   let screen: { w: number; h: number; depth: GPUTexture } | null = null;
   const compare = device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" });
   const linear = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" });
@@ -365,13 +365,7 @@ function makeFrame(scene: Scene): Frame {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
       if (!stays(mesh)) return void (liveDue ||= casts(mesh));
       if (casts(mesh)) castersDue = true;
-      if (!deferred()) return;
-      stalePicture();
-      // Drawn already into the picture under way, that picture would show
-      // it as it was beside the rest as it is: a road's paving new, its
-      // asphalt old, for a frame. It is begun again at once; but only once,
-      // so a town streaming in, a change every frame, still sees pictures.
-      if (next?.done.has(mesh) && !next.again) [next, again, drawnAt] = [null, true, -Infinity];
+      if (deferred()) stalePicture();
     },
     castersChanged() {
       shadowStill.dirty = shadowLive.dirty = true;
@@ -402,7 +396,7 @@ function makeFrame(scene: Scene): Frame {
       const moving = here !== lastView;
       lastView = here;
       const since = now - drawnAt;
-      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (stale && since >= CHANGED_MS)));
+      const due = deferred() && (forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from || (staleSince <= now && (now - changedAt >= QUIET_MS || now - staleSince >= STALE_MS))));
 
       // The sun's maps: the still one as the sun turns, and as what casts
       // changed, with the picture that shows it; the live one as what moves does.
@@ -444,7 +438,7 @@ function makeFrame(scene: Scene): Frame {
       // of its meshes each frame, and shown once all are in.
       if (due && !next) {
         count(forced ? "picture.forced" : here !== from ? "picture.moved" : "picture.changed");
-        stale = false;
+        staleSince = Infinity;
         [drawnAt, from] = [now, here];
         eye.position.set(cam.position.x, cam.position.y, cam.position.z);
         eye.target.set(cam.target.x, cam.target.y, cam.target.z);
@@ -454,8 +448,7 @@ function makeFrame(scene: Scene): Frame {
         const vp = Float32Array.from(getViewProjectionMatrix(eye, picture!.w / picture!.h) as ArrayLike<number>);
         common(eyeUbo, vp, getViewMatrix(eye) as ArrayLike<number>, picture!.w, picture!.h, now);
         eyeUbo.write();
-        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1], again };
-        again = false;
+        next = { done: new Set(), frames: forced || !stillVp ? 1 : here === from ? CHANGED : moving ? Math.ceil(SPREAD / 2) : SPREAD, vp, eye: [cam.position.x, cam.position.y, cam.position.z, 1] };
         forced = false;
       }
       if (next) {
