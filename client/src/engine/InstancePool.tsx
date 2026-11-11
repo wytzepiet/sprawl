@@ -54,6 +54,8 @@ const STRIDE = 9;
  *  (`Culler`): a picture of the town costs what is in view, not what is
  *  loaded. A thing may reach `REACH` tiles past where it stands. */
 const [REGION, REACH] = [32, 4];
+/** `?whole`, a trial's: a bucket the town over as before, to measure a chunk's against on one device. */
+const CHUNKED = NEW && !new URLSearchParams(location.search).has("whole");
 /** A rotation by Euler angles, as Babylon's `FromEulerAngles` turns them
  *  (yaw y, pitch x, roll z), into a matrix slot with a position and scale. */
 function compose(out: Float32Array, at: number, tr: Float32Array, t: number) {
@@ -217,7 +219,7 @@ export class InstancePool {
       const twin = `${key}~`;
       if (!this.buckets.has(twin)) this.hold(twin, bucket.geometry, bucket.material, bucket.bevel, bucket.baseColor, false, bucket.receiveShadow, true);
       this.handing.set(id, { key: twin, twin: this.addInstance(twin, pos, rot, scale), at: redraws });
-      if (NEW) this.where.set(id, (bucket = this.region(key, bucket, pos)));
+      if (CHUNKED) this.where.set(id, (bucket = this.region(key, bucket, pos)));
     }
     if ((bucket.count + 1) * 16 > bucket.matrices.length) grow(bucket);
 
