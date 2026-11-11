@@ -1,4 +1,4 @@
-import { addToScene, remadeWithin, type Mesh } from "./gpu";
+import { addToScene, type Mesh } from "./gpu";
 import { spread } from "./budget";
 import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
@@ -44,11 +44,11 @@ const floorDiv = (a: number, b: number) => Math.floor(a / b);
 const parseKey = (key: string) => key.split(",").map(Number) as [number, number];
 
 /**
- * Terrain: the land's layers as tiles (`GroundTiles`), and per chunk one
- * merged mesh of its water and one of its cliffs.
+ * Terrain: the land drawn from its tiles' kinds (`GroundTiles`), and per
+ * chunk one merged mesh of its water and one of its cliffs.
  *
- * Which shape each tile of the land takes, and the water and cliff geometry,
- * are a pure function of the chunk's tiles, so they are built on a worker. Trees are not: they yield to what is built, which is live game
+ * The water and cliff geometry are a pure function of the chunk's tiles,
+ * so they are built on a worker. Trees are not: they yield to what is built, which is live game
  * state, so they stay here and are cheap enough to rebuild on demand.
  */
 export class TerrainChunks {
@@ -76,8 +76,6 @@ export class TerrainChunks {
   private detailVisible = true;
   /** The chunks the worker is building. */
   private building = new Set<string>();
-  /** Where a chunk being drawn again differs from the one shown: round the tiles built on since. */
-  private remade = new Map<string, number[]>();
 
   constructor(
     private ctx: EngineContext,
@@ -86,8 +84,6 @@ export class TerrainChunks {
     private isQuay: (x: number, y: number) => boolean,
   ) {
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
-    // Each layer of the land its colour, bottom up (`LAYERS`).
-    this.ground.paint([theme.beach, theme.rock, theme.land, theme.clay, theme.forest]);
 
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
@@ -111,6 +107,43 @@ export class TerrainChunks {
     this.tiles.set(key, deposits.length ? tiles.map((b, k) => (deposits[k] && b === grass ? clay : b)) : tiles);
     this.heights.set(key, heights);
     this.invalidate(key);
+    this.lay(key);
+  }
+
+  /** A chunk's tiles as the land is drawn on them. A wood's tile built on
+   *  is grass, its floor cleared with its trees; and a harbour's tile at
+   *  the water's edge, water: the coast steps back under its paving, which
+   *  runs on to the water as a quay (`town/draw.ts`), its wall straight
+   *  down where the shore was, and the shore's beach, cliff and foam hid
+   *  under it. Anything else built by the water keeps its shore, the
+   *  land's cliff past its edge. */
+  private drawn(key: string): Uint8Array {
+    const tiles = this.tiles.get(key)!;
+    const [cx, cy] = parseKey(key);
+    const [forest, grass, sea] = [TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass"), TYPE_BY_BYTE.indexOf("Sea")];
+    const [ox, oy] = [cx * CHUNK_SIZE - CHUNK_SKIRT, cy * CHUNK_SIZE - CHUNK_SKIRT];
+    const own = (x: number, y: number) => {
+      const [i, j] = [x - ox, y - oy];
+      return i >= 0 && j >= 0 && i < CHUNK_STRIDE && j < CHUNK_STRIDE ? TYPE_BY_BYTE[tiles[j * CHUNK_STRIDE + i]] : this.typeAt(x, y);
+    };
+    return tiles.map((b, k) => {
+      const [x, y] = [ox + (k % CHUNK_STRIDE), oy + Math.floor(k / CHUNK_STRIDE)];
+      if (!this.isBuilt(x, y)) return b;
+      return this.isQuay(x, y) && this.ashore(x, y, own) ? sea : b === forest ? grass : b;
+    });
+  }
+
+  /** A chunk's ground, drawn from its tiles (`ground.ts`): at once, no
+   *  worker; again `within` x0 y0 x1 y1, where something was built. */
+  private lay(key: string, within?: number[]): void {
+    const [cx, cy] = parseKey(key);
+    this.ground.set(key, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], this.drawn(key), within);
+  }
+
+  /** The chunks whose tiles, skirt and all, take a tile in. */
+  private around(x: number, y: number): string[] {
+    const keys = [-CHUNK_SKIRT, 0, CHUNK_SKIRT].flatMap((dy) => [-CHUNK_SKIRT, 0, CHUNK_SKIRT].map((dx) => `${floorDiv(x + dx, CHUNK_SIZE)},${floorDiv(y + dy, CHUNK_SIZE)}`));
+    return [...new Set(keys)].filter((key) => this.tiles.has(key));
   }
 
 
@@ -134,38 +167,23 @@ export class TerrainChunks {
     this.tiles.delete(key);
     this.heights.delete(key);
     this.invalidate(key);
+    this.ground.delete(key);
     this.disposeChunk(key);
   }
 
   /** Something built appearing or vanishing, a road or a building, moves
    *  the trees there; and in a wood, the ground under it too, the wood's
-   *  floor cleared to grass. Nothing else of the land. */
+   *  floor cleared to grass: a texel of each chunk's kinds that holds it,
+   *  the picture drawn again as far round it as it shows. */
   markTile(x: number, y: number): void {
     this.markTrees(x, y);
-    if (this.typeAt(x, y) === "Forest") this.remake(x, y);
+    if (this.typeAt(x, y) === "Forest") for (const key of this.around(x, y)) this.lay(key, [x - 2, y - 2, x + 3, y + 3]);
   }
 
   /** A quay built or gone at the water's edge: the coast steps back under
-   *  it, or comes back (`requestBuild`). */
+   *  it, or comes back (`drawn`), its water and its cliff with it. */
   markQuay(x: number, y: number): void {
-    this.remake(x, y);
-  }
-
-  /** The land drawn again for a tile: every chunk whose tiles, skirt and
-   *  all, take it in; and where, for the picture to be drawn again there
-   *  alone (`remadeWithin`). */
-  private remake(x: number, y: number): void {
-    for (const dy of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
-      for (const dx of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
-        const key = `${floorDiv(x + dx, CHUNK_SIZE)},${floorDiv(y + dy, CHUNK_SIZE)}`;
-        // A chunk still on its way is built again too: it was asked for
-        // before this was built.
-        if (!this.tiles.has(key)) continue;
-        const a = this.remade.get(key);
-        this.invalidate(key);
-        this.remade.set(key, a ? [Math.min(a[0], x - 1), Math.min(a[1], y - 1), Math.max(a[2], x + 2), Math.max(a[3], y + 2)] : [x - 1, y - 1, x + 2, y + 2]);
-      }
-    }
+    for (const key of this.around(x, y)) this.lay(key, [x - 2, y - 2, x + 3, y + 3]), this.invalidate(key);
   }
 
   /** The trees on a tile planted again, nothing else: a building in hand
@@ -177,7 +195,6 @@ export class TerrainChunks {
   private invalidate(key: string): void {
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
     this.dirtyGeometry.add(key);
-    this.remade.delete(key);
   }
 
   // --- Rendering ---------------------------------------------------------
@@ -221,25 +238,7 @@ export class TerrainChunks {
 
     let geometry: ChunkGeometry | null;
     try {
-      // tiles is cloned, not transferred — we keep it for tree rebuilds. A
-      // wood's tile built on is drawn as grass, its floor cleared with its
-      // trees; and a harbour's tile at the water's edge, as water: the
-      // coast steps back under its paving, which runs on to the water as a
-      // quay (`town/draw.ts`), its wall straight down where the shore was,
-      // and the shore's beach, cliff and foam hid under it. Anything else
-      // built by the water keeps its shore, the land's cliff past its edge.
-      const [forest, grass, sea] = [TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass"), TYPE_BY_BYTE.indexOf("Sea")];
-      const [ox, oy] = [cx * CHUNK_SIZE - CHUNK_SKIRT, cy * CHUNK_SIZE - CHUNK_SKIRT];
-      const own = (x: number, y: number) => {
-        const [i, j] = [x - ox, y - oy];
-        return i >= 0 && j >= 0 && i < CHUNK_STRIDE && j < CHUNK_STRIDE ? TYPE_BY_BYTE[tiles[j * CHUNK_STRIDE + i]] : this.typeAt(x, y);
-      };
-      const cleared = tiles.map((b, k) => {
-        const [x, y] = [ox + (k % CHUNK_STRIDE), oy + Math.floor(k / CHUNK_STRIDE)];
-        if (!this.isBuilt(x, y)) return b;
-        return this.isQuay(x, y) && this.ashore(x, y, own) ? sea : b === forest ? grass : b;
-      });
-      geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy);
+      geometry = await this.builder.build(this.drawn(key), this.heights.get(key)!, cx, cy);
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.
@@ -264,7 +263,6 @@ export class TerrainChunks {
     const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
-    this.ground.set(key, [ox, oy], geometry.layers);
     // A mesh of what there is, if anything, placed from the chunk's corner
     // or, the mountains' laid where they are on the map, not.
     const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], shadows: { cast: boolean; receive: boolean }, moves = false) => {
@@ -299,9 +297,6 @@ export class TerrainChunks {
       add("peaks", geometry.peaks, peaks.material, [0, 0], { cast: true, receive: true });
     }
     this.chunks.set(key, chunk);
-    const within = this.remade.get(key);
-    this.remade.delete(key);
-    if (old && within) remadeWithin(chunk.meshes.map((m) => m.name), within);
     this.applyDetail(chunk);
 
   }
@@ -336,7 +331,6 @@ export class TerrainChunks {
     if (!chunk) return;
     this.dropMeshes(chunk);
     for (const g of Object.values(chunk.trees)) uproot(this.ctx, g, this.casters);
-    this.ground.delete(key);
     this.chunks.delete(key);
   }
 

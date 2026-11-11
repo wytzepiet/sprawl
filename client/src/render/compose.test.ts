@@ -59,7 +59,8 @@ async function build() {
   const { bevelPlugin, lacquer } = await import("../engine/bevel");
   lacquer(townMaterial([bevelPlugin()]), "rock");
   const { GroundTiles } = await import("../engine/ground");
-  new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
+  // Every kind of ground: every sheet of it.
+  new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull).set("0,0", [0, 0], new Uint8Array(36 * 36).map((_, k) => k % 7));
   const { waterMaterial } = await import("../engine/water");
   waterMaterial(ctx.engine, null, null);
   waterMaterial(ctx.engine, new Uint8Array(64), new Uint8Array(64));
@@ -105,7 +106,7 @@ test("every client material composes, and Chromium builds every pipeline", async
   await build();
   const names = new Set(made.map((m) => m.plugins.map((p) => p.name).join("+")));
   console.log(`${made.length} materials, ${names.size} plugin lists:\n  ${[...names].join("\n  ")}`);
-  for (const want of ["Ground", "Water", "Basalt", "LandCliff", "Road", "Kerb", "Paving", "Tint", "Roof", "Windows", "Crown", "Card", "LampHead", "ModelGlass", "Field", "ClearCoat", "Flat", "CastOnly", "Bevel"])
+  for (const want of ["Ground turf", "Ground rock", "Ground beach", "Ground wash", "Water", "Basalt", "LandCliff", "Road", "Kerb", "Paving", "Tint", "Roof", "Windows", "Crown", "Card", "LampHead", "ModelGlass", "Field", "ClearCoat", "Flat", "CastOnly", "Bevel"])
     expect([...names].some((n) => n.split("+").includes(want))).toBe(true);
 
   // A plugin reading vertex colours is drawn only on meshes that have them,

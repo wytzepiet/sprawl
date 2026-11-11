@@ -13,8 +13,7 @@ import { daylight } from "./DayNightCycle";
 import { TILT } from "./Camera";
 import { TownLayer } from "./TownLayer";
 import { GroundTiles } from "./ground";
-import { theme } from "./theme";
-import { LAYERS, shapeKey } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CHUNK_STRIDE, TYPE_BY_BYTE } from "./objects/terrainGeometry";
 import { SOLID } from "./objects/look";
 import { KINDS, plot } from "../blueprints";
 import type { EngineContext } from "./Canvas";
@@ -31,9 +30,6 @@ const FOV = 0.35;
 const STREET = 12;
 /** Room round a plot in its picture, in tiles: as far as the street. */
 const MARGIN = 0.9;
-/** The grass's layer of the land, and a tile of it with grass all round. */
-const GRASS = 2;
-const INSIDE = shapeKey({ base: "+", corners: [null, null, null, null], across: Array(8).fill("+"), near: Array(8).fill(null) });
 
 const [taken, setTaken] = createSignal<Partial<Record<BuildingKind, string>>>({});
 
@@ -125,10 +121,7 @@ export function createStudio(main: Engine) {
   const road = street.map((id, k): GameObjectEntry => ({ id, position: { x: k - STREET, y: 0 }, object: { kind: "RoadNode", data: node(k) } }));
   const lawn = () => {
     const ground = new GroundTiles(main, scene, ctx.beforeRender, cull);
-    ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
-    const side = 2 * STREET;
-    const at = new Float32Array(side * side * 2).map((_, k) => (k % 2 ? Math.floor(k / 2 / side) : (k / 2) % side) - STREET);
-    ground.set("studio", [0, 0], LAYERS.map((_, l) => (l === GRASS ? { at, shapes: Array(side * side).fill(INSIDE) } : { at: new Float32Array(), shapes: [] })));
+    ground.set("studio", [-CHUNK_SIZE / 2, -CHUNK_SIZE / 2], new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE).fill(TYPE_BY_BYTE.indexOf("Grass")));
     for (const e of road) town!.touch(e.position!.x, e.position!.y);
   };
 

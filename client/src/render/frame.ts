@@ -96,7 +96,16 @@ export function stalePicture() {
  *  whole picture. */
 let within = new Map<string, number[]>();
 export function remadeWithin(names: string[], area: number[]) {
-  for (const n of names) within.set(n, area);
+  for (const n of names) {
+    const a = within.get(n);
+    within.set(n, a ? [Math.min(a[0]!, area[0]!), Math.min(a[1]!, area[1]!), Math.max(a[2]!, area[2]!), Math.max(a[3]!, area[3]!)] : area);
+  }
+}
+/** A mesh shows something else, but only within `area`: what it reads
+ *  there was written again (the ground's kinds). */
+export function changedWithin(mesh: Mesh, area: number[]) {
+  remadeWithin([mesh.name], area);
+  mesh._changed(false);
 }
 /** Box `b` cut to `area` (x0 y0 x1 y1), or nowhere. */
 const cut = (b: Box, a: number[]): Box => {
@@ -451,10 +460,11 @@ function makeFrame(scene: Scene): Frame {
       const was = seen.get(m);
       const same = was?.touched === m._touched;
       const own = nowhere();
-      if (was && !same && !changed(was, m, own)) return (why = m.name), null;
+      const a = within.get(m.name);
+      if (was && !same && a) grow(own, cut(was.box, a));
+      else if (was && !same && !changed(was, m, own)) return (why = m.name), null;
       if (!isEmpty(own)) grow(area, own), grew.push(m.name);
       const s = same ? was! : look(m);
-      const a = within.get(m.name);
       const old = a && !was ? goneBy.get(m.name) : undefined;
       if (a && old && !matched.has(old)) {
         grow(area, cut(s.box, a));
