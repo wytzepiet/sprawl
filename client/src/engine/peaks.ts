@@ -4,9 +4,8 @@ import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
 import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z, LEDGE, LEDGE_Z } from "./objects/terrainGeometry";
-import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
-import recipe from "./slate.ts?raw";
-import { bakedTexture } from "./bakeCache";
+import { SECOND, SPAN } from "./slate";
+import { slate } from "./slateTexture";
 
 /**
  * The mountains as dark slate: terraces, each layer a flat top on a wall
@@ -152,17 +151,6 @@ function rock(plugin: MaterialPlugin) {
   material.doubleSided = true;
   return material;
 }
-
-/** Each engine's slate: flat until the worker has baked it. The cliffs the
- *  land stands on break along it too (`ground.ts`). */
-export const slate = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "slate", recipe, [SLATE_SIDE, SLATE_SIDE, () => new Uint8Array(SLATE_SIDE * SLATE_SIDE * 4).map((_, k) => (k % 4 < 2 ? 128 : 255))], {
-    mipmaps: true,
-    minFilter: "linear",
-    magFilter: "linear",
-    addressModeU: "repeat",
-    addressModeV: "repeat",
-  });
 
 /** A chunk's mountains' material, with the chunk's heights (half floats in
  *  pairs, `PEAK_SIDE` to a side): their surface is laid where it is on the

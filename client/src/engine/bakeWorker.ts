@@ -1,7 +1,6 @@
 import { bakeBark } from "./bark";
 import { bakeCrowns } from "./crowns";
 import { bakeLace } from "./lace";
-import { bakeSlate } from "./slate";
 import { bakeWaves } from "./waves";
 import { bakeWheat } from "./wheat";
 
@@ -11,7 +10,6 @@ const RECIPES = {
   bark: bakeBark,
   crowns: bakeCrowns,
   lace: bakeLace,
-  slate: () => bakeSlate().texels,
   waves: bakeWaves,
   wheat: bakeWheat,
 };

@@ -5,6 +5,7 @@ import {
   type ChunkGeometry,
   type TerrainPalette,
 } from "./objects/terrainGeometry";
+import { setSlate } from "./slate";
 import { theme } from "./theme";
 
 const PALETTE: TerrainPalette = {
@@ -19,6 +20,8 @@ const PALETTE: TerrainPalette = {
 };
 
 const api = {
+  /** The slate the rock's edges break along, as the GPU drew it. */
+  slate: setSlate,
   build(
     tiles: Uint8Array,
     heights: Uint8Array,

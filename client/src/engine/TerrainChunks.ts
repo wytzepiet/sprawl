@@ -23,6 +23,7 @@ import { waterMaterial } from "./water";
 import { live } from "./still";
 import { grove, plant, showGrove, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
+import { slateRead } from "./slateTexture";
 
 import { groundCover } from "./view";
 
@@ -73,6 +74,8 @@ export class TerrainChunks {
     type: "module",
   });
   private builder = Comlink.wrap<TerrainApi>(this.worker);
+  /** The worker handed the slate its rock's edges break along, before it builds any. */
+  private slated: Promise<void>;
 
   private ground: GroundTiles;
   private stop: () => void;
@@ -87,6 +90,7 @@ export class TerrainChunks {
     private isQuay: (x: number, y: number) => boolean,
   ) {
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
+    this.slated = slateRead(ctx.engine).then((texels) => this.builder.slate(texels));
 
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
@@ -240,6 +244,7 @@ export class TerrainChunks {
   }
 
   private async requestBuild(key: string): Promise<void> {
+    await this.slated;
     const tiles = this.tiles.get(key);
     if (!tiles) {
       this.disposeChunk(key);

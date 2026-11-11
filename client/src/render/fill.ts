@@ -9,7 +9,7 @@ export function createFilledTexture(engine: Engine, width: number, height: numbe
     size: { width, height },
     format,
     mipLevelCount: tiling ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1,
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
   });
   const mode = tiling ? "repeat" : "clamp-to-edge";
   const sampler = engine._device.createSampler({ minFilter: "linear", magFilter: "linear", mipmapFilter: tiling ? "linear" : "nearest", addressModeU: mode, addressModeV: mode });
@@ -154,4 +154,24 @@ struct F { @location(0) texel: vec4f, @builtin(frag_depth) high: f32 }
   pass.end();
   device.queue.submit([encoder.finish()]);
   depth.destroy();
+}
+
+/** A filled texture of bytes, four a texel, read back from the GPU, its
+ *  smaller copy `level` down: what was drawn there, for what must be
+ *  worked out here. */
+export async function readTexture(engine: Engine, texture: Texture2D, level: number): Promise<Uint8Array> {
+  const device = engine._device;
+  const [width, height] = [texture.width >> level, texture.height >> level];
+  // A row of a copy is a multiple of 256 bytes long.
+  const row = Math.ceil((width * 4) / 256) * 256;
+  const buffer = device.createBuffer({ size: row * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  const encoder = device.createCommandEncoder();
+  encoder.copyTextureToBuffer({ texture: texture.texture, mipLevel: level }, { buffer, bytesPerRow: row }, { width, height });
+  device.queue.submit([encoder.finish()]);
+  await buffer.mapAsync(GPUMapMode.READ);
+  const padded = new Uint8Array(buffer.getMappedRange());
+  const out = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) out.set(padded.subarray(y * row, y * row + width * 4), y * width * 4);
+  buffer.destroy();
+  return out;
 }

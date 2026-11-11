@@ -7,7 +7,7 @@ import { lawn } from "../lawn";
 import { LAWN_TILES } from "../lawn";
 import { night } from "../lights";
 import { pavingPlugin } from "../paving";
-import { slate } from "../peaks";
+import { slate } from "../slateTexture";
 import { SPAN as SLATE_SPAN } from "../slate";
 import { WINDOW_GLOW } from "../TownLayer";
 import { FLAT, SPILL, type Built, type Finish } from "./kit";

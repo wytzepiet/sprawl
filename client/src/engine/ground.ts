@@ -2,7 +2,8 @@ import { addToScene, changedWithin, createTexture2DFromPixels, markMaterialUboDi
 import { townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, retire } from "./geometry";
 import type { Culler } from "./cull";
-import { CALM, slate } from "./peaks";
+import { CALM } from "./peaks";
+import { slate } from "./slateTexture";
 import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";

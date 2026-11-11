@@ -2,7 +2,8 @@ import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, ty
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
-import { CALM, slate } from "./peaks";
+import { CALM } from "./peaks";
+import { slate } from "./slateTexture";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { LACE_SIDE, LACE_TILES } from "./lace";
 import laceRecipe from "./lace.ts?raw";
