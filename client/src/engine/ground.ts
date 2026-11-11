@@ -1,4 +1,4 @@
-import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
+import { addToScene, createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, NEW, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
 import { WHITE, type Rgb } from "./rgb";
@@ -427,14 +427,20 @@ export class GroundTiles {
     // Baked before it is shown, so the atlas holds its shapes when it is bound.
     this.atlas.upload();
     const area = [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE] as const;
-    const mesh = this.tiles(`ground_${key}`, this.material, matrices, data, count, area);
+    // Ours draws a chunk's tiles again in the mesh it has, and the picture
+    // where they differ (`patch.ts`); Lite's is made anew, the old kept
+    // until the new is drawn.
+    const kept = NEW ? old : undefined;
+    if (kept) setThinInstances(kept.mesh, matrices, count), setMeshAttribute(this.engine, kept.mesh, "ground", data);
+    if (kept?.wash) this.cull.forget(kept.wash), drop(this.scene, kept.wash);
+    const mesh = kept?.mesh ?? this.tiles(`ground_${key}`, this.material, matrices, data, count, area);
     // The sand's tiles again, for the swash over it.
     const sand = Array.from({ length: count }, (_, i) => i).filter((i) => data[i * 12 + 3] > 0);
     const wash = sand.length
       ? this.tiles(`ground_wash_${key}`, this.wash, new Float32Array(sand.flatMap((i) => [...matrices.subarray(i * 16, i * 16 + 16)])), new Float32Array(sand.flatMap((i) => [...data.subarray(i * 12, i * 12 + 12)])), sand.length, area, true)
       : null;
     this.chunks.set(key, { mesh, wash });
-    if (old) this.replaced.push({ old, by: mesh });
+    if (old && !kept) this.replaced.push({ old, by: mesh });
   }
 
   /** A chunk's tiles, as one mesh. */

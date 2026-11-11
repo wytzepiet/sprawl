@@ -74,6 +74,8 @@ export class TerrainChunks {
   private ground: GroundTiles;
   private stop: () => void;
   private detailVisible = true;
+  /** The chunks the worker is building. */
+  private building = new Set<string>();
   /** Where a chunk being drawn again differs from the one shown: round the tiles built on since. */
   private remade = new Map<string, number[]>();
 
@@ -186,8 +188,15 @@ export class TerrainChunks {
 
     // Dispatch is free — the worker does the work; what it hands back is
     // taken up in frames' spare time (`arriving`).
-    for (const key of this.dirtyGeometry) void this.requestBuild(key);
-    this.dirtyGeometry.clear();
+    // One build of a chunk at a time: changed again meanwhile, it is built
+    // once more as it then stands, not once for every change, each behind
+    // the last and all but the last thrown away.
+    for (const key of this.dirtyGeometry) {
+      if (this.building.has(key)) continue;
+      this.dirtyGeometry.delete(key);
+      this.building.add(key);
+      void this.requestBuild(key).finally(() => this.building.delete(key));
+    }
   }
 
   /** A built chunk taken up in two parts, in frames' spare time
