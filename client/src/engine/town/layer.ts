@@ -76,6 +76,8 @@ export interface Drawing {
   chunks: ChunkDrawing[];
   /** The window the chunks were drawn in, round them a margin wider. */
   window: Bounds;
+  /** How long it took to draw. */
+  ms: number;
 }
 
 export const grow = (b: Bounds, x: number, y: number) => {
@@ -127,6 +129,7 @@ export function kerbed(roads: Snapshot["roads"]): Set<string> {
 
 /** The snapshot's chunks, drawn. */
 export function drawChunks(s: Snapshot): Drawing {
+  const began = performance.now();
   const box = s.box;
   const OPEN: Tile = { kind: "open", storeys: 0 };
   const ROAD: Tile = { kind: "road", storeys: 0 };
@@ -255,5 +258,5 @@ export function drawChunks(s: Snapshot): Drawing {
     mine.forEach((p, i) => packed.set([PROP_KINDS.indexOf(p.kind), p.x, p.y, p.z, p.size, p.high, p.tx, p.ty], i * PROP_FLOATS));
     return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, theme), props: packed, cut, paving };
   });
-  return { chunks, window };
+  return { chunks, window, ms: performance.now() - began };
 }

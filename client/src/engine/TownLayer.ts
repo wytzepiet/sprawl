@@ -5,7 +5,7 @@ import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
 import { ROOF } from "./roofs";
-import type { EngineContext } from "./Canvas";
+import { drawNow, type EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
@@ -110,7 +110,6 @@ export class TownLayer {
   private dirty = new Set<string>();
   /** Something changed that the next frame draws (`settle`). */
   private due = false;
-  private stopSettle: () => void;
   private tints: Tints;
   /** The town is drawn off the main thread, one drawing at a time. */
   private worker = new Worker(new URL("./townWorker.ts", import.meta.url), { type: "module" });
@@ -147,7 +146,6 @@ export class TownLayer {
     private look: (e: GameObjectEntry) => Look,
   ) {
     this.tints = new Tints(ctx.engine);
-    this.stopSettle = ctx.beforeRender(() => this.drawDue());
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF, WINDOWS]), "building", bevel);
@@ -223,14 +221,15 @@ export class TownLayer {
     this.settle();
   }
 
-  /** On the next frame, what changed drawn: the world as a town made at
-   *  most once for it. */
+  /** What changed, drawn once what is changing it has run: the world as a
+   *  town made at most once for it, and its worker begun at once, not at
+   *  the next frame. */
   private settle() {
+    if (this.due) return;
     this.due = true;
+    queueMicrotask(() => this.drawDue());
   }
 
-  /** What changed, drawn: as the frame that shows it begins, not in a
-   *  frame of its own after it, which the eye waits a frame more for. */
   private drawDue() {
     if (!this.due) return;
     this.due = false;
@@ -398,9 +397,9 @@ export class TownLayer {
     this.builder
       .draw(snapshot)
       .then(
-        ({ chunks, window }) => {
+        ({ chunks, window, ms }) => {
           perfCount("town.mainMs", gathered);
-          lag("worker");
+          lag(`worker ${chunks.length}ch ${Math.round(ms)}ms at`);
           // A chunk a part, in frames' spare time; the next drawing waits
           // for the last, so an older one never lands over a newer.
           const showing = function* (this: TownLayer) {
@@ -416,7 +415,11 @@ export class TownLayer {
               yield;
             }
           };
-          return spread(showing.call(this));
+          // Round tiles touched, under the hand: landed now and shown now,
+          // not in frames' spare time and the frame after.
+          if (!within || chunks.length > 4) return spread(showing.call(this));
+          for (const _ of showing.call(this));
+          drawNow.run();
         },
         (e) => {
           // Never dropped: drawn again, and said so.
@@ -621,7 +624,6 @@ export class TownLayer {
   }
 
   dispose() {
-    this.stopSettle();
     for (const key of [...this.chunks.keys()]) this.drop(key);
     this.unhold();
     this.roads.dispose();
