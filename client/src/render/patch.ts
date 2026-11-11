@@ -41,16 +41,16 @@ export interface Seen {
   shares: Map<string, { data: Float32Array; stride: number }>;
 }
 
-/** The local box `l` through instance `i`'s matrix (column-major) into `out`. */
-function instanceBox(l: Box, m: ArrayLike<number>, i: number, out: Box) {
+/** The local box `l` through instance `i`'s matrix (column-major), moved by its mesh's place `p`, into `out`. */
+function instanceBox(l: Box, m: ArrayLike<number>, i: number, p: ArrayLike<number>, out: Box) {
   const o = i * 16;
   const c = [(l[0]! + l[3]!) / 2, (l[1]! + l[4]!) / 2, (l[2]! + l[5]!) / 2];
   const e = [(l[3]! - l[0]!) / 2, (l[4]! - l[1]!) / 2, (l[5]! - l[2]!) / 2];
   for (let r = 0; r < 3; r++) {
     const centre = m[o + r]! * c[0]! + m[o + 4 + r]! * c[1]! + m[o + 8 + r]! * c[2]! + m[o + 12 + r]!;
     const reach = Math.abs(m[o + r]!) * e[0]! + Math.abs(m[o + 4 + r]!) * e[1]! + Math.abs(m[o + 8 + r]!) * e[2]!;
-    out[r] = centre - reach;
-    out[r + 3] = centre + reach;
+    out[r] = centre - reach + p[r]!;
+    out[r + 3] = centre + reach + p[r]!;
   }
   return out;
 }
@@ -86,7 +86,7 @@ export function see(mesh: Mesh): Seen {
   if (ti) {
     matrices = Float64Array.from(ti.matrices.subarray(0, ti.count * 16));
     const b = nowhere();
-    for (let i = 0; i < ti.count; i++) grow(box, instanceBox(l, matrices, i, b));
+    for (let i = 0; i < ti.count; i++) grow(box, instanceBox(l, matrices, i, [p.x, p.y, p.z], b));
     for (const [name, { data, stride }] of sharesOf(mesh) ?? []) shares.set(name, { data: data.slice(0, ti.count * stride), stride });
   } else if (!isEmpty(l)) {
     for (let k = 0; k < 3; k++) [box[k], box[k + 3]] = [l[k]! + [p.x, p.y, p.z][k]!, l[k + 3]! + [p.x, p.y, p.z][k]!];
@@ -110,21 +110,27 @@ export function changed(was: Seen, mesh: Mesh, out: Box): boolean {
     return true;
   }
   const now = sharesOf(mesh);
-  if (!now) return false;
+  const at = [mesh.position.x, mesh.position.y, mesh.position.z];
+  if (!now || at.some((v, k) => v !== was.position[k])) return false;
   const l = mesh._local;
   const b = nowhere();
-  for (let i = 0; i < Math.max(was.count, ti.count); i++) {
-    let differs = i >= was.count || i >= ti.count;
-    for (let k = 0; !differs && k < 16; k++) differs = ti.matrices[i * 16 + k] !== was.matrices![i * 16 + k];
+  for (const [name, { stride }] of now) if (was.shares.get(name)?.stride !== stride) return false;
+  /** Whether what was instance `i` shows the same as what is now instance `j`. */
+  const same = (i: number, j: number) => {
+    for (let k = 0; k < 16; k++) if (ti.matrices[j * 16 + k] !== was.matrices![i * 16 + k]) return false;
     for (const [name, { data, stride }] of now) {
-      const old = was.shares.get(name);
-      if (differs) break;
-      if (!old || old.stride !== stride) return false;
-      for (let k = 0; !differs && k < stride; k++) differs = data[i * stride + k] !== old.data[i * stride + k];
+      const old = was.shares.get(name)!.data;
+      for (let k = 0; k < stride; k++) if (data[j * stride + k] !== old[i * stride + k]) return false;
     }
-    if (!differs) continue;
-    if (i < was.count) grow(out, instanceBox(l, was.matrices!, i, b));
-    if (i < ti.count) grow(out, instanceBox(l, ti.matrices, i, b));
-  }
+    return true;
+  };
+  // The same at the front and at the back: some taken out of the middle,
+  // or put in, move the rest along and change nothing they show.
+  const least = Math.min(was.count, ti.count);
+  let [front, back] = [0, 0];
+  while (front < least && same(front, front)) front++;
+  while (back < least - front && same(was.count - 1 - back, ti.count - 1 - back)) back++;
+  for (let i = front; i < was.count - back; i++) if (was.count !== ti.count || !same(i, i)) grow(out, instanceBox(l, was.matrices!, i, at, b));
+  for (let i = front; i < ti.count - back; i++) if (was.count !== ti.count || !same(i, i)) grow(out, instanceBox(l, ti.matrices, i, at, b));
   return true;
 }

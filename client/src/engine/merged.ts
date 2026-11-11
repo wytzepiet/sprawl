@@ -26,6 +26,8 @@ export interface Part {
   matrices: Float32Array;
   colors: Float32Array | null;
   shown: boolean;
+  /** Where its chunk lies in the region: the pile lays its parts out in this order. */
+  order: number;
 }
 
 interface Pile {
@@ -76,7 +78,7 @@ class Merged {
     const own = matrices.slice();
     const [dx, dy] = [ox - rx * REGION, oy - ry * REGION];
     for (let i = 0; i < own.length; i += 16) (own[i + 12] += dx), (own[i + 13] += dy);
-    const part: Part = { pile, matrices: own, colors: kind.colored ? colors : null, shown: true };
+    const part: Part = { pile, matrices: own, colors: kind.colored ? colors : null, shown: true, order: dy * REGION + dx };
     pile.parts.add(part);
     this.touch(pile);
     return part;
@@ -124,7 +126,10 @@ class Merged {
     // Our renderer is told by the piles' meshes themselves, and patches round what moved.
     if (this.stale.size && !NEW) stale();
     for (const pile of this.stale) {
-      const shown = [...pile.parts].filter((p) => p.shown);
+      // In the chunks' order, not as they came: a chunk's trees planted
+      // again keep their place among the rest, so the picture is drawn
+      // again where they stand and not the region over (`render/patch.ts`).
+      const shown = [...pile.parts].filter((p) => p.shown).sort((a, b) => a.order - b.order);
       const count = shown.reduce((n, p) => n + p.matrices.length / 16, 0);
       const matrices = new Float32Array(Math.max(1, count) * 16);
       const colors = pile.colored ? new Float32Array(Math.max(1, count) * 4) : null;
