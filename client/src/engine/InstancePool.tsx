@@ -14,6 +14,7 @@ import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
 import { live, livened, redraws, stale } from "./still";
+import type { Culler } from "./cull";
 
 /**
  * One draw call per bucket, however many instances it holds. Thin instances
@@ -48,6 +49,11 @@ interface Bucket {
 }
 
 const STRIDE = 9;
+/** A still thing's bucket is one a chunk of the map as the game sends it
+ *  (`land::CHUNK_SIZE` tiles square), so a chunk out of view is not drawn
+ *  (`Culler`): a picture of the town costs what is in view, not what is
+ *  loaded. A thing may reach `REACH` tiles past where it stands. */
+const [REGION, REACH] = [32, 4];
 /** A rotation by Euler angles, as Babylon's `FromEulerAngles` turns them
  *  (yaw y, pitch x, roll z), into a matrix slot with a position and scale. */
 function compose(out: Float32Array, at: number, tr: Float32Array, t: number) {
@@ -95,6 +101,8 @@ export class InstancePool {
    *  live meanwhile, by its twin in a live bucket of the same look, until
    *  the picture is drawn again (`redraws` past `at`). */
   private handing = new Map<number, { key: string; twin: number; at: number }>();
+  /** Each still instance's bucket: its key's, for the region it stands in. */
+  private where = new Map<number, Bucket>();
   /** The ambient light in force, so a bucket made mid-day is painted for it. */
   private ambient: Rgb = WHITE;
 
@@ -102,7 +110,21 @@ export class InstancePool {
     private engine: EngineContext,
     private scene: SceneContext,
     readonly casters: Casters,
+    private cull: Culler,
   ) {}
+
+  /** A still key's bucket for the region round `pos`: its shape, material
+   *  and bevel the key's own, kept by the culler while its region is in
+   *  view. Our renderer's alone: a mesh more costs Lite a renderable. */
+  private region(key: string, of: Bucket, pos: [number, number, number] = [0, 0, 0]): Bucket {
+    const [rx, ry] = [Math.floor(pos[0] / REGION), Math.floor(pos[1] / REGION)];
+    const name = `${key}@${rx},${ry}`;
+    const had = this.buckets.get(name);
+    if (had) return had;
+    const bucket = this.hold(name, of.geometry, of.material, of.bevel, of.baseColor, of.castShadow, of.receiveShadow, false);
+    this.cull.keep(bucket.mesh, [rx * REGION - REACH, ry * REGION - REACH, (rx + 1) * REGION + REACH, (ry + 1) * REGION + REACH]);
+    return bucket;
+  }
 
   ensureBucket(
     key: string,
@@ -169,7 +191,7 @@ export class InstancePool {
 
   /** One instance's world matrix, as last composed; null once it is gone. */
   matrixOf(key: string, id: number, out: Float32Array): Float32Array | null {
-    const bucket = this.buckets.get(key);
+    const bucket = this.where.get(id) ?? this.buckets.get(key);
     const index = bucket?.idToIndex.get(id);
     if (!bucket || index === undefined) return null;
     out.set(bucket.matrices.subarray(index * 16, index * 16 + 16));
@@ -186,7 +208,7 @@ export class InstancePool {
     rot?: [number, number, number],
     scale?: number | [number, number, number],
   ): number {
-    const bucket = this.buckets.get(key)!;
+    let bucket = this.buckets.get(key)!;
     const id = nextId++;
     if (!bucket.live) {
       // Its shadow comes with the picture: a caster made and dropped would
@@ -194,6 +216,7 @@ export class InstancePool {
       const twin = `${key}~`;
       if (!this.buckets.has(twin)) this.hold(twin, bucket.geometry, bucket.material, bucket.bevel, bucket.baseColor, false, bucket.receiveShadow, true);
       this.handing.set(id, { key: twin, twin: this.addInstance(twin, pos, rot, scale), at: redraws });
+      if (NEW) this.where.set(id, (bucket = this.region(key, bucket, pos)));
     }
     if ((bucket.count + 1) * 16 > bucket.matrices.length) grow(bucket);
 
@@ -224,7 +247,7 @@ export class InstancePool {
     rot?: [number, number, number],
     scale?: [number, number, number],
   ): void {
-    const bucket = this.buckets.get(key);
+    const bucket = this.where.get(id) ?? this.buckets.get(key);
     if (!bucket) return;
     const index = bucket.idToIndex.get(id);
     if (index === undefined) return;
@@ -239,8 +262,9 @@ export class InstancePool {
   }
 
   removeInstance(key: string, id: number): void {
-    const bucket = this.buckets.get(key);
+    const bucket = this.where.get(id) ?? this.buckets.get(key);
     if (!bucket) return;
+    this.where.delete(id);
     const index = bucket.idToIndex.get(id);
     if (index === undefined) return;
 
@@ -308,6 +332,7 @@ export class InstancePool {
   dispose(): void {
     for (const bucket of this.buckets.values()) {
       if (bucket.castShadow) this.casters.remove(bucket.mesh);
+      this.cull.forget(bucket.mesh);
       drop(this.scene, bucket.mesh);
     }
     this.buckets.clear();
@@ -334,10 +359,10 @@ export function useInstancePool(): InstancePool {
 }
 
 export function InstancePoolProvider(props: ParentProps) {
-  const { engine, scene, beforeRender } = useEngine();
+  const { engine, scene, beforeRender, cull } = useEngine();
   const { ambientColor, casters } = useDayNight();
 
-  const pool = new InstancePool(engine, scene, casters()!);
+  const pool = new InstancePool(engine, scene, casters()!, cull);
 
   // WebGPU compiles a shader variant the first time something is drawn with
   // it: a few hundred milliseconds with no frames at all. There are two —

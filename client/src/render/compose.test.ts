@@ -79,7 +79,7 @@ async function build() {
   const { PROP_FLOATS } = await import("../engine/town/layer");
   placeProps(ctx, new Float32Array(PROP_FLOATS), [0, 0], undefined);
   const { InstancePool } = await import("../engine/InstancePool");
-  const pool = new InstancePool(ctx.engine, ctx.scene, anything());
+  const pool = new InstancePool(ctx.engine, ctx.scene, anything(), anything());
   const box = { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 1, 2], uvs: [0, 0, 1, 0, 0, 1] };
   pool.ensureBucket("marker", box as never, WHITE, false, false);
   const { COATS } = await import("../engine/objects/finishes");
