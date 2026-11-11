@@ -172,6 +172,7 @@ const lace = (engine: EngineContext): Texture2D =>
   bakedTexture(engine, "lace", laceRecipe, [LACE_SIDE, LACE_SIDE, () => new Uint8Array(LACE_SIDE * LACE_SIDE)], { format: "r8unorm", ...REPEAT });
 
 const f = (x: number) => x.toFixed(4);
+const FAR = new Uint8Array([255]);
 const water = () => {
   const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
   const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
@@ -197,14 +198,13 @@ const water = () => {
   // trails off out to sea.
   const lip = 1 - CREST_TAIL / WAVE_FROM;
   return [
-    // The shore's distance and the cliff's, one texture between them.
-    `let fields = ${read("waterFields", `${here} / ${f(CHUNK_SIZE)}`)};`,
-    `let shore = fields.r * ${f(SHORE_REACH)};`,
+    // How far from the shore (`shore.ts`).
+    `let shore = ${read("waterShore", `${here} / ${f(CHUNK_SIZE)}`)}.r * ${f(SHORE_REACH)};`,
     // The sea's broadest ripple: its slope, and its height, the swell.
     `let ripple = ${read("waterRipple", drift(LAYERS[0]))};`,
     `let swell = ripple.b;`,
     `let foamEdge = ${f(FOAM)} * (0.5 + 0.5 * swell) * (0.85 + 0.15 * sin(1.3 * ${time}));`,
-    `let cliffField = fields.g;`,
+    `let cliffField = ${read("waterCliff", `${here} / ${f(CHUNK_SIZE)}`)}.r;`,
     `let slate = ${slateTop};`,
     // How far out from the cliff's foot, its lip wandering along the slate
     // (`cliffField`); as far as the field reaches is no cliff near at all.
@@ -294,24 +294,21 @@ const water = () => {
 };
 
 /** A material for one chunk's water, its colour the mesh's own, by
- *  vertex, its shore as `shoreField` gives it, if it has one, its land's
- *  cliff as `cliffField` does. Its clock ticks before each frame
- *  (`tick`); its textures are let go with `dispose`. Where on its chunk a
+ *  vertex, its shore the chunk's (`shore.ts`), if it has one, its land's
+ *  cliff as `cliffField` gives it. Its clock ticks before each frame
+ *  (`tick`); its own textures are let go with `dispose`. Where on its chunk a
  *  pixel is: the mesh's own frame, however placed. */
-export function waterMaterial(engine: EngineContext, shore: Uint8Array | null, cliff: Uint8Array | null) {
-  // The shore's distance and the cliff's field, a texel of each, so one
-  // read serves both; as far from either as each reaches, where there is
-  // none.
-  const side = shore ?? cliff ? CHUNK_SIZE * SHORE_DENSITY : 1;
-  const both = new Uint8Array(side * side * 2);
-  for (let k = 0; k < side * side; k++) [both[2 * k], both[2 * k + 1]] = [shore?.[k] ?? 255, cliff?.[k] ?? 255];
-  const fields = createTexture2DFromPixels(engine, both, side, side, { format: "rg8unorm", minFilter: "linear", magFilter: "linear" });
+export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Uint8Array | null) {
+  // As far from either as each reaches, where there is none.
+  const side = cliff ? CHUNK_SIZE * SHORE_DENSITY : 1;
+  const field = createTexture2DFromPixels(engine, cliff ?? FAR, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
+  const far = shore ? null : createTexture2DFromPixels(engine, FAR, 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
     name: "Water",
     priority: 210,
     getVaryings: () => [{ name: "vWaterAt", type: "vec2f" }],
-    getSamplers: () => ["waterRipple", "waterFields", "waterSlate", "waterLace"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: ripples(engine) }, { texture: fields }, { texture: slate(engine) }, { texture: lace(engine) }),
+    getSamplers: () => ["waterRipple", "waterShore", "waterCliff", "waterSlate", "waterLace"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: ripples(engine) }, { texture: shore ?? far! }, { texture: field }, { texture: slate(engine) }, { texture: lace(engine) }),
     getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
     // Seconds, wrapped so a long session keeps the drift's precision.
     writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
@@ -321,6 +318,6 @@ export function waterMaterial(engine: EngineContext, shore: Uint8Array | null, c
   return {
     material,
     tick: () => markMaterialUboDirty(material),
-    dispose: () => retire(fields),
+    dispose: () => (retire(field), far && retire(far)),
   };
 }

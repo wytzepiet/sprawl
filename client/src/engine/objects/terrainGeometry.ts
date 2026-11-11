@@ -26,10 +26,6 @@ export interface MeshBuffers {
 export interface ChunkGeometry {
   /** The sea's and lakes' surface, apart, to be drawn as water. */
   water: MeshBuffers;
-  /** How far each point of the chunk lies from land, if it has water: a
-   *  byte each, 0 at the shore to 255 at SHORE_REACH or more, SHORE_DENSITY
-   *  to a tile, rows up from its low corner. */
-  shore: Uint8Array | null;
   /** The land's cliff: the plane under its edge it is painted on, and how
    *  far out from the edge each point is (`cliffField`), if it has one. */
   cliff: MeshBuffers;
@@ -47,7 +43,7 @@ export const SHORE_REACH = 2;
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliff, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
-  return [...arrays, g.shore ?? undefined, g.cliffField ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
+  return [...arrays, g.cliffField ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
 /** The land stands on a cliff this high over the water; a beach lies
@@ -462,11 +458,6 @@ function inner(field: (k: number) => number, reach: number): Uint8Array {
   const out = new Uint8Array(n * n);
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) out[j * n + i] = Math.max(0, Math.min(255, Math.round(field((j + reach * d) * side + i + reach * d) * 255)));
   return out;
-}
-
-function shoreField(sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
-  const far = distances(blend(sampler, originX, originY, SHORE_REACH, (t) => !isWater(t)), (CHUNK_SIZE + 2 * SHORE_REACH) * SHORE_DENSITY);
-  return inner((k) => far[k] / (SHORE_REACH * SHORE_DENSITY), SHORE_REACH);
 }
 
 const isLandTop = (t: Ground) => LAND.includes(t);
@@ -899,7 +890,6 @@ export function buildChunk(
 
   return {
     water: SINK.water.take(),
-    shore: SINK.water.vertices ? shoreField(sampler, originX, originY) : null,
     cliff: SINK.cliffPlane.take(),
     cliffField: field,
     ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),

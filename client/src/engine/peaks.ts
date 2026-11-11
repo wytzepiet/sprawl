@@ -247,10 +247,10 @@ N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
  *  it on the whole: the cliff stands still (`still.ts`), and the sea's own
  *  foam churns at its foot (`water.ts`); its textures let go with
  *  `dispose`. */
-export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: Uint8Array | null) {
+export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: Texture2D | null) {
   const side = CHUNK_SIZE * SHORE_DENSITY;
   const texture = createTexture2DFromPixels(engine, field, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
-  const shores = createTexture2DFromPixels(engine, shore ?? new Uint8Array([0]), shore ? side : 1, shore ? side : 1, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
+  const none = shore ? null : createTexture2DFromPixels(engine, new Uint8Array([0]), 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
     name: "LandCliff",
     priority: 200,
@@ -260,7 +260,7 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: U
       { name: "vCliffY", type: "vec2f" },
     ],
     getSamplers: () => ["slate", "cliffField", "cliffShore"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shores }),
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shore ?? none! }),
     getCustomCode: (stage) =>
       stage === "vertex"
         ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
@@ -283,5 +283,5 @@ townShine = townShine * (1. - cliffFoam);`,
           },
   };
   const material = rock(plugin);
-  return { material, dispose: () => (retire(texture), retire(shores)) };
+  return { material, dispose: () => (retire(texture), none && retire(none)) };
 }

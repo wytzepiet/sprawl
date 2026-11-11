@@ -195,14 +195,22 @@ const DRY = bits(TYPE_BY_BYTE.filter((g) => g !== "Sea" && g !== "Water"));
 const TAPS = [0, 1, 2].flatMap((j) => [0, 1, 2].map((i) => [i, j]));
 const field = (name: string, mask: number) =>
   `let ${name} = ${TAPS.map(([i, j]) => `groundW${i}${j} * f32((groundB${i}${j} & ${mask}u) != 0u)`).join(" + ")};`;
-const NINE = `let groundCell = floor(input.vGroundAt);
-let groundU = input.vGroundAt - groundCell - 0.5;
+/** The nine tiles round `at`, a point of a chunk in tiles from its low
+ *  corner, read from its kinds `texture`: each one's weight and its kind's bit. */
+const nine = (at: string, texture: string) => `let groundCell = floor(${at});
+let groundU = ${at} - groundCell - 0.5;
 let groundWx = array<vec2f, 3>(0.5 * (0.5 - groundU) * (0.5 - groundU), 0.75 - groundU * groundU, 0.5 * (0.5 + groundU) * (0.5 + groundU));
 let groundGx = array<vec2f, 3>(groundU - 0.5, -2. * groundU, groundU + 0.5);
 ${TAPS.map(
   ([i, j]) => `let groundW${i}${j} = vec3f(groundWx[${i}].x * groundWx[${j}].y, groundGx[${i}].x * groundWx[${j}].y, groundWx[${i}].x * groundGx[${j}].y);
-let groundB${i}${j} = 1u << u32(textureSampleLevel(groundKinds, groundKindsSampler, (groundCell + vec2f(${n(i + CHUNK_SKIRT - 0.5)}, ${n(j + CHUNK_SKIRT - 0.5)})) / ${n(CHUNK_STRIDE)}, 0.).r * 255. + 0.5);`,
+let groundB${i}${j} = 1u << u32(textureLoad(${texture}, clamp(vec2i(groundCell) + vec2i(${i + CHUNK_SKIRT - 1}, ${j + CHUNK_SKIRT - 1}), vec2i(0), vec2i(${CHUNK_STRIDE - 1})), 0).r * 255. + 0.5);`,
 ).join("\n")}`;
+const NINE = nine("input.vGroundAt", "groundKinds");
+/** Whether a point of a chunk is on dry ground, as the ground is drawn:
+ *  `dry`, 1 or 0, for the shore to be measured from (`shore.ts`). */
+export const dryAt = (at: string, texture: string) => `${nine(at, texture)}
+${field("groundDry", DRY)}
+let dry = step(0.5, groundDry.x);`;
 /** How far inside a layer's edge, in tiles, a pixel that far in the layer
  *  is (`field`), as it is along a straight edge: out to a tile and a
  *  half either way, negative beyond the edge. */
@@ -371,6 +379,11 @@ export class GroundTiles {
     this.stopClock = beforeRender(() => {
       for (const { sheets } of this.chunks.values()) if (sheets.has("wash")) markMaterialUboDirty(sheets.get("wash")!.material);
     });
+  }
+
+  /** A chunk's kinds, for what else reads them (`shore.ts`). */
+  kinds(key: string): Texture2D | undefined {
+    return this.chunks.get(key)?.kinds;
   }
 
   /** A chunk's tiles as they are now (`CHUNK_STRIDE` a side, its skirt
