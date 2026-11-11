@@ -444,10 +444,13 @@ function makeFrame(scene: Scene): Frame {
     const goneBy = new Map(gone.map((m) => [m.name, m]));
     const matched = new Set<Mesh>();
     const fresh = new Map<Mesh, Seen>();
+    const grew: string[] = [];
     for (const m of now) {
       const was = seen.get(m);
       const same = was?.touched === m._touched;
-      if (was && !same && !changed(was, m, area)) return (why = m.name), null;
+      const own = nowhere();
+      if (was && !same && !changed(was, m, own)) return (why = m.name), null;
+      if (!isEmpty(own)) grow(area, own), grew.push(m.name);
       const s = same ? was! : look(m);
       const a = within.get(m.name);
       const old = a && !was ? goneBy.get(m.name) : undefined;
@@ -455,15 +458,17 @@ function makeFrame(scene: Scene): Frame {
         grow(area, cut(s.box, a));
         grow(area, cut(seen.get(old)!.box, a));
         matched.add(old);
-      } else if (!was) grow(area, s.box);
+        grew.push(m.name);
+      } else if (!was) grow(area, s.box), grew.push(`+${m.name}`);
       fresh.set(m, s);
     }
-    for (const m of gone) if (!matched.has(m)) grow(area, seen.get(m)!.box);
+    for (const m of gone) if (!matched.has(m)) grow(area, seen.get(m)!.box), grew.push(`-${m.name}`);
     within.clear();
     const rect = isEmpty(area) ? [0, 0, 0, 0] : rectOf(area);
     if (!rect) return null;
     const [w, h] = [rect[2]! - rect[0]!, rect[3]! - rect[1]!];
-    why = "big";
+    // Too big to be worth it: and which meshes made it so, for `?lag`.
+    why = `big ${grew.slice(0, 4).join(",")}`;
     if (w * h > PATCH * picture.w * picture.h) return null;
     seen = fresh;
     if (w <= 0 || h <= 0) return "nothing";

@@ -124,13 +124,26 @@ export function changed(was: Seen, mesh: Mesh, out: Box): boolean {
     }
     return true;
   };
-  // The same at the front and at the back: some taken out of the middle,
-  // or put in, move the rest along and change nothing they show.
+  // Slot by slot: one put at the end, or taken and the last moved to its
+  // slot, and others changed where they are.
+  const slots = nowhere();
+  for (let i = 0; i < Math.max(was.count, ti.count); i++) {
+    if (i < was.count && i < ti.count && same(i, i)) continue;
+    if (i < was.count) grow(slots, instanceBox(l, was.matrices!, i, at, b));
+    if (i < ti.count) grow(slots, instanceBox(l, ti.matrices, i, at, b));
+  }
+  if (was.count === ti.count) return grow(out, slots), true;
+  // Or the same at the front and at the back: some taken out of the
+  // middle, or put in, move the rest along and change nothing they show.
+  // Whichever says less changed is what did.
   const least = Math.min(was.count, ti.count);
   let [front, back] = [0, 0];
   while (front < least && same(front, front)) front++;
   while (back < least - front && same(was.count - 1 - back, ti.count - 1 - back)) back++;
-  for (let i = front; i < was.count - back; i++) if (was.count !== ti.count || !same(i, i)) grow(out, instanceBox(l, was.matrices!, i, at, b));
-  for (let i = front; i < ti.count - back; i++) if (was.count !== ti.count || !same(i, i)) grow(out, instanceBox(l, ti.matrices, i, at, b));
+  const middle = nowhere();
+  for (let i = front; i < was.count - back; i++) grow(middle, instanceBox(l, was.matrices!, i, at, b));
+  for (let i = front; i < ti.count - back; i++) grow(middle, instanceBox(l, ti.matrices, i, at, b));
+  const size = (x: Box) => (isEmpty(x) ? 0 : (x[3]! - x[0]!) * (x[4]! - x[1]!));
+  grow(out, size(middle) < size(slots) ? middle : slots);
   return true;
 }
