@@ -1,11 +1,11 @@
-import type { MaterialPlugin } from "@babylonjs/lite";
+import type { MaterialPlugin } from "./material";
 import { TONE } from "../engine/toneMap";
 import { enabledPlugins, type OwnPbrMaterial } from "./material";
 
 /**
  * The shader composer: a material's plugins pasted into one of three
  * templates, one WGSL module each (entry points `vs` and `fs`), as Lite's PBR
- * template places them (docs/renderer-contract.md §5.3) and lights them
+ * template places them (docs/archive/renderer-contract.md §5.3) and lights them
  * (pbr-template.ts, multilight-wgsl.ts, clustered-light-wgsl.ts,
  * ibl-fragment.ts, csm-shadow-fragment-core.ts). Pure: no GPU here.
  *

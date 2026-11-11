@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterialProps } from "../gpu";
+import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import barkRecipe from "../bark.ts?raw";
 import { BARK_LONG, BARK_ROUND } from "../bark";
 import { bakedTexture } from "../bakeCache";
@@ -109,9 +109,9 @@ export const GLASS: Coat = (engine) => {
   GLASSES.set(engine, plugin);
   return plugin;
 };
-const lit = new Set<PbrMaterialProps>();
+const lit = new Set<PbrMaterial>();
 let shown = -1;
-export const glowing = (material: PbrMaterialProps) => void (lit.add(material), (shown = -1));
+export const glowing = (material: PbrMaterial) => void (lit.add(material), (shown = -1));
 /** Each frame: glass told the night, if it has changed. */
 export function glow() {
   if (night.on === shown) return;

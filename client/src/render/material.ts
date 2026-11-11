@@ -1,7 +1,44 @@
-import type { MaterialPlugin } from "@babylonjs/lite";
+import type { Texture2D } from "./texture";
+
+/** Where in the surface's shader a plugin may write. */
+export type MaterialPluginPoint =
+  | "CUSTOM_FRAGMENT_DEFINITIONS"
+  | "CUSTOM_FRAGMENT_MAIN_BEGIN"
+  | "CUSTOM_FRAGMENT_UPDATE_ALPHA"
+  | "CUSTOM_FRAGMENT_UPDATE_DIFFUSE"
+  | "CUSTOM_FRAGMENT_BEFORE_LIGHTS"
+  | "CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION"
+  | "CUSTOM_FRAGMENT_BEFORE_FRAGCOLOR"
+  | "CUSTOM_VERTEX_MAIN_BEGIN"
+  | "CUSTOM_VERTEX_UPDATE_WORLDPOS"
+  | "CUSTOM_VERTEX_MAIN_END";
+
+/** A part of a material: what it adds to the shader, and what it gives it to read. */
+export interface MaterialPlugin {
+  readonly name: string;
+  priority?: number;
+  isEnabled?: boolean;
+  dynamic?: boolean;
+  defines?: Record<string, boolean | number>;
+  getCustomCode?(shaderType: "vertex" | "fragment"): Partial<Record<MaterialPluginPoint, string>> | null;
+  getUniforms?(): { ubo?: { readonly name: string; readonly type: string; readonly visibility?: "vertex" | "fragment" | "vertex-fragment" }[] };
+  getAttributes?(): { readonly name: string; readonly type: "f32" | "vec2<f32>" | "vec3<f32>" | "vec4<f32>"; readonly perInstance?: boolean; readonly buffer?: string }[];
+  getVaryings?(): { readonly name: string; readonly type: "f32" | "vec2f" | "vec3f" | "vec4f" | "vec2<f32>" | "vec3<f32>" | "vec4<f32>" }[];
+  getSamplers?(): {
+    readonly texture: string;
+    readonly sampler: string;
+    readonly textureType?: "texture_2d<f32>";
+    readonly depthTexture?: boolean;
+    readonly samplerType?: "sampler" | "sampler_non_filtering";
+    readonly visibility?: "vertex" | "fragment" | "vertex-fragment";
+  }[];
+  writeUbo?(data: Float32Array, offsets: ReadonlyMap<string, number>): void;
+  bindTextures?(out: { readonly texture: Texture2D }[]): void;
+  getActiveTextures?(out: Texture2D[]): void;
+}
 
 /**
- * A PBR material as the client knows Lite's (docs/renderer-contract.md §5.1):
+ * A PBR material as the client knows Lite's (docs/archive/renderer-contract.md §5.1):
  * the factors the template reads, and the plugins that write the surface.
  * Plain data; the shader is composed from it (`compose.ts`), the UBO written
  * from it (`writeMaterialUbo`) whenever `_uboVersion` moves.

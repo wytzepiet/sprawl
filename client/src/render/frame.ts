@@ -1,4 +1,4 @@
-import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "@babylonjs/lite";
+import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "./camera";
 import { FORWARD_GROUP, SCENE_BYTES, SCENE_OFFSETS, TILE } from "./compose";
 import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, RELIGHT } from "./deferred";
 import { brdfLut } from "./env";
@@ -349,7 +349,7 @@ function makeFrame(scene: Scene): Frame {
 
   /** The common fields of a scene UBO. */
   function common(u: ReturnType<typeof sceneUbo>, vp: ArrayLike<number>, view: ArrayLike<number>, w: number, h: number, now: number) {
-    const cam = scene.camera;
+    const cam = scene.camera!;
     const sun = gen?._light ?? scene.lights[0];
     const ip = scene.imageProcessing;
     u.set("viewProjection", vp);

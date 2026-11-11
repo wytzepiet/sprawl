@@ -1,7 +1,8 @@
 # Our own renderer: where it stands
 
-Behind `?renderer=new` (docs/renderer-design.md). `client/src/engine/gpu.ts` picks
-ours or Lite's per symbol; ours is `client/src/render/`.
+The game's only renderer since 2026-11-11 (docs/renderer-design.md), in
+`client/src/render/`. The comparisons below are with Babylon Lite, which drew
+the game before it.
 
 ## Works
 
@@ -50,7 +51,7 @@ ours or Lite's per symbol; ours is `client/src/render/`.
   frames, frameMs, picture.moved/changed/forced; and the GPU's time by what
   a frame drew, `gpu.<plain|relight|shadow|picture>` (frames timed),
   `…Ms` and `…Slow` (over 16 ms).
-- still.ts under `?renderer=new`: `createStill` returns `ownStill`; `stale()`
+- still.ts: `createStill` returns `ownStill`; `stale()`
   marks our picture due; each of our pictures bumps `redraws`.
 
 ## Measured on a desktop card (RunPod, 30-metro at 65,-46,14, CPU 4× throttled)

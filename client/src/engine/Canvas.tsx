@@ -153,8 +153,7 @@ export default function Canvas(props: ParentProps) {
   onCleanup(() => stop());
 
   const initCanvas = async (el: HTMLCanvasElement) => {
-    // Multisampled only where pixels are big enough to show their edges.
-    const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO, msaaSamples: devicePixelRatio < 2 ? 4 : 1 });
+    const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO });
     const stopResizing = enableSurfaceResizeObserver(engine.surfaces[0]);
     const scene = createSceneContext(engine);
     const land = theme.land;
@@ -173,7 +172,7 @@ export default function Canvas(props: ParentProps) {
     // the scene holds then. What is drawn is added once it is, and built as
     // it comes: added while it is being registered, it would be built for
     // what the scene held before.
-    const still = createStill(engine, scene);
+    const still = createStill(scene);
     const outline = createOutline(engine, scene);
     const preparing: Promise<unknown>[] = [];
     setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, still, registered, prepare: (work) => preparing.push(work) });

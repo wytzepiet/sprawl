@@ -19,8 +19,8 @@
  *                             `await import("/src/state/sea.ts")` reaches the game's modules
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
- *   --params 'town=15-city&renderer=new'   more of the page's query: a
- *                             fixture played in the browser, our own renderer
+ *   --params 'town=15-city'   more of the page's query: a fixture played
+ *                             in the browser
  *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
  *   PLAYER=4242 bun run look  as that player (`act`'s hand is 4242)
  *

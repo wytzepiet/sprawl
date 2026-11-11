@@ -1,8 +1,8 @@
-import { addToScene, NEW, setThinInstanceColors, setThinInstances, type Mesh } from "./gpu";
+import { addToScene, setThinInstanceColors, setThinInstances, type Mesh } from "./gpu";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
-import { live, stale } from "./still";
+import { live } from "./still";
 
 /**
  * Things of one shape and one material from many chunks, drawn as one mesh
@@ -124,7 +124,6 @@ class Merged {
    *  again: once a frame, however many chunks came and went in it. */
   private flush() {
     // Our renderer is told by the piles' meshes themselves, and patches round what moved.
-    if (this.stale.size && !NEW) stale();
     for (const pile of this.stale) {
       // In the chunks' order, not as they came: a chunk's trees planted
       // again keep their place among the rest, so the picture is drawn

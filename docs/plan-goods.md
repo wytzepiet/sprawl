@@ -63,7 +63,7 @@ made readable and short, not avoided.
 mountains, overpasses and container stacks need, and night feels cosier
 in it; shadows alone proved a poor cue for height. The view never turns,
 so things need to look right from the south, east and west only. Built
-2026-10-24; the flat camera and its F8 switch are gone, F9 still flies.
+2026-10-24; the flat camera and its F8 switch are gone.
 
 Mountains are terraces, each layer a flat top on a slate wall, and the
 coast's cliff is a wall from its lip into the water; both break along

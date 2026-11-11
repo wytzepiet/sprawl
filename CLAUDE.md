@@ -58,13 +58,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
     WebSocket, saved to SQLite. `cargo run` in `server/` runs it.
   - `server/web/` — `Game` for a Web Worker, built for wasm
     (`cargo build -p sprawl-web --target wasm32-unknown-unknown`).
-- `client/` — SolidJS 1.x + Babylon Lite (Vite), WebGPU only. Lite is our
-  fork, read from its source beside this repo: clone
-  `github.com/wytzepiet/Babylon-Lite` (branch `sprawl`) to `../Babylon-Lite`
-  and `pnpm install` there. After changing its API, build the types the client
-  checks against: `tsc -p . --emitDeclarationOnly --declarationMap false
-  --outDir build/types --composite false --incremental false` in
-  `packages/babylon-lite`. What the fork adds, and why, is in its commits.
+- `client/` — SolidJS 1.x (Vite) and our own renderer, WebGPU only
+  (`client/src/render/`, `docs/renderer-design.md`): the still town is a
+  picture kept and patched where it changes, and what moves is drawn over
+  it each frame.
 
 ## Tools
 
@@ -136,9 +133,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--keep` leaves that stack up to look round by hand. The renderer is
   WebGPU only; in a cloud container Playwright's Chromium draws it in
   software (SwiftShader), slowly but truly: a frame a second, a `look`
-  in about twenty-five seconds. A shot that comes out all in shade is a
-  shadow pass that never ran: Lite skips it while a new caster set
-  loads, so a mesh added and dropped every frame keeps it skipped. A new look gets a
+  in about twenty-five seconds. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **The plan:** `bun run plan [fixture…]` draws the town grid flat as SVG
   in `.dev/plan/`, from the town grid's own code (`client/src/engine/town/`,

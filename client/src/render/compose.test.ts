@@ -6,7 +6,7 @@ import { createPbrMaterial, markMaterialUboDirty, type OwnPbrMaterial } from "./
 
 /**
  * Every material the client builds, made by the client's own code with the
- * renderer stubbed (`./gpu` answers anything with anything, and its
+ * renderer stubbed (`engine/gpu` answers anything with anything, and its
  * `createPbrMaterial` is ours), composed for every pass, and each module
  * built into a pipeline by Chromium's WebGPU (SwiftShader): zero errors.
  */
@@ -25,10 +25,12 @@ const anything = (): any => {
 
 const made: OwnPbrMaterial[] = [];
 const gpu: Record<string, unknown> = {};
-for (const [, names] of readFileSync(new URL("../engine/gpu.ts", import.meta.url), "utf8").matchAll(/export \{([^}]*)\} from/g))
-  for (const name of names!.split(",").map((n) => n.trim()).filter(Boolean)) gpu[name] = anything();
-for (const [, name] of readFileSync(new URL("../engine/gpu.ts", import.meta.url), "utf8").matchAll(/export const (\w+) = pick/g)) gpu[name!] = anything();
-Object.assign(gpu, { NEW: false, ownStill: anything(), stalePicture: anything(), holdPicture: anything(), remadeWithin: anything() });
+// Every name the engine takes from the renderer: what `engine/gpu.ts` and `render/index.ts` export.
+for (const file of ["../engine/gpu.ts", "./index.ts"]) {
+  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  for (const [, names] of source.matchAll(/export \{([^}]*)\} from/g)) for (const name of names!.split(",").map((n) => n.trim()).filter(Boolean)) gpu[name] = anything();
+  for (const [, name] of source.matchAll(/export function (\w+)/g)) gpu[name!] = anything();
+}
 Object.assign(gpu, {
   createPbrMaterial: (props: Parameters<typeof createPbrMaterial>[0]) => {
     const m = createPbrMaterial(props);

@@ -58,12 +58,6 @@ jobs:
         if: github.event_name == 'push'
         with:
           path: sprawl
-      - uses: actions/checkout@v4
-        if: github.event_name == 'push'
-        with:
-          repository: wytzepiet/Babylon-Lite
-          ref: c27c8bd3aa08fb0b3f17f2ae13ce318bf9ac3c30 # claude/geometry-views: kept bindings on a scene change
-          path: Babylon-Lite
 
       # The game crate is half the build, and most pushes leave it as it was:
       # its binary and its wasm are kept by the tree they were built from,
@@ -116,10 +110,6 @@ jobs:
         if: github.event_name == 'push' && steps.game.outputs.cache-hit != 'true'
         with:
           tool: wasm-bindgen@${{ env.BINDGEN }}
-      - uses: pnpm/action-setup@v4
-        if: github.event_name == 'push'
-        with:
-          package_json_file: Babylon-Lite/package.json
       - uses: oven-sh/setup-bun@v2
         if: github.event_name == 'push'
 
@@ -131,8 +121,6 @@ jobs:
           VITE_BRANCH: ${{ github.ref_name }}
           VITE_SHA: ${{ github.sha }}
         run: |
-          # Lite is read from its source: its own tools and tests are not needed.
-          (cd Babylon-Lite && pnpm install --frozen-lockfile --prod)
           cd sprawl/client && bun install --frozen-lockfile
           if [ "${{ steps.game.outputs.cache-hit }}" != true ]; then
             bun run wasm

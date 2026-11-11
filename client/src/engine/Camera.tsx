@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { attachFreeControl, createFreeCamera } from "./gpu";
+import { createFreeCamera } from "./gpu";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { held, inHand } from "../ui/buildMode";
@@ -102,7 +102,6 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   let half: number = kept.half;
   let at = { x: kept.x as number, y: kept.y as number };
   let target = { half, ...at };
-  let flying = false;
   let lastChunks: ChunkBounds | null = null;
   let lastSent = 0;
   let lastWelcome = 0;
@@ -220,7 +219,6 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
 
   // Smooth zoom animation
   const stopBefore = beforeRender(() => {
-    if (flying) return;
     const f = following();
     if (f !== null) {
       const p = positionOf(f);
@@ -272,7 +270,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!pointers.has(e.pointerId) || flying) return;
+    if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
     const now = centre();
     drag(last, now);
@@ -294,26 +292,9 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
 
   const onWheel = (e: WheelEvent) => {
     // A building in hand is turned by the wheel (`Brush`).
-    if (flying || held()) return;
+    if (held()) return;
     e.preventDefault();
     zoomToward(target.half * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
-  };
-
-  // F9 flies: a wide lens and the controls handed over.
-  let detachFlying = () => {};
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "F9") return;
-    flying = !flying;
-    if (flying) {
-      camera.fov = 0.8;
-      camera.position.set(at.x, at.y - 10, 8);
-      camera.target.set(at.x, at.y, 0);
-      detachFlying = attachFreeControl(camera, canvas, scene);
-    } else {
-      detachFlying();
-      camera.fov = FOV;
-      place();
-    }
   };
 
   const keep = () => {
@@ -326,19 +307,16 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", preventContextMenu);
-  window.addEventListener("keydown", onKeyDown);
   document.addEventListener("visibilitychange", onHide);
 
   onCleanup(() => {
     keep();
     stopBefore();
-    detachFlying();
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("wheel", onWheel);
     canvas.removeEventListener("contextmenu", preventContextMenu);
-    window.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("visibilitychange", onHide);
     if (scene.camera === camera) scene.camera = null;
   });

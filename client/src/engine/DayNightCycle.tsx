@@ -25,7 +25,6 @@ import { groundCover } from "./view";
 import { skyEnvironment, type SkyLight } from "./sky";
 import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
 import { nightLights } from "./lights";
-import { isStill } from "./still";
 
 // ---------------------------------------------------------------------------
 // Time config
@@ -345,7 +344,7 @@ export function daylight(engine: Engine, scene: SceneContext, mapSize: number) {
   // to a low sun — the case a constant bias cannot cover without detaching the
   // shadows from the flat ground. Slope-scaled bias handles it per-fragment.
   // One cascade: a view from above has no distance to grade.
-  const shadows = createCsmDirectionalShadowGenerator(engine, sunLight, { mapSize, numCascades: 1, bias: 0.001, cascadeBlendPercentage: 0 });
+  const shadows = createCsmDirectionalShadowGenerator(engine, sunLight, { mapSize, bias: 0.001 });
   sunLight.shadowGenerator = shadows;
   const casting = new Set<Mesh>();
   let castersChanged = false;
@@ -459,10 +458,8 @@ export default function DayNightLights(props: ParentProps) {
   // little, some six times a second in a two-minute day, or it changed;
   // what moves, the cars, is drawn over a copy of that every frame (Lite's
   // static cache). Which is which is the still town's (`still.ts`).
-  prepare(enableCsmStaticCache(engine, lit.shadows, { refitAngle: 0.008, still: isStill }));
+  prepare(enableCsmStaticCache(engine, lit.shadows, { refitAngle: 0.008 }));
   setCasters(lit.casters);
-  // The shadows of what moves kept off the still town's picture.
-  ctx.still.sun(lit.shadows, lit);
 
   let lastMinute = -1;
   const stop = beforeRender(() => {

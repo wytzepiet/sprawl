@@ -4,7 +4,7 @@ import { forcePicture } from "./frame";
 import { dirtyMaterials } from "./pass";
 import type { Scene } from "./scene";
 
-/** Our own renderer, Lite-shaped (docs/renderer-design.md); `engine/gpu.ts` picks it by `?renderer=new`. */
+/** The renderer (docs/renderer-design.md); `engine/gpu.ts` names it for the engine. */
 export { createEngine, createSurface, disposeEngine, enableSurfaceResizeObserver, isGpuTimingSupported, renderFrame, resizeEngine, setGpuTimingEnabled, waitForGpuIdle } from "./engine";
 export { createCubeEnvironment, updateCubeEnvironment } from "./env";
 export { createPbrMaterial } from "./material";
@@ -64,16 +64,13 @@ export function markMaterialUboDirty(material: OwnPbrMaterial) {
   dirtyMaterials.add(material);
 }
 
-/** The still picture, ours: `still.ts`'s `createStill` under `?renderer=new`.
- *  The scene sorts its meshes by `isStill`; the sun and the headlights are
- *  the scene's own already, and a frame is one render. `drawn` is told of
- *  each picture drawn (`still.ts`'s `redraws`). */
+/** The still picture (`still.ts`'s `createStill`): the scene sorts its
+ *  meshes by `isStill`, and a frame is one render. `drawn` is told of each
+ *  picture drawn (`still.ts`'s `redraws`). */
 export function ownStill(scene: Scene, isStill: (mesh: Mesh) => boolean, drawn: (why: string) => void) {
   scene._isStill = isStill;
   scene._pictured = drawn;
   return {
-    sun() {},
-    headlights() {},
     frame(_now: number, render: () => void, always = false) {
       if (always) forcePicture();
       render();

@@ -12,13 +12,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true,
-    // The renderer is our fork of Babylon Lite beside this repo; its types are built there
-    // (`tsc -p . --emitDeclarationOnly --outDir build/types` in packages/babylon-lite).
-    // Lite's insides, `@babylonjs/lite/src/…`, until it exports them; and the
-    // UI's ink, `~ui`.
+    // The UI's ink, `~ui`.
     "paths": {
-      "@babylonjs/lite": ["../../Babylon-Lite/packages/babylon-lite/build/types/index.d.ts"],
-      "@babylonjs/lite/src/*": ["../../Babylon-Lite/packages/babylon-lite/build/types/*"],
       "~ui": ["./ui/index.tsx"]
     },
 

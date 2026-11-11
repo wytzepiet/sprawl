@@ -23,7 +23,7 @@ on:
         description: A test town (server/fixtures) run in the tab, or empty for the game's own world
         default: '15-city'
       where:
-        description: Tile and half-width the camera looks round, x,y,half, then any URL params, e.g. 65,46,14&renderer=new
+        description: Tile and half-width the camera looks round, x,y,half, then any URL params, e.g. 65,46,14&town=30-metro
         default: '33,23,20'
       screen:
         description: The GPU machine's window, CSS pixels and device pixel ratio, e.g. 412x915@2.625 for a phone's

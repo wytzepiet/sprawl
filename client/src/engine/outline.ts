@@ -89,9 +89,9 @@ export interface Outline {
  * scene's frame graph, which records its tasks then.
  */
 export function createOutline(engine: EngineContext, scene: SceneContext): Outline {
-  const mask = createSurfaceRenderTargetTexture(engine, { lbl: "outline", format: "rgba8unorm", dFormat: "depth24plus", samples: 1, size: engine.surfaces[0] });
+  const mask = createSurfaceRenderTargetTexture(engine, { format: "rgba8unorm", size: engine.surfaces[0] });
   const { rt, texture } = mask;
-  const task = createRenderTask({ name: "outline", rt, clrColor: { r: 0, g: 0, b: 0, a: 0 }, cs: true, autoMirror: false }, engine, scene);
+  const task = createRenderTask({ rt, clrColor: { r: 0, g: 0, b: 0, a: 0 } }, engine, scene);
   addTaskAtStart(scene, task);
   task.executionEnabled = false;
   const paints = { picked: townMaterial([paint("MaskPicked", "1., 0., 0.")]), under: townMaterial([paint("MaskUnder", "0., 1., 0.")]) };
@@ -100,7 +100,6 @@ export function createOutline(engine: EngineContext, scene: SceneContext): Outli
     name: "outline",
     vertexSource: VERTEX,
     fragmentSource: FRAGMENT,
-    attributes: ["position"],
     uniforms: [{ name: "width", type: "f32" }],
     samplers: ["mask"],
     needAlphaBlending: true,

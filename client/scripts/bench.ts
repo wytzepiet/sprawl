@@ -11,13 +11,12 @@
  *   --t 0.95                         at this time of day (default noon)
  *   --town 15-city                   on that test town (`server/fixtures`),
  *                                    run in the tab, not the server's world
- *   --params renderer=new            more of the page's query
+ *   --params lag                     more of the page's query
  *   --read bench-k3x9a               a run another device made, as its
  *                                    screen showed it at the end
  *   --runs                           the runs that game has, newest last
  *   --compare <tabA> <tabB>          two runs side by side, phase by phase,
- *                                    and B over A (`&renderer=new` against
- *                                    Lite, say, from two `bench.yml` runs)
+ *                                    and B over A (two `bench.yml` runs)
  */
 import { args, CLIENT, flag, has, launch, word } from "./lib";
 import { costLines, PHASES, summarise, type Report } from "../src/engine/bench";
@@ -41,7 +40,7 @@ if (compare) {
     const reports = (await fetchRuns(tab)).filter((r) => !r.phase.endsWith("cost"));
     if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
     const r = reports[0];
-    console.log(`${tab}: ${r.renderer ?? "lite?"}, ${r.canvas.join("×")} at ${r.dpr}x, ${r.gpu}`);
+    console.log(`${tab}: ${r.canvas.join("×")} at ${r.dpr}x, ${r.gpu}`);
     return summarise(reports);
   }));
   // A phase's numbers: per frame, per second, or per redraw, from its reports' counts.

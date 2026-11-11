@@ -18,8 +18,6 @@ const profiling: Plugin = {
 // so both ports come from the environment, defaulting to the game's.
 const port = Number(process.env.SPRAWL_CLIENT_PORT ?? 4800);
 const server = `localhost:${process.env.SPRAWL_PORT ?? 4801}`;
-// The renderer is our fork of Babylon Lite, read from its source beside this repo.
-const lite = new URL("../../Babylon-Lite/packages/babylon-lite/", import.meta.url).pathname;
 
 export default defineConfig({
   // No hot swapping: an edit reloads the page. Solid's refresh remounts the
@@ -31,9 +29,6 @@ export default defineConfig({
   plugins: [solidPlugin({ hot: false }), profiling],
   resolve: {
     alias: [
-      { find: /^@babylonjs\/lite$/, replacement: `${lite}src/index.ts` },
-      // A few of Lite's insides, until it exports them: its text's layout, atlas and shader.
-      { find: /^@babylonjs\/lite\/src\/(.*)$/, replacement: `${lite}src/$1.ts` },
       // The UI's ink (`ui/`): what the cards are made of, knowing nothing of the game.
       { find: /^~ui$/, replacement: fileURLToPath(new URL("./ui/index.tsx", import.meta.url)) },
     ],
@@ -45,7 +40,7 @@ export default defineConfig({
     // that is not the one you think.
     strictPort: true,
     // The sandbox reads the fixtures from the server's side of the repo.
-    fs: { allow: ["..", lite] },
+    fs: { allow: [".."] },
     // The client derives its socket URL from location.host, so the dev server
     // has to forward /ws to the game server or it dials itself.
     proxy: {

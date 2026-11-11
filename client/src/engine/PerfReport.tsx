@@ -231,7 +231,6 @@ export default function PerfReport() {
       at: new Date().toISOString(),
       tab: run!,
       phase: PHASES[phase],
-      renderer: params.get("renderer") === "new" ? "new" : "lite",
       gpu,
       seconds: EVERY_MS / 1000,
       frames: gaps.length,

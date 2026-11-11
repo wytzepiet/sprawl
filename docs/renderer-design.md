@@ -1,41 +1,23 @@
 # Our own renderer: design (v1)
 
-Status: overnight build, 2026-11-09, branch `claude/project-thread-d7r17m`. Read with
-`docs/renderer-contract.md` (what the client asks of Lite, exactly) and
-`docs/renderer-ideas.md` (research).
+Status: the game's only renderer since 2026-11-11. It was built as a drop-in
+for Babylon Lite (our fork of it drew the game until then), which is why its
+functions are shaped and named as Lite's were; "Lite" below is that renderer,
+now gone. `docs/archive/renderer-contract.md` is what the client asked of
+Lite, exactly, and `docs/archive/renderer-ideas.md` the research.
 
 ## Goal
 
 The same town, the same look, at a fraction of the main-thread CPU, with a
-handful of pipelines, so a phone runs cool. Behind `?renderer=new`; Lite stays
-the default until Wytze says otherwise.
+handful of pipelines, so a phone runs cool.
 
 ## Shape: a drop-in with our own insides
 
-The client keeps calling the functions it calls today. A switch module
-`client/src/engine/gpu.ts` re-exports, per symbol, either Lite's or ours:
-
-```ts
-import * as lite from "@babylonjs/lite";
-import * as own from "../render";
-export const NEW = new URLSearchParams(location.search).get("renderer") === "new";
-export const createEngine = NEW ? own.createEngine : lite.createEngine;
-...
-export type { Mesh, ... } from "@babylonjs/lite";   // ours conform structurally
-```
-
-Every `from "@babylonjs/lite"` in client/src becomes `from "./gpu"` (or the
-right relative path). Pure maths is NOT reimplemented: `createFreeCamera`,
-`getViewProjectionMatrix`, `invertMat4`, `composeMat4IntoBuffer`,
-`createPickingRay`, `getCameraPosition`, `attachFreeControl`, `wgsl` stay Lite's
-in both modes (no GPU in them; bit-identical matrices for free).
-
-Our renderer lives in `client/src/render/` and imports nothing from Lite except
-that maths. It owns, internally, what `still.ts` does from outside today: under
-`?renderer=new`, `still.ts`'s `createStill` returns a thin object that forwards
-`sun()`/`headlights()` to the renderer and its `frame()` just calls
-`renderFrame`; `live(mesh)`/`isStill` stay as they are and the renderer reads
-`isStill` (exported from still.ts) to sort meshes.
+The client calls the functions it called of Lite. `client/src/engine/gpu.ts`
+names them for the engine, all from `client/src/render/`, the camera's
+matrices and the picking ray among them (`camera.ts`). `still.ts` says which
+meshes are still (`live(mesh)`, `isStill`) and its `createStill` hands the
+frame to the renderer.
 
 ## The frame
 
@@ -113,16 +95,11 @@ as screen boxes into the lit picture at relight; headlights (spot lights) as
 screen boxes in the composite (as `stillBeams` does today); forward meshes loop
 over the buffer with a range test (cars are small; water may need a cap).
 
-## What the client loses under ?renderer=new
-
-`still.ts`'s own drawing (its shaders and tasks), the geometry task, the
-private reads, `setShadowStaticOnly`/`getCsmStaticTexture` (stubbed), MSAA.
-
 ## How it is judged
 
-1. Looks: `bun run shots` and `look` with and without `&renderer=new`, side by
+1. Looks: `bun run shots` and `look` against Lite's photographs, side by
    side; the same within the noise of a still frame.
-2. Speed: the RunPod bench (`bench.yml`, `where` with `&renderer=new`) for JS ms
+2. Speed: the RunPod bench (`bench.yml`) for JS ms
    per frame and per redraw, draws, pipelines, GPU ms; Chrome CPU-throttled runs
    for phone-like JS; the Pixel 8 power run for the final word.
 3. Pipelines created: count after the first minute (target: under 40, then 0

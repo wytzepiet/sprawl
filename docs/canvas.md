@@ -9,7 +9,7 @@ second. The far zoom and the low-end mode stand.
 
 ## Why
 
-The game is drawn by Babylon Lite on WebGPU, and a cloud session has no
+The game is drawn on WebGPU, and a cloud session has no
 WebGPU: it can prove the server's tests hold, but not that a harbour looks
 like a harbour or that a lorry backs up to the right box. A flat view,
 drawn on an ordinary 2D canvas, runs in any browser, headless Chrome

@@ -1,5 +1,3 @@
-import type { ToneMapping } from "./gpu";
-
 /**
  * How the scene's light, unbounded, is brought into what a screen can show:
  * AgX, Troy Sobotka's, as film takes light, in Benjamin Wrensch's fit, with
@@ -33,7 +31,7 @@ export const CONTRAST = 1.35;
  *  exposure, the eye's, applied first. Richer than Wrensch's punchy, whose
  *  colour is 1.4: AgX takes the colour out of a bright light, and a noon
  *  in full sun came out pale. */
-export const TONE: ToneMapping = {
+export const TONE = {
   id: "agx-rich",
   helpersWGSL: agx(1.7, CONTRAST),
   callWGSL: "color = toneMap(color * scene.vImageInfos.x);",

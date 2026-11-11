@@ -6,14 +6,14 @@ import {
   on,
   type ParentProps,
 } from "solid-js";
-import { addToScene, composeMat4IntoBuffer, meshLike, NEW, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
+import { addToScene, composeMat4IntoBuffer, meshLike, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight, type Casters } from "./DayNightCycle";
 import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
-import { live, livened, redraws, stale } from "./still";
+import { live, redraws } from "./still";
 import type { Culler } from "./cull";
 
 /**
@@ -217,7 +217,7 @@ export class InstancePool {
       const twin = `${key}~`;
       if (!this.buckets.has(twin)) this.hold(twin, bucket.geometry, bucket.material, bucket.bevel, bucket.baseColor, false, bucket.receiveShadow, true);
       this.handing.set(id, { key: twin, twin: this.addInstance(twin, pos, rot, scale), at: redraws });
-      if (NEW) this.where.set(id, (bucket = this.region(key, bucket, pos)));
+      this.where.set(id, (bucket = this.region(key, bucket, pos)));
     }
     if ((bucket.count + 1) * 16 > bucket.matrices.length) grow(bucket);
 
@@ -300,9 +300,6 @@ export class InstancePool {
     for (const [id, h] of this.handing) if (redraws > h.at) this.handing.delete(id), this.removeInstance(h.key, h.twin);
     for (const bucket of this.buckets.values()) {
       if (!bucket.dirty) continue;
-      // Our renderer is told by the bucket's mesh itself, and patches round what changed.
-      if (bucket.live) livened();
-      else if (!NEW) stale();
       // A new buffer at its whole capacity, then the count: what is drawn,
       // and uploaded, is the instances there are.
       if (bucket.resized) {

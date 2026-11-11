@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, setMeshAttribute, type EngineContext, type MaterialPlugin, type Mesh, type PbrMaterialProps } from "./gpu";
+import { markMaterialUboDirty, setMeshAttribute, type EngineContext, type MaterialPlugin, type Mesh, type PbrMaterial } from "./gpu";
 import type { MeshGeometry } from "./geometry";
 
 /**
@@ -193,7 +193,7 @@ const LACQUER: Record<string, readonly [number, number?, number?]> = {
 };
 
 /** A material lacquered as its kind is: its roughness, and its bevel's. */
-export function lacquer<M extends PbrMaterialProps>(mat: M, kind: "car" | "building" | "tree" | "rock", bevel?: Bevel): M {
+export function lacquer<M extends PbrMaterial>(mat: M, kind: "car" | "building" | "tree" | "rock", bevel?: Bevel): M {
   const [roughness, round, soft] = LACQUER[kind];
   mat.roughnessFactor = roughness;
   if (bevel && round !== undefined) bevel.width = round;

@@ -1,7 +1,6 @@
-import { createTexture2DFromPixels, NEW, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "./gpu";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { toHalf } from "./kerbLines";
-import { stale } from "./still";
 
 /** Slots to a row of the texture; it gains rows as shapes come. */
 const COLS = 16;
@@ -68,7 +67,6 @@ export class Atlas {
     if (!this.stale) return this.texture;
     this.stale = false;
     // A new shape shows only on the tiles given it, which our renderer is told of by their meshes.
-    if (!NEW) stale();
     if (this.texture.height === this.rows * this.side) updateTexture2DFromPixels(this.engine, this.texture, this.data);
     else {
       // The old one is never destroyed: what is bound to it may stay

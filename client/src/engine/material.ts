@@ -1,4 +1,4 @@
-import { createPbrMaterial, markMaterialUboDirty, type MaterialPlugin, type PbrMaterialProps, type Texture2D } from "./gpu";
+import { createPbrMaterial, markMaterialUboDirty, type MaterialPlugin, type PbrMaterial, type Texture2D } from "./gpu";
 import { WHITE, type Rgb } from "./rgb";
 
 /**
@@ -43,7 +43,7 @@ roughness = mix(roughness, ${GLOSS.toFixed(3)}, townShine);`,
   };
 }
 
-export type TownMaterial = PbrMaterialProps & { readonly town: { value: Rgb } };
+export type TownMaterial = PbrMaterial & { readonly town: { value: Rgb } };
 
 /** A material of the town's, made of these plugins, as rough as this when
  *  nothing glosses it: 1 chalk, 0 a mirror; its colours, if a texture's, as

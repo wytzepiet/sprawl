@@ -1,3 +1,4 @@
+import type { Camera } from "./camera";
 import type { Engine, Surface } from "./engine";
 import type { CubeEnvironment } from "./env";
 import type { Mesh } from "./mesh";
@@ -147,7 +148,7 @@ export interface Scene {
   engine: Engine;
   surface: Surface;
   clearColor: { r: number; g: number; b: number; a: number };
-  camera: any;
+  camera: Camera | null;
   meshes: Mesh[];
   lights: DirectionalLight[];
   imageProcessing: ImageProcessing;
