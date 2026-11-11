@@ -2,7 +2,8 @@ import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Pbr
 import barkRecipe from "../bark.ts?raw";
 import { BARK_LONG, BARK_ROUND } from "../bark";
 import { bakedTexture } from "../bakeCache";
-import { BUMP, CLOVER, CREASE, grain, lawn } from "../ground";
+import { BUMP, CLOVER, CREASE, grain } from "../ground";
+import { lawn } from "../lawn";
 import { LAWN_TILES } from "../lawn";
 import { night } from "../lights";
 import { pavingPlugin } from "../paving";

@@ -7,8 +7,7 @@ import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_SIDE, RIPPLE_TILES } from "./sand";
 import recipe from "./sand.ts?raw";
-import { LAWN_SIDE, LAWN_TILES } from "./lawn";
-import lawnRecipe from "./lawn.ts?raw";
+import { lawn, LAWN_TILES } from "./lawn";
 import { bakedTexture } from "./bakeCache";
 import { LAYER_ORDER } from "./town/draw";
 import { BEACH_Z, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, TYPE_BY_BYTE, type Ground } from "./objects/terrainGeometry";
@@ -151,17 +150,6 @@ export function grain(engine: EngineContext): Texture2D {
   }
   return texture;
 }
-
-/** The lawn, an engine's: level until the worker has baked them,
- *  or read back from the last bake (`bakeCache.ts`). */
-export const lawn = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "lawn", lawnRecipe, [LAWN_SIDE, LAWN_SIDE, () => new Uint8Array(LAWN_SIDE * LAWN_SIDE * 4).map((_, k) => [128, 128, 255, 0][k % 4])], {
-    mipmaps: true,
-    minFilter: "linear",
-    magFilter: "linear",
-    addressModeU: "repeat",
-    addressModeV: "repeat",
-  });
 
 /** The sand's ripples, an engine's: level until the worker has baked them,
  *  or read back from the last bake (`bakeCache.ts`). */

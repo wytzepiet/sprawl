@@ -1,11 +1,23 @@
 import type { Engine } from "./engine";
-import type { Texture2D } from "./texture";
+import { mipmaps, type Texture2D } from "./texture";
 
-/** A texture a shader can fill (`fillTexture`), read smoothly. */
-export function createFilledTexture(engine: Engine, width: number, height: number, format: GPUTextureFormat = "r8unorm"): Texture2D {
-  const texture = engine._device.createTexture({ size: { width, height }, format, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
-  return { texture, view: texture.createView(), sampler: engine._device.createSampler({ minFilter: "linear", magFilter: "linear" }), width, height };
+/** A texture a shader can fill (`fillTexture`), read smoothly; `tiling`,
+ *  one that repeats and is read from far off too, its smaller copies made
+ *  as it is filled. */
+export function createFilledTexture(engine: Engine, width: number, height: number, format: GPUTextureFormat = "r8unorm", tiling = false): Texture2D {
+  const texture = engine._device.createTexture({
+    size: { width, height },
+    format,
+    mipLevelCount: tiling ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const mode = tiling ? "repeat" : "clamp-to-edge";
+  const sampler = engine._device.createSampler({ minFilter: "linear", magFilter: "linear", mipmapFilter: tiling ? "linear" : "nearest", addressModeU: mode, addressModeV: mode });
+  return { texture, view: texture.createView(), sampler, width, height };
 }
+
+/** A texture's own texels, as a pass draws on them. */
+const top = (t: Texture2D) => t.texture.createView({ baseMipLevel: 0, mipLevelCount: 1 });
 
 const pipelines = new WeakMap<GPUDevice, Map<string, GPURenderPipeline>>();
 
@@ -30,10 +42,54 @@ ${code}
     byCode.set(key, pipeline);
   }
   const encoder = device.createCommandEncoder();
-  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: target.view, loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
+  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: top(target), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
   pass.setPipeline(pipeline);
-  pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: sources.map((s, k) => ({ binding: k, resource: s.view })) }));
+  if (sources.length) pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: sources.map((s, k) => ({ binding: k, resource: s.view })) }));
   pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  if (target.texture.mipLevelCount > 1) mipmaps(engine, target.texture);
+}
+
+/** Shapes stamped onto a square `target` that wraps, `count` of them, each
+ *  texel keeping the most any gives it: `code` is WGSL with `fn box(i: u32)
+ *  -> vec4f`, the texels shape `i` may touch (x0 y0 x1 y1, within the
+ *  square or up to its side past it, where it comes round), and `fn
+ *  stamp(i: u32, at: vec2f) -> vec4f`, what it gives the texel whose
+ *  middle is `at`. Onto what is there, or `first` onto nothing. What a
+ *  bake did a shape at a time in a worker, drawn. */
+export function stampTexture(engine: Engine, target: Texture2D, code: string, count: number, first: boolean) {
+  const device = engine._device;
+  const byCode = pipelines.get(device) ?? new Map<string, GPURenderPipeline>();
+  pipelines.set(device, byCode);
+  const key = `stamp|${target.texture.format}|${target.width}|${code}`;
+  let pipeline = byCode.get(key);
+  if (!pipeline) {
+    const module = device.createShaderModule({
+      code: `${code}
+struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, @location(1) @interpolate(flat) round: vec2f }
+// Each shape four times: as it lies, and come round each side.
+@vertex fn vs(@builtin(vertex_index) v: u32, @builtin(instance_index) n: u32) -> V {
+  let b = box(n >> 2u);
+  let round = vec2f(f32(n & 1u), f32((n >> 1u) & 1u)) * ${target.width}.;
+  let at = mix(b.xy, b.zw, vec2f(f32(v & 1u), f32(v >> 1u))) - round;
+  return V(vec4f(at / ${target.width}. * vec2f(2., -2.) + vec2f(-1., 1.), 0., 1.), n >> 2u, round);
+}
+@fragment fn fs(v: V) -> @location(0) vec4f { return stamp(v.i, v.p.xy + v.round); }`,
+    });
+    const most: GPUBlendComponent = { operation: "max", srcFactor: "one", dstFactor: "one" };
+    pipeline = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: { module, entryPoint: "fs", targets: [{ format: target.texture.format, blend: { color: most, alpha: most } }] },
+      primitive: { topology: "triangle-strip" },
+    });
+    byCode.set(key, pipeline);
+  }
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: top(target), loadOp: first ? "clear" : "load", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
+  pass.setPipeline(pipeline);
+  pass.draw(4, count * 4);
   pass.end();
   device.queue.submit([encoder.finish()]);
 }
