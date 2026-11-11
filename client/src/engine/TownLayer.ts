@@ -108,7 +108,9 @@ export class TownLayer {
   private decks = new Map<string, DeckPiece>();
   private concrete: Decks;
   private dirty = new Set<string>();
-  private frame: number | null = null;
+  /** Something changed that the next frame draws (`settle`). */
+  private due = false;
+  private stopSettle: () => void;
   private tints: Tints;
   /** The town is drawn off the main thread, one drawing at a time. */
   private worker = new Worker(new URL("./townWorker.ts", import.meta.url), { type: "module" });
@@ -145,6 +147,7 @@ export class TownLayer {
     private look: (e: GameObjectEntry) => Look,
   ) {
     this.tints = new Tints(ctx.engine);
+    this.stopSettle = ctx.beforeRender(() => this.drawDue());
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF, WINDOWS]), "building", bevel);
@@ -193,7 +196,7 @@ export class TownLayer {
 
   /** Whether all asked for is drawn and shown. */
   get settled() {
-    return this.frame === null && !this.drawing && !this.stale.size && !this.dirty.size;
+    return !this.due && !this.drawing && !this.stale.size && !this.dirty.size;
   }
 
   /** Something built changed on this tile: the road there and round it
@@ -223,14 +226,19 @@ export class TownLayer {
   /** On the next frame, what changed drawn: the world as a town made at
    *  most once for it. */
   private settle() {
-    this.frame ??= requestAnimationFrame(() => {
-      this.frame = null;
-      let made: Town | undefined;
-      const world = () => (made ??= this.world());
-      this.draw(world);
-      this.retile(world);
-      this.drawHeld(world);
-    });
+    this.due = true;
+  }
+
+  /** What changed, drawn: as the frame that shows it begins, not in a
+   *  frame of its own after it, which the eye waits a frame more for. */
+  private drawDue() {
+    if (!this.due) return;
+    this.due = false;
+    let made: Town | undefined;
+    const world = () => (made ??= this.world());
+    this.draw(world);
+    this.retile(world);
+    this.drawHeld(world);
   }
 
   /** The world as a drawing is made of it, the building held in it if asked. */
@@ -607,7 +615,7 @@ export class TownLayer {
   }
 
   dispose() {
-    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.stopSettle();
     for (const key of [...this.chunks.keys()]) this.drop(key);
     this.unhold();
     this.roads.dispose();

@@ -123,7 +123,7 @@ export const forced: { fps: number | null } = { fps: null };
 /** A frame drawn now, not at the next tick, as the frame rate allows: a
  *  drag calls it on each pointer move, so the map is drawn where the
  *  pointer just went, and the tick after finds the frame done. */
-export const drawNow = { run: () => {} };
+export const drawNow = { run: () => {}, /** The hand is at work on the town: frames come as fast as while the view moves. */ stir: () => {} };
 /** Work that can wait (`budget.ts`) runs in each tick until this long after
  *  the tick began, leaving a 60 Hz frame room to spare. */
 const WORK_MS = 10;
@@ -265,6 +265,7 @@ export default function Canvas(props: ParentProps) {
     };
     requestAnimationFrame(frame);
     drawNow.run = () => running && draw(performance.now());
+    drawNow.stir = () => void (lastMoved = performance.now());
 
     if (import.meta.env.DEV) {
       (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => (document.querySelectorAll<HTMLElement>(".ink").forEach((e) => (e.style.display = "none")), true) };

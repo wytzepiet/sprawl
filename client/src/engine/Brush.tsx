@@ -1,5 +1,5 @@
 import { createEffect, on, onCleanup } from "solid-js";
-import { useEngine } from "./Canvas";
+import { drawNow, useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";
 import { lag, lagStart } from "./lag";
@@ -145,12 +145,13 @@ export function Brush() {
       if (at.x !== hover?.x || at.y !== hover?.y) (hover = at), aimAt();
       return;
     }
-    lagStart();
+    // A stroke is drawn at the pace of a moving view, not a resting one's.
+    drawNow.stir();
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
     const went = pen.drag(w.wx, w.wy);
     for (const t of went) dots.step(t);
-    if (went.length) draw();
+    if (went.length) lagStart(), draw();
   };
 
   const onPointerUp = (e: PointerEvent) => {
