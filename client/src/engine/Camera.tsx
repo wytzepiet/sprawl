@@ -1,6 +1,6 @@
 import { onCleanup } from "solid-js";
 import { attachFreeControl, createFreeCamera } from "./gpu";
-import { drawNow, useEngine } from "./Canvas";
+import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
@@ -279,7 +279,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
     const now = centre();
     drag(last, now);
     last = now;
-    if (pointers.size !== 2) return void drawNow.run();
+    if (pointers.size !== 2) return;
     const dist = pinchDistance();
     zoomToward(target.half * (lastPinchDist / Math.max(dist, 1)), now.clientX, now.clientY);
     lastPinchDist = dist;

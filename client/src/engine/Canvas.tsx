@@ -120,10 +120,11 @@ const STILL_FPS = Number(new URLSearchParams(location.search).get("stillfps")) |
 const MOVING_LINGER_MS = 100;
 /** The bench's power run holds the frame rate here, whatever moves: 0 draws nothing. */
 export const forced: { fps: number | null } = { fps: null };
-/** A frame drawn now, not at the next tick, as the frame rate allows: a
- *  drag calls it on each pointer move, so the map is drawn where the
- *  pointer just went, and the tick after finds the frame done. */
-export const drawNow = { run: () => {}, /** The hand is at work on the town: frames come as fast as while the view moves. */ stir: () => {} };
+/** The hand is at work on the town: frames come as fast as while the view
+ *  moves. Frames are drawn at the screen's tick alone: one drawn between
+ *  ticks, as a pointer moved, made the tick after it skip, and the one
+ *  after that draw two moves at once; a pan stood and jumped by turns. */
+export const hand = { stir: () => {} };
 /** Work that can wait (`budget.ts`) runs in each tick until this long after
  *  the tick began, leaving a 60 Hz frame room to spare. */
 const WORK_MS = 10;
@@ -264,8 +265,7 @@ export default function Canvas(props: ParentProps) {
       draw(now);
     };
     requestAnimationFrame(frame);
-    drawNow.run = () => running && draw(performance.now());
-    drawNow.stir = () => void (lastMoved = performance.now());
+    hand.stir = () => void (lastMoved = performance.now());
 
     if (import.meta.env.DEV) {
       (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull, hideUi: () => (document.querySelectorAll<HTMLElement>(".ink").forEach((e) => (e.style.display = "none")), true) };

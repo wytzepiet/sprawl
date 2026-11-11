@@ -1,5 +1,5 @@
 import { createEffect, on, onCleanup } from "solid-js";
-import { drawNow, useEngine } from "./Canvas";
+import { hand, useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";
 import { hurryPicture } from "./gpu";
@@ -149,7 +149,7 @@ export function Brush() {
       return;
     }
     // A stroke is drawn at the pace of a moving view, not a resting one's.
-    drawNow.stir();
+    hand.stir();
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
     const went = pen.drag(w.wx, w.wy);

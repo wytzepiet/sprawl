@@ -5,7 +5,7 @@ import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
 import { ROOF } from "./roofs";
-import { drawNow, type EngineContext } from "./Canvas";
+import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf } from "./geometry";
@@ -415,11 +415,10 @@ export class TownLayer {
               yield;
             }
           };
-          // Round tiles touched, under the hand: landed now and shown now,
-          // not in frames' spare time and the frame after.
+          // Round tiles touched, under the hand: landed now, for the next
+          // frame to show, not in a later frame's spare time.
           if (!within || chunks.length > 4) return spread(showing.call(this));
           for (const _ of showing.call(this));
-          drawNow.run();
         },
         (e) => {
           // Never dropped: drawn again, and said so.
