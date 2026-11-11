@@ -13,7 +13,7 @@ import { setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, w
  * Conditions alternate round by round and the medians are taken, as the
  * laptop throttles; rounds go on until a further one moves no median by
  * more than `STEADY`, between two rounds and `rounds`. It first waits for
- * the scene to be ready: the crowns baked, and nothing more arriving.
+ * the scene to be ready: the crowns drawn, and nothing more arriving.
  * `client/scripts/cost.ts` drives it from outside.
  *
  * A kind is a mesh's name with its chunk or tile taken out (`ground_3,-1`
@@ -86,7 +86,7 @@ export function costMeter(engine: EngineContext, scene: SceneContext, draw: () =
     return { cpu: median(got.map((g) => g.cpu)), draws: median(got.map((g) => g.draws)), frame: each };
   }
 
-  /** Until the crowns are baked and nothing has come or gone a while:
+  /** Until the crowns are drawn and nothing has come or gone a while:
    *  chunks, buildings and cars arriving at a fresh view. */
   async function ready() {
     await crownsBaked(engine);

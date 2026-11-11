@@ -4,7 +4,8 @@ import { drop, meshOf, retire } from "./geometry";
 import type { Culler } from "./cull";
 import { CALM } from "./peaks";
 import { slate } from "./slateTexture";
-import { ripples, SWASH, swashFn } from "./water";
+import { SWASH, swashFn } from "./water";
+import { ripples } from "./waves";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";
 import { lawn, LAWN_TILES } from "./lawn";
@@ -73,7 +74,7 @@ const TUFT = 8;
 const GLINTS = 0.25;
 const GLINT_TILT = 0.35;
 const GLINT = 4;
-/** And it lies in ripples, as the wind leaves them (`sand.ts`, baked),
+/** And it lies in ripples, as the wind leaves them (`sand.ts`),
  *  tilting the sand this much; flat where the waves wet it, which wash them
  *  out, back as the sand dries (its darkening's own band). */
 const RIPPLE_TILT = 0.35;

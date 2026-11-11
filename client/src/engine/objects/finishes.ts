@@ -1,7 +1,5 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
-import barkRecipe from "../bark.ts?raw";
-import { BARK_LONG, BARK_ROUND } from "../bark";
-import { bakedTexture } from "../bakeCache";
+import { bark } from "../bark";
 import { BUMP, CLOVER, CREASE, grain } from "../ground";
 import { lawn } from "../lawn";
 import { LAWN_TILES } from "../lawn";
@@ -24,7 +22,7 @@ import { stale } from "../still";
  *   the boards a shade darker, its sides in the light and in shade.
  * - tiles: courses up a roof, each lapped over the one below.
  * - glass: dark and glossy by day, lit warm from inside at night.
- * - bark, baked (`bark.ts`).
+ * - bark, drawn once (`bark.ts`).
  * - leaves: a hedge's or a shrub's, lumpy and dark between the lumps.
  * - rock: the mountains' own slate (`slate.ts`), read three ways round so
  *   a face that stands up is as fine as one that lies.
@@ -260,17 +258,6 @@ N = normalize(N + rockT * ${f(ROCK_TILT)});
 let rockH = rockXY.b * rockWs.z + rockXZ.b * rockWs.y + rockYZ.b * rockWs.x;
 baseColor = baseColor * (1. - ${f(ROCK_HOLLOW)} * (1. - rockH));
 roughness = 0.9;`, (engine) => ({ modelSlate: slate(engine) }));
-
-/** Bark (`bark.ts`), an engine's: smooth until the worker has baked it. */
-const bark = (engine: EngineContext) =>
-  bakedTexture(engine, "bark", barkRecipe, [BARK_ROUND, BARK_LONG, () => new Uint8Array(BARK_ROUND * BARK_LONG * 4).map((_, k) => (k % 4 === 2 ? 220 : k % 4 === 3 ? 255 : 128))], {
-    format: "rgba8unorm",
-    mipmaps: true,
-    minFilter: "linear",
-    magFilter: "linear",
-    addressModeU: "repeat",
-    addressModeV: "repeat",
-  });
 
 /** Each finish's coat. */
 export const COATS: Record<Finish, Coat> = { matte: MATTE, zinc: ZINC, ribs: RIBS, tiles: TILES, glass: GLASS, bark: BARK, leaves: LEAVES, rock: ROCK, gravel: GRAVEL, chips: CHIPS, lawn: LAWN, paving: PAVING, earth: EARTH, dust: EARTH };

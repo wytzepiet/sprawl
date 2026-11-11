@@ -1,4 +1,4 @@
-import { createFilledTexture, fillTexture, readTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, fillTexture, mostOf, readTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
 import { EDGE_LEVEL, SIDE } from "./slate";
 
 /**
@@ -139,27 +139,12 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(mix(sharp, soft, ${f(CHIPPED)}) + ${f(BROAD)} * fbm(uv, ${RELIEF_CELLS}, 29) + ${f(STREAK)} * streak + ${f(DETAIL)} * fbm(uv, ${DETAIL_CELLS}, 17) + ${f(GRIT)} * (hash(p.x, p.y, 19, 0) - 0.5));
 }`;
 
-/** The lowest and highest of a square of texels `side` across, each
- *  texel of the target a square of the source: the heights' in two steps,
- *  whichever of the two a texel of the source holds. */
-const range = (side: number, low: string, high: string) => `fn fill(at: vec2f) -> vec4f {
-  var most = vec2f(1e9, -1e9);
-  for (var j = 0; j < ${side}; j++) {
-    for (var i = 0; i < ${side}; i++) {
-      let h = textureLoad(src0, vec2i(at) * ${side} + vec2i(i, j), 0);
-      most = vec2f(min(most.x, h.${low}), max(most.y, h.${high}));
-    }
-  }
-  return vec4f(most, 0., 0.);
-}`;
-const STEP = 32;
-
-/** Its facing's x and y, half-way at level, and its height, 0 to 1 of
- *  the range it has. */
+/** Its facing's x and y, half-way at level, and its height, 0 to 1 from
+ *  its lowest to its highest (`mostOf`, of it upside down and as it is). */
 const SLATE = `${NOISE}
 fn fill(at: vec2f) -> vec4f {
   let p = vec2i(at);
-  let most = textureLoad(src1, vec2i(0), 0).rg;
+  let most = textureLoad(src1, vec2i(0), 0).rg * vec2f(-1., 1.);
   let slope = vec2f(load(p + vec2i(1, 0)) - load(p - vec2i(1, 0)), load(p + vec2i(0, 1)) - load(p - vec2i(0, 1))) * ${f(RELIEF)};
   return vec4f(0.5 - slope / length(vec3f(slope, 1.)) * 0.5, (load(p) - most.x) / (most.y - most.x), 1.);
 }`;
@@ -170,14 +155,12 @@ function drawn(engine: EngineContext) {
   if (!it) {
     const texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
     const [plates, soft, height] = [createFilledTexture(engine, n, n, "r32float"), createFilledTexture(engine, n, n, "rg32float"), createFilledTexture(engine, n, n, "r32float")];
-    const [some, all] = [createFilledTexture(engine, STEP, STEP, "rg32float"), createFilledTexture(engine, 1, 1, "rg32float")];
     fillTexture(engine, plates, PLATES, []);
     fillTexture(engine, soft, SOFT, [plates]);
     fillTexture(engine, height, HEIGHT, [soft]);
-    fillTexture(engine, some, range(n / STEP, "r", "r"), [height]);
-    fillTexture(engine, all, range(STEP, "r", "g"), [some]);
-    fillTexture(engine, texture, SLATE, [height, all]);
-    for (const t of [plates, soft, height, some, all]) releaseTexture(t);
+    const most = mostOf(engine, height, "vec4f(-h.r, h.r, 0., 0.)");
+    fillTexture(engine, texture, SLATE, [height, most]);
+    for (const t of [plates, soft, height, most]) releaseTexture(t);
     it = { texture, read: readTexture(engine, texture, EDGE_LEVEL) };
     DRAWN.set(engine, it);
   }

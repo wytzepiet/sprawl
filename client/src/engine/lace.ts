@@ -1,11 +1,13 @@
+import { RANDOM, createFilledTexture, fillTexture, type EngineContext, type Texture2D } from "./gpu";
+
 /**
- * The lace foam leaves as a broken wave runs back (`water.ts` reads it):
- * strands of foam round clear holes, a square this many texels a side,
- * wrapping, laid over this many tiles. Cells' borders, of two sizes of
- * cell, thickest along a border's middle and thinning to nothing: so as
- * the water reads it against a rising line, the holes open first, then
- * the strands thin and part, then the last of it is islands, and gone. On
- * its own, for the bake worker (`bakeWorker.ts`).
+ * The lace foam leaves as a broken wave runs back (`water.ts` reads it),
+ * drawn on the GPU: strands of foam round clear holes, a square this many
+ * texels a side, wrapping, laid over this many tiles. Cells' borders, of
+ * two sizes of cell, thickest along a border's middle and thinning to
+ * nothing: so as the water reads it against a rising line, the holes open
+ * first, then the strands thin and part, then the last of it is islands,
+ * and gone.
  */
 export const LACE_SIDE = 256;
 export const LACE_TILES = 1.4;
@@ -22,61 +24,55 @@ const SIZES: [number, number, number][] = [
 const WAVER = 0.025;
 const FRAY = 0.45;
 
-/** Every texel's foam, 0 clear to 1 the thick of a strand. */
-export function bakeLace(): Uint8Array {
-  const n = LACE_SIDE;
-  const lace = new Float32Array(n * n);
-  let seed = 3;
-  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  // Each texel read a little off where it lies, so strands waver.
-  const [warpX, warpY] = [smooth(n, 29, random), smooth(n, 29, random)];
-  for (const [cells, wide, share] of SIZES) {
-    const points = Array.from({ length: cells * cells }, () => [random(), random()]);
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        const [u, v] = [(i + 0.5) / n + (warpX[j * n + i] - 0.5) * WAVER, (j + 0.5) / n + (warpY[j * n + i] - 0.5) * WAVER];
-        const [x, y] = [u * cells, v * cells];
-        let [near, next] = [9, 9];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const [cx, cy] = [Math.floor(x) + dx, Math.floor(y) + dy];
-            const p = points[((cy % cells) + cells) % cells * cells + (((cx % cells) + cells) % cells)];
-            const d = Math.hypot(x - cx - p[0], y - cy - p[1]);
-            if (d < near) [near, next] = [d, near];
-            else if (d < next) next = d;
-          }
-        }
-        // Along a border the two nearest are as near: the strand's middle.
-        const t = Math.min(1, (next - near) / wide);
-        const strand = 1 - t * t * (3 - 2 * t);
-        lace[j * n + i] = Math.max(lace[j * n + i], strand * share);
-      }
-    }
-  }
-  // Thick in some places and thin in others, so strands part unevenly and
-  // what is left last is clumps, not the whole net gone faint at once.
-  const clump = smooth(n, 5, random);
-  const fine = smooth(n, 13, random);
-  // And frayed: grain in the foam, so its edges are rough, not cut.
-  const [grain, grit] = [smooth(n, 61, random), smooth(n, 127, random)];
-  for (let k = 0; k < n * n; k++) lace[k] = Math.max(0, lace[k] * (0.15 + 0.9 * clump[k] + 0.35 * fine[k]) + (0.6 * grain[k] + 0.4 * grit[k] - 0.5) * FRAY);
-  return Uint8Array.from(lace, (v) => Math.round(Math.min(1, v) * 255));
-}
+const f = (x: number) => x.toFixed(5);
+const n = LACE_SIDE;
 
-/** Smooth noise over a wrapping square, 0 to 1, of this many lumps a side. */
-function smooth(n: number, lumps: number, random: () => number) {
-  const at = Array.from({ length: lumps * lumps }, random);
-  const out = new Float32Array(n * n);
-  const ease = (t: number) => t * t * (3 - 2 * t);
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const [x, y] = [(i / n) * lumps, (j / n) * lumps];
-      const [x0, y0] = [Math.floor(x), Math.floor(y)];
-      const [u, v] = [ease(x - x0), ease(y - y0)];
-      const g = (a: number, b: number) => at[(b % lumps) * lumps + (a % lumps)];
-      const [a, b] = [g(x0, y0) + (g(x0 + 1, y0) - g(x0, y0)) * u, g(x0, y0 + 1) + (g(x0 + 1, y0 + 1) - g(x0, y0 + 1)) * u];
-      out[j * n + i] = a + (b - a) * v;
+/** Every texel's foam, 0 clear to 1 the thick of a strand: read a little
+ *  off where it lies, so strands waver; along a border the two nearest
+ *  cells' points are as near, the strand's middle; thick in some places
+ *  and thin in others, so strands part unevenly and what is left last is
+ *  clumps, not the whole net gone faint at once; and frayed, grain in the
+ *  foam, so its edges are rough, not cut. */
+const LACE = `${RANDOM}
+// Smooth noise over the wrapping square, 0 to 1, of this many lumps a side.
+fn lump(c: vec2i, lumps: i32, salt: u32) -> f32 { let w = vec2u(((c % lumps) + lumps) % lumps); return rnd(w.y * u32(lumps) + w.x, salt); }
+fn lumpy(uv: vec2f, lumps: i32, salt: u32) -> f32 {
+  let p = uv * f32(lumps);
+  let i = vec2i(floor(p));
+  let s = fract(p) * fract(p) * (3. - 2. * fract(p));
+  return mix(mix(lump(i, lumps, salt), lump(i + vec2i(1, 0), lumps, salt), s.x), mix(lump(i + vec2i(0, 1), lumps, salt), lump(i + vec2i(1, 1), lumps, salt), s.x), s.y);
+}
+fn strands(uv: vec2f, cells: i32, wide: f32, salt: u32) -> f32 {
+  let p = uv * f32(cells);
+  var near = 9.;
+  var next = 9.;
+  for (var dy = -1; dy <= 1; dy++) {
+    for (var dx = -1; dx <= 1; dx++) {
+      let c = vec2i(floor(p)) + vec2i(dx, dy);
+      let w = vec2u(((c % cells) + cells) % cells);
+      let k = w.y * u32(cells) + w.x;
+      let d = distance(p, vec2f(c) + vec2f(rnd(k, salt), rnd(k, salt + 1u)));
+      if (d < near) { next = near; near = d; } else if (d < next) { next = d; }
     }
   }
-  return out;
+  return 1. - smoothstep(0., 1., min(1., (next - near) / wide));
+}
+fn fill(at: vec2f) -> vec4f {
+  let whole = floor(at) / ${n}.;
+  let uv = at / ${n}. + (vec2f(lumpy(whole, 29, 1u), lumpy(whole, 29, 2u)) - 0.5) * ${f(WAVER)};
+  let net = max(${SIZES.map(([cells, wide, share], i) => `strands(uv, ${cells}, ${f(wide)}, ${3 + 2 * i}u) * ${f(share)}`).join(", ")});
+  let thick = 0.15 + 0.9 * lumpy(whole, 5, 7u) + 0.35 * lumpy(whole, 13, 8u);
+  return vec4f(net * thick + (0.6 * lumpy(whole, 61, 9u) + 0.4 * lumpy(whole, 127, 10u) - 0.5) * ${f(FRAY)});
+}`;
+
+const DRAWN = new WeakMap<EngineContext, Texture2D>();
+/** An engine's lace, drawn once. */
+export function lace(engine: EngineContext): Texture2D {
+  let texture = DRAWN.get(engine);
+  if (!texture) {
+    texture = createFilledTexture(engine, n, n, "r8unorm", true);
+    fillTexture(engine, texture, LACE, []);
+    DRAWN.set(engine, texture);
+  }
+  return texture;
 }

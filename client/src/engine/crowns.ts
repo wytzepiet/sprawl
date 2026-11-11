@@ -2,7 +2,7 @@
  * The broadleaves' crowns, grown (`trees.ts` draws them): a few, each a
  * tree grown limb by limb and leaf by leaf, handed on as shapes for the
  * GPU to lay down (`broadleaves.ts`). On its own, for a worker to grow
- * (`bakeWorker.ts`).
+ * (`crownsWorker.ts`).
  */
 
 /** A broadleaf is grown as an oak grows: a trunk this long (from its

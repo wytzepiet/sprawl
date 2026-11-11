@@ -171,6 +171,30 @@ struct F { @location(0) texel: vec4f, @builtin(frag_depth) high: f32 }
   depth.destroy();
 }
 
+/** The most of a texture's texels, each channel's, in a texture of one
+ *  texel: `of` is WGSL for what of a texel `h` is weighed (`abs(h)`, its
+ *  size either way). In two steps, sixteen texels each way at a time and
+ *  then the rest, since no pixel can ask after every other. The caller's
+ *  to let go. */
+export function mostOf(engine: Engine, source: Texture2D, of: string): Texture2D {
+  const most = (wide: number, high: number, what: string) => `fn fill(at: vec2f) -> vec4f {
+  var most = vec4f(-1e30);
+  for (var j = 0; j < ${high}; j++) {
+    for (var i = 0; i < ${wide}; i++) {
+      let h = textureLoad(src0, vec2i(at) * vec2i(${wide}, ${high}) + vec2i(i, j), 0);
+      most = max(most, ${what});
+    }
+  }
+  return most;
+}`;
+  const some = createFilledTexture(engine, source.width / 16, source.height / 16, "rgba32float");
+  const all = createFilledTexture(engine, 1, 1, "rgba32float");
+  fillTexture(engine, some, most(16, 16, of), [source]);
+  fillTexture(engine, all, most(some.width, some.height, "h"), [some]);
+  some.texture.destroy();
+  return all;
+}
+
 /** A filled texture of bytes, four a texel, read back from the GPU, its
  *  smaller copy `level` down: what was drawn there, for what must be
  *  worked out here. */

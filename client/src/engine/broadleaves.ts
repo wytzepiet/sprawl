@@ -1,6 +1,5 @@
 import { RANDOM, SHAPE_READ, createFilledTexture, fillTexture, layTexture, releaseTexture, shapesTexture, type EngineContext, type Texture2D } from "./gpu";
 import { BROAD_LAYERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LEAF_TILT, LIT, ROWS } from "./crowns";
-import { bake } from "./bakeCache";
 import { stale } from "./still";
 
 /**
@@ -128,7 +127,11 @@ function crowns(engine: EngineContext) {
   if (!it) {
     const texture = createFilledTexture(engine, WIDE, HIGH, "rgba8unorm", true);
     fillTexture(engine, texture, NOTHING, []);
-    const ready = bake("crowns").then((bytes) => {
+    const grown = new Promise<Uint8Array>((done) => {
+      const worker = new Worker(new URL("./crownsWorker.ts", import.meta.url), { type: "module" });
+      worker.onmessage = ({ data }: MessageEvent<Uint8Array>) => (worker.terminate(), done(data));
+    });
+    const ready = grown.then((bytes) => {
       const numbers = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
       const shapes = shapesTexture(engine, numbers);
       const laid = createFilledTexture(engine, WIDE, HIGH, "rgba16float");

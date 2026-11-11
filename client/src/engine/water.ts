@@ -5,11 +5,8 @@ import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_
 import { CALM } from "./peaks";
 import { slate } from "./slateTexture";
 import { SPAN as SLATE_SPAN } from "./slate";
-import { LACE_SIDE, LACE_TILES } from "./lace";
-import laceRecipe from "./lace.ts?raw";
-import { halves, WAVES_SIDE } from "./waves";
-import wavesRecipe from "./waves.ts?raw";
-import { bakedTexture } from "./bakeCache";
+import { LACE_TILES, lace } from "./lace";
+import { ripples } from "./waves";
 
 /**
  * The sea and the lakes, drawn as water: their own meshes (`terrainGeometry`
@@ -159,18 +156,6 @@ const wavePiece = (R: (uv: string) => string, at: string, phase: string) =>
  *  rock alike (`ground.ts`, `peaks.ts`). */
 export const swashFn = (R: (uv: string) => string, name: string) =>
   `fn ${name}(t: f32, p: vec2f) -> f32 { let w = ${wavePhase(R, "p", "t", f(SWASH_LEAD))}; let s = fract(w); let up = 1. - min(s / ${f(RISE)}, 1.); return min(1. - up * up, 1. - smoothstep(${f(RISE)}, 1., s)) * mix(0.25, 1., ${wavePiece(R, "p", "(w - 1.)")}); }`;
-
-const REPEAT = { mipmaps: true, minFilter: "linear", magFilter: "linear", addressModeU: "repeat", addressModeV: "repeat" } as const;
-
-/** The water's ripple (`waves.ts`), an engine's: still until the worker
- *  has baked it, or read back from the last bake (`bakeCache.ts`). */
-export const ripples = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "waves", wavesRecipe, [WAVES_SIDE, WAVES_SIDE, () => new Uint8Array(halves(new Array(WAVES_SIDE * WAVES_SIDE * 4).fill(0).map((_, k) => (k % 4 === 3 ? 1 : 0))).buffer)], { format: "rgba16float", ...REPEAT });
-
-/** The foam's lace, an engine's: clear until the worker has baked it, or
- *  read back from the last bake. */
-const lace = (engine: EngineContext): Texture2D =>
-  bakedTexture(engine, "lace", laceRecipe, [LACE_SIDE, LACE_SIDE, () => new Uint8Array(LACE_SIDE * LACE_SIDE)], { format: "r8unorm", ...REPEAT });
 
 const f = (x: number) => x.toFixed(4);
 const FAR = new Uint8Array([255]);
