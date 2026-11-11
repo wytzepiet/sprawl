@@ -2,7 +2,6 @@ import { bakeBark } from "./bark";
 import { bakeCrowns } from "./crowns";
 import { bakeLace } from "./lace";
 import { bakeWaves } from "./waves";
-import { bakeWheat } from "./wheat";
 
 /** Bakes a texture off the main thread, the one it is sent the name of
  *  (`bakeCache.ts`), and hands its texels back. */
@@ -11,7 +10,6 @@ const RECIPES = {
   crowns: bakeCrowns,
   lace: bakeLace,
   waves: bakeWaves,
-  wheat: bakeWheat,
 };
 export type Bake = keyof typeof RECIPES;
 

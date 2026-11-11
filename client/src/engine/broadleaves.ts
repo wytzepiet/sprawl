@@ -1,5 +1,5 @@
-import { RANDOM, createFilledTexture, createTexture2DFromPixels, fillTexture, layTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
-import { BROAD_LAYERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LEAF_TILT, LIT, ROWS, SHAPE } from "./crowns";
+import { RANDOM, SHAPE_READ, createFilledTexture, fillTexture, layTexture, releaseTexture, shapesTexture, type EngineContext, type Texture2D } from "./gpu";
+import { BROAD_LAYERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LEAF_TILT, LIT, ROWS } from "./crowns";
 import { bake } from "./bakeCache";
 import { stale } from "./still";
 
@@ -27,19 +27,15 @@ const DENSE = 9;
 const f = (x: number) => x.toFixed(5);
 const T = CROWN_TEXELS;
 const [WIDE, HIGH] = [CROWNS * T, ROWS * T];
-/** The shapes come as texels, three a shape, so many shapes a row. */
-const ACROSS = 1024;
 
 /** A shape laid (`crowns.ts`' `SHAPE`): a leaf, pointed, along its
  *  stalk's way, tilted; or a limb, round across. How high it stands, its
  *  lean, and whether it is wood. */
-const SHAPES = `struct Shape { foot: vec2f, high: f32, tip: vec2f, other: f32, long: f32, limb: bool, tilt: vec2f, lift: f32 }
+const SHAPES = `${SHAPE_READ}
+struct Shape { foot: vec2f, high: f32, tip: vec2f, other: f32, long: f32, limb: bool, tilt: vec2f, lift: f32 }
 fn shape(i: u32) -> Shape {
-  let p = vec2i(i32(i % ${ACROSS}u) * 3, i32(i / ${ACROSS}u));
-  let a = textureLoad(src0, p, 0);
-  let b = textureLoad(src0, p + vec2i(1, 0), 0);
-  let c = textureLoad(src0, p + vec2i(2, 0), 0);
-  return Shape(a.xy, a.z, vec2f(a.w, b.x), b.y, b.z, b.w > 0.5, c.xy, c.z);
+  let n = shapeRead(i);
+  return Shape(n[0].xy, n[0].z, vec2f(n[0].w, n[1].x), n[1].y, n[1].z, n[1].w > 0.5, n[2].xy, n[2].z);
 }
 fn box(i: u32) -> vec4f {
   let s = shape(i);
@@ -133,14 +129,11 @@ function crowns(engine: EngineContext) {
     const texture = createFilledTexture(engine, WIDE, HIGH, "rgba8unorm", true);
     fillTexture(engine, texture, NOTHING, []);
     const ready = bake("crowns").then((bytes) => {
-      // The shapes as texels, the last row's rest empty.
-      const count = bytes.byteLength / 4 / SHAPE, rows = Math.ceil(count / ACROSS);
-      const texels = new Float32Array(rows * ACROSS * SHAPE);
-      texels.set(new Float32Array(bytes.buffer, bytes.byteOffset, count * SHAPE));
-      const shapes = createTexture2DFromPixels(engine, texels, ACROSS * 3, rows, { format: "rgba32float" });
+      const numbers = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+      const shapes = shapesTexture(engine, numbers);
       const laid = createFilledTexture(engine, WIDE, HIGH, "rgba16float");
       const [row, round] = [createFilledTexture(engine, WIDE, T, "rg16float"), createFilledTexture(engine, WIDE, T, "rg16float")];
-      layTexture(engine, laid, SHAPES, count, [shapes], [-1, 0, 0, 0]);
+      layTexture(engine, laid, SHAPES, numbers.length / 12, [shapes], [-1, 0, 0, 0]);
       fillTexture(engine, row, TOP, [laid]);
       fillTexture(engine, round, ROUND, [row]);
       fillTexture(engine, texture, CROWN, [laid, round]);

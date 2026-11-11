@@ -10,9 +10,7 @@ import type { Theme } from "../theme";
 import { simNow } from "../../network/clock";
 import type { GridCoord, Job, Run, Tile } from "../../generated";
 import { drawnPath, type DrawnPath } from "./drawnPath";
-import { bakedTexture } from "../bakeCache";
-import { WHEAT_MARGIN, WHEAT_STAGES, WHEAT_STRIDE, WHEAT_TEXELS } from "../wheat";
-import recipe from "../wheat.ts?raw";
+import { WHEAT_MARGIN, WHEAT_STAGES, WHEAT_STRIDE, WHEAT_TEXELS, wheat } from "../wheat";
 import { stale } from "../still";
 
 /** A point on the field. */
@@ -30,7 +28,7 @@ type P = { x: number; y: number };
  * So the headland ring runs on unbroken round its corners on the
  * tractor's own arc, and the lands' passes stop where they turned.
  *
- * Along each strip, a stage of the wheat, baked once (`wheat.ts`) and
+ * Along each strip, a stage of the wheat, drawn once (`wheat.ts`) and
  * read as a texture: furrow slices; a drill's rows; the wheat coming up
  * along them, closing over them, in ear, ripe, its wheel tracks left
  * open; the stubble after the combine. Each stage one clean colour on a
@@ -508,18 +506,6 @@ export function keepField(ctx: EngineContext, casters: Casters, farm: number, ti
       FIELDS.delete(farm);
     });
   };
-}
-
-/** The wheat's stages, an engine's: bare earth until the worker has
- *  baked them, or read back from the last bake (`bakeCache.ts`). */
-function wheat(engine: Engine): Texture2D {
-  const bare = () => new Uint8Array(WHEAT_TEXELS * WHEAT_STRIDE * WHEAT_STAGES * 4).map((_, k) => [128, 128, 200, 0][k % 4]);
-  return bakedTexture(engine, "wheat", recipe, [WHEAT_TEXELS, WHEAT_STRIDE * WHEAT_STAGES, bare], {
-    mipmaps: true,
-    minFilter: "linear",
-    magFilter: "linear",
-    addressModeU: "repeat",
-  });
 }
 
 /** The field's paint (see the top), where across and along its strip a

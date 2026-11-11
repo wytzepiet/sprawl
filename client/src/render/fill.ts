@@ -1,5 +1,5 @@
 import type { Engine } from "./engine";
-import { mipmaps, type Texture2D } from "./texture";
+import { createTexture2DFromPixels, mipmaps, type Texture2D } from "./texture";
 
 /** A texture a shader can fill (`fillTexture`), read smoothly; `tiling`,
  *  one that repeats and is read from far off too, its smaller copies made
@@ -101,6 +101,21 @@ struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, 
   pass.end();
   device.queue.submit([encoder.finish()]);
 }
+
+/** Shapes as texels, for `layTexture` to read as its first source: twelve
+ *  numbers a shape, three texels, so many shapes a row; and WGSL's read of
+ *  shape `i` of them. */
+const SHAPES_ACROSS = 1024;
+export function shapesTexture(engine: Engine, numbers: Float32Array): Texture2D {
+  const rows = Math.ceil(numbers.length / 12 / SHAPES_ACROSS);
+  const texels = new Float32Array(rows * SHAPES_ACROSS * 12);
+  texels.set(numbers);
+  return createTexture2DFromPixels(engine, texels, SHAPES_ACROSS * 3, rows, { format: "rgba32float" });
+}
+export const SHAPE_READ = `fn shapeRead(i: u32) -> array<vec4f, 3> {
+  let p = vec2i(i32(i % ${SHAPES_ACROSS}u) * 3, i32(i / ${SHAPES_ACROSS}u));
+  return array<vec4f, 3>(textureLoad(src0, p, 0), textureLoad(src0, p + vec2i(1, 0), 0), textureLoad(src0, p + vec2i(2, 0), 0));
+}`;
 
 /** Shapes laid onto `target`, `count` of them, the highest at each texel
  *  kept: `code` is WGSL with `fn box(i: u32) -> vec4f`, the texels shape

@@ -8,7 +8,7 @@ import type { Scene } from "./scene";
 export { createEngine, createSurface, disposeEngine, enableSurfaceResizeObserver, isGpuTimingSupported, renderFrame, resizeEngine, setGpuTimingEnabled, waitForGpuIdle } from "./engine";
 export { createCubeEnvironment, updateCubeEnvironment } from "./env";
 export { createPbrMaterial } from "./material";
-export { RANDOM, createFilledTexture, fillTexture, layTexture, readTexture, stampTexture } from "./fill";
+export { RANDOM, SHAPE_READ, shapesTexture, createFilledTexture, fillTexture, layTexture, readTexture, stampTexture } from "./fill";
 export { changedWithin, holdPicture, hurryPicture, remadeWithin, stalePicture } from "./frame";
 export {
   createMeshFromData,

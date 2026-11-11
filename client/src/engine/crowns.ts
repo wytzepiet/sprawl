@@ -207,11 +207,10 @@ function grow(v: number) {
 }
 
 /** A shape of a crown, as the GPU lays it (`broadleaves.ts`), in the
- *  texture's texels: a leaf (where, how high, which way it points, how
- *  wide across and how long, 0, its tilt, and how much that tilt lifts it
- *  a texel) or a limb (from where and how high to where and how high, how
- *  thick, 1). */
-export const SHAPE = 12;
+ *  texture's texels, twelve numbers: a leaf (where, how high, which way
+ *  it points, how wide across and how long, 0, its tilt, and how much
+ *  that tilt lifts it a texel) or a limb (from where and how high to
+ *  where and how high, how thick, 1). */
 
 /** Broadleaf v's shapes, into out: grown, its leaves and limbs seen from
  *  above, in layers (`trees.ts` stacks them), a leaf's layer by how high
@@ -253,7 +252,7 @@ function broad(out: number[], v: number) {
   }
 }
 
-/** Every broadleaf's shapes, `SHAPE` numbers each, as bytes: the crowns'
+/** Every broadleaf's shapes, as bytes: the crowns'
  *  texture is a tree a column, its layers down it, top first, then its
  *  side. */
 export const ROWS = BROAD_LAYERS + 1;
