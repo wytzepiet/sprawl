@@ -66,6 +66,8 @@ const SPLIT = knobs.get("split") === "1";
  *  `STALE_MS`, so a road drawn tile by tile is seen as it goes, and a town
  *  streaming in, a change every frame, is drawn four times a second. */
 const [CHANGED, STALE_MS, PATCH] = [3, 250, 0.35];
+/** `?eager`, a trial's: a change is drawn the frame after, made or not: the asphalt at once, its paving as it lands. */
+const EAGER = knobs.has("eager");
 
 /** Since when something still has changed that no picture begun since holds. */
 let staleSince = Infinity;
@@ -525,7 +527,7 @@ function makeFrame(scene: Scene): Frame {
       lastView = here;
       const since = now - drawnAt;
       const viewDue = forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from);
-      const waited = staleSince <= now && (now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
+      const waited = staleSince <= now && (EAGER || now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
       // A change drawn again where it is, if it can be told where and is small.
       // Not while a picture is being drawn: it is diffed against as it
       // was drawn, so what changes meanwhile is patched after it.
