@@ -2,6 +2,7 @@ import { createEffect, on, onCleanup } from "solid-js";
 import { drawNow, useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewArea } from "./view";
+import { hurryPicture } from "./gpu";
 import { lag, lagStart } from "./lag";
 import { builtVersion, getObjectsAt, guess, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
@@ -153,7 +154,7 @@ export function Brush() {
     dots.pull({ x: w.wx, y: w.wy });
     const went = pen.drag(w.wx, w.wy);
     for (const t of went) dots.step(t);
-    if (went.length) lagStart(), draw();
+    if (went.length) lagStart(), hurryPicture(), draw();
   };
 
   const onPointerUp = (e: PointerEvent) => {

@@ -124,26 +124,24 @@ export function changed(was: Seen, mesh: Mesh, out: Box): boolean {
     }
     return true;
   };
-  // Slot by slot: one put at the end, or taken and the last moved to its
-  // slot, and others changed where they are.
-  const slots = nowhere();
-  for (let i = 0; i < Math.max(was.count, ti.count); i++) {
-    if (i < was.count && i < ti.count && same(i, i)) continue;
-    if (i < was.count) grow(slots, instanceBox(l, was.matrices!, i, at, b));
-    if (i < ti.count) grow(slots, instanceBox(l, ti.matrices, i, at, b));
-  }
-  if (was.count === ti.count) return grow(out, slots), true;
-  // Or the same at the front and at the back: some taken out of the
-  // middle, or put in, move the rest along and change nothing they show.
-  // Whichever says less changed is what did.
+  // The same at the front and at the back are passed over. Of the rest,
+  // what shows the same shows it in whichever slot: only what is shown no
+  // longer, or newly, changed; in whatever order the others are now kept.
   const least = Math.min(was.count, ti.count);
   let [front, back] = [0, 0];
   while (front < least && same(front, front)) front++;
   while (back < least - front && same(was.count - 1 - back, ti.count - 1 - back)) back++;
-  const middle = nowhere();
-  for (let i = front; i < was.count - back; i++) grow(middle, instanceBox(l, was.matrices!, i, at, b));
-  for (let i = front; i < ti.count - back; i++) grow(middle, instanceBox(l, ti.matrices, i, at, b));
-  const size = (x: Box) => (isEmpty(x) ? 0 : (x[3]! - x[0]!) * (x[4]! - x[1]!));
-  grow(out, size(middle) < size(slots) ? middle : slots);
+  const names = [...now.keys()];
+  const key = (matrices: ArrayLike<number> & { subarray(a: number, b: number): { join(): string } }, share: (n: string) => Float32Array, i: number) =>
+    matrices.subarray(i * 16, i * 16 + 16).join() + names.map((n) => `|${share(n).subarray(i * now.get(n)!.stride, (i + 1) * now.get(n)!.stride).join()}`).join("");
+  const left = new Map<string, number[]>();
+  for (let i = front; i < was.count - back; i++) {
+    const k = key(was.matrices!, (n) => was.shares.get(n)!.data, i);
+    left.get(k)?.push(i) ?? left.set(k, [i]);
+  }
+  for (let j = front; j < ti.count - back; j++) {
+    if (left.get(key(ti.matrices, (n) => now.get(n)!.data, j))?.pop() === undefined) grow(out, instanceBox(l, ti.matrices, j, at, b));
+  }
+  for (const gone of left.values()) for (const i of gone) grow(out, instanceBox(l, was.matrices!, i, at, b));
   return true;
 }

@@ -1,4 +1,4 @@
-import { addToScene, type Mesh } from "./gpu";
+import { addToScene, remadeWithin, type Mesh } from "./gpu";
 import { spread } from "./budget";
 import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
@@ -74,6 +74,8 @@ export class TerrainChunks {
   private ground: GroundTiles;
   private stop: () => void;
   private detailVisible = true;
+  /** Where a chunk being drawn again differs from the one shown: round the tiles built on since. */
+  private remade = new Map<string, number[]>();
 
   constructor(
     private ctx: EngineContext,
@@ -135,18 +137,31 @@ export class TerrainChunks {
 
   /** Something built appearing or vanishing, a road or a building, moves
    *  the trees there; and in a wood, the ground under it too, the wood's
-   *  floor cleared to grass, and on the shore, a harbour's, the coast, a
-   *  quay or not (`requestBuild`): for every chunk whose tiles, skirt and all, take it
-   *  in. Nothing else of the land. */
+   *  floor cleared to grass. Nothing else of the land. */
   markTile(x: number, y: number): void {
     this.markTrees(x, y);
-    if (this.typeAt(x, y) !== "Forest" && !this.ashore(x, y, (x, y) => this.typeAt(x, y))) return;
+    if (this.typeAt(x, y) === "Forest") this.remake(x, y);
+  }
+
+  /** A quay built or gone at the water's edge: the coast steps back under
+   *  it, or comes back (`requestBuild`). */
+  markQuay(x: number, y: number): void {
+    this.remake(x, y);
+  }
+
+  /** The land drawn again for a tile: every chunk whose tiles, skirt and
+   *  all, take it in; and where, for the picture to be drawn again there
+   *  alone (`remadeWithin`). */
+  private remake(x: number, y: number): void {
     for (const dy of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
       for (const dx of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
         const key = `${floorDiv(x + dx, CHUNK_SIZE)},${floorDiv(y + dy, CHUNK_SIZE)}`;
         // A chunk still on its way is built again too: it was asked for
         // before this was built.
-        if (this.tiles.has(key)) this.invalidate(key);
+        if (!this.tiles.has(key)) continue;
+        const a = this.remade.get(key);
+        this.invalidate(key);
+        this.remade.set(key, a ? [Math.min(a[0], x - 1), Math.min(a[1], y - 1), Math.max(a[2], x + 2), Math.max(a[3], y + 2)] : [x - 1, y - 1, x + 2, y + 2]);
       }
     }
   }
@@ -161,6 +176,7 @@ export class TerrainChunks {
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
     this.dirtyGeometry.add(key);
     this.dirtyTrees.delete(key);
+    this.remade.delete(key);
   }
 
   // --- Rendering ---------------------------------------------------------
@@ -275,6 +291,9 @@ export class TerrainChunks {
       add("peaks", geometry.peaks, peaks.material, [0, 0], { cast: true, receive: true });
     }
     this.chunks.set(key, chunk);
+    const within = this.remade.get(key);
+    this.remade.delete(key);
+    if (old && within) remadeWithin(chunk.meshes.map((m) => m.name), within);
     this.applyDetail(chunk);
 
   }

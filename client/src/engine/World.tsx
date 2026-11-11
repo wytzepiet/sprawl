@@ -79,8 +79,8 @@ export default function World(props: { brush?: () => JSX.Element }) {
     const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
-      if (b.kind === "Fishery") quays.add(key);
       terrain.markTile(t.x, t.y);
+      if (b.kind === "Fishery") quays.add(key), terrain.markQuay(t.x, t.y);
       return key;
     });
     return keys;
@@ -89,9 +89,9 @@ export default function World(props: { brush?: () => JSX.Element }) {
   function uncover(keys: string[] | undefined) {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
-      quays.delete(key);
       const [x, y] = key.split(",").map(Number);
       terrain.markTile(x, y);
+      if (quays.delete(key)) terrain.markQuay(x, y);
     }
   }
 

@@ -89,3 +89,13 @@ test("some taken out of the middle move the rest along, and only they are drawn 
   expect(changed(was, t.mesh, area)).toBe(true);
   expect(area).toEqual([2, 0, 0, 5, 1, 1]);
 });
+
+test("the same tiles kept in another order, and one laid among them, is the one laid", () => {
+  const t = tiles([[0.1, 0], [2, 0], [4, 0], [6, 0]]);
+  const was = see(t.mesh);
+  [[6, 0], [3, 3], [0.1, 0], [4, 0], [2, 0]].forEach(([x, y], i) => t.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x!, y!, 0, 1], i * 16));
+  t.set(5);
+  const area = nowhere();
+  expect(changed(was, t.mesh, area)).toBe(true);
+  expect(area).toEqual([3, 3, 0, 4, 4, 1]);
+});

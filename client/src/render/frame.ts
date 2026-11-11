@@ -60,14 +60,18 @@ const SPLIT = knobs.get("split") === "1";
  *  picture shown, in one frame (`patch.ts`), if that is at most `PATCH` of
  *  the picture; else a picture over `CHANGED` frames. Either begun the
  *  frame after, unless what is changing is
- *  still being made (`holdPicture`: the town's paving comes from a worker
- *  a moment after a road's asphalt, and one shown without the other
- *  flashed); then once it is made, or once the change has waited
- *  `STALE_MS`, so a road drawn tile by tile is seen as it goes, and a town
- *  streaming in, a change every frame, is drawn four times a second. */
+ *  still being made (`holdPicture`: a town streaming in, a change every
+ *  frame, is drawn once it is made, or four times a second, `STALE_MS`).
+ *  Not under the hand (`hurryPicture`): a road is seen the frame after it
+ *  is drawn, its asphalt first and its paving as the worker lands it. */
 const [CHANGED, STALE_MS, PATCH] = [3, 250, 0.35];
-/** `?eager`, a trial's: a change is drawn the frame after, made or not: the asphalt at once, its paving as it lands. */
-const EAGER = knobs.has("eager");
+/** `?hold`, a trial's: a road drawn waits for its paving as anything does, to see the wait against. */
+const HOLD = knobs.has("hold");
+/** Until when a change is drawn the frame after, made or not. */
+let hurried = 0;
+export function hurryPicture() {
+  if (!HOLD) hurried = performance.now() + STALE_MS;
+}
 
 /** Since when something still has changed that no picture begun since holds. */
 let staleSince = Infinity;
@@ -532,7 +536,7 @@ function makeFrame(scene: Scene): Frame {
       lastView = here;
       const since = now - drawnAt;
       const viewDue = forced || (moving ? since >= MOVING_MS && !holds(inverse) : here !== from);
-      const waited = staleSince <= now && (EAGER || now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
+      const waited = staleSince <= now && (now < hurried || now - staleSince >= STALE_MS || ![...making].some((busy) => busy()));
       // A change drawn again where it is, if it can be told where and is small.
       // Not while a picture is being drawn: it is diffed against as it
       // was drawn, so what changes meanwhile is patched after it.
