@@ -175,7 +175,6 @@ export class TerrainChunks {
   private invalidate(key: string): void {
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
     this.dirtyGeometry.add(key);
-    this.dirtyTrees.delete(key);
     this.remade.delete(key);
   }
 
