@@ -5,7 +5,8 @@ import type { Casters } from "./DayNightCycle";
 import { merged, type Kind as Kind2, type Part } from "./merged";
 import { lacquer } from "./bevel";
 import type { Theme } from "./theme";
-import { BROAD_LAYERS, COLUMNS, CONIFERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LAYER_REACH, LIT, ROWS, SIDES } from "./crowns";
+import { COLUMNS, CROWNS, CROWN_REACH, CROWN_TEXELS, LIT, ROWS, SIDES } from "./crowns";
+import { CONIFERS, CONIFER_LAYERS, LAYER_REACH, conifers } from "./conifers";
 import recipe from "./crowns.ts?raw";
 import { bakedTexture, whenBaked } from "./bakeCache";
 
@@ -102,15 +103,18 @@ const SIDE_HIGH = 4 / 3;
 const SIDE_TAPER = 0.75;
 
 export type Kind = "broad" | "conifer";
-/** Each kind's crowns (`crowns.ts`), the first and how many; how far in its
+/** Each kind's crowns, a texture of them (the broadleaves' baked,
+ *  `crowns.ts`; the conifers' drawn, `conifers.ts`), so many to a row, a
+ *  layer of each kind's at a time, in so many rows; how far in its
  *  top rolls over, and leans from its middle; how far its near edge turns
  *  under; how dark between its clumps
  *  or branches; and its shadow's card, how wide, its side baked if it is
  *  (which, by `treeSeed`), and what of it is cut away (`cardOut`). */
-const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: number; hollow: number; bark: number[]; barkShows: number; underside: number; wide: number; high: number; side: string; cut: string }> = {
+const LOOKS: Record<Kind, { shapes: (engine: LiteEngine) => Texture2D; count: number; grid: [number, number]; round: number; peak: number; hollow: number; bark: number[]; barkShows: number; underside: number; wide: number; high: number; side: string; cut: string }> = {
   broad: {
-    first: 0,
+    shapes: (engine) => crownShapes(engine),
     count: CROWNS,
+    grid: [COLUMNS, ROWS],
     round: CROWN_ROUND,
     peak: CROWN_PEAK,
     hollow: 0.92,
@@ -123,8 +127,9 @@ const LOOKS: Record<Kind, { first: number; count: number; round: number; peak: n
     cut: `let cardOut = textureSample(crownShape, crownShapeSampler, (input.vCardCell + vec2f(input.vCard.x / ${f(2 * CROWN_REACH)} + 0.5, 1. - input.vCard.y)) / vec2f(${COLUMNS}., ${ROWS}.)).r > 0.5;`,
   },
   conifer: {
-    first: CROWNS * BROAD_LAYERS,
+    shapes: conifers,
     count: CONIFERS,
+    grid: [CONIFERS, CONIFER_LAYERS],
     round: 0,
     peak: 0.8,
     hollow: 0.85,
@@ -164,7 +169,7 @@ export const crownsBaked = (engine: LiteEngine): Promise<void> => whenBaked(engi
  *  once a corner. Then its crown, turned the tree's way, read:
  *  cut to its outline, and its facing rolled over the dome, over the clump,
  *  and turned by the leaf. */
-function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow, bark, barkShows, underside }: (typeof LOOKS)[Kind]): MaterialPlugin {
+function crownPlugin(engine: LiteEngine, { shapes, count, grid, round, peak, hollow, bark, barkShows, underside }: (typeof LOOKS)[Kind]): MaterialPlugin {
   const rolled = round > 0 ? `mix(vec3f(0., 0., 1.), vec3f(crownOut, 1.) * 0.70710678, clamp((crownR - ${f(1 - round)}) / ${f(round)}, 0., 1.))` : "vec3f(0., 0., 1.)";
   return {
     name: "Crown",
@@ -175,7 +180,7 @@ function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow, ba
       { name: "vCrownCell", type: "vec2f" },
     ],
     getSamplers: () => [{ texture: "crownShape", sampler: "crownShapeSampler" }],
-    bindTextures: (out) => out.push({ texture: crownShapes(engine) }),
+    bindTextures: (out) => out.push({ texture: shapes(engine) }),
     getCustomCode: (stage) =>
       stage === "vertex"
         ? {
@@ -183,14 +188,13 @@ function crownPlugin(engine: LiteEngine, { first, count, round, peak, hollow, ba
 let treeCell = floor(finalWorld[3].xy * 13.);
 let treeSeed = fract(sin(vec2f(dot(treeCell, vec2f(127.1, 311.7)), dot(treeCell, vec2f(269.5, 183.3)))) * 43758.5453);
 out.vCrownTurn = vec2f(cos(treeSeed.y * 6.2831853), sin(treeSeed.y * 6.2831853));
-let crownWorn = ${first}. + round(normal.x) * ${count}. + floor(treeSeed.x * ${count}.);
-out.vCrownCell = vec2f(crownWorn - ${COLUMNS}. * floor(crownWorn / ${COLUMNS}.), floor(crownWorn / ${COLUMNS}.));`,
+out.vCrownCell = vec2f(floor(treeSeed.x * ${count}.), round(normal.x));`,
           }
         : {
             // Cut round where its shadow is drawn too; shaped where it is seen.
             CUSTOM_FRAGMENT_UPDATE_ALPHA: `let crownTurn = input.vCrownTurn;
 let crownUv = vec2f(crownTurn.x * input.vCrown.x + crownTurn.y * input.vCrown.y, crownTurn.x * input.vCrown.y - crownTurn.y * input.vCrown.x);
-let crownTex = textureSample(crownShape, crownShapeSampler, (input.vCrownCell + crownUv / ${f(2 * CROWN_REACH)} + 0.5) / vec2f(${COLUMNS}., ${ROWS}.));
+let crownTex = textureSample(crownShape, crownShapeSampler, (input.vCrownCell + crownUv / ${f(2 * CROWN_REACH)} + 0.5) / vec2f(${grid[0]}., ${grid[1]}.));
 let crownR = crownTex.r * 2.;
 // Turned, its square's corners reach past what is baked, into the next crown's.
 if (crownR > 1. || dot(input.vCrown, input.vCrown) > 1.) { discard; }`,
@@ -208,7 +212,7 @@ baseColor = mix(baseColor * mix(${f(hollow)}, 1., min(crownTex.a / ${f(LIT)}, 1.
  *  ground (straight down, any way will do): its world turned so its x runs
  *  across the light, its z up the trunk, and its y — the card's facing, which
  *  its vertices never leave — toward the sun, for the bias. Cast, never seen. */
-function cardPlugin(engine: LiteEngine, sun: () => { x: number; y: number; z: number }, { cut, wide, high, side }: (typeof LOOKS)[Kind]): MaterialPlugin {
+function cardPlugin(engine: LiteEngine, sun: () => { x: number; y: number; z: number }, { shapes, cut, wide, high, side }: (typeof LOOKS)[Kind]): MaterialPlugin {
   return {
     name: "Card",
     priority: 200,
@@ -217,7 +221,7 @@ function cardPlugin(engine: LiteEngine, sun: () => { x: number; y: number; z: nu
       { name: "vCardCell", type: "vec2f" },
     ],
     getSamplers: () => [{ texture: "crownShape", sampler: "crownShapeSampler" }],
-    bindTextures: (out) => out.push({ texture: crownShapes(engine) }),
+    bindTextures: (out) => out.push({ texture: shapes(engine) }),
     getUniforms: () => ({ ubo: [{ name: "treeSun", type: "vec4<f32>", visibility: "vertex" }] }),
     writeUbo: (data, offsets) => {
       const d = sun();

@@ -67,10 +67,9 @@ const DENSE = 9;
 /** Seen from the side, its crown's foot this high, of its height. */
 const SIDE_FOOT = 0.45;
 
-/** Crowns are baked, not worked out pixel by pixel: this many broadleaves,
- *  then the
- *  conifers' (`CONIFERS`), a layer of each at a time, each this
- *  many texels across, over this far out of its radius (past 1, so a
+/** Broadleaves' crowns are baked, not worked out pixel by pixel (the
+ *  conifers' are drawn, `conifers.ts`): this many, a layer of each at a
+ *  time, each this many texels across, over this far out of its radius (past 1, so a
  *  crown's edge never reaches its neighbour's), so many to a row of one
  *  texture. Every tree wears one, turned its own way, by where it stands. */
 export const CROWNS = 8;
@@ -90,24 +89,6 @@ function hash(x: number, y: number, use: number) {
   const g = Math.imul(h ^ (h >>> 11), 0x2c1b3c6d);
   h0 = (h >>> 0) / 4294967296;
   h1 = ((g ^ (g >>> 15)) >>> 0) / 4294967296;
-}
-let f0 = 0, f1 = 0;
-/** The tilt of the flat facet a point lies on, cells of side 1, in f0, f1:
- *  each cell's facet from a point somewhere in it, nearest wins, tilted its
- *  own way. */
-function facet(x: number, y: number) {
-  let near = 9, fx = 0, fy = 0;
-  const [x0, y0] = [Math.floor(x), Math.floor(y)];
-  for (let cy = y0 - 1; cy <= y0 + 1; cy++) {
-    for (let cx = x0 - 1; cx <= x0 + 1; cx++) {
-      hash(cx, cy, 1);
-      const dx = x - cx - h0, dy = y - cy - h1;
-      const d = dx * dx + dy * dy;
-      if (d < near) (near = d), hash(cx, cy, 2), (fx = h0), (fy = h1);
-    }
-  }
-  f0 = fx * 2 - 1;
-  f1 = fy * 2 - 1;
 }
 const byte = (u: number) => Math.round(Math.min(1, Math.max(0, u)) * 255);
 /** The most light a leaf's alpha says; above it, a texel is twig. */
@@ -399,114 +380,18 @@ function broad(out: Uint8Array, stamp: (layer: number, i: number, j: number) => 
   for (let j = 0, k = 0; j < T; j++) for (let i = 0; i < T; i++, k++) out[stamp(BROAD_LAYERS, i, j)] = side[k] ? 0 : 255;
 }
 
-/** Conifers, as a spruce is from the air: tiers of arms, this many from
- *  its tip down, each tier's arms from this many to this many, turned its
- *  own way, reaching further the lower it is, each arm of its tier's reach
- *  give or take this much, and turned off its place by up to this much of
- *  the way to the next; an arm this wide at its foot, of the crown's
- *  radius, rounding off to this toward its tip, and to a point at it. The topmost arm over a point is
- *  what is seen there: round across, its sides rolling over this steeply,
- *  drooping this much more toward its tip, in needles, facets this wide
- *  tilted up to this far; and a tier lies darker under those above it, by
- *  this much at the lowest. */
-export const CONIFERS = 4;
-const TIERS = 12;
-/** A conifer is drawn in this many layers, a band of its tiers each, the
- *  top first (`trees.ts` stacks them), so its upper arms stand over its
- *  lower and shade them; the bands the thinner the higher, to this power,
- *  where a tree is narrow and its stack shows most. */
-export const CONIFER_LAYERS = 8;
-const BANDING = 1.6;
-const bound = (layer: number) => Math.max(layer, Math.round(TIERS * (layer / CONIFER_LAYERS) ** BANDING));
-const bandOf = (layer: number) => [bound(layer), bound(layer + 1)];
-const ARMS = [12, 18];
-const ARM_REACH = 0.3;
-const ARM_TURN = 0.35;
-const ARM_FOOT = 0.2;
-const ARM_TIP = 0.05;
-const RIDGE = 0.6;
-const DROOP = 0.5;
-const NEEDLE = 1 / 45;
-const NEEDLE_TILT = 0.4;
-const UNDER = 0.15;
-/** And an arm is no blade but a twig, this wide, with needles off each
- *  side, swept toward its tip this much, a row of them this far apart
- *  along it, this much of it needle and the rest a gap, each row reaching
- *  out from this much of the arm's width to all of it; through the gaps
- *  the tiers below show, and the ground. Needles face out to their side
- *  this much. */
-const TWIG = 0.012;
-const SWEEP = 1.2;
-const ROW = 0.03;
-const NEEDLED = 0.75;
-const ROW_REACH = 0.7;
-const SPLAY = 0.5;
-
-/** How far out each layer's arms reach at most, of the crown's radius. */
-export const LAYER_REACH = Array.from({ length: CONIFER_LAYERS }, (_, layer) => Math.min(1, (bandOf(layer)[1] / TIERS) * (1 + ARM_REACH)));
-
-/** A texel of a layer of conifer v at (x, y), of its radius, into out at k. */
-function conifer(out: Uint8Array, k: number, x: number, y: number, v: number, layer: number) {
-  const rho = Math.sqrt(x * x + y * y);
-  const theta = Math.atan2(y, x);
-  const [first, last] = bandOf(layer);
-  for (let t = first; t < last; t++) {
-    hash(v, t, 7);
-    const arms = Math.round(ARMS[0] + (ARMS[1] - ARMS[0]) * h0);
-    const u = (theta / (2 * Math.PI)) * arms + h1;
-    const arm = Math.floor(u + 0.5);
-    hash(((arm % arms) + arms) % arms, t * 31 + v, 8);
-    const turned = ((u - arm - (h1 - 0.5) * ARM_TURN) * 2 * Math.PI) / arms;
-    const reach = ((t + 1) / TIERS) * (1 - ARM_REACH + 2 * ARM_REACH * h0);
-    const along = rho * Math.cos(turned), across = rho * Math.sin(turned);
-    const width = (ARM_FOOT * Math.sqrt(Math.max(0, 1 - along / reach)) + ARM_TIP) * Math.min(1, (1 - along / reach) * 4);
-    if (along < 0 || along > reach || Math.abs(across) > width) continue;
-    // On the twig, or on a needle off it; else a gap, and what is under it shows.
-    const out_ = Math.abs(across);
-    const row = (along - out_ * SWEEP) / ROW;
-    hash(Math.floor(row), (across > 0 ? 1 : 2) + t * 7 + v * 131, 9);
-    const needle = out_ > TWIG;
-    if (needle && (row - Math.floor(row) > NEEDLED || out_ > width * (ROW_REACH + (1 - ROW_REACH) * h0))) continue;
-    hash(((arm % arms) + arms) % arms, t * 31 + v, 8);
-    // Its arm, seen: which way the arm runs and its side, and how far out on it.
-    const [ax, ay] = [Math.cos(theta - turned), Math.sin(theta - turned)];
-    // Round, as a log is across: flat along its top, rolling over at its sides.
-    const s = across / width;
-    const side = needle ? Math.sign(across) * SPLAY : (s / Math.sqrt(Math.max(1 - s * s, 0.08))) * RIDGE;
-    const down = DROOP * (along / reach);
-    facet(x / NEEDLE + h0 * 41, y / NEEDLE + h1 * 41);
-    out[k] = byte(rho / 2);
-    out[k + 1] = byte(0.5 + (ax * down - ay * side + f0 * NEEDLE_TILT) / 2);
-    out[k + 2] = byte(0.5 + (ay * down + ax * side + f1 * NEEDLE_TILT) / 2);
-    out[k + 3] = needle ? byte((1 - (UNDER * t) / (TIERS - 1)) * LIT) : 255;
-    return;
-  }
-  out[k] = 255;
-}
-
 /** Every crown, a texel each: how far out it is, of the radius its outline
  *  stands at (red, halved), which way it tilts (green and blue, from -1
  *  to 1), and how much light reaches down to it (alpha, up to `LIT`), or
  *  that it is twig, not leaf (alpha past it). */
-export const SIDES = CROWNS * BROAD_LAYERS + CONIFERS * CONIFER_LAYERS;
+export const SIDES = CROWNS * BROAD_LAYERS;
 export const STAMPS = SIDES + CROWNS;
 export const ROWS = Math.ceil(STAMPS / COLUMNS);
 export function bakeCrowns(): Uint8Array {
   const out = new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4);
   const wide = COLUMNS * CROWN_TEXELS;
-  // A stamp's texel: stamps run broadleaves' layers, then conifers', top
-  // down, then broadleaves' sides.
+  // A stamp's texel: stamps run the layers, top down, then the sides.
   const at = (stamp: number, i: number, j: number) => ((Math.floor(stamp / COLUMNS) * CROWN_TEXELS + j) * wide + (stamp % COLUMNS) * CROWN_TEXELS + i) * 4;
-  const each = (texel: (x: number, y: number, i: number, j: number) => void) => {
-    for (let j = 0; j < CROWN_TEXELS; j++) {
-      for (let i = 0; i < CROWN_TEXELS; i++) {
-        texel(((i + 0.5) / CROWN_TEXELS) * 2 * CROWN_REACH - CROWN_REACH, ((j + 0.5) / CROWN_TEXELS) * 2 * CROWN_REACH - CROWN_REACH, i, j);
-      }
-    }
-  };
   for (let v = 0; v < CROWNS; v++) broad(out, (layer, i, j) => at(layer < BROAD_LAYERS ? layer * CROWNS + v : SIDES + v, i, j), v);
-  for (let layer = 0; layer < CONIFER_LAYERS; layer++) {
-    for (let v = 0; v < CONIFERS; v++) each((x, y, i, j) => conifer(out, at(CROWNS * BROAD_LAYERS + layer * CONIFERS + v, i, j), x, y, v, layer));
-  }
   return out;
 }
