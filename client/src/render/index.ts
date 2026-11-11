@@ -14,6 +14,7 @@ export {
   disposeMeshGpu,
   flushThinInstances,
   markMeshRenderableDirty,
+  meshLike,
   setMeshAttribute,
   setMeshVisible,
   setThinInstanceColors,

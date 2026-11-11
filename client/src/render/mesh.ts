@@ -16,6 +16,8 @@ export interface MeshGpu {
   /** Its world, and whether it is shaded. */
   world: GPUBuffer;
   group: GPUBindGroup | null;
+  /** Its vertices are another mesh's (`meshLike`), which outlives it. */
+  lent?: true;
 }
 
 export interface ThinInstances {
@@ -202,9 +204,23 @@ export function setMeshVisible(mesh: Mesh, visible: boolean): void {
 
 export function disposeMeshGpu(mesh: Mesh): void {
   const gpu = mesh._gpu;
-  for (const b of gpu.buffers.values()) b.destroy();
-  gpu.index.destroy();
+  for (const [name, b] of gpu.buffers) if (!gpu.lent || INSTANCED.includes(name)) b.destroy();
+  if (!gpu.lent) gpu.index.destroy();
   gpu.world.destroy();
+}
+
+const INSTANCED = ["instances", "instanceColors"];
+/** A mesh of another's shape, drawn with that mesh's own vertex buffers:
+ *  its world and its instances are its own. Drawn one after the other,
+ *  only those are bound again (`DrawList.drawSome`). */
+export function meshLike(of: Mesh, name: string): Mesh {
+  const g = of._gpu;
+  const buffers = new Map([...g.buffers].filter(([n]) => !INSTANCED.includes(n)));
+  const world = of.engine._device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const mesh = new Mesh(of.engine, name, { ...g, buffers, world, group: null, lent: true });
+  mesh._local = [...of._local];
+  for (const [k, v] of of._attributes) mesh._attributes.set(k, v);
+  return mesh;
 }
 
 /** Its bindings made again, and its material's UBO written again, as Lite

@@ -42,6 +42,8 @@ export const createMeshFromData = pick(lite.createMeshFromData, own.createMeshFr
 export const disposeMeshGpu = pick(lite.disposeMeshGpu, own.disposeMeshGpu);
 export const flushThinInstances = pick(lite.flushThinInstances, own.flushThinInstances);
 export const markMeshRenderableDirty = pick(lite.markMeshRenderableDirty, own.markMeshRenderableDirty);
+/** Ours alone: a mesh drawn with another's vertices (`render/mesh.ts`). */
+export const meshLike = own.meshLike as unknown as (of: lite.Mesh, name: string) => lite.Mesh;
 export const setMeshAttribute = pick(lite.setMeshAttribute, own.setMeshAttribute);
 export const setMeshVisible = pick(lite.setMeshVisible, own.setMeshVisible);
 export const setThinInstanceColors = pick(lite.setThinInstanceColors, own.setThinInstanceColors);

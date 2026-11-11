@@ -6,7 +6,7 @@ import {
   on,
   type ParentProps,
 } from "solid-js";
-import { addToScene, composeMat4IntoBuffer, NEW, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
+import { addToScene, composeMat4IntoBuffer, meshLike, NEW, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight, type Casters } from "./DayNightCycle";
@@ -113,15 +113,16 @@ export class InstancePool {
     private cull: Culler,
   ) {}
 
-  /** A still key's bucket for the region round `pos`: its shape, material
-   *  and bevel the key's own, kept by the culler while its region is in
-   *  view. Our renderer's alone: a mesh more costs Lite a renderable. */
+  /** A still key's bucket for the chunk round `pos`: its material and
+   *  bevel the key's own and its vertices the key's own buffers, kept by
+   *  the culler while its chunk is in view. Our renderer's alone: a mesh
+   *  more costs Lite a renderable. */
   private region(key: string, of: Bucket, pos: [number, number, number] = [0, 0, 0]): Bucket {
     const [rx, ry] = [Math.floor(pos[0] / REGION), Math.floor(pos[1] / REGION)];
     const name = `${key}@${rx},${ry}`;
     const had = this.buckets.get(name);
     if (had) return had;
-    const bucket = this.hold(name, of.geometry, of.material, of.bevel, of.baseColor, of.castShadow, of.receiveShadow, false);
+    const bucket = this.hold(name, of.geometry, of.material, of.bevel, of.baseColor, of.castShadow, of.receiveShadow, false, of.mesh);
     this.cull.keep(bucket.mesh, [rx * REGION - REACH, ry * REGION - REACH, (rx + 1) * REGION + REACH, (ry + 1) * REGION + REACH]);
     return bucket;
   }
@@ -149,10 +150,10 @@ export class InstancePool {
     return this.hold(key, bevelled(geometry), mat, bevel, color, castShadow, receiveShadow, moves);
   }
 
-  private hold(key: string, shape: ReturnType<typeof bevelled>, mat: TownMaterial, bevel: Bevel, color: Rgb, castShadow: boolean, receiveShadow: boolean, moves: boolean): Bucket {
+  private hold(key: string, shape: ReturnType<typeof bevelled>, mat: TownMaterial, bevel: Bevel, color: Rgb, castShadow: boolean, receiveShadow: boolean, moves: boolean, like?: Mesh): Bucket {
     // A shape's own colours scale its bucket's: a car's glass darker.
-    const mesh = meshOf(this.engine, `inst_${key}`, shape);
-    giveBevel(this.engine, mesh, shape);
+    const mesh = like ? meshLike(like, `inst_${key}`) : meshOf(this.engine, `inst_${key}`, shape);
+    if (!like) giveBevel(this.engine, mesh, shape);
     if (moves) live(mesh);
     mesh.material = mat;
     mesh.receiveShadows = receiveShadow;

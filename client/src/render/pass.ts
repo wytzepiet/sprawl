@@ -33,7 +33,7 @@ export interface Draw {
 
 /** A mesh's draw in a list, and what it was made with. */
 interface Encoded {
-  record: (pass: GPURenderPassEncoder) => void;
+  draw: Draw;
   version: number;
   material: unknown;
   shared: (GPUBindGroup | null)[];
@@ -90,9 +90,22 @@ export class DrawList {
     return { some, left: todo.length - n };
   }
 
-  /** These meshes of it into a pass. */
+  /** These meshes of it into a pass: each binds only what the one before
+   *  it did not, so buckets of one shape and material (`meshLike`) cost
+   *  their world, their instances and the draw. */
   drawSome(pass: GPURenderPassEncoder, some: Mesh[]) {
-    for (const m of some) this.encoded.get(m)!.record(pass);
+    let was: Encoded | undefined;
+    for (const m of some) {
+      const e = this.encoded.get(m)!;
+      const [d, w] = [e.draw, was?.draw];
+      e.shared.forEach((g, i) => g && g !== was?.shared[i] && pass.setBindGroup(i === 0 ? 0 : 3, g));
+      if (d.pipeline !== w?.pipeline) pass.setPipeline(d.pipeline);
+      d.groups.forEach((g, i) => g !== w?.groups[i] && pass.setBindGroup(i + 1, g));
+      d.buffers.forEach((b, i) => b !== w?.buffers[i] && pass.setVertexBuffer(i, b));
+      if (m._gpu.index !== w?.mesh._gpu.index) pass.setIndexBuffer(m._gpu.index, "uint32");
+      pass.drawIndexed(m._gpu.indexCount, m.thinInstances?.count ?? 1);
+      was = e;
+    }
     this.engine.drawCallCount += some.length;
   }
 
@@ -124,15 +137,7 @@ export class DrawList {
       if (d === undefined) this.waiting = epoch;
       return undefined;
     }
-    const record = (encoder: GPURenderPassEncoder) => {
-      shared.forEach((g, i) => g && encoder.setBindGroup(i === 0 ? 0 : 3, g));
-      encoder.setPipeline(d.pipeline);
-      d.groups.forEach((g, i) => encoder.setBindGroup(i + 1, g));
-      d.buffers.forEach((b, i) => encoder.setVertexBuffer(i, b));
-      encoder.setIndexBuffer(mesh._gpu.index, "uint32");
-      encoder.drawIndexed(mesh._gpu.indexCount, mesh.thinInstances?.count ?? 1);
-    };
-    const e: Encoded = { record, version: mesh._version, material, shared, epoch };
+    const e: Encoded = { draw: d, version: mesh._version, material, shared, epoch };
     this.encoded.set(mesh, e);
     count("encodes", 1);
     count("encodeMs", performance.now() - began);

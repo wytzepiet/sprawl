@@ -252,7 +252,8 @@ function makeFrame(scene: Scene): Frame {
   // What each pass draws.
   const ordered = (wants: (m: Mesh) => boolean) =>
     function* (): Iterable<[Mesh, unknown]> {
-      const list = scene.meshes.filter(wants).sort((a, b) => a.renderOrder - b.renderOrder);
+      // By name within an order: buckets of one shape follow one another (`DrawList.drawSome`).
+      const list = scene.meshes.filter(wants).sort((a, b) => a.renderOrder - b.renderOrder || (a.name < b.name ? -1 : +(a.name > b.name)));
       for (const m of list) yield [m, m.material];
     };
   const wants = {
