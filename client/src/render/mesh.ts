@@ -33,6 +33,9 @@ export class Mesh {
   receiveShadows = false;
   renderOrder = 100;
   visible = true;
+  /** While it is hidden only for being out of view: the ground it covers,
+   *  x0 y0 x1 y1, where it still casts into the sun's map (`setMeshVisible`). */
+  _reach: readonly number[] | null = null;
   thinInstances?: ThinInstances;
   /** The scenes it is in, told when it changes. */
   _scenes = new Set<Scene>();
@@ -195,11 +198,17 @@ export function setMeshAttribute(engine: Engine, mesh: Mesh, name: string, data:
   mesh._changed(false);
 }
 
-export function setMeshVisible(mesh: Mesh, visible: boolean): void {
-  if (mesh.visible === visible) return;
+/** Shown or hidden; hidden with `reach`, the ground it covers, it is only
+ *  out of view, and casts its shadow as before: the sun's map is not drawn
+ *  again as the view passes over a town that stands as it stood. */
+export function setMeshVisible(mesh: Mesh, visible: boolean, reach: readonly number[] | null = null): void {
+  const to = visible ? null : reach;
+  if (mesh.visible === visible && mesh._reach === to) return;
+  const casting = mesh.visible !== visible && !!(visible ? mesh._reach : to);
   mesh.visible = visible;
+  mesh._reach = to;
   // Shown or hidden, it shows what it did: the lists alone are told.
-  for (const s of mesh._scenes) s._meshChanged(mesh, true);
+  for (const s of mesh._scenes) s._meshChanged(mesh, true, casting);
 }
 
 export function disposeMeshGpu(mesh: Mesh): void {

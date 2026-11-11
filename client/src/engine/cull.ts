@@ -2,6 +2,12 @@ import { setMeshVisible, type Mesh, type SceneContext } from "./gpu";
 import { MARGIN } from "./still";
 import { groundCover } from "./view";
 
+/** Hidden; with its area, only for being out of view, where our renderer
+ *  has it cast its shadow still (`render/mesh.ts`; Lite's takes no area). */
+const hide = (mesh: Mesh, reach: Area | null) => (setMeshVisible as (mesh: Mesh, visible: boolean, reach: Area | null) => void)(mesh, false, VIEW_CAST ? null : reach);
+/** `?viewcast`, a trial's: only what is in view casts, as before, to measure against on one device. */
+const VIEW_CAST = new URLSearchParams(globalThis.location?.search ?? "").has("viewcast");
+
 /** A box on the map: low x, low y, high x, high y, in tiles. */
 export type Area = readonly [number, number, number, number];
 
@@ -36,7 +42,7 @@ export class Culler {
   keep(mesh: Mesh, area: Area) {
     const shown = this.meets(area);
     this.kept.set(mesh, { area, wanted: true, shown });
-    if (!shown) setMeshVisible(mesh, false);
+    if (!shown) hide(mesh, area);
   }
 
   /** A mesh no longer kept: gone. */
@@ -49,7 +55,8 @@ export class Culler {
     const k = this.kept.get(mesh);
     if (!k || k.wanted === wanted) return;
     k.wanted = wanted;
-    this.apply(mesh, k);
+    k.shown = wanted && this.meets(k.area);
+    k.shown ? setMeshVisible(mesh, true) : hide(mesh, wanted ? k.area : null);
   }
 
   /** The view as it stands: before each frame. A mesh is shown or hidden
@@ -70,7 +77,7 @@ export class Culler {
     const shown = k.wanted && this.meets(k.area);
     if (shown === k.shown) return;
     k.shown = shown;
-    setMeshVisible(mesh, shown);
+    shown ? setMeshVisible(mesh, true) : hide(mesh, k.wanted ? k.area : null);
   }
 
   /** Whether a vehicle here shows on screen: on the ground in view, or

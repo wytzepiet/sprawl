@@ -31,7 +31,8 @@ interface GBuffer {
 export interface Frame {
   draw(encoder: GPUCommandEncoder, target: GPUTexture): void;
   drawn(): { mesh: Mesh }[];
-  meshChanged(mesh: Mesh, drawn: boolean): void;
+  /** `casting`: it only came into view or left it, its shadow cast as before. */
+  meshChanged(mesh: Mesh, drawn: boolean, casting?: boolean): void;
   castersChanged(): void;
 }
 
@@ -143,6 +144,11 @@ function makeFrame(scene: Scene): Frame {
   let gen: ShadowGenerator | null = null;
   const casts = (m: Mesh) => !!gen?.casters.has(m);
   const shown = (m: Mesh) => m.visible && !!m.material;
+  /** Out of view, and on the ground the sun's map covers: it casts into it still. */
+  const inSun = (m: Mesh) => {
+    const [r, b] = [m._reach, gen?.bounds];
+    return !!r && !!b && !!m.material && r[2]! >= b[0]! && r[0]! <= b[3]! && r[3]! >= b[1]! && r[1]! <= b[4]!;
+  };
 
   // The uniforms: the camera's, the picture's eye's, the sun's; and the frame's own.
   const [camera, eyeUbo, sunUbo] = [sceneUbo(device), sceneUbo(device), sceneUbo(device)];
@@ -257,7 +263,7 @@ function makeFrame(scene: Scene): Frame {
       for (const m of list) yield [m, m.material];
     };
   const wants = {
-    shadowStill: (m: Mesh) => shown(m) && casts(m) && stays(m),
+    shadowStill: (m: Mesh) => (shown(m) || inSun(m)) && casts(m) && stays(m),
     shadowLive: (m: Mesh) => shown(m) && casts(m) && !stays(m),
     gbuffer: (m: Mesh) => deferred() && shown(m) && stays(m),
     forward: (m: Mesh) => shown(m) && (!deferred() || !stays(m)),
@@ -483,10 +489,10 @@ function makeFrame(scene: Scene): Frame {
       for (const [l] of lists) for (const m of l.drawn) all.add(m);
       return [...all].map((mesh) => ({ mesh }));
     },
-    meshChanged(mesh, drawn) {
+    meshChanged(mesh, drawn, casting) {
       if (drawn) for (const [list, want] of lists) if (list.drawn.has(mesh) || want(mesh)) list.dirty = true;
       if (!stays(mesh)) return void (liveDue ||= casts(mesh));
-      if (casts(mesh)) castersDue = true;
+      if (casts(mesh) && !casting) castersDue = true;
       if (deferred()) staleSince = Math.min(staleSince, performance.now());
     },
     castersChanged() {
@@ -532,7 +538,8 @@ function makeFrame(scene: Scene): Frame {
 
       // The sun's maps: the still one as the sun turns, and as what casts
       // changed, with the picture that shows it; the live one as what moves does.
-      if (gen && refit(gen)) staticDue = liveDue = true;
+      // The map moved: what casts into it from out of view is gathered again.
+      if (gen && refit(gen)) staticDue = liveDue = shadowStill.dirty = true;
       if (castersDue && (due || !deferred())) [staticDue, castersDue] = [true, false];
       if (fit) {
         common(sunUbo, fit.caster, fit.matrix, w, h, now);

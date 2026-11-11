@@ -161,7 +161,7 @@ export interface Scene {
   _isStill: ((mesh: Mesh) => boolean) | null;
   /** Told when the still picture has been drawn. */
   _pictured: (why: string) => void;
-  _meshChanged(mesh: Mesh, drawn: boolean): void;
+  _meshChanged(mesh: Mesh, drawn: boolean, casting?: boolean): void;
   _castersChanged(): void;
 }
 
@@ -184,7 +184,7 @@ export function createSceneContext(target: Engine | Surface): Scene {
     _frame: null,
     _isStill: null,
     _pictured: () => {},
-    _meshChanged: (mesh, drawn) => scene._frame?.meshChanged(mesh, drawn),
+    _meshChanged: (mesh, drawn, casting) => scene._frame?.meshChanged(mesh, drawn, casting),
     _castersChanged: () => scene._frame?.castersChanged(),
   };
   surface._scenes.push(scene);
