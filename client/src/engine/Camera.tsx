@@ -37,15 +37,13 @@ const PAN_MARGIN_CHUNKS = 1;
 /** Tiles past a level's edge the camera may see: a glimpse of its
  *  neighbours. */
 const LEVEL_MARGIN = 5;
-const knobs = new URLSearchParams(location.search);
-/** Chunks loaded past the ground in view, so it is there before it is seen
- *  (`?pad=`, a trial's: what a chunk loaded costs). */
-const PAD = Number(knobs.get("pad") ?? 1);
+/** Chunks loaded past the ground in view, so it is there before it is seen. */
+const PAD = 1;
 /** Chunks kept loaded that have gone out of view, as many as this in all:
  *  a zoom in and back out, or a pan there and back, finds the town as it
  *  left it, rather than have every road, building and car taken down and
  *  sent and built again (on a big town, a quarter second at a time). */
-const KEEP = Number(knobs.get("keep") ?? 36);
+const KEEP = 36;
 /** A view kept in far fewer chunks than it holds lets them go once it has
  *  stood this long: the player has settled on a closer look. */
 const SHRINK_MS = 5000;

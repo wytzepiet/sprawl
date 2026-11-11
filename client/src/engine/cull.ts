@@ -4,9 +4,7 @@ import { groundCover } from "./view";
 
 /** Hidden; with its area, only for being out of view, where our renderer
  *  has it cast its shadow still (`render/mesh.ts`; Lite's takes no area). */
-const hide = (mesh: Mesh, reach: Area | null) => (setMeshVisible as (mesh: Mesh, visible: boolean, reach: Area | null) => void)(mesh, false, VIEW_CAST ? null : reach);
-/** `?viewcast`, a trial's: only what is in view casts, as before, to measure against on one device. */
-const VIEW_CAST = new URLSearchParams(globalThis.location?.search ?? "").has("viewcast");
+const hide = (mesh: Mesh, reach: Area | null) => (setMeshVisible as (mesh: Mesh, visible: boolean, reach: Area | null) => void)(mesh, false, reach);
 
 /** A box on the map: low x, low y, high x, high y, in tiles. */
 export type Area = readonly [number, number, number, number];

@@ -65,12 +65,10 @@ const SPLIT = knobs.get("split") === "1";
  *  Not under the hand (`hurryPicture`): a road is seen the frame after it
  *  is drawn, its asphalt first and its paving as the worker lands it. */
 const [CHANGED, STALE_MS, PATCH] = [3, 250, 0.35];
-/** `?hold`, a trial's: a road drawn waits for its paving as anything does, to see the wait against. */
-const HOLD = knobs.has("hold");
 /** Until when a change is drawn the frame after, made or not. */
 let hurried = 0;
 export function hurryPicture() {
-  if (!HOLD) hurried = performance.now() + STALE_MS;
+  hurried = performance.now() + STALE_MS;
 }
 
 /** Since when something still has changed that no picture begun since holds. */

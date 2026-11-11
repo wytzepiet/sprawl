@@ -34,8 +34,6 @@ import type { Area, Building, GridCoord, Tool } from "../generated";
 export function Brush() {
   const { scene, canvas, afterRender } = useEngine();
   const dots = new Dots(scene, canvas);
-  // `?nodrop`, a trial's: the pen's drop not drawn, to see what it covers of a stroke.
-  if (new URLSearchParams(location.search).has("nodrop")) dots.el.style.display = "none";
   const stopTick = afterRender(() => dots.frame());
   const { send } = useGame();
   const pen = new Pen({ roads: roadsAt, tool, want: () => 0, priority, send, lift: () => {}, guess });
