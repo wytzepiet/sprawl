@@ -101,3 +101,57 @@ struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, 
   pass.end();
   device.queue.submit([encoder.finish()]);
 }
+
+/** Shapes laid onto `target`, `count` of them, the highest at each texel
+ *  kept: `code` is WGSL with `fn box(i: u32) -> vec4f`, the texels shape
+ *  `i` may touch, and `fn stamp(i: u32, at: vec2f) -> vec4f`, what it is
+ *  at the texel whose middle is `at`, its red how high it stands there
+ *  (-1 to 2), under -1 where it is not; reading `sources` as `fillTexture`'s
+ *  does, the shapes themselves if they come as texels. Where none is,
+ *  `clear`. What a bake did a shape at a time, keeping each texel's
+ *  height to compare, drawn against a depth. */
+export function layTexture(engine: Engine, target: Texture2D, code: string, count: number, sources: Texture2D[], clear: number[]) {
+  const device = engine._device;
+  const byCode = pipelines.get(device) ?? new Map<string, GPURenderPipeline>();
+  pipelines.set(device, byCode);
+  const key = `lay|${target.texture.format}|${code}`;
+  let pipeline = byCode.get(key);
+  if (!pipeline) {
+    const module = device.createShaderModule({
+      code: `${sources.map((_, k) => `@group(0) @binding(${k}) var src${k}: texture_2d<f32>;`).join("\n")}
+${code}
+struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32 }
+struct F { @location(0) texel: vec4f, @builtin(frag_depth) high: f32 }
+@vertex fn vs(@builtin(vertex_index) v: u32, @builtin(instance_index) n: u32) -> V {
+  let b = box(n);
+  let at = mix(b.xy, b.zw, vec2f(f32(v & 1u), f32(v >> 1u)));
+  return V(vec4f(at / vec2f(${target.width}., ${target.height}.) * vec2f(2., -2.) + vec2f(-1., 1.), 0., 1.), n);
+}
+@fragment fn fs(v: V) -> F {
+  let texel = stamp(v.i, v.p.xy);
+  if (texel.r < -1.) { discard; }
+  return F(texel, (texel.r + 1.) / 3.);
+}`,
+    });
+    pipeline = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "vs" },
+      fragment: { module, entryPoint: "fs", targets: [{ format: target.texture.format }] },
+      primitive: { topology: "triangle-strip" },
+      depthStencil: { format: "depth32float", depthCompare: "greater", depthWriteEnabled: true },
+    });
+    byCode.set(key, pipeline);
+  }
+  const depth = device.createTexture({ size: { width: target.width, height: target.height }, format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{ view: top(target), loadOp: "clear", storeOp: "store", clearValue: clear }],
+    depthStencilAttachment: { view: depth.createView(), depthLoadOp: "clear", depthStoreOp: "discard", depthClearValue: 0 },
+  });
+  pass.setPipeline(pipeline);
+  if (sources.length) pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: sources.map((s, k) => ({ binding: k, resource: s.view })) }));
+  pass.draw(4, count);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  depth.destroy();
+}

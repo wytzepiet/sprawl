@@ -5,10 +5,9 @@ import type { Casters } from "./DayNightCycle";
 import { merged, type Kind as Kind2, type Part } from "./merged";
 import { lacquer } from "./bevel";
 import type { Theme } from "./theme";
-import { COLUMNS, CROWNS, CROWN_REACH, CROWN_TEXELS, LIT, ROWS, SIDES } from "./crowns";
+import { BROAD_LAYERS, CROWNS, CROWN_REACH, LIT, ROWS } from "./crowns";
+import { broadleaves, broadleavesDrawn } from "./broadleaves";
 import { CONIFERS, CONIFER_LAYERS, LAYER_REACH, conifers } from "./conifers";
-import recipe from "./crowns.ts?raw";
-import { bakedTexture, whenBaked } from "./bakeCache";
 
 /**
  * Trees, forest and street alike: a crown on a trunk, a broadleaf's round
@@ -40,8 +39,8 @@ const CROWN_PEAK = 0.5;
  *  out, so it darkens as a crown's underside does. */
 const UNDERSIDE = 0.9;
 const UNDERSIDE_FROM = 0.55;
-/** A broadleaf's shadow is its side, baked from the same tree as its top
- *  (`crowns.ts`): its trunk, its limbs and its leaves. */
+/** A broadleaf's shadow is its side, drawn from the same tree as its top
+ *  (`broadleaves.ts`): its trunk, its limbs and its leaves. */
 /** How tall the body's card stands, of the crown's height: as tall as
  *  the crown, its canopy's top level with the crown's top layer. */
 const CARD_HEIGHT = 1;
@@ -103,18 +102,18 @@ const SIDE_HIGH = 4 / 3;
 const SIDE_TAPER = 0.75;
 
 export type Kind = "broad" | "conifer";
-/** Each kind's crowns, a texture of them (the broadleaves' baked,
- *  `crowns.ts`; the conifers' drawn, `conifers.ts`), so many to a row, a
+/** Each kind's crowns, a texture of them (the broadleaves' grown,
+ *  `broadleaves.ts`; the conifers' worked out, `conifers.ts`), so many to a row, a
  *  layer of each kind's at a time, in so many rows; how far in its
  *  top rolls over, and leans from its middle; how far its near edge turns
  *  under; how dark between its clumps
- *  or branches; and its shadow's card, how wide, its side baked if it is
+ *  or branches; and its shadow's card, how wide, its side's place in its texture
  *  (which, by `treeSeed`), and what of it is cut away (`cardOut`). */
 const LOOKS: Record<Kind, { shapes: (engine: LiteEngine) => Texture2D; count: number; grid: [number, number]; round: number; peak: number; hollow: number; bark: number[]; barkShows: number; underside: number; wide: number; high: number; side: string; cut: string }> = {
   broad: {
-    shapes: (engine) => crownShapes(engine),
+    shapes: broadleaves,
     count: CROWNS,
-    grid: [COLUMNS, ROWS],
+    grid: [CROWNS, ROWS],
     round: CROWN_ROUND,
     peak: CROWN_PEAK,
     hollow: 0.92,
@@ -123,8 +122,8 @@ const LOOKS: Record<Kind, { shapes: (engine: LiteEngine) => Texture2D; count: nu
     underside: UNDERSIDE,
     wide: 1,
     high: CARD_HEIGHT,
-    side: `${SIDES}. + floor(treeSeed.x * ${CROWNS}.)`,
-    cut: `let cardOut = textureSample(crownShape, crownShapeSampler, (input.vCardCell + vec2f(input.vCard.x / ${f(2 * CROWN_REACH)} + 0.5, 1. - input.vCard.y)) / vec2f(${COLUMNS}., ${ROWS}.)).r > 0.5;`,
+    side: `vec2f(floor(treeSeed.x * ${CROWNS}.), ${BROAD_LAYERS}.)`,
+    cut: `let cardOut = textureSample(crownShape, crownShapeSampler, (input.vCardCell + vec2f(input.vCard.x / ${f(2 * CROWN_REACH)} + 0.5, 1. - input.vCard.y)) / vec2f(${CROWNS}., ${ROWS}.)).r > 0.5;`,
   },
   conifer: {
     shapes: conifers,
@@ -138,7 +137,7 @@ const LOOKS: Record<Kind, { shapes: (engine: LiteEngine) => Texture2D; count: nu
     underside: 0,
     wide: SIDE_WIDE,
     high: SIDE_HIGH,
-    side: "0.",
+    side: "vec2f(0.)",
     cut: `let cardX = abs(input.vCard.x);
 let cardWild = 1. - input.vCard.y;
 let cardSide = sign(input.vCard.x);
@@ -152,17 +151,8 @@ let cardOut = cardX > cardReach || cardGap;`,
   },
 };
 
-/** An engine's crowns: every texel past its crown's outline until the
- *  worker has baked them, so no tree shows before its crown does. */
-const crownShapes = (engine: LiteEngine): Texture2D =>
-  bakedTexture(engine, "crowns", recipe, [COLUMNS * CROWN_TEXELS, ROWS * CROWN_TEXELS, () => new Uint8Array(COLUMNS * ROWS * CROWN_TEXELS * CROWN_TEXELS * 4).fill(255)], {
-    format: "rgba8unorm",
-    mipmaps: true,
-    minFilter: "linear",
-    magFilter: "linear",
-  });
-/** When an engine's crowns are baked: at once if it has none. */
-export const crownsBaked = (engine: LiteEngine): Promise<void> => whenBaked(engine, "crowns");
+/** When an engine's crowns are drawn. */
+export const crownsBaked = broadleavesDrawn;
 
 /** Where the pixel is on its crown, in the world's turn, a radius out at 1,
  *  and, by where the tree stands, which crown it wears and how it is turned,
@@ -236,8 +226,7 @@ finalWorld = mat4x4f(vec4f(length(finalWorld[0].xyz) * ${f(wide)} * vec3f(-cardA
             CUSTOM_VERTEX_MAIN_END: `out.vCard = position.xz;
 let treeCell = floor(finalWorld[3].xy * 13.);
 let treeSeed = fract(sin(vec2f(dot(treeCell, vec2f(127.1, 311.7)), dot(treeCell, vec2f(269.5, 183.3)))) * 43758.5453);
-let cardWorn = ${side};
-out.vCardCell = vec2f(cardWorn - ${COLUMNS}. * floor(cardWorn / ${COLUMNS}.), floor(cardWorn / ${COLUMNS}.));`,
+out.vCardCell = ${side};`,
           }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: `fn cardHash(p: vec2f) -> vec2f { return fract(sin(vec2f(dot(p, vec2f(127.1, 311.7)), dot(p, vec2f(269.5, 183.3)))) * 43758.5453); }`,

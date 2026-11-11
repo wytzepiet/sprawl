@@ -33,15 +33,13 @@ function open(): Promise<IDBDatabase> {
 }
 
 /** What the bake worker bakes of that name (`bakeWorker.ts`), a worker
- *  each, so bakes run side by side; kept under the name by its recipe's
- *  source. */
-function baked(name: Bake, recipe: string): Promise<Uint8Array> {
-  return cached(name, versionOf(recipe), () => new Promise((done) => {
+ *  each, so bakes run side by side. */
+export const bake = (name: Bake): Promise<Uint8Array> =>
+  new Promise((done) => {
     const w = new Worker(new URL("./bakeWorker.ts", import.meta.url), { type: "module" });
     w.onmessage = ({ data }: MessageEvent<Uint8Array>) => (w.terminate(), done(data));
     w.postMessage(name);
-  }));
-}
+  });
 
 /** Each engine's texture of each bake, and when it has its texels. */
 const TEXTURES = new Map<Bake, WeakMap<EngineContext, { texture: Texture2D; ready: Promise<void> }>>();
@@ -55,7 +53,7 @@ export function bakedTexture(engine: EngineContext, name: Bake, recipe: string, 
   let it = made.get(engine);
   if (!it) {
     const texture = createTexture2DFromPixels(engine, placeholder(), width, height, options);
-    it = { texture, ready: baked(name, recipe).then((data) => (updateTexture2DFromPixels(engine, texture, data), stale())) };
+    it = { texture, ready: cached(name, versionOf(recipe), () => bake(name)).then((data) => (updateTexture2DFromPixels(engine, texture, data), stale())) };
     made.set(engine, it);
   }
   return it.texture;
