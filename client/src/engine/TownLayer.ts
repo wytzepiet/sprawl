@@ -385,8 +385,14 @@ export class TownLayer {
     const within = same && touched[0] <= touched[2] ? widen(touched, REACH) : null;
     if (!todo.length) return;
 
-    const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
-    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near), world()), doors, ground: this.groundUnder(box), kinds: KINDS };
+    // Tiles touched in a town that stands as it stood: only the town round
+    // their chunks is given, all a tile's look can read, as round a building
+    // held; so a road laid costs its place, not the town.
+    const round = widen(areaOf(todo), TOWN_MARGIN + MARGIN);
+    const given: Bounds = within ? [Math.max(box[0], round[0]), Math.max(box[1], round[1]), Math.min(box[2], round[2]), Math.min(box[3], round[3])] : box;
+    const near = ([x, y]: [number, number, ...unknown[]]) => x >= given[0] - 1 && x <= given[2] + 1 && y >= given[1] - 1 && y <= given[3] + 1;
+    const local = roads.filter(near);
+    const snapshot: Snapshot = { box: given, town, todo, buildings: buildings.filter(near), roads: local, views: this.views(local, world()), doors: doors.filter(near), ground: this.groundUnder(given), kinds: KINDS };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder
