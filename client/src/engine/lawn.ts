@@ -1,4 +1,4 @@
-import { createFilledTexture, fillTexture, stampTexture, type EngineContext, type Texture2D } from "./gpu";
+import { RANDOM, createFilledTexture, fillTexture, stampTexture, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 
 /**
@@ -44,13 +44,6 @@ const HEADS = Math.round(CLOVER * LAWN_TILES * LAWN_TILES);
 /** Everything a little in from the square's corner, so no stamp's box
  *  starts before it. */
 const IN = 32;
-
-/** A number from 0 to 1, the `k`th of thing `i`: the same every time. */
-const RANDOM = `fn rnd(i: u32, k: u32) -> f32 {
-  var h = i * 747796405u + k * 2891336453u + 1u;
-  h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
-  return f32(((h >> 22u) ^ h) >> 8u) / 16777216.;
-}`;
 
 /** A blade: its base, which way it leans and how far, and how tall it
  *  stands, of the tallest, shorter in the lower clumps: a random height a

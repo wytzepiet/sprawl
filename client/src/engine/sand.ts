@@ -1,11 +1,14 @@
+import { RANDOM, createFilledTexture, fillTexture, stampTexture, type EngineContext, type Texture2D } from "./gpu";
+import { retire } from "./geometry";
+
 /**
- * The ripples the wind leaves in dry sand, baked (`ground.ts` reads them):
- * a square of sand this many texels a side, wrapping, laid over this many
+ * The ripples the wind leaves in dry sand (`ground.ts` reads them): a
+ * square of sand this many texels a side, wrapping, laid over this many
  * tiles. Gabor noise: wave packets, a short wave under a soft round fall-
  * off, scattered at random and summed, each facing about the wind's way.
  * Where they overlap they make ridges that wind, fork, end and meet, as
- * ripples grow, rather than lines bent after. On its own, for a worker to
- * bake (`bakeWorker.ts`).
+ * ripples grow, rather than lines bent after. Drawn on the GPU when the
+ * first sand is, a packet a stamp (`stampTexture`), and nothing of it kept.
  */
 export const RIPPLE_SIDE = 512;
 export const RIPPLE_TILES = 4;
@@ -17,80 +20,68 @@ export const RIPPLE_TILES = 4;
 const WAVELENGTH = 0.08;
 const WIND = Math.atan2(0.39, 0.92);
 const SPREAD = 0.2;
-/** How hard each ridge is pressed to one height, so all run about as wide,
- *  and how many texels its crest is rounded over after. */
-const EVEN = 2.5;
-const ROUND = 1;
 const ALONG = 6;
 const ACROSS = 1.8;
 const DENSITY = 1.5;
+/** How hard each ridge is pressed to one height, so all run about as wide. */
+const EVEN = 2.5;
+
+const f = (x: number) => x.toFixed(5);
+const n = RIPPLE_SIDE;
+const wave = (WAVELENGTH / RIPPLE_TILES) * n;
+const [along, across] = [ALONG * wave, ACROSS * wave];
+const reach = Math.ceil(along);
+const PACKETS = Math.round(((n * n) / (along * across)) * DENSITY);
+/** The packets' sum's typical height, its root mean square: so many to an
+ *  area, each a wave, half its fall-off squared. */
+const TYPICAL = Math.sqrt(((DENSITY * Math.PI) / 16) * (1 - Math.exp(-8)));
+
+/** A packet: where it is, a little in from the square's corner so its box
+ *  starts in it, which way it faces, and where in its wave it starts. */
+const PACKET = `${RANDOM}
+fn middle(i: u32) -> vec2f { return ${reach}. + vec2f(rnd(i, 0u), rnd(i, 1u)) * ${n}.; }
+fn box(i: u32) -> vec4f { let c = middle(i); return vec4f(c - ${reach}., c + ${reach}.); }
+fn stamp(i: u32, at: vec2f) -> vec4f {
+  let o = at - middle(i);
+  let angle = ${f(WIND)} + (rnd(i, 2u) - 0.5) * ${f(2 * SPREAD)};
+  let way = vec2f(cos(angle), sin(angle));
+  // Across the ridges (along the wave) short, along them long.
+  let u = dot(o, way) / ${f(across)};
+  let v = dot(o, vec2f(-way.y, way.x)) / ${f(along)};
+  let r2 = u * u + v * v;
+  if (r2 > 1.) { return vec4f(0.); }
+  return vec4f(exp(-4. * r2) * cos(6.2831853 * (dot(o, way) / ${f(wave)} + rnd(i, 3u))));
+}`;
 
 /** Every texel's slope, across and up the square (red, green, from -1 to
- *  1 as 0 to 1), and its height (blue). */
-export function bakeRipples(): Uint8Array {
-  const n = RIPPLE_SIDE;
-  const wave = (WAVELENGTH / RIPPLE_TILES) * n;
-  const [along, across] = [ALONG * wave, ACROSS * wave];
-  const reach = along;
-  const height = new Float32Array(n * n);
-  let seed = 7;
-  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const packets = Math.round(((n * n) / (along * across)) * DENSITY);
-  for (let p = 0; p < packets; p++) {
-    const [cx, cy] = [random() * n, random() * n];
-    const angle = WIND + (random() - 0.5) * 2 * SPREAD;
-    const [fx, fy] = [Math.cos(angle) / wave, Math.sin(angle) / wave];
-    const [ux, uy] = [Math.cos(angle), Math.sin(angle)];
-    const phase = random() * 2 * Math.PI;
-    for (let dy = -Math.ceil(reach); dy <= reach; dy++) {
-      for (let dx = -Math.ceil(reach); dx <= reach; dx++) {
-        const [x, y] = [Math.floor(cx) + dx, Math.floor(cy) + dy];
-        const [ox, oy] = [x - cx, y - cy];
-        // Across the ridges (along the wave) short, along them long.
-        const [u, v] = [ox * ux + oy * uy, -ox * uy + oy * ux];
-        const r2 = (u * u) / (across * across) + (v * v) / (along * along);
-        if (r2 > 1) continue;
-        const k = ((y % n) + n) % n * n + (((x % n) + n) % n);
-        height[k] += Math.exp(-4 * r2) * Math.cos(2 * Math.PI * (ox * fx + oy * fy) + phase);
-      }
-    }
+ *  1 as 0 to 1; 1 a ridge's height in an eighth of the way to the next),
+ *  and its height (blue). The sum scaled by its typical height, then
+ *  pressed: every ridge to about the same height, its width where the
+ *  pattern crosses zero, half a ridge apart, wherever packets crowd or
+ *  thin; then its crest rounded, over the texels round it. */
+const SLOPES = `fn pressed(p: vec2i) -> f32 { return tanh(${f(EVEN / TYPICAL)} * textureLoad(src0, (p % ${n} + ${n}) % ${n}, 0).r); }
+fn rounded(p: vec2i) -> f32 {
+  var sum = 0.;
+  for (var dy = -1; dy <= 1; dy++) { for (var dx = -1; dx <= 1; dx++) { sum += pressed(p + vec2i(dx, dy)); } }
+  return sum / 9.;
+}
+fn fill(at: vec2f) -> vec4f {
+  let p = vec2i(at);
+  let slope = vec2f(rounded(p + vec2i(1, 0)) - rounded(p - vec2i(1, 0)), rounded(p + vec2i(0, 1)) - rounded(p - vec2i(0, 1))) / 2.;
+  return vec4f(0.5 + slope * ${f(wave / 16)}, 0.5 + rounded(p) / 2., 1.);
+}`;
+
+const RIPPLES = new WeakMap<EngineContext, Texture2D>();
+/** The sand's ripples, an engine's, drawn once. */
+export function sandRipples(engine: EngineContext): Texture2D {
+  let texture = RIPPLES.get(engine);
+  if (!texture) {
+    texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
+    const heights = createFilledTexture(engine, n, n, "r16float");
+    stampTexture(engine, heights, PACKET, PACKETS, true, "add");
+    fillTexture(engine, texture, SLOPES, [heights]);
+    retire(heights);
+    RIPPLES.set(engine, texture);
   }
-  // Scaled by its typical height, then pressed: every ridge to about the
-  // same height, its width where the pattern crosses zero, half a ridge
-  // apart, wherever packets crowd or thin; then its crest rounded.
-  let typical = 1e-6;
-  for (const h of height) typical += h * h;
-  typical = Math.sqrt(typical / (n * n));
-  for (let k = 0; k < n * n; k++) height[k] = Math.tanh((EVEN * height[k]) / typical);
-  for (let pass = 0; pass < ROUND; pass++) {
-    const was = height.slice();
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        let sum = 0;
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += was[((y + dy + n) % n) * n + ((x + dx + n) % n)];
-        height[y * n + x] = sum / 9;
-      }
-    }
-  }
-  const peak = 1;
-  const at = (x: number, y: number) => height[((y + n) % n) * n + ((x + n) % n)] / peak;
-  const slopes = new Float32Array(n * n * 2);
-  let steepest = 0;
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      const [gx, gy] = [(at(x + 1, y) - at(x - 1, y)) / 2, (at(x, y + 1) - at(x, y - 1)) / 2];
-      slopes.set([gx, gy], (y * n + x) * 2);
-      steepest += gx * gx + gy * gy;
-    }
-  }
-  steepest = 2 * Math.sqrt(steepest / (n * n));
-  const out = new Uint8Array(n * n * 4);
-  const byte = (u: number) => Math.round(Math.min(1, Math.max(0, u)) * 255);
-  for (let k = 0; k < n * n; k++) {
-    out[k * 4] = byte(0.5 + slopes[k * 2] / steepest / 2);
-    out[k * 4 + 1] = byte(0.5 + slopes[k * 2 + 1] / steepest / 2);
-    out[k * 4 + 2] = byte(0.5 + height[k] / peak / 2);
-    out[k * 4 + 3] = 255;
-  }
-  return out;
+  return texture;
 }

@@ -51,18 +51,26 @@ ${code}
   if (target.texture.mipLevelCount > 1) mipmaps(engine, target.texture);
 }
 
+/** A number from 0 to 1, the `k`th of thing `i`, for a stamp's code: the
+ *  same every time. */
+export const RANDOM = `fn rnd(i: u32, k: u32) -> f32 {
+  var h = i * 747796405u + k * 2891336453u + 1u;
+  h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+  return f32(((h >> 22u) ^ h) >> 8u) / 16777216.;
+}`;
+
 /** Shapes stamped onto a square `target` that wraps, `count` of them, each
- *  texel keeping the most any gives it: `code` is WGSL with `fn box(i: u32)
+ *  texel keeping the most any gives it, or `add`, their sum: `code` is WGSL with `fn box(i: u32)
  *  -> vec4f`, the texels shape `i` may touch (x0 y0 x1 y1, within the
  *  square or up to its side past it, where it comes round), and `fn
  *  stamp(i: u32, at: vec2f) -> vec4f`, what it gives the texel whose
  *  middle is `at`. Onto what is there, or `first` onto nothing. What a
  *  bake did a shape at a time in a worker, drawn. */
-export function stampTexture(engine: Engine, target: Texture2D, code: string, count: number, first: boolean) {
+export function stampTexture(engine: Engine, target: Texture2D, code: string, count: number, first: boolean, operation: "max" | "add" = "max") {
   const device = engine._device;
   const byCode = pipelines.get(device) ?? new Map<string, GPURenderPipeline>();
   pipelines.set(device, byCode);
-  const key = `stamp|${target.texture.format}|${target.width}|${code}`;
+  const key = `${operation}|${target.texture.format}|${target.width}|${code}`;
   let pipeline = byCode.get(key);
   if (!pipeline) {
     const module = device.createShaderModule({
@@ -77,11 +85,11 @@ struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, 
 }
 @fragment fn fs(v: V) -> @location(0) vec4f { return stamp(v.i, v.p.xy + v.round); }`,
     });
-    const most: GPUBlendComponent = { operation: "max", srcFactor: "one", dstFactor: "one" };
+    const blend: GPUBlendComponent = { operation, srcFactor: "one", dstFactor: "one" };
     pipeline = device.createRenderPipeline({
       layout: "auto",
       vertex: { module, entryPoint: "vs" },
-      fragment: { module, entryPoint: "fs", targets: [{ format: target.texture.format, blend: { color: most, alpha: most } }] },
+      fragment: { module, entryPoint: "fs", targets: [{ format: target.texture.format, blend: { color: blend, alpha: blend } }] },
       primitive: { topology: "triangle-strip" },
     });
     byCode.set(key, pipeline);
