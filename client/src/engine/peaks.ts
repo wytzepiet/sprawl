@@ -68,15 +68,20 @@ const [c2, s2] = [Math.cos(SECOND[1]), Math.sin(SECOND[1])];
 /** `slateRead(p)`: the slate at a point of the map, both sizes of it: its
  *  facing's x and y in `xy`, the turned one's turned back, and its height
  *  in `z`, -1 to 1. */
-const SLATE_READ = (() => {
-  const T = (uv: string) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`;
+export const slateRead = (slate: string) => {
+  const T = (uv: string) => `textureSampleBias(${slate}, ${slate}Sampler, ${uv}, ${f(CALM)})`;
   return `fn slateRead(p: vec2f) -> vec3f {
   let a = ${T(`p / ${f(SPAN)}`)};
   let b = ${T(`vec2f(p.x * ${f(c2)} - p.y * ${f(s2)}, p.x * ${f(s2)} + p.y * ${f(c2)}) / ${f(SPAN * SECOND[0])}`)};
   let bf = b.rg * 2. - 1.;
   return mix(a.rgb * 2. - 1., vec3f(bf.x * ${f(c2)} + bf.y * ${f(s2)}, bf.y * ${f(c2)} - bf.x * ${f(s2)}, b.b * 2. - 1.), ${f(SECOND[2])});
 }`;
-})();
+};
+const SLATE_READ = slateRead("slate");
+/** How far out past the cliff's wall's foot its ledge reaches at a point
+ *  `p` of the map, in tiles, broken along the slate: the rock's own edge
+ *  there, and the sea's on it (`water.ts`), by `slateRead`. */
+export const ledgeOut = (p: string) => `${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(${p}).z + 0.4 * slateRead(${p} * 3.1).z)`;
 
 /** `peakHeightAt(p, corner)`: the rock's height at a point of the map, and
  *  where its layers break, from the texture of the chunk whose heights
@@ -214,7 +219,7 @@ const CLIFF_CUT = `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffLedge = input.worldPos.z < ${f(WATER_Z / 2)} && abs(input.worldNormal.z) > 0.5;
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
-let cliffBreak = ${f(CLIFF_RUN)} + ${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
+let cliffBreak = ${f(CLIFF_RUN)} + ${ledgeOut("input.worldPos.xy")};
 if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }
 ${GRAD}`;
 const LAND_CLIFF = (() => {
@@ -226,10 +231,6 @@ let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)},
 baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
-
-/** Its ledge lies on the sea or the beach and casts nothing on them: out
- *  of the sun's map, sunk well under it there (`SET_BACK`). */
-const LEDGE_DARK = `\nif (abs(normal.z) > 0.5 && position.z < ${f(WATER_Z / 2)} && scene.viewProjection[2][3] == 0.) { finalWorld[3].z = finalWorld[3].z - 1.; }`;
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), its
  *  foot wet where it stands in the sea, not on a beach (the water's
@@ -248,7 +249,7 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
     bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shore ?? none! }),
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL + LEDGE_DARK, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
+        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,

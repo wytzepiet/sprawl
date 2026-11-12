@@ -339,7 +339,7 @@ export class TerrainChunks {
 
     // A mesh of what there is, if anything, placed from the chunk's corner
     // or, the mountains' laid where they are on the map, not.
-    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], moves = false) => {
+    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], as: "casts" | "lies" | "moves" = "casts") => {
       if (!buf.indices.length) return null;
       const mesh = meshOf(engine, `chunk_${key}_${name}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
       mesh.material = material;
@@ -348,9 +348,10 @@ export class TerrainChunks {
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
-      // What moves is drawn over the still town each frame, and casts nothing.
-      if (moves) live(mesh);
-      else this.casters.add(mesh);
+      // What lies on another casts nothing on it; nor does what moves,
+      // drawn over the still town each frame.
+      if (as === "casts") this.casters.add(mesh);
+      if (as === "moves") live(mesh);
       addToScene(scene, mesh);
       chunk.meshes.push(mesh);
       return mesh;
@@ -361,15 +362,18 @@ export class TerrainChunks {
     if (field) {
       const cliff = cliffMaterial(engine, field, shore);
       chunk.dispose.push(cliff.dispose);
-      const mesh = add("cliff", geometry.cliff, cliff.material, [ox, oy]);
-      if (mesh) mesh.lies = SHORE_LIES.cliff;
-      // And the sea on it, where a wave washes over its ledge and up its
-      // wall: the same mesh again, as water.
+      add("cliff", geometry.cliff, cliff.material, [ox, oy]);
+      // Its foot lies on the sea or the beach, and casts nothing on them;
+      // and the sea on it, where a wave washes over its ledge and up its
+      // wall: the same mesh again, as water, drawn over the still town
+      // each frame.
+      const foot = add("foot", geometry.foot, cliff.material, [ox, oy], "lies");
+      if (foot) foot.lies = SHORE_LIES.foot;
       if (shore) {
         const surf = waterMaterial(engine, shore, field, WATERS.Sea);
         chunk.dispose.push(surf.dispose);
         chunk.tick = surf.tick;
-        const on = add("surf", geometry.cliff, surf.material, [ox, oy], true);
+        const on = add("surf", geometry.foot, surf.material, [ox, oy], "moves");
         if (on) on.lies = SHORE_LIES.surf;
       }
     }
