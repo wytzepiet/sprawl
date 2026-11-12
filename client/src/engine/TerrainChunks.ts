@@ -1,7 +1,6 @@
 import { addToScene, readTexture, type Mesh, type Texture2D } from "./gpu";
 import { drawShore, shoreMap } from "./shore";
 import { cliffMap, drawCliff } from "./cliff";
-import { spread } from "./budget";
 import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
@@ -286,18 +285,6 @@ export class TerrainChunks {
     }
   }
 
-  /** A built chunk taken up in two parts, in frames' spare time
-   *  (`budget.ts`): its land and meshes, then its trees; neither if it was
-   *  unloaded or drawn anew while it waited. */
-  private *arriving(key: string, generation: number | undefined, geometry: ChunkGeometry) {
-    const current = () => this.tiles.has(key) && this.generation.get(key) === generation;
-    if (!current()) return;
-    this.applyGeometry(key, geometry);
-    perfMark("land in");
-    yield;
-    if (current()) void this.rebuildTrees(key);
-  }
-
   private async requestBuild(key: string): Promise<void> {
     await this.slated;
     perfMark("land asked");
@@ -330,7 +317,12 @@ export class TerrainChunks {
       this.disposeChunk(key);
       return;
     }
-    void spread(this.arriving(key, generation, geometry));
+    // Taken up as it comes, each chunk in its own turn of the worker's
+    // answers: not in line behind the town's objects (`budget.ts`), which
+    // it need not wait for.
+    this.applyGeometry(key, geometry);
+    perfMark("land in");
+    void this.rebuildTrees(key);
   }
 
   private applyGeometry(key: string, geometry: ChunkGeometry): void {
