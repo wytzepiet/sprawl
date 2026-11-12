@@ -2,7 +2,7 @@ import type { Rgb } from "./rgb";
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, CLIMB, LEAN, SHORE_REACH, WATER_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEAN, SHORE_REACH, WATER_Z } from "./objects/terrainGeometry";
 import { AFLOAT, CALM, cliffUv, ledgeOut, slateRead } from "./peaks";
 import { slate } from "./slateTexture";
 import { SPAN as SLATE_SPAN } from "./slate";
@@ -160,6 +160,15 @@ export const swashFn = (R: (uv: string) => string, name: string) =>
 
 const f = (x: number) => x.toFixed(4);
 const FAR = new Uint8Array([255]);
+/** How far out from the cliff's wall's foot a point is, by the cliff's
+ *  field there (`cliff.ts`), in tiles; as far as the field reaches is no
+ *  cliff near at all. */
+const footOf = (field: string) => `((${field} - 0.5) * ${f(2 * CLIFF_REACH)} - ${f(CLIFF_RUN)} + step(0.995, ${field}) * 9.)`;
+/** How far in over the rock a wave washes from its ledge's broken edge at
+ *  most, in tiles; and how far in a step up the wall counts for, a tile of
+ *  height: the higher this, the less of the wall a wave reaches. */
+const [WASH, STEEP] = [0.3, 2];
+
 const water = (surf: Rgb | null) => {
   const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
   const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
@@ -195,22 +204,27 @@ const water = (surf: Rgb | null) => {
     `let slate = ${slateTop};`,
     // How far out from the cliff's foot, its lip wandering along the slate
     // (`cliffField`); as far as the field reaches is no cliff near at all.
-    `let cliffFoot = (cliffField - 0.5) * ${f(2 * CLIFF_REACH)} - ${f(CLIFF_RUN)} + step(0.995, cliffField) * 9.;`,
+    `let cliffFoot = ${footOf("cliffField")};`,
     `let ashore = min(shore, max(cliffFoot, 0.));`,
-    // How far out from the water's edge on the rock: the edge at its
-    // ledge's, broken along the slate as the cliff breaks it (`peaks.ts`'
-    // `cliffBreak`), and as a wave washes in, over the ledge and up the
-    // wall's foot, where the sea is at the rock, not a beach.
+    // The rock at its foot rises from its ledge's edge, broken along the
+    // slate as the cliff breaks it (`peaks.ts`' `cliffBreak`): the ledge a
+    // little, inland, and the wall from where it stands on the ledge, by
+    // its own height. How far in from the water's edge on it a point is, as
+    // a wave washes in over it, where the sea is at the rock, not a beach.
     `let ledgeOut = ${ledgeOut(at)};`,
-    // Where on the rock: on its ledge and on the sea, as far out from its
-    // wall's foot as the cliff's field says; on its wall, the surf's alone,
-    // as far in under the foot as the wall leans for its height there.
-    `let rockAt = ${surf ? `select(cliffFoot, (${f(WATER_Z)} - input.worldPos.z) * ${f(LEAN)}, input.worldPos.z > ${f(WATER_Z + 0.001)})` : "cliffFoot"};`,
-    `let rockOver = rockAt - mix(ledgeOut, ${f(-CLIMB)}, rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore));`,
+    // On the wall, the field where the wall's foot is, straight under.
+    ...(surf
+      ? [
+          `let rockUp = input.worldPos.z - ${f(WATER_Z)};`,
+          `let rockFoot = ${footOf(`${read("waterCliff", cliffUv(`(${here} + normalize(input.worldNormal.xy + 1e-6) * rockUp * ${f(LEAN)})`))}.r`)};`,
+          `let rockIn = select(ledgeOut - cliffFoot, max(ledgeOut - rockFoot, 0.) + rockUp * ${f(STEEP)}, abs(input.worldNormal.z) < 0.5);`,
+        ]
+      : [`let rockIn = ledgeOut - cliffFoot;`]),
+    `let rockOver = ${f(WASH)} * rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore) - rockIn;`,
     // The surf is the water on the rock alone, none past its ledge's broken
     // edge, where its mesh runs on: the sea's colour, not the rock's, and
     // lying as flat as the sea does, however the rock stands.
-    ...(surf ? [`if (rockOver < 0. || rockAt > ledgeOut) { discard; }`, `baseColor = vec3f(${[surf.r, surf.g, surf.b].map(f).join(", ")});`, `N = vec3f(0., 0., 1.);`] : []),
+    ...(surf ? [`if (rockOver < 0. || rockIn < 0.) { discard; }`, `baseColor = vec3f(${[surf.r, surf.g, surf.b].map(f).join(", ")});`, `N = vec3f(0., 0., 1.);`] : []),
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
     // Worked out here, where every pixel goes, as a neighbour's reading is.

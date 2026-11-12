@@ -212,9 +212,6 @@ const TUCK = 0.05;
  *  this far at most, where the slate does not break it. */
 const LEDGE_UNDER = 0.2;
 export const LEDGE = 0.22;
-/** How far in under the wall's foot a wave washes at most, in tiles: over
- *  all the ledge and that far up the leaning wall (`water.ts`). */
-export const CLIMB = 0.05;
 
 // --- Chunk buffers -------------------------------------------------------
 
