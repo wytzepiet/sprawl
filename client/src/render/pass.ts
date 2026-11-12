@@ -258,8 +258,11 @@ function meshGroup(engine: Engine, mesh: Mesh): GPUBindGroup {
 }
 
 /** How far in front one thing lying on another is (`Mesh.lies`), in the
- *  least steps of depth the GPU tells apart there. */
-const LIE = 64;
+ *  least steps of depth the GPU tells apart there, and in its depth's
+ *  slope across a pixel: more than the still picture's depth is off by
+ *  where what moves is drawn over it, the picture slid to where the view
+ *  now is and its depth worked out again from its texels (`deferred.ts`). */
+const [LIE, LIE_SLOPE] = [1024, 2];
 
 /** How a mesh is drawn in a list: `undefined` while its pipeline builds, `null` if it is not drawn there. */
 function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): Draw | null | undefined {
@@ -286,7 +289,7 @@ function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): 
       vertex: { module, entryPoint: "vs", buffers: c.vertexBuffers },
       fragment: { module, entryPoint: "fs", targets: t.colors },
       primitive: { topology: "triangle-list", cullMode: c.doubleSided ? "none" : "back", frontFace: "ccw" },
-      depthStencil: { format: t.depth, depthWriteEnabled: t.depthWrite, depthCompare: t.depthCompare, depthBias: lies * LIE, depthBiasSlopeScale: lies },
+      depthStencil: { format: t.depth, depthWriteEnabled: t.depthWrite, depthCompare: t.depthCompare, depthBias: lies * LIE, depthBiasSlopeScale: lies * LIE_SLOPE },
     };
   });
   if (!pipeline) return pipeline;
