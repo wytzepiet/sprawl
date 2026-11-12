@@ -1,5 +1,6 @@
 import type { Bevelled } from "../creases";
 import type { Finish, ModelProp } from "./kit";
+import { perfMark } from "../PerfReport";
 
 /** A building's model asked of the worker that makes them
  *  (`modelsWorker.ts`): by name, its loading bay notched (`kit.ts`), and
@@ -24,7 +25,8 @@ export function modelOf(ask: Ask): Promise<Made> {
       w.onerror = (e) => console.error("models worker:", e.message);
       w.onmessage = ({ data }: MessageEvent<Made | "ready">) => (data === "ready" ? ready(w) : waiting.shift()!(data));
     });
-    asked.set(key, new Promise((done) => waiting.push(done)));
+    perfMark("model asked");
+    asked.set(key, new Promise((done) => waiting.push((made) => (perfMark("model in"), done(made)))));
     void worker.then((w) => w.postMessage(ask));
   }
   return asked.get(key)!;
