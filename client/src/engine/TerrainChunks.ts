@@ -6,9 +6,7 @@ import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, retire } from "./geometry";
 import * as Comlink from "comlink";
-import { theme } from "./theme";
 import {
-  buildTrees,
   CHUNK_SIZE,
   CHUNK_SKIRT,
   CHUNK_STRIDE,
@@ -64,6 +62,8 @@ export class TerrainChunks {
 
   private dirtyGeometry = new Set<string>();
   private dirtyTrees = new Set<string>();
+  /** How many times each chunk's trees were asked for: the last answer stands. */
+  private planting = new Map<string, number>();
   /**
    * Bumped whenever a chunk's geometry is invalidated. A build carries the
    * generation it started with, so results that arrive after the chunk was
@@ -217,7 +217,7 @@ export class TerrainChunks {
   // --- Rendering ---------------------------------------------------------
 
   private flush(): void {
-    for (const key of this.dirtyTrees) this.rebuildTrees(key);
+    for (const key of this.dirtyTrees) void this.rebuildTrees(key);
     this.dirtyTrees.clear();
 
     // Dispatch is free — the worker does the work; what it hands back is
@@ -242,7 +242,7 @@ export class TerrainChunks {
     this.applyGeometry(key, geometry);
     perfMark("land in");
     yield;
-    if (current()) this.rebuildTrees(key);
+    if (current()) void this.rebuildTrees(key);
   }
 
   private async requestBuild(key: string): Promise<void> {
@@ -323,14 +323,21 @@ export class TerrainChunks {
 
   }
 
-  /** Cheap enough to run on demand: placement is seeded off the tile coords. */
-  private rebuildTrees(key: string): void {
+  /** A chunk's trees planted in the worker, round what is built now, and
+   *  stood here when they come, unless it was asked again or drawn anew
+   *  meanwhile: placement is seeded off the tile coords. */
+  private async rebuildTrees(key: string): Promise<void> {
     const chunk = this.chunks.get(key);
     const tiles = this.tiles.get(key);
     if (!chunk || !tiles) return;
 
     const [cx, cy] = parseKey(key);
-    const sets = buildTrees(tiles, cx, cy, this.isBuilt, theme);
+    const [ox, oy] = [cx * CHUNK_SIZE - CHUNK_SKIRT, cy * CHUNK_SIZE - CHUNK_SKIRT];
+    const built = tiles.map((_, k) => +this.isBuilt(ox + (k % CHUNK_STRIDE), oy + Math.floor(k / CHUNK_STRIDE)));
+    const asked = (this.planting.get(key) ?? 0) + 1;
+    this.planting.set(key, asked);
+    const sets = await this.builder.trees(tiles, built, cx, cy);
+    if (this.chunks.get(key) !== chunk || this.planting.get(key) !== asked) return;
     for (const kind of ["broad", "conifer"] as const) {
       const { matrices, colors } = sets[kind];
       plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters);

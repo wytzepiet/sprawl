@@ -949,16 +949,19 @@ function noiseAt(x: number, y: number, span: number, salt: number): number {
   return mix(mix(at(ix, iy), at(ix + 1, iy), tx), mix(at(ix, iy + 1), at(ix + 1, iy + 1), tx), ty);
 }
 
+/** A chunk's trees, each where it stands and its colour: `built`, a
+ *  tile for tile with `tiles`, which of them are built on. */
 export function buildTrees(
   tiles: Uint8Array,
+  built: Uint8Array,
   chunkX: number,
   chunkY: number,
-  isBuilt: (x: number, y: number) => boolean,
   palette: { crowns: Rgb[]; conifers: Rgb[] },
 ): Record<Kind, { matrices: Float32Array; colors: Float32Array }> {
   const originX = chunkX * CHUNK_SIZE;
   const originY = chunkY * CHUNK_SIZE;
   const sets = { broad: { matrices: [] as number[], colors: [] as number[] }, conifer: { matrices: [] as number[], colors: [] as number[] } };
+  const isBuilt = (x: number, y: number) => built[(y - originY + CHUNK_SKIRT) * CHUNK_STRIDE + x - originX + CHUNK_SKIRT] > 0;
 
   // Which kind a stand grows at a point of the map, by the side of its edge it is on.
   const kindAt = (wx: number, wy: number): Kind => {

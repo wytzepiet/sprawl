@@ -1,6 +1,7 @@
 import * as Comlink from "comlink";
 import {
   buildChunk,
+  buildTrees,
   transferables,
   type ChunkGeometry,
   type TerrainPalette,
@@ -32,6 +33,11 @@ const api = {
     // Transfer, don't clone — cloning would copy ~280KB per chunk and undo
     // the point of building off-thread.
     return geometry && Comlink.transfer(geometry, transferables(geometry));
+  },
+  /** A chunk's trees, planted round what is built (`buildTrees`). */
+  trees(tiles: Uint8Array, built: Uint8Array, chunkX: number, chunkY: number) {
+    const sets = buildTrees(tiles, built, chunkX, chunkY, theme);
+    return Comlink.transfer(sets, [sets.broad.matrices.buffer, sets.broad.colors.buffer, sets.conifer.matrices.buffer, sets.conifer.colors.buffer]);
   },
 };
 
