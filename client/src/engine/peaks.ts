@@ -287,8 +287,8 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT(wash),
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
 // Where the sea stands on it, as it is cut by: foam at the water's edge on
-// its ledge, the rock wet behind.
-baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));
+// its ledge, the rock wet behind: all of its ledge, and up its wall's foot.
+baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, select(cliffSea, 0., cliffLedge))));
 let cliffFoam = select(0., cliffAfloat * (1. - smoothstep(0., ${f(LEDGE_FOAM * ROCK_SWASH)}, cliffSea - cliffReach)), cliffLedge);
 baseColor = mix(baseColor, vec3f(1.), cliffFoam);
 townShine = townShine * (1. - cliffFoam);`,
