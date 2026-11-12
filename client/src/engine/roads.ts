@@ -1,4 +1,4 @@
-import { addToScene, createFilledTexture, createTexture2DFromPixels, fillTexture, markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
+import { addToScene, createFilledTexture, createTexture2DFromPixels, fillTexture, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, retire } from "./geometry";
 import { theme } from "./theme";
@@ -242,10 +242,9 @@ export class RoadTiles {
       mesh.renderOrder = LAYER_ORDER.road;
       mesh.receiveShadows = true;
       const [matrices, slots, lifts] = [new Float32Array(64 * 16), new Float32Array(64), deck ? new Float32Array(64 * LIFT) : null];
-      setThinInstances(mesh, matrices, 64);
+      setThinInstances(mesh, matrices, 0);
       setMeshAttribute(engine, mesh, "roadSlot", slots);
       if (lifts) setMeshAttribute(engine, mesh, "roadLifts", lifts);
-      setThinInstanceCount(mesh, 0);
       return { mesh, material, matrices, slots, lifts, keys: [], dirty: false };
     });
     this.flush();
@@ -270,7 +269,6 @@ export class RoadTiles {
         l.set(kind.lifts);
         kind.lifts = l;
       }
-      setThinInstances(kind.mesh, kind.matrices, capacity);
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
     kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => (this.marks.push(marksOf(surface)), bake(surface)));
@@ -319,7 +317,7 @@ export class RoadTiles {
       kind.dirty = false;
       setMeshAttribute(this.engine, kind.mesh, "roadSlot", kind.slots);
       if (kind.lifts) setMeshAttribute(this.engine, kind.mesh, "roadLifts", kind.lifts);
-      setThinInstanceCount(kind.mesh, kind.keys.length);
+      setThinInstances(kind.mesh, kind.matrices, kind.keys.length);
     });
   }
 
