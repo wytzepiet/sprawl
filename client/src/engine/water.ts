@@ -1,7 +1,8 @@
+import type { Rgb } from "./rgb";
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEDGE, SHORE_REACH } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEDGE, SHORE_REACH, WATER_Z } from "./objects/terrainGeometry";
 import { AFLOAT, CALM, cliffUv } from "./peaks";
 import { slate } from "./slateTexture";
 import { SECOND, SPAN as SLATE_SPAN } from "./slate";
@@ -159,7 +160,7 @@ export const swashFn = (R: (uv: string) => string, name: string) =>
 
 const f = (x: number) => x.toFixed(4);
 const FAR = new Uint8Array([255]);
-const water = (surf: boolean) => {
+const water = (surf: Rgb | null) => {
   const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
   const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
   // Where a reading is on the texture: drifting, then turned.
@@ -198,12 +199,14 @@ const water = (surf: boolean) => {
     `let ashore = min(shore, max(cliffFoot, 0.));`,
     // How far out from the water's edge on the rock: the edge at its
     // ledge's, broken along the slate as the cliff breaks it (`peaks.ts`'
-    // `cliffBreak`), and as far in over the ledge as the wave has washed,
-    // where the sea is at the rock, not a beach.
-    `let ledgeEdge = cliffFoot - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, dpdx(${at}), dpdy(${at})) + 0.4 * ledgeSlate(${at} * 3.1, dpdx(${at}) * 3.1, dpdy(${at}) * 3.1));`,
-    `let rockOver = ledgeEdge + ${f(LEDGE_SINK)} * rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore);`,
-    // The surf is the water over the ledge alone.
-    ...(surf ? [`if (ledgeEdge >= 0. || rockOver < 0.) { discard; }`] : []),
+    // `cliffBreak`), and as a wave washes in, over the ledge and up the
+    // wall's foot, where the sea is at the rock, not a beach.
+    `let ledgeOut = ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, dpdx(${at}), dpdy(${at})) + 0.4 * ledgeSlate(${at} * 3.1, dpdx(${at}) * 3.1, dpdy(${at}) * 3.1));`,
+    `let rockOver = cliffFoot - mix(ledgeOut, ${f(-CLIMB)}, rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore));`,
+    // The surf is the water on the rock alone, its ledge and its wall's
+    // foot, not the lip its mesh has over them: the sea's colour, not the
+    // rock's, and lying as flat as the sea does, however the rock stands.
+    ...(surf ? [`if (rockOver < 0. || input.worldPos.z > ${f(WATER_Z / 2)}) { discard; }`, `baseColor = vec3f(${[surf.r, surf.g, surf.b].map(f).join(", ")});`, `N = vec3f(0., 0., 1.);`] : []),
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
     // Worked out here, where every pixel goes, as a neighbour's reading is.
@@ -299,17 +302,18 @@ const ledgeSlate = () => {
 }`;
 };
 
-/** How far in over the rock's ledge a wave washes from its broken edge,
- *  at most, in tiles. */
-const LEDGE_SINK = 0.1;
+/** How far in under the cliff's wall's foot a wave washes at most, in
+ *  tiles: over all its ledge and that far up its leaning wall. */
+const CLIMB = 0.05;
 /** A material for one chunk's water, its colour the mesh's own, by
  *  vertex, its shore the chunk's (`shore.ts`), if it has one, its land's
  *  cliff as `cliffField` gives it. Its clock ticks before each frame
  *  (`tick`); its own textures are let go with `dispose`. Where on its chunk a
- *  pixel is: the mesh's own frame, however placed. Or its `surf`'s: the
- *  same water where a wave has washed in over the rock's ledge and nowhere
- *  else, for a sheet of it lying on the ledge (`TerrainChunks`). */
-export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Texture2D | null, surf = false) {
+ *  pixel is: the mesh's own frame, however placed. Or its `surf`'s, the
+ *  sea's colour given: the same water where a wave has washed in over the
+ *  rock and nowhere else, for the cliff's own mesh, drawn again, so the
+ *  sea lies on the rock itself (`TerrainChunks`). */
+export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Texture2D | null, surf: Rgb | null = null) {
   // As far from either as each reaches, where there is none.
   const far = shore && cliff ? null : createTexture2DFromPixels(engine, FAR, 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
@@ -324,6 +328,7 @@ export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cl
     getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_DEFINITIONS: `${ledgeSlate()}\n${swashFn((uv) => `textureSampleLevel(waterRipple, waterRippleSampler, ${uv}, 0.).b`, "rockWash")}`, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water(surf) }),
   };
   const material = townMaterial([plugin], WATER_ROUGHNESS);
+  material.doubleSided = !!surf;
   return {
     material,
     tick: () => markMaterialUboDirty(material),

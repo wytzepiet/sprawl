@@ -42,6 +42,8 @@ interface ChunkMeshes {
   meshes: Mesh[];
   trees: Record<Kind, Grove>;
   dispose: (() => void)[];
+  /** Its surf's clock, where the sea washes over its cliff. */
+  tick: (() => void) | null;
 }
 
 /** The sea a shade deeper than a lake. */
@@ -69,7 +71,7 @@ export class TerrainChunks {
   private cliffs = new Map<string, Texture2D>();
   /** Each chunk's water, if it has any: its mesh, its clock, and its
    *  material's textures to let go. */
-  private waters = new Map<string, { meshes: Mesh[]; tick: () => void; dispose: () => void }>();
+  private waters = new Map<string, { mesh: Mesh; tick: () => void; dispose: () => void }>();
 
   private dirtyGeometry = new Set<string>();
   private dirtyTrees = new Set<string>();
@@ -108,6 +110,7 @@ export class TerrainChunks {
       this.updateDetail();
       this.flush();
       for (const water of this.waters.values()) water.tick();
+      for (const chunk of this.chunks.values()) chunk.tick?.();
     });
   }
 
@@ -191,29 +194,23 @@ export class TerrainChunks {
     if (!buf.indices.length) return;
     const { engine, scene, cull } = this.ctx;
     const [ox, oy] = parseKey(key).map((c) => c * CHUNK_SIZE);
-    const [shore, cliff] = [this.shores.get(key) ?? null, this.cliffs.get(key) ?? null];
-    // Its water; and on its rock's ledge its surf, the same water again
-    // where a wave washes in over the ledge.
-    const sheets = [waterMaterial(engine, shore, cliff), ...(shore && cliff ? [waterMaterial(engine, shore, cliff, true)] : [])];
-    const meshes = sheets.map((sheet, surf) => {
-      const mesh = meshOf(engine, `chunk_${key}_${surf ? "surf" : "water"}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
-      mesh.material = sheet.material;
-      mesh.receiveShadows = true;
-      mesh.position.x = ox;
-      mesh.position.y = oy;
-      mesh.lies = surf ? SHORE_LIES.surf : SHORE_LIES.water;
-      cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
-      live(mesh);
-      addToScene(scene, mesh);
-      return mesh;
-    });
-    this.waters.set(key, { meshes, tick: () => sheets.forEach((sheet) => sheet.tick()), dispose: () => sheets.forEach((sheet) => sheet.dispose()) });
+    const water = waterMaterial(engine, this.shores.get(key) ?? null, this.cliffs.get(key) ?? null);
+    const mesh = meshOf(engine, `chunk_${key}_water`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
+    mesh.material = water.material;
+    mesh.receiveShadows = true;
+    mesh.position.x = ox;
+    mesh.position.y = oy;
+    cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
+    live(mesh);
+    addToScene(scene, mesh);
+    this.waters.set(key, { mesh, tick: water.tick, dispose: water.dispose });
   }
 
   private drain(key: string): void {
     const water = this.waters.get(key);
     if (!water) return;
-    for (const mesh of water.meshes) this.ctx.cull.forget(mesh), drop(this.ctx.scene, mesh);
+    this.ctx.cull.forget(water.mesh);
+    drop(this.ctx.scene, water.mesh);
     water.dispose();
     this.waters.delete(key);
   }
@@ -337,12 +334,12 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [] };
+    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     // A mesh of what there is, if anything, placed from the chunk's corner
     // or, the mountains' laid where they are on the map, not.
-    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number]) => {
+    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], moves = false) => {
       if (!buf.indices.length) return null;
       const mesh = meshOf(engine, `chunk_${key}_${name}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
       mesh.material = material;
@@ -351,8 +348,10 @@ export class TerrainChunks {
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
+      // What moves is drawn over the still town each frame, and casts nothing.
+      if (moves) live(mesh);
+      else this.casters.add(mesh);
       addToScene(scene, mesh);
-      this.casters.add(mesh);
       chunk.meshes.push(mesh);
       return mesh;
     };
@@ -364,6 +363,15 @@ export class TerrainChunks {
       chunk.dispose.push(cliff.dispose);
       const mesh = add("cliff", geometry.cliff, cliff.material, [ox, oy]);
       if (mesh) mesh.lies = SHORE_LIES.cliff;
+      // And the sea on it, where a wave washes over its ledge and up its
+      // wall: the same mesh again, as water.
+      if (shore) {
+        const surf = waterMaterial(engine, shore, field, WATERS.Sea);
+        chunk.dispose.push(surf.dispose);
+        chunk.tick = surf.tick;
+        const on = add("surf", geometry.cliff, surf.material, [ox, oy], true);
+        if (on) on.lies = SHORE_LIES.surf;
+      }
     }
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights, [ox, oy]);

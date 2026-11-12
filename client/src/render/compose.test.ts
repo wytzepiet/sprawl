@@ -64,7 +64,7 @@ async function build() {
   const { waterMaterial } = await import("../engine/water");
   waterMaterial(ctx.engine, null, null);
   waterMaterial(ctx.engine, anything(), anything());
-  waterMaterial(ctx.engine, anything(), anything(), true);
+  waterMaterial(ctx.engine, anything(), anything(), { r: 0, g: 0, b: 1 });
   const { peakMaterial, cliffMaterial } = await import("../engine/peaks");
   peakMaterial(ctx.engine, new Uint16Array(64), [0, 0]);
   cliffMaterial(ctx.engine, anything(), null);
