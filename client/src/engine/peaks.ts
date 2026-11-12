@@ -227,6 +227,11 @@ baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
+/** Its ledge lies just over the water, and casts from the water's own
+ *  level: no shadow of it on the sea beside it, as of a thing afloat. In
+ *  the shadow map alone (`SET_BACK`). */
+const LEDGE_DOWN = `\nif (abs(normal.z) > 0.5 && position.z < ${f(LEDGE_Z / 2)} && scene.viewProjection[2][3] == 0.) { finalWorld[3].z = finalWorld[3].z - ${f(LEDGE_Z - WATER_Z)}; }`;
+
 /** A chunk's land's cliff's material, with its field (`cliffField`), its
  *  foot wet where it stands in the sea, not on a beach (the water's
  *  `shore`, if the chunk has water); its textures let go with `dispose`. */
@@ -244,7 +249,7 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
     bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shore ?? none! }),
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
+        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL + LEDGE_DOWN, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,

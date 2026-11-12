@@ -202,7 +202,7 @@ const water = (surf: boolean) => {
     // where the sea is at the rock, not a beach.
     `let ledgeEdge = cliffFoot - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, dpdx(${at}), dpdy(${at})) + 0.4 * ledgeSlate(${at} * 3.1, dpdx(${at}) * 3.1, dpdy(${at}) * 3.1));`,
     `let rockOver = ledgeEdge + ${f(LEDGE_SINK)} * rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore);`,
-    // The surf is the water over the ledge alone, barely any of it.
+    // The surf is the water over the ledge alone.
     ...(surf ? [`if (ledgeEdge >= 0. || rockOver < 0.) { discard; }`] : []),
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
@@ -280,7 +280,7 @@ const water = (surf: boolean) => {
     // The open sea's ripples, calmed where the waves come in, so theirs is
     // the shape there, and the swell's.
     `N = normalize(N + vec3f(-(${slope}) * mix(${f(INSHORE_CALM)}, 1., smoothstep(${f(WAVE_FROM * 0.5)}, ${f(SHORE_REACH)}, ashore)) - seaward * swellSlope, 0.));`,
-    `baseColor = (mix(baseColor * ${f(DEEP)}, mix(vec3f(${TURQUOISE.map(f).join(", ")}), vec3f(${PALE.map(f).join(", ")}), exp(-${surf ? '0.' : 'shore'} / ${f(NEAR)})), exp(-${surf ? '0.' : 'shore'} / ${f(CLARITY)})));`,
+    `baseColor = (mix(baseColor * ${f(DEEP)}, mix(vec3f(${TURQUOISE.map(f).join(", ")}), vec3f(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)})));`,
     `baseColor = (mix(baseColor, vec3f(mix(${f(FOAM_THIN)}, ${f(FOAM_WHITE)}, pow(frothed, ${f(FOAM_SCARCE)}))), frothed));`,
     // Foam is matte, its light scattered every way, not the sea's gloss.
     `roughness = mix(roughness, ${f(FOAM_ROUGH)}, frothed);`,
@@ -301,7 +301,7 @@ const ledgeSlate = () => {
 
 /** How far in over the rock's ledge a wave washes from its broken edge,
  *  at most, in tiles. */
-const LEDGE_SINK = 0.15;
+const LEDGE_SINK = 0.1;
 /** A material for one chunk's water, its colour the mesh's own, by
  *  vertex, its shore the chunk's (`shore.ts`), if it has one, its land's
  *  cliff as `cliffField` gives it. Its clock ticks before each frame
