@@ -1,10 +1,10 @@
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_REACH } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEDGE, SHORE_REACH } from "./objects/terrainGeometry";
 import { CALM, cliffUv } from "./peaks";
 import { slate } from "./slateTexture";
-import { SPAN as SLATE_SPAN } from "./slate";
+import { SECOND, SPAN as SLATE_SPAN } from "./slate";
 import { LACE_TILES, lace } from "./lace";
 import { ripples } from "./waves";
 
@@ -265,8 +265,9 @@ const water = () => {
     // whole is less opaque; none past a full cut.
     `let laceCut = 1.05 - 1.15 * cover;`,
     `let foam = max(smoothstep(laceCut, laceCut + ${f(LACE_SOFT)}, lace) * mix(${f(LACE_SHOW)}, 1., cover), crest);`,
-    // The rock's foam, thick at its foot.
-    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot);`,
+    // The rock's foam, thick at its foot: at its ledge's edge, broken along
+    // the slate as the cliff breaks it (`peaks.ts`' `cliffBreak`).
+    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, acrossX, acrossY) + 0.4 * ledgeSlate(${at} * 3.1, acrossX * 3.1, acrossY * 3.1)));`,
     `frothed = max(foam, rock * smoothstep(0.2, 0.7, fuzz * 0.6 + rock * rock * 0.6) * 0.85);`,
     `}`,
     // The open sea's ripples, calmed where the waves come in, so theirs is
@@ -278,6 +279,18 @@ const water = () => {
     `roughness = mix(roughness, ${f(FOAM_ROUGH)}, frothed);`,
   ].join("\n");
 };
+
+/** The slate's height at a point of the map, -1 to 1, both sizes of it,
+ *  as the cliff reads it (`peaks.ts`' `slateRead`), by the map's own
+ *  run across the screen: inside a branch, where no neighbour's reading is. */
+const LEDGE_SLATE = (() => {
+  const [c, s, calm] = [Math.cos(SECOND[1]), Math.sin(SECOND[1]), 2 ** CALM];
+  const turned = (v: string) => `vec2f(${v}.x * ${f(c)} - ${v}.y * ${f(s)}, ${v}.x * ${f(s)} + ${v}.y * ${f(c)})`;
+  const T = (scale: number, turn: (v: string) => string) => `textureSampleGrad(waterSlate, waterSlateSampler, ${turn("p")} / ${f(scale)}, ${turn("ax")} * ${f(calm / scale)}, ${turn("ay")} * ${f(calm / scale)}).b`;
+  return `fn ledgeSlate(p: vec2f, ax: vec2f, ay: vec2f) -> f32 {
+  return mix(${T(SLATE_SPAN, (v) => v)}, ${T(SLATE_SPAN * SECOND[0], turned)}, ${f(SECOND[2])}) * 2. - 1.;
+}`;
+})();
 
 /** A material for one chunk's water, its colour the mesh's own, by
  *  vertex, its shore the chunk's (`shore.ts`), if it has one, its land's
@@ -296,7 +309,7 @@ export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cl
     getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
     // Seconds, wrapped so a long session keeps the drift's precision.
     writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
-    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water() }),
+    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_DEFINITIONS: LEDGE_SLATE, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water() }),
   };
   const material = townMaterial([plugin], WATER_ROUGHNESS);
   return {
