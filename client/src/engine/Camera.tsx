@@ -1,3 +1,4 @@
+import { perfMark } from "./PerfReport";
 import { onCleanup } from "solid-js";
 import { createFreeCamera } from "./gpu";
 import { useEngine } from "./Canvas";
@@ -212,6 +213,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
     // opening on the first frames, and caching a dropped send would leave the
     // client subscribed to nothing until it happened to pan across a chunk.
     if (!send({ type: "SetChunks", data })) return;
+    perfMark("view asked");
     lastChunks = data;
     lastWelcome = welcome;
     lastSent = performance.now();

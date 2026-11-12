@@ -1,4 +1,5 @@
 import { encode, decode } from "@msgpack/msgpack";
+import { perfMark } from "../engine/PerfReport";
 import type { ClientMessage, ServerMessage } from "../generated";
 
 export interface Connection {
@@ -22,8 +23,7 @@ export function createConnection(
     ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
 
-    ws.onopen = () => {
-    };
+    ws.onopen = () => perfMark("line open");
 
     ws.onmessage = (ev) => {
       const msg = decode(new Uint8Array(ev.data)) as ServerMessage;
@@ -31,6 +31,7 @@ export function createConnection(
     };
 
     ws.onclose = () => {
+      perfMark("line closed");
       if (!closed) {
         setTimeout(connect, 1000);
       }

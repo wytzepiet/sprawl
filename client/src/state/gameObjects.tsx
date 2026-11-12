@@ -10,6 +10,7 @@ import {
 } from "solid-js";
 import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
+import { perfMark } from "../engine/PerfReport";
 import { syncFromClock } from "../network/clock";
 import { setTown, tell } from "./town";
 import type { Place } from "../engine/pen";
@@ -392,6 +393,7 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
 
   const line = props.connect((msg) => {
     hearPlanner(msg, laid);
+    perfMark(`heard ${msg.type}`);
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
