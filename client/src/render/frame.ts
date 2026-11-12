@@ -1,6 +1,6 @@
 import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "./camera";
 import { FORWARD_GROUP, SCENE_BYTES, SCENE_OFFSETS, TILE } from "./compose";
-import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, RELIGHT } from "./deferred";
+import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, OPEN, RELIGHT } from "./deferred";
 import { brdfLut } from "./env";
 import type { Mesh } from "./mesh";
 import { count, DrawList, layoutOf, type Targets } from "./pass";
@@ -44,6 +44,8 @@ const [EDGE, ZOOMED, MOVING_MS] = [0.95, 1.25, 50];
 const knobs = new URLSearchParams(globalThis.location?.search ?? "");
 /** The sun moves the light on the picture this often (`?relight=<ms>`). */
 const RELIGHT_MS = Number(knobs.get("relight") ?? 1000);
+/** How much the sky a nook cannot see darkens it (`?ao=0` none, `?ao=only` that alone, in grey). */
+const AO = knobs.get("ao") === "only" ? -1 : Number(knobs.get("ao") ?? 1);
 /** The picture's size against the screen's (`?pictureScale=`). */
 const SCALE = Number(knobs.get("pictureScale") ?? 1) * (1 + 2 * MARGIN);
 /** A picture is drawn over this many frames (`?spread=`), half as many
@@ -181,7 +183,7 @@ function makeFrame(scene: Scene): Frame {
   let maps: { size: number; still: GPUTexture; live: GPUTexture } | null = null;
   /** Two G-buffers: the one shown, `sets[front]`, and the next, drawn into
    *  over the frames (`SPREAD`); and the light on the one shown. */
-  let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture } | null = null;
+  let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture; open: GPUTexture } | null = null;
   let front = 0;
   /** The next picture as it is drawn: the meshes in it so far, and the frames left. */
   let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[]; seen: Map<Mesh, Seen> } | null = null;
@@ -206,9 +208,9 @@ function makeFrame(scene: Scene): Frame {
   const layerView = (t: GPUTexture) => t.createView({ dimension: "2d", baseArrayLayer: 0, arrayLayerCount: 1 });
 
   // The forward pass's group 3, and the relight's and composite's group, made again when what they bind is new.
-  let resources: { key: string; forward: GPUBindGroup; relight: GPUBindGroup[]; composite: GPUBindGroup[] } | null = null;
+  let resources: { key: string; forward: GPUBindGroup; open: GPUBindGroup[]; relight: GPUBindGroup[]; composite: GPUBindGroup[] } | null = null;
   const FORWARD_LAYOUT = layoutOf(device, FORWARD_GROUP);
-  const deferredEntries = (lit: boolean): GPUBindGroupLayoutEntry[] => [
+  const deferredEntries = (lit: boolean, open: boolean): GPUBindGroupLayoutEntry[] => [
     { binding: 0, visibility: 2, buffer: { type: "uniform" } },
     ...[1, 2, 3].map((binding) => ({ binding, visibility: 2, texture: { sampleType: "unfilterable-float" as const } })),
     { binding: 4, visibility: 2, texture: { sampleType: "depth" } },
@@ -222,8 +224,13 @@ function makeFrame(scene: Scene): Frame {
     { binding: 12, visibility: 2, sampler: {} },
     ...(lit ? [{ binding: 13, visibility: 2, texture: { sampleType: "unfilterable-float" as const } }] : []),
     { binding: 14, visibility: 2, buffer: { type: "read-only-storage" } },
+    ...(open ? [{ binding: 15, visibility: 2, texture: { sampleType: "unfilterable-float" as const } }] : []),
   ];
-  const [RELIGHT_LAYOUT, COMPOSITE_LAYOUT] = [layoutOf(device, { entries: deferredEntries(false) }), layoutOf(device, { entries: deferredEntries(true) })];
+  const [OPEN_LAYOUT, RELIGHT_LAYOUT, COMPOSITE_LAYOUT] = [
+    layoutOf(device, { entries: deferredEntries(false, false) }),
+    layoutOf(device, { entries: deferredEntries(false, true) }),
+    layoutOf(device, { entries: deferredEntries(true, false) }),
+  ];
   const fullscreen = (code: string, layout: GPUBindGroupLayout, format: GPUTextureFormat, depth: boolean) => {
     const module = device.createShaderModule({ code });
     count("pipelines", 1);
@@ -234,6 +241,7 @@ function makeFrame(scene: Scene): Frame {
       ...(depth ? { depthStencil: { format: "depth32float" as const, depthWriteEnabled: true, depthCompare: "always" as const } } : {}),
     });
   };
+  let openPipeline: GPURenderPipeline | null = null;
   let relightPipeline: GPURenderPipeline | null = null;
   let compositePipeline: GPURenderPipeline | null = null;
 
@@ -262,7 +270,10 @@ function makeFrame(scene: Scene): Frame {
     resources = {
       key,
       forward: device.createBindGroup({ layout: FORWARD_LAYOUT, entries: [...common.map((e) => ({ binding: e.binding - 5, resource: e.resource })), { binding: 8, resource: { buffer: screenBins.buffer } }] }),
-      relight: gbuffers.map((g) => device.createBindGroup({ layout: RELIGHT_LAYOUT, entries: [...g, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }] })),
+      open: gbuffers.map((g) => device.createBindGroup({ layout: OPEN_LAYOUT, entries: [...g, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }] })),
+      relight: gbuffers.map((g) =>
+        device.createBindGroup({ layout: RELIGHT_LAYOUT, entries: [...g, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }, { binding: 15, resource: picture!.open.createView() }] }),
+      ),
       composite: gbuffers.map((g) => device.createBindGroup({ layout: COMPOSITE_LAYOUT, entries: [...g, ...common, { binding: 13, resource: picture!.lit.createView() }, { binding: 14, resource: { buffer: screenBins.buffer } }] })),
     };
     forward.dirty = true;
@@ -299,6 +310,8 @@ function makeFrame(scene: Scene): Frame {
   /** A live caster changed, or the sun's map moved: the live map is drawn again. */
   let liveDue = true;
   let relightDue = true;
+  /** The picture changed: how open it is to the sky is found again, before its relight. */
+  let openDue = true;
   let [drawnAt, from, lastView, relitAt] = [-Infinity, "", "", -Infinity];
   let fit: { dir: number[]; version: number; matrix: Float32Array; caster: Float32Array } | null = null;
   let stillVp: Float32Array | null = null;
@@ -417,9 +430,9 @@ function makeFrame(scene: Scene): Frame {
     }
     const [pw, ph] = [Math.round(w * SCALE), Math.round(h * SCALE)];
     if (deferred() && (!picture || picture.w !== pw || picture.h !== ph)) {
-      if (picture) for (const t of [...picture.sets.flatMap((g) => [g.albedo, g.normal, g.extra, g.depth]), picture.lit]) t.destroy();
+      if (picture) for (const t of [...picture.sets.flatMap((g) => [g.albedo, g.normal, g.extra, g.depth]), picture.lit, picture.open]) t.destroy();
       const set = (): GBuffer => ({ albedo: texture(pw, ph, "rgba8unorm"), normal: texture(pw, ph, "rgba8unorm"), extra: texture(pw, ph, "rgba8unorm"), depth: texture(pw, ph, "depth32float") });
-      picture = { w: pw, h: ph, sets: [set(), set()], lit: texture(pw, ph, "rgba16float") };
+      picture = { w: pw, h: ph, sets: [set(), set()], lit: texture(pw, ph, "rgba16float"), open: texture(pw, ph, "r8unorm") };
       [from, next, stillVp] = ["", null, null];
     }
     bindResources();
@@ -641,7 +654,7 @@ function makeFrame(scene: Scene): Frame {
           put("eye", next.eye);
           [seen, within] = [next.seen, new Map()];
           next = null;
-          relightDue = true;
+          relightDue = openDue = true;
           scene._pictured(why);
           count("gbuffer", 1);
         }
@@ -666,7 +679,7 @@ function makeFrame(scene: Scene): Frame {
         pass.end();
         mark(engine, "patch");
         staleSince = Infinity;
-        relightDue = true;
+        relightDue = openDue = true;
         engine._drew = 3;
         count("patches", 1);
         scene._pictured("patch");
@@ -685,7 +698,7 @@ function makeFrame(scene: Scene): Frame {
         put("sunColor", [sun.diffuse[0] * sun.intensity, sun.diffuse[1] * sun.intensity, sun.diffuse[2] * sun.intensity, 0]);
       }
       put("shadowInfo", [shadowing ? 0 : 1, gen?.mapSize ?? 1, 1 / (gen?.mapSize ?? 1), 0]);
-      put("image", [ip.exposure, ip.contrast ?? 1, 0.8, 0]);
+      put("image", [ip.exposure, ip.contrast ?? 1, 0.8, AO]);
       put("screen", [w, h, 0, 0]);
       put("clear", [clear.r, clear.g, clear.b, 1]);
       if (scene._env) put("sh", scene._env.sh);
@@ -697,6 +710,16 @@ function makeFrame(scene: Scene): Frame {
         relightPipeline ??= fullscreen(RELIGHT, RELIGHT_LAYOUT, "rgba16float", false);
         pictureBins.fill(stillVp!, picture!.w, picture!.h, lamps, 0);
         bindResources();
+        if (openDue) {
+          openDue = false;
+          openPipeline ??= fullscreen(OPEN, OPEN_LAYOUT, "r8unorm", false);
+          const pass = encoder.beginRenderPass({ colorAttachments: [{ view: picture!.open.createView(), loadOp: "clear", storeOp: "store", clearValue: [1, 1, 1, 1] }] });
+          pass.setPipeline(openPipeline);
+          pass.setBindGroup(0, resources!.open[front]!);
+          pass.draw(3);
+          pass.end();
+          mark(engine, "open");
+        }
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: picture!.lit.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
         pass.setPipeline(relightPipeline);
         pass.setBindGroup(0, resources!.relight[front]!);

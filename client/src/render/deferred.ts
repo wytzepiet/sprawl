@@ -22,7 +22,7 @@ export const FRAME_FIELDS = [
   ["sunColor", 4],
   /** darkness (1 with shadows off), mapSize, 1 / mapSize, frustum edge falloff. */
   ["shadowInfo", 4],
-  /** exposure, contrast, the sky's lod scale, 0. */
+  /** exposure, contrast, the sky's lod scale, how much the open sky's share is felt (`?ao=`, less than 0 to see it alone). */
   ["image", 4],
   /** The screen's width and height. */
   ["screen", 4],
@@ -56,11 +56,16 @@ struct Light { position: vec4f, color: vec4f, direction: vec4f }
 @group(0) @binding(11) var brdfLUT: texture_2d<f32>;
 @group(0) @binding(12) var brdfSampler: sampler;
 ${binsAt(0, 14)}
+@group(0) @binding(15) var openSky: texture_2d<f32>;
 const PI: f32 = 3.14159265358979323846;
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   return vec4f(f32((i << 1u) & 2u) * 2. - 1., f32(i & 2u) * 2. - 1., 0., 1.);
 }
 fn unproject(m: mat4x4f, ndc: vec3f) -> vec3f { let p = m * vec4f(ndc, 1.); return p.xyz / p.w; }
+fn pictureAt(texel: vec2i, size: vec2f) -> vec3f {
+  let t = (vec2f(texel) + 0.5) / size;
+  return unproject(f.stillInverse, vec3f(t.x * 2. - 1., 1. - t.y * 2., textureLoad(gDepth, texel, 0)));
+}
 fn distributionGGX(NdotH: f32, alphaG: f32) -> f32 { let a2 = alphaG * alphaG; let d = NdotH * NdotH * (a2 - 1.0) + 1.0; return a2 / (PI * d * d); }
 fn geometrySmithGGX(NdotL: f32, NdotV: f32, alphaG: f32) -> f32 {
   let a2 = alphaG * alphaG;
@@ -150,8 +155,67 @@ fn lamp(s: Surface, l: Light, V: vec3f) -> vec3f {
 }
 `;
 
+/** How much of the open sky each pixel of the picture sees, from the picture
+ *  itself: what stands round it in its depth (a wall's foot, a house on the
+ *  grass), and what its neighbours' normals say folds in over it, which is
+ *  how shapes only painted (a ledge, a slate crack) are felt too. Drawn
+ *  as the picture changes, never for the sun. */
+export const OPEN = /* wgsl */ `${COMMON}
+const TAPS = 16;
+/** How far round, in tiles, a pixel looks for what shelters it. */
+const REACH = 0.8;
+/** How near a painted fold must be to be felt: paint is fine, and further off its noise is all a tap finds. */
+const FOLD = 0.25;
+@fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
+  let texel = vec2i(p.xy);
+  if (textureLoad(gDepth, texel, 0) <= 0.) { return vec4f(1.); }
+  let size = vec2f(textureDimensions(gDepth));
+  let at = pictureAt(texel, size);
+  let N = normalize(textureLoad(gNormal, texel, 0).xyz * 2. - 1.);
+  let T = normalize(cross(select(vec3f(0., 0., 1.), vec3f(1., 0., 0.), abs(N.z) > 0.9), N));
+  let B = cross(N, T);
+  // A turn of the taps for each pixel (interleaved gradient noise); the relight smooths it.
+  let spin = 6.2831853 * fract(52.9829189 * fract(dot(p.xy, vec2f(0.06711056, 0.00583715))));
+  var shut = 0.;
+  for (var i = 0; i < TAPS; i++) {
+    let k = f32(i) + 0.5;
+    let a = spin + k * 2.39996323;
+    let c = f.stillView * vec4f(at + (T * cos(a) + B * sin(a)) * REACH * sqrt(k / f32(TAPS)), 1.);
+    let q = clamp(vec2i(vec2f(c.x / c.w * 0.5 + 0.5, 0.5 - c.y / c.w * 0.5) * size), vec2i(0), vec2i(size) - 1);
+    if (textureLoad(gDepth, q, 0) <= 0.) { continue; }
+    let v = pictureAt(q, size) - at;
+    let d = length(v) + 1e-4;
+    // Something standing over the tap: the sky it hides.
+    let stands = max(dot(v, N) / d - 0.1, 0.);
+    // The tap's surface turned back toward this pixel: a fold, real or painted.
+    let across = v - N * dot(v, N);
+    let Nq = normalize(textureLoad(gNormal, q, 0).xyz * 2. - 1.);
+    let folds = max(-dot(Nq, across) / (length(across) + 1e-4) - 0.25, 0.) * saturate(1. - d / FOLD);
+    shut += max(stands, folds) / (1. + d * d / (REACH * REACH));
+  }
+  return vec4f(1. - 1.5 * shut / f32(TAPS));
+}`;
+
 /** The G-buffer lit: sun in the still map's shade, sky, lamps; linear, glow added. */
 export const RELIGHT = /* wgsl */ `${COMMON}
+/** The sun is dimmed in nooks too, by this share of the sky's: sky light
+ *  alone hardly shows in daylight. */
+const SUN_IN_NOOKS = 0.6;
+/** The open sky here, its taps' noise smoothed over 4x4 of like depth. */
+fn openAt(texel: vec2i, depth: f32) -> f32 {
+  let last = vec2i(textureDimensions(openSky)) - 1;
+  var sum = 0.;
+  var weight = 0.;
+  for (var y = -2; y < 2; y++) {
+    for (var x = -2; x < 2; x++) {
+      let q = clamp(texel + vec2i(x, y), vec2i(0), last);
+      let w = saturate(1. - abs(textureLoad(gDepth, q, 0) - depth) / (depth * 0.02)) + 1e-4;
+      sum += textureLoad(openSky, q, 0).r * w;
+      weight += w;
+    }
+  }
+  return 1. - (1. - sum / weight) * abs(f.image.w);
+}
 @fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
   let texel = vec2i(p.xy);
   let depth = textureLoad(gDepth, texel, 0);
@@ -177,9 +241,11 @@ export const RELIGHT = /* wgsl */ `${COMMON}
   env = mix(env, irradiance, alphaG);
   let envReflectance = ((1.0 - s.F0) * brdf.x + s.F0 * brdf.y) * clamp((NdotVU + 1.) * (NdotVU + 1.) - 1.0 + 1., 0.0, 1.0);
   let energy = 1.0 + s.F0 * (1.0 / max(brdf.y, 0.001) - 1.0);
-  var color = irradiance * s.albedo + env * envReflectance * energy + direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade);
+  let skyOpen = openAt(texel, depth);
+  var color = (irradiance * s.albedo + env * envReflectance * energy) * skyOpen + direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade) * mix(1., skyOpen, SUN_IN_NOOKS);
   let bin = _r_binAt(p.xy, size.x);
   for (var i = bin.x; i < bin.x + bin.y; i++) { color += lamp(s, lights[bins[i]], V); }
+  if (f.image.w < 0.) { return vec4f(vec3f(skyOpen * 0.3), 1.); }
   return vec4f(s.lit * color + s.glow, 1.);
 }`;
 
@@ -188,10 +254,6 @@ export const RELIGHT = /* wgsl */ `${COMMON}
  *  height there where the ray is met again, twice more. */
 const FIND = /* wgsl */ `
 struct Found { texel: vec2i, depth: f32, at: vec3f, eye: vec3f, };
-fn pictureAt(texel: vec2i, size: vec2f) -> vec3f {
-  let t = (vec2f(texel) + 0.5) / size;
-  return unproject(f.stillInverse, vec3f(t.x * 2. - 1., 1. - t.y * 2., textureLoad(gDepth, texel, 0)));
-}
 fn find(pixel: vec2f) -> Found {
   let size = vec2f(textureDimensions(gDepth));
   let ndc = vec2f(pixel.x / f.screen.x * 2. - 1., 1. - pixel.y / f.screen.y * 2.);
