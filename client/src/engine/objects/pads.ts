@@ -102,9 +102,14 @@ export function padOf(b: Building): Pad {
     const free: number[] = [];
     for (let a = -f.w / 2 + 0.12; a <= f.w / 2 - 0.12; a += PITCH) if (Math.abs(a - g) > half + 0.08 && cars.every((c) => Math.abs(a - c) > CAR_HALF + ITEM / 2 + 0.01)) free.push(a);
     const kept = goods.filter((good) => most(b, good) > 0);
-    const each = Math.max(1, Math.floor(free.length / Math.max(1, kept.length)));
+    // A shop keeps more goods as the town makes more: the places along
+    // the wall, in as many rows out from it as give each good one.
+    const along = free.length ? free : [g > 0 ? -f.w / 2 + 0.12 : f.w / 2 - 0.12];
+    const rows = Math.ceil(kept.length / along.length);
+    const places = Array.from({ length: rows }, (_, r) => along.map((a) => f.pose(f.at, a, out + r * PITCH))).flat();
+    const each = Math.floor(places.length / Math.max(1, kept.length));
     const bays = kept.map((good, k) => {
-      const slots = free.slice(k * each, (k + 1) * each).map((a) => f.pose(f.at, a, out));
+      const slots = places.slice(k * each, (k + 1) * each);
       return { good, slots, stack: Math.ceil(most(b, good) / Math.max(1, slots.length)), ...front };
     });
     return { bays, homes: forklifts((k) => f.pose(f.at, g + (k % 2 ? -1 : 1) * (half + 0.06), out)), homeInside: false, exits: [], aisle: null, docked: true };
