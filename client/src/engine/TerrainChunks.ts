@@ -14,7 +14,9 @@ import {
   type Ground,
   type ChunkGeometry,
   type MeshBuffers,
+  waterOf,
 } from "./objects/terrainGeometry";
+import { theme } from "./theme";
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
@@ -31,15 +33,17 @@ export { CHUNK_SIZE };
 /** Sun frustum half-extent beyond which per-chunk detail is dropped. */
 const DETAIL_MAX_HALF = 30;
 
-/** A chunk's meshes, as last drawn: its water; its land's cliff; its
- *  mountains. None where it has none. And its trees, kept as it is drawn
- *  again; what goes with its materials; and its water's clock. */
+/** A chunk's meshes, as last drawn: its land's cliff; its mountains. None
+ *  where it has none. And its trees, kept as it is drawn again; and what
+ *  goes with its materials. */
 interface ChunkMeshes {
   meshes: Mesh[];
   trees: Record<Kind, Grove>;
   dispose: (() => void)[];
-  tick: (() => void) | null;
 }
+
+/** The sea a shade deeper than a lake. */
+const WATERS = { Water: theme.water, Sea: { r: theme.water.r * 0.85, g: theme.water.g * 0.85, b: theme.water.b * 0.9 } };
 
 const floorDiv = (a: number, b: number) => Math.floor(a / b);
 const parseKey = (key: string) => key.split(",").map(Number) as [number, number];
@@ -59,6 +63,9 @@ export class TerrainChunks {
   private chunks = new Map<string, ChunkMeshes>();
   /** Each chunk's shore, if it has water (`shore.ts`). */
   private shores = new Map<string, Texture2D>();
+  /** Each chunk's water, if it has any: its mesh, its clock, its
+   *  material's textures to let go, and its land's cliff as it was drawn by. */
+  private waters = new Map<string, { mesh: Mesh; tick: () => void; dispose: () => void; cliff: Uint8Array | null }>();
 
   private dirtyGeometry = new Set<string>();
   private dirtyTrees = new Set<string>();
@@ -96,7 +103,7 @@ export class TerrainChunks {
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
       this.flush();
-      for (const chunk of this.chunks.values()) chunk.tick?.();
+      for (const water of this.waters.values()) water.tick();
     });
   }
 
@@ -116,6 +123,7 @@ export class TerrainChunks {
     this.heights.set(key, heights);
     this.invalidate(key);
     this.lay(key);
+    this.flood(key);
   }
 
   /** A chunk's tiles as the land is drawn on them. A wood's tile built on
@@ -162,6 +170,38 @@ export class TerrainChunks {
   }
 
 
+  /** A chunk's water, up as its tiles arrive, not when the worker is done
+   *  with its land: a pan over the sea shows it at once. Where it breaks on
+   *  its land's cliff comes with the cliff (`applyGeometry`), and is kept
+   *  when the water is made again. It ripples every frame: drawn over the
+   *  still town, not into it. */
+  private flood(key: string, cliff = this.waters.get(key)?.cliff ?? null): void {
+    this.drain(key);
+    const buf = waterOf(this.drawn(key), WATERS);
+    if (!buf.indices.length) return;
+    const { engine, scene, cull } = this.ctx;
+    const [ox, oy] = parseKey(key).map((c) => c * CHUNK_SIZE);
+    const water = waterMaterial(engine, this.shores.get(key) ?? null, cliff);
+    const mesh = meshOf(engine, `chunk_${key}_water`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
+    mesh.material = water.material;
+    mesh.receiveShadows = true;
+    mesh.position.x = ox;
+    mesh.position.y = oy;
+    cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
+    live(mesh);
+    addToScene(scene, mesh);
+    this.waters.set(key, { mesh, tick: water.tick, dispose: water.dispose, cliff });
+  }
+
+  private drain(key: string): void {
+    const water = this.waters.get(key);
+    if (!water) return;
+    this.ctx.cull.forget(water.mesh);
+    drop(this.ctx.scene, water.mesh);
+    water.dispose();
+    this.waters.delete(key);
+  }
+
   /** Whether a tile of land has water beside it. */
   private ashore(x: number, y: number, typeAt: (x: number, y: number) => Ground | undefined): boolean {
     const wet = (t: Ground | undefined) => t === "Sea" || t === "Water";
@@ -185,6 +225,7 @@ export class TerrainChunks {
     this.ground.delete(key);
     const shore = this.shores.get(key);
     if (shore) retire(shore), this.shores.delete(key);
+    this.drain(key);
     this.disposeChunk(key);
   }
 
@@ -200,7 +241,7 @@ export class TerrainChunks {
   /** A quay built or gone at the water's edge: the coast steps back under
    *  it, or comes back (`drawn`), its water and its cliff with it. */
   markQuay(x: number, y: number): void {
-    for (const key of this.around(x, y)) this.lay(key, [x - 2, y - 2, x + 3, y + 3]), this.invalidate(key);
+    for (const key of this.around(x, y)) this.lay(key, [x - 2, y - 2, x + 3, y + 3]), this.flood(key), this.invalidate(key);
   }
 
   /** The trees on a tile planted again, nothing else: a building in hand
@@ -281,42 +322,38 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [], tick: null };
+    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [] };
     if (old) this.dropMeshes(old);
 
     // A mesh of what there is, if anything, placed from the chunk's corner
     // or, the mountains' laid where they are on the map, not.
-    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], shadows: { cast: boolean; receive: boolean }, moves = false) => {
+    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number]) => {
       if (!buf.indices.length) return null;
       const mesh = meshOf(engine, `chunk_${key}_${name}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
       mesh.material = material;
-      mesh.receiveShadows = shadows.receive;
+      mesh.receiveShadows = true;
       mesh.position.x = at[0];
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
-      if (moves) live(mesh);
       addToScene(scene, mesh);
-      if (shadows.cast) this.casters.add(mesh);
+      this.casters.add(mesh);
       chunk.meshes.push(mesh);
       return mesh;
     };
     // Its own materials: for its own shore, its own field, its own heights.
     const shore = this.shores.get(key) ?? null;
-    const water = waterMaterial(engine, shore, geometry.cliffField);
-    chunk.dispose.push(water.dispose);
-    chunk.tick = water.tick;
-    // The water ripples every frame: it is drawn over the still town, not into it.
-    add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true }, true);
+    // Its water breaks on its cliff as it now is.
+    if (geometry.cliffField || this.waters.get(key)?.cliff) this.flood(key, geometry.cliffField);
     if (geometry.cliffField) {
       const cliff = cliffMaterial(engine, geometry.cliffField, shore);
       chunk.dispose.push(cliff.dispose);
-      add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: true, receive: true });
+      add("cliff", geometry.cliff, cliff.material, [ox, oy]);
     }
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights, [ox, oy]);
       chunk.dispose.push(peaks.dispose);
-      add("peaks", geometry.peaks, peaks.material, [0, 0], { cast: true, receive: true });
+      add("peaks", geometry.peaks, peaks.material, [0, 0]);
     }
     this.chunks.set(key, chunk);
     this.applyDetail(chunk);
@@ -379,6 +416,7 @@ export class TerrainChunks {
   dispose(): void {
     this.stop();
     for (const key of [...this.chunks.keys()]) this.disposeChunk(key);
+    for (const key of [...this.waters.keys()]) this.drain(key);
     this.ground.dispose();
     for (const shore of this.shores.values()) retire(shore);
     this.shores.clear();

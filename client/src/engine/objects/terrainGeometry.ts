@@ -12,8 +12,6 @@ export const CHUNK_SIZE = 32;
 export const CHUNK_SKIRT = 2;
 export const CHUNK_STRIDE = CHUNK_SIZE + CHUNK_SKIRT * 2;
 
-export type TerrainPalette = Record<Ground, Rgb>;
-
 /** One mesh's vertex data. All transferable. */
 export interface MeshBuffers {
   positions: Float32Array;
@@ -24,8 +22,6 @@ export interface MeshBuffers {
 }
 
 export interface ChunkGeometry {
-  /** The sea's and lakes' surface, apart, to be drawn as water. */
-  water: MeshBuffers;
   /** The land's cliff: the plane under its edge it is painted on, and how
    *  far out from the edge each point is (`cliffField`), if it has one. */
   cliff: MeshBuffers;
@@ -42,7 +38,7 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliff, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  const arrays: (ArrayBufferView | undefined)[] = [g.cliff, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
   return [...arrays, g.cliffField ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
@@ -343,12 +339,10 @@ function append(buf: TerrainBuffers, geo: MeshGeometry, ox: number, oy: number, 
 }
 
 class ChunkSink {
-  water = new TerrainBuffers(true);
   /** The land's cliff: the plane under its edge its lip is painted on, and its wall. */
   cliffPlane = new TerrainBuffers(false);
 
   reset(): void {
-    this.water.reset();
     this.cliffPlane.reset();
   }
 }
@@ -360,17 +354,27 @@ const AROUND = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1
 
 const NO_COLOUR: Rgb = { r: 0, g: 0, b: 0 };
 
-/** The water: a square under every tile with water at or beside it, the
- *  land's own outline drawn over it (`LAYERS`), the sea's a shade deeper. */
-function layWater(sink: ChunkSink, x: number, y: number, lx: number, ly: number, real: TerrainSampler, palette: TerrainPalette): void {
-  let water: Ground | null = null;
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const type = real.typeAt(x + dx, y + dy);
-      if (type && isWater(type) && water !== "Sea") water = type;
+const WATER = new TerrainBuffers(true);
+
+/** The water of a chunk's tiles, skirt and all: a square under every tile
+ *  with water at or beside it, the land's own outline drawn over it
+ *  (`LAYERS`), each kind in its colour. Made where the tiles arrive, in no
+ *  worker: it is what a pan over the sea shows first. */
+export function waterOf(tiles: Uint8Array, colours: Record<"Sea" | "Water", Rgb>): MeshBuffers {
+  WATER.reset();
+  const at = (x: number, y: number) => TYPE_BY_BYTE[tiles[(y + CHUNK_SKIRT) * CHUNK_STRIDE + x + CHUNK_SKIRT]];
+  for (let y = 0; y < CHUNK_SIZE; y++) {
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      if (!at(x, y)) continue;
+      let water: "Sea" | "Water" | null = null;
+      for (const [dx, dy] of [[0, 0], ...AROUND]) {
+        const type = at(x + dx, y + dy);
+        if (type && isWater(type) && water !== "Sea") water = type as "Sea" | "Water";
+      }
+      if (water) append(WATER, FULL_SQUARE, x, y, ELEVATION[water], colours[water]);
     }
   }
-  if (water) append(sink.water, FULL_SQUARE, lx, ly, ELEVATION[water], palette[water]);
+  return WATER.take();
 }
 
 /**
@@ -852,8 +856,8 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
 const SINK = new ChunkSink();
 
 /**
- * The land's layers, the water and the cliffs of one chunk. A pure function of the tiles and
- * the palette: no scene, no game state, no DOM. This is what the worker runs.
+ * The cliffs and the mountains of one chunk. A pure function of the tiles:
+ * no scene, no game state, no DOM. This is what the worker runs.
  *
  * `tiles` carries CHUNK_SKIRT tiles of margin on every side, so a chunk meshes
  * without consulting its neighbours and the shared skirt keeps seams consistent.
@@ -864,7 +868,6 @@ export function buildChunk(
   heights: Uint8Array,
   chunkX: number,
   chunkY: number,
-  palette: TerrainPalette,
 ): ChunkGeometry | null {
   SINK.reset();
   const originX = chunkX * CHUNK_SIZE;
@@ -879,9 +882,7 @@ export function buildChunk(
   let tileCount = 0;
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-      if (!sampler.typeAt(x, y)) continue;
-      tileCount++;
-      layWater(SINK, x, y, x - originX, y - originY, sampler, palette);
+      if (sampler.typeAt(x, y)) tileCount++;
     }
   }
   if (tileCount === 0) return null;
@@ -889,7 +890,6 @@ export function buildChunk(
   const field = cliffed ? cliffField(SINK, sampler, originX, originY) : null;
 
   return {
-    water: SINK.water.take(),
     cliff: SINK.cliffPlane.take(),
     cliffField: field,
     ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),
