@@ -13,8 +13,9 @@ fn file() -> std::path::PathBuf {
 }
 
 pub async fn post(body: String) -> axum::http::StatusCode {
-    let line = body.replace('\n', " ");
-    let ok = std::fs::OpenOptions::new().create(true).append(true).open(file()).and_then(|mut f| writeln!(f, "{line}"));
+    // One write a line: two reports at once must not land in each other.
+    let line = body.replace('\n', " ") + "\n";
+    let ok = std::fs::OpenOptions::new().create(true).append(true).open(file()).and_then(|mut f| f.write_all(line.as_bytes()));
     if ok.is_ok() { axum::http::StatusCode::NO_CONTENT } else { axum::http::StatusCode::INTERNAL_SERVER_ERROR }
 }
 
