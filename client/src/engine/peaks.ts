@@ -192,7 +192,7 @@ const CLIFF_INNER = 0.9;
  *  the rock showing wet behind, this much darker, this far again. */
 const ROCK_SWASH = 0.07;
 /** How much of that the sea stands up the rock: as high as it washes on the whole. */
-const ROCK_WASHED = 0.5;
+export const ROCK_WASHED = 0.5;
 const ROCK_WET = 0.2;
 const ROCK_WET_REACH = 0.6;
 /** Only where the sea reaches it, the less the wider the beach between:
@@ -202,7 +202,7 @@ const ROCK_REACHED = 0.5;
 /** Its ledge sinks to the water at its broken edge from this far in, in
  *  tiles, so a wave washes over it from the edge in; foam lying on it at
  *  the wave's edge, this much of the swash's height deep. */
-const LEDGE_SINK = 0.15;
+export const LEDGE_SINK = 0.15;
 const LEDGE_FOAM = 0.35;
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
@@ -214,16 +214,28 @@ const FIELD = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSample
 /** Where a point of a chunk, in tiles from its low corner, is on its
  *  cliff's texture: the chunk and `CLIFF_REACH` round it. */
 export const cliffUv = (at: string) => `((${at} + ${f(CLIFF_REACH)}) / ${f(CHUNK_SIZE + 2 * CLIFF_REACH)})`;
+const GRAD = (() => {
+  const e = f(1 / ((CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY));
+  return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});`;
+})();
+const SEA = `let cliffSea = select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), ${f(ROCK_SWASH)} * saturate((cliffBreak - cliffFar) / ${f(LEDGE_SINK)}), cliffLedge);
+let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (max(${f(CLIFF_RUN)} - cliffFar, 0.) + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
+let cliffAfloat = min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffSeaward, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
+let cliffReach = ${f(ROCK_SWASH * ROCK_WASHED)} * cliffAfloat;
+if (cliffSea < cliffReach) { discard; }`;
 const CLIFF_CUT = `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffLedge = input.worldPos.z < ${f(LEDGE_Z / 2)} && abs(input.worldNormal.z) > 0.5;
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
 let cliffBreak = ${f(CLIFF_RUN)} + ${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
-if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }`;
+if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }
+// The sea up its wall's foot and over its ledge, as far as the waves
+// wash on the whole, the ledge lower the nearer its broken edge: cut
+// there in the shadow map too, so what is under the water casts none on it.
+${GRAD}
+${SEA}`;
 const LAND_CLIFF = (() => {
-  const e = f(1 / ((CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY));
-  return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
-let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
+  return `let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffSlate = slateRead(input.worldPos.xy);
 let cliffGrain = slateRead(input.worldPos.xy + cliffFace * select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall) * ${f(UNROLL)});
 let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
@@ -257,14 +269,8 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
             CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
-// The sea up its wall's foot and over its ledge, as far as the waves
-// wash on the whole, the ledge lower the nearer its broken edge, foam at
-// the water's edge on it, the rock wet behind.
-let cliffSea = select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), ${f(ROCK_SWASH)} * saturate((cliffBreak - cliffFar) / ${f(LEDGE_SINK)}), cliffLedge);
-let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (max(${f(CLIFF_RUN)} - cliffFar, 0.) + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
-let cliffAfloat = min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffSeaward, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
-let cliffReach = ${f(ROCK_SWASH * ROCK_WASHED)} * cliffAfloat;
-if (cliffSea < cliffReach) { discard; }
+// Where the sea stands on it, as it is cut by: foam at the water's edge on
+// its ledge, the rock wet behind.
 baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));
 let cliffFoam = select(0., cliffAfloat * (1. - smoothstep(0., ${f(LEDGE_FOAM * ROCK_SWASH)}, cliffSea - cliffReach)), cliffLedge);
 baseColor = mix(baseColor, vec3f(1.), cliffFoam);

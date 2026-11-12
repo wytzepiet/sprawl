@@ -2,7 +2,7 @@ import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, ty
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEDGE, SHORE_REACH } from "./objects/terrainGeometry";
-import { CALM, cliffUv } from "./peaks";
+import { CALM, cliffUv, LEDGE_SINK, ROCK_WASHED } from "./peaks";
 import { slate } from "./slateTexture";
 import { SECOND, SPAN as SLATE_SPAN } from "./slate";
 import { LACE_TILES, lace } from "./lace";
@@ -265,9 +265,10 @@ const water = () => {
     // whole is less opaque; none past a full cut.
     `let laceCut = 1.05 - 1.15 * cover;`,
     `let foam = max(smoothstep(laceCut, laceCut + ${f(LACE_SOFT)}, lace) * mix(${f(LACE_SHOW)}, 1., cover), crest);`,
-    // The rock's foam, thick at its foot: at its ledge's edge, broken along
-    // the slate as the cliff breaks it (`peaks.ts`' `cliffBreak`).
-    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, acrossX, acrossY) + 0.4 * ledgeSlate(${at} * 3.1, acrossX * 3.1, acrossY * 3.1)));`,
+    // The rock's foam, thick at its foot: where its ledge goes under, in
+    // from its edge, broken along the slate as the cliff breaks it
+    // (`peaks.ts`' `cliffBreak`), as far as the sea stands over it.
+    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot + ${f(LEDGE_SINK * ROCK_WASHED)} - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, acrossX, acrossY) + 0.4 * ledgeSlate(${at} * 3.1, acrossX * 3.1, acrossY * 3.1)));`,
     `frothed = max(foam, rock * smoothstep(0.2, 0.7, fuzz * 0.6 + rock * rock * 0.6) * 0.85);`,
     `}`,
     // The open sea's ripples, calmed where the waves come in, so theirs is
