@@ -2,7 +2,7 @@ import type { Rgb } from "./rgb";
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEAN, SHORE_REACH, WATER_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEAN, SHORE_DENSITY, SHORE_REACH, WATER_Z } from "./objects/terrainGeometry";
 import { AFLOAT, CALM, cliffUv, ledgeOut, slateRead } from "./peaks";
 import { slate } from "./slateTexture";
 import { SPAN as SLATE_SPAN } from "./slate";
@@ -169,6 +169,15 @@ const footOf = (field: string) => `((${field} - 0.5) * ${f(2 * CLIFF_REACH)} - $
  *  height: the higher this, the less of the wall a wave reaches. */
 const [WASH, STEEP] = [0.3, 2];
 
+/** How far each way the water looks for which way is out to sea, in tiles. */
+const SEAWARD_OVER = 2 / SHORE_DENSITY;
+/** How far ashore a point of a chunk is: from its shore or its cliff's
+ *  foot, the nearer. */
+const ASHORE_AT = `fn ashoreAt(p: vec2f) -> f32 {
+  let shore = textureSampleLevel(waterShore, waterShoreSampler, p / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)};
+  return min(shore, max(${footOf(`textureSampleLevel(waterCliff, waterCliffSampler, ${cliffUv("p")}, 0.).r`)}, 0.));
+}`;
+
 const water = (surf: Rgb | null) => {
   const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
   const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
@@ -225,21 +234,25 @@ const water = (surf: Rgb | null) => {
     // edge, where its mesh runs on: the sea's colour, not the rock's, and
     // lying as flat as the sea does, however the rock stands.
     ...(surf ? [`if (rockOver < 0. || rockIn < 0.) { discard; }`, `baseColor = vec3f(${[surf.r, surf.g, surf.b].map(f).join(", ")});`, `N = vec3f(0., 0., 1.);`] : []),
-    // Seaward on the map, where the shore's distance climbs: its climb on
-    // the screen, turned back through the map's own across the screen.
-    // Worked out here, where every pixel goes, as a neighbour's reading is.
+    // How the map runs across the screen, for reading the grains finely.
     `let acrossX = dpdx(${at});`,
     `let acrossY = dpdy(${at});`,
-    `let climb = vec2f(dpdx(ashore), dpdy(ashore));`,
-    `let climbs = vec2f(acrossY.y * climb.x - acrossX.y * climb.y, acrossX.x * climb.y - acrossY.x * climb.x) * sign(acrossX.x * acrossY.y - acrossX.y * acrossY.x);`,
-    `let seaward = climbs / max(length(climbs), 1e-6);`,
     // Nothing of the coast reaches past the shore's field, so the sea there,
     // and every chunk with no shore, does none of what follows: whole
     // stretches of pixels skip it together, so the branch costs nothing;
     // inside, nothing is read by its neighbours' readings.
     `var frothed = 0.;`,
     `var swellSlope = 0.;`,
+    `var seaward = vec2f(0.);`,
     `if (ashore < ${f(SHORE_REACH - 0.01)}) {`,
+    // Seaward, where the distance ashore climbs: across a few of its
+    // maps' texels each way, as much of them as the chunk has, since from
+    // one texel to the next it turns in steps, and the light on the swell
+    // with it.
+    `let seaLow = max(${here} - ${f(SEAWARD_OVER)}, vec2f(0.));`,
+    `let seaHigh = min(${here} + ${f(SEAWARD_OVER)}, vec2f(${f(CHUNK_SIZE)}));`,
+    `let climbs = vec2f(ashoreAt(vec2f(seaHigh.x, ${here}.y)) - ashoreAt(vec2f(seaLow.x, ${here}.y)), ashoreAt(vec2f(${here}.x, seaHigh.y)) - ashoreAt(vec2f(${here}.x, seaLow.y))) / (seaHigh - seaLow);`,
+    `seaward = climbs / max(length(climbs), 1e-6);`,
     // The waves keep time by the cliff's smooth outline, not its foot's
     // wander along the slate, so their crests run smooth to the rock; and
     // wiggle of their own, a stretch a little ahead or behind.
@@ -328,7 +341,7 @@ export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cl
     getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
     // Seconds, wrapped so a long session keeps the drift's precision.
     writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
-    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_DEFINITIONS: `${slateRead("waterSlate")}\n${swashFn((uv) => `textureSampleLevel(waterRipple, waterRippleSampler, ${uv}, 0.).b`, "rockWash")}`, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water(surf) }),
+    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_DEFINITIONS: `${slateRead("waterSlate")}\n${ASHORE_AT}\n${swashFn((uv) => `textureSampleLevel(waterRipple, waterRippleSampler, ${uv}, 0.).b`, "rockWash")}`, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water(surf) }),
   };
   const material = townMaterial([plugin], WATER_ROUGHNESS);
   material.doubleSided = !!surf;
