@@ -1,4 +1,5 @@
 import type { MaterialPlugin } from "../gpu";
+import type { Bevelled } from "../creases";
 import type { EngineContext } from "../Canvas";
 import { WHITE, type Rgb } from "../rgb";
 import type { MeshGeometry } from "../geometry";
@@ -48,7 +49,7 @@ const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
  *  and its edges rounded tight (a lit bucket's is the town's,
  *  `InstancePool`), drawn every frame if what is in it moves and into the
  *  still picture if not; its key. */
-export function paint(pool: InstancePool, key: string, geo: MeshGeometry, colour: Rgb, coat = PAINT_COAT, cast = true, moves = true): string {
+export function paint(pool: InstancePool, key: string, geo: MeshGeometry | Bevelled, colour: Rgb, coat = PAINT_COAT, cast = true, moves = true): string {
   if (pool.finish(key)) return key;
   const bucket = pool.ensureBucket(key, geo, colour, cast, true, undefined, [coat], moves);
   bucket.bevel.width = ROUNDING;
@@ -89,7 +90,7 @@ function place(pool: InstancePool, keys: { key: string; scale?: [number, number,
  *  pose, its base at `z`, in its own finish or a vehicle's paint, casting
  *  a shadow unless it lies too flat to, moving unless it says not. It is
  *  the world's: no building's look is on it. */
-export const placeShape = (pool: InstancePool, { key, geo, coat, cast, moves }: { key: string; geo: MeshGeometry; coat?: MaterialPlugin; cast?: boolean; moves?: boolean }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast, moves) }], p, z);
+export const placeShape = (pool: InstancePool, { key, geo, coat, cast, moves }: { key: string; geo: MeshGeometry | Bevelled; coat?: MaterialPlugin; cast?: boolean; moves?: boolean }, p: Pose, z: number) => place(pool, [{ key: paint(pool, key, geo, WHITE, coat, cast, moves) }], p, z);
 
 /** How a vehicle is drawn: its body's bucket, how high its middle stands
  *  (a cab's base, a ferry's waterline), and how high its headlight hangs

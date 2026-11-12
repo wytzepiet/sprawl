@@ -8,8 +8,8 @@ import { pavingPlugin } from "../paving";
 import { slate } from "../slateTexture";
 import { SPAN as SLATE_SPAN } from "../slate";
 import { WINDOW_GLOW } from "../TownLayer";
-import { FLAT, SPILL, type Built, type Finish } from "./kit";
-import type { Shape } from "./sea";
+import { FLAT, SPILL, type Finish } from "./finish";
+import type { Made } from "./models";
 import { stale } from "../still";
 
 /**
@@ -262,17 +262,8 @@ roughness = 0.9;`, (engine) => ({ modelSlate: slate(engine) }));
 /** Each finish's coat. */
 export const COATS: Record<Finish, Coat> = { matte: MATTE, zinc: ZINC, ribs: RIBS, tiles: TILES, glass: GLASS, bark: BARK, leaves: LEAVES, rock: ROCK, gravel: GRAVEL, chips: CHIPS, lawn: LAWN, paving: PAVING, earth: EARTH, dust: EARTH };
 
-/** A shape seen in a mirror across x = 0, wound round again. */
-export function mirror(s: Shape): Shape {
-  const flip = (a: number[]) => a.map((v, i) => (i % 3 === 0 ? -v : v));
-  return { ...s, positions: flip(s.positions), normals: flip(s.normals), indices: s.indices.map((_, i) => s.indices[i - (i % 3) + [0, 2, 1][i % 3]]) };
-}
-
-/** A model and its mirror across x = 0, finish by finish as an engine
- *  draws them, a bucket each under `key`; a flat finish casts no shadow. */
-export function placing(key: string, built: Built) {
-  const finishes = Object.entries(built.finishes) as [Finish, Shape][];
-  const left = finishes.map(([k, s]): [Finish, Shape] => [k, mirror(s)]);
-  return (engine: EngineContext, side: 1 | -1) =>
-    (side > 0 ? finishes : left).map(([k, shape]) => ({ key: `${key}_${k}${side > 0 ? "" : "_left"}`, geo: shape, coat: COATS[k](engine), cast: !FLAT.has(k), glass: k === "glass" }));
-}
+/** A model's finishes, come from the worker that made them
+ *  (`models.ts`), as an engine draws them, a bucket each under `key`; a
+ *  flat finish casts no shadow. */
+export const placing = (engine: EngineContext, key: string, { finishes, side }: Made) =>
+  finishes.map(([k, geo]) => ({ key: `${key}_${k}${side > 0 ? "" : "_left"}`, geo, coat: COATS[k](engine), cast: !FLAT.has(k), glass: k === "glass" }));

@@ -11,6 +11,7 @@ import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight, type Casters } from "./DayNightCycle";
 import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
+import type { Bevelled } from "./creases";
 import { drop, meshOf, type MeshGeometry } from "./geometry";
 import { BLACK, mul, WHITE, type Rgb } from "./rgb";
 import { live, redraws } from "./still";
@@ -43,7 +44,7 @@ interface Bucket {
   baseColor: Rgb;
   castShadow: boolean;
   receiveShadow: boolean;
-  geometry: ReturnType<typeof bevelled>;
+  geometry: Bevelled;
   /** Drawn every frame over the still town (`still.ts`), not into it. */
   live: boolean;
 }
@@ -129,7 +130,8 @@ export class InstancePool {
 
   ensureBucket(
     key: string,
-    geometry: MeshGeometry & { colors?: number[] },
+    // Its creases found already, if it comes from a worker that found them.
+    geometry: (MeshGeometry & { colors?: number[] }) | Bevelled,
     color: Rgb,
     castShadow: boolean,
     receiveShadow: boolean,
@@ -147,10 +149,10 @@ export class InstancePool {
     // linear itself (`material.ts`).
     const bevel: Bevel = { width: 0.05, soft: null };
     const mat = townMaterial(receiveShadow ? [bevelPlugin(bevel), ...plugins] : [bevelPlugin(bevel), FLAT, ...plugins], 0.9, texture);
-    return this.hold(key, bevelled(geometry), mat, bevel, color, castShadow, receiveShadow, moves);
+    return this.hold(key, "reach" in geometry ? geometry : bevelled(geometry), mat, bevel, color, castShadow, receiveShadow, moves);
   }
 
-  private hold(key: string, shape: ReturnType<typeof bevelled>, mat: TownMaterial, bevel: Bevel, color: Rgb, castShadow: boolean, receiveShadow: boolean, moves: boolean, like?: Mesh): Bucket {
+  private hold(key: string, shape: Bevelled, mat: TownMaterial, bevel: Bevel, color: Rgb, castShadow: boolean, receiveShadow: boolean, moves: boolean, like?: Mesh): Bucket {
     // A shape's own colours scale its bucket's: a car's glass darker.
     const mesh = like ? meshLike(like, `inst_${key}`) : meshOf(this.engine, `inst_${key}`, shape);
     if (!like) giveBevel(this.engine, mesh, shape);
@@ -199,7 +201,7 @@ export class InstancePool {
     return out;
   }
 
-  geometryOf(key: string): MeshGeometry | null {
+  geometryOf(key: string): Bevelled | null {
     return this.buckets.get(key)?.geometry ?? null;
   }
 

@@ -27,6 +27,8 @@ export default defineConfig({
   // behind, and the game goes blank. A reload costs a second and is always
   // right; the server holds the game, so the page comes back as it was.
   plugins: [solidPlugin({ hot: false }), profiling],
+  // Workers as modules, as they are started: the models' awaits its solids' wasm as it loads.
+  worker: { format: "es" },
   resolve: {
     alias: [
       // The UI's ink (`ui/`): what the cards are made of, knowing nothing of the game.

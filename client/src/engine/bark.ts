@@ -1,4 +1,5 @@
 import { createFilledTexture, drawnOnce, fillTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
+import { BARK_ALONG } from "./objects/finish";
 
 /**
  * Bark, as a log's is (`objects/sawmill.ts` reads it), drawn on the GPU: a
@@ -11,7 +12,6 @@ import { createFilledTexture, drawnOnce, fillTexture, releaseTexture, type Engin
  */
 export const BARK_ROUND = 64;
 export const BARK_LONG = 256;
-export const BARK_ALONG = 0.3;
 
 /** The noise's cells, round and along, and how much of the height each
  *  makes: long furrows, then plates on the ridges, then grain. */

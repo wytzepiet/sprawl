@@ -9,15 +9,8 @@ import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
 import { placeShape } from "./CarObject";
 import { FORKLIFT, itemOf, ITEMS } from "./goods";
-import { SHOP_HALL } from "./shop";
-import { FISHERY } from "./fishery";
-import { HOUSES } from "./house";
-import { FARM } from "./farm";
-import { CLAY_PIT, SAND_PIT } from "./quarry";
-import { SAWMILL, WOODCUTTER } from "./sawmill";
-import { BAKERY, BRICKWORKS, GLASSWORKS, SHEEP_FARM, TAILOR, WORKSHOP } from "./trades";
 import { glow, glowing, placing } from "./finishes";
-import type { Built } from "./kit";
+import { modelOf } from "./models";
 import { clearProps, placeProps } from "../props";
 import { PROP_FLOATS } from "../town/layer";
 import { PROP_KINDS } from "../town/roof";
@@ -32,34 +25,23 @@ import type { Theme } from "../theme";
 import type { Building, GameObjectEntry, Lift, Pose } from "../../generated";
 
 /** A building drawn whole from the kit (`kit.ts`), by its kind: its
- *  buckets' name, its model, which way round, and where its front wall
- *  stands in it (y), set on its plot's front edge.
+ *  model's name (`modelsWorker.ts`), which way round, and where its front
+ *  wall stands in it (y), set on its plot's front edge.
  *  A house is one of a few by its id, as if at random, so a street of
  *  them is mixed, every other one the other way round. Anything else
  *  with its gate on its +x, where its loading bay is cut. */
-function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, Built, 1 | -1, number] | null {
-  const odd = id % 2 ? 1 : -1;
-  if (kind === "House") {
-    const k = (Math.imul(id, 0x9e3779b1) >>> 7) % HOUSES.length;
-    return [`house${k}`, HOUSES[k], odd, 0.5];
-  }
-  if (kind === "Shop") return ["shopHall", SHOP_HALL, gate, -0.5];
-  if (kind === "Fishery") return ["fishery", FISHERY, gate, -0.5];
-  if (kind === "Farm") return ["farm", FARM, gate, -0.5];
-  if (kind === "SheepFarm") return ["sheepFarm", SHEEP_FARM, gate, -0.5];
-  if (kind === "Tailor") return ["tailor", TAILOR, gate, -0.5];
-  if (kind === "Woodcutter") return ["woodcutter", WOODCUTTER, gate, -0.5];
-  if (kind === "ClayPit") return ["clayPit", CLAY_PIT, gate, -0.5];
-  if (kind === "SandPit") return ["sandPit", SAND_PIT, gate, -0.5];
-  if (kind === "Bakery" || kind === "FireStation") return ["bakery", BAKERY, gate, -0.5];
+const HOUSES = 9;
+const WHOLE: Partial<Record<Building["kind"], [string, number]>> = {
+  Shop: ["shopHall", -0.5], Fishery: ["fishery", -0.5], Farm: ["farm", -0.5], SheepFarm: ["sheepFarm", -0.5], Tailor: ["tailor", -0.5], Woodcutter: ["woodcutter", -0.5],
+  ClayPit: ["clayPit", -0.5], SandPit: ["sandPit", -0.5], Bakery: ["bakery", -0.5], FireStation: ["bakery", -0.5],
   // Two rows deep.
-  const works: Partial<Record<Building["kind"], [string, Built]>> = { Sawmill: ["sawmill", SAWMILL], Brickworks: ["brickworks", BRICKWORKS], Glassworks: ["glassworks", GLASSWORKS], Workshop: ["workshop", WORKSHOP] };
-  const w = works[kind];
-  return w ? [w[0], w[1], gate, 0] : null;
+  Sawmill: ["sawmill", 0], Brickworks: ["brickworks", 0], Glassworks: ["glassworks", 0], Workshop: ["workshop", 0],
+};
+function wholeOf(kind: Building["kind"], id: number, gate: 1 | -1): [string, 1 | -1, number] | null {
+  if (kind === "House") return [`house${(Math.imul(id, 0x9e3779b1) >>> 7) % HOUSES}`, id % 2 ? 1 : -1, 0.5];
+  const w = WHOLE[kind];
+  return w ? [w[0], gate, w[1]] : null;
 }
-/** Each model's finishes placed, made once. */
-const placings = new Map<string, ReturnType<typeof placing>>();
-const placed_ = (key: string, it: Built) => placings.get(key) ?? (placings.set(key, placing(key, it)), placings.get(key)!);
 
 /** Each engine's glass told the night, once a frame, from the first
  *  model with windows on (`finishes.ts`). */
@@ -147,31 +129,39 @@ export function mountBuilding(
   const plain = wholeOf(data.kind, entry.id, gate);
   const across = dx === 0 ? Math.max(...xs) - Math.min(...xs) + 1 : Math.max(...ys) - Math.min(...ys) + 1;
   const at = across % 2 === 0 ? 0.5 : 0;
-  const whole: typeof plain = plain && docks ? [`${plain[0]}_bay${docks}_${at}`, plain[1].notched(at, docks * DOCK_PITCH / 2, plain[3]), plain[2], plain[3]] : plain;
   // Its front wall on its plot's front edge, the pavement before it.
   const deep = dx === 0 ? Math.max(...ys) - Math.min(...ys) + 1 : Math.max(...xs) - Math.min(...xs) + 1;
-  const out = whole ? deep / 2 - whole[3] : 0;
+  const out = plain ? deep / 2 - plain[2] : 0;
   const o: [number, number] = [middle[0] + dx * out, middle[1] + dy * out];
-  const built = whole && keepWhole(entry.id, JSON.stringify([whole[0], whole[2], o, dx, dy]), theme, () => {
-    const [key, it, side] = whole;
-    const finishes = placed_(key, it)(ctx.engine, side).map((finish) => {
-      const one = placeShape(pool, { ...finish, moves: false }, { at: o, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
-      if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
-      return one;
+  // Made in a worker: it stands when it comes, unless let go by then.
+  const built = plain && keepWhole(entry.id, JSON.stringify([plain[0], docks, at, plain[1], o, dx, dy]), theme, () => {
+    const [name, side, wall] = plain;
+    let drop: (() => void) | null = () => {};
+    void modelOf({ name, notch: docks ? [at, docks * DOCK_PITCH / 2, wall] : null, side }).then((it) => {
+      if (!drop) return;
+      const finishes = placing(ctx.engine, docks ? `${name}_bay${docks}_${at}` : name, it).map((finish) => {
+        const one = placeShape(pool, { ...finish, moves: false }, { at: o, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
+        if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
+        return one;
+      });
+      // Its lamps and its smoke, the town's props, where it has them.
+      const onMap = ([x, y]: number[]): [number, number] => [o[0] + dx * y + dy * x * side, o[1] + dy * y - dx * x * side];
+      const props = new Float32Array(it.props.length * PROP_FLOATS);
+      it.props.forEach((p, k) => {
+        const [x, y] = onMap(p.at), [tx, ty] = onMap(p.to ?? p.at);
+        props.set([PROP_KINDS.indexOf(p.kind), x - o[0], y - o[1], KERB_Z - 0.012 + p.at[2], p.size, p.high, tx - o[0], ty - o[1]], k * PROP_FLOATS);
+      });
+      const meshes = placeProps(ctx, props, [o[0], o[1]], pool.casters);
+      const trees = it.trees.length ? stand(ctx, it.trees.map(([x, y, scale], k) => ({ at: onMap([x, y]), scale, shade: k % 3 })), theme, pool.casters) : () => {};
+      drop = () => {
+        for (const one of finishes) one.remove();
+        clearProps(ctx, meshes, pool.casters);
+        trees();
+      };
     });
-    // Its lamps and its smoke, the town's props, where it has them.
-    const onMap = ([x, y]: number[]): [number, number] => [o[0] + dx * y + dy * x * side, o[1] + dy * y - dx * x * side];
-    const props = new Float32Array(it.props.length * PROP_FLOATS);
-    it.props.forEach((p, k) => {
-      const [x, y] = onMap(p.at), [tx, ty] = onMap(p.to ?? p.at);
-      props.set([PROP_KINDS.indexOf(p.kind), x - o[0], y - o[1], KERB_Z - 0.012 + p.at[2], p.size, p.high, tx - o[0], ty - o[1]], k * PROP_FLOATS);
-    });
-    const meshes = placeProps(ctx, props, [o[0], o[1]], pool.casters);
-    const trees = it.trees.length ? stand(ctx, it.trees.map(([x, y, scale], k) => ({ at: onMap([x, y]), scale, shade: k % 3 })), theme, pool.casters) : () => {};
     return () => {
-      for (const one of finishes) one.remove();
-      clearProps(ctx, meshes, pool.casters);
-      trees();
+      drop?.();
+      drop = null;
     };
   });
   // A shop's front: at the far end from its crates, through lunch, a

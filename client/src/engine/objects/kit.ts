@@ -4,6 +4,7 @@ import type { RGB } from "../rgb";
 import type { PropKind } from "../town/roof";
 import { mesh, Solid, solids } from "../solid";
 import { shape, type Shape } from "./sea";
+import { SPILL, type Finish } from "./finish";
 
 /**
  * What a building modelled whole is built of: the parts every model has,
@@ -16,7 +17,7 @@ import { shape, type Shape } from "./sea";
  * ground at z = 0; one unit a tile. Every triangle wound clockwise seen
  * from outside, as the town's are (`solid.ts`'s `mesh`). Its +x is on the
  * left seen from the street; a model stands that way round on side 1,
- * mirrored on side -1 (`finishes.ts`'s `placing`).
+ * mirrored on side -1 (`modelsWorker.ts`).
  *
  * - Bodies: a box, a barn (walls and gable ends), a barrel shed.
  * - Roofs over them: pitched (tiles, zinc, or boards ribbed), a
@@ -34,12 +35,7 @@ export type P = [number, number];
 export const add = (a: V, b: V): V => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const scale = (a: V, s: number): V => [a[0] * s, a[1] * s, a[2] * s];
 
-/** What a model's parts are made in; each finish a bucket of its own,
- *  drawn in its own coat (`finishes.ts`). Ground finishes lie flat, mapped
- *  by how far inside their outline (`ground`). */
-export const FINISHES = ["matte", "zinc", "ribs", "tiles", "glass", "bark", "leaves", "rock", "gravel", "chips", "lawn", "paving", "earth", "dust"] as const;
-export type Finish = (typeof FINISHES)[number];
-export const FLAT: ReadonlySet<Finish> = new Set(["lawn", "paving", "earth", "dust"]);
+export type { Finish };
 
 /** One of the town's props a model puts up (`props.ts`), in its frame. */
 export interface ModelProp {
@@ -543,8 +539,6 @@ export function ground(m: Model, finish: "lawn" | "paving" | "earth" | "dust", r
   put(m, finish, g, rgb);
 }
 
-/** How far out a heap's spill reaches, of its foot's reach. */
-export const SPILL = 1.45;
 const RINGS = [0.2, 0.4, 0.58, 0.72, 0.84, 0.93, 1, 1.12, 1.28, SPILL];
 /** A heap of something loose, gravel or chips, at (x, y), its foot `r`
  *  out and its top `h` up, on ground `z` up: lobed, lumpy, a thin spill

@@ -1,4 +1,4 @@
-import { BARK_ALONG } from "../bark";
+import { BARK_ALONG } from "./finish";
 import type { MeshGeometry } from "../geometry";
 import type { RGB } from "../rgb";
 import { Solid } from "../solid";
