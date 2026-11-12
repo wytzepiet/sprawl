@@ -102,13 +102,16 @@ export const model = (build: (m: Model) => void): Built => {
         finishes: Object.fromEntries(Object.entries(m.parts).map(([k, parts]) => [k, shape(parts)])),
         props: m.props.filter((p) => !cut || Math.abs(p.at[0] - cut[0]) > cut[1] || p.at[1] < cut[2] - BAY_DEEP),
         trees: m.trees.filter(([x, y]) => !cut || Math.abs(x - cut[0]) > cut[1] + 0.05 || y < cut[2] - BAY_DEEP),
-        notched: (at, half, wall) => {
-          const key = `${at},${half},${wall}`;
-          return made.get(key) ?? (made.set(key, make([at, half, wall])), made.get(key)!);
-        },
+        notched,
       };
     });
-  return make();
+  // Built when first asked for: a town builds only the kinds it has.
+  const notched = (...cut: [number, number, number]): Built => {
+    const key = cut.join();
+    return made.get(key) ?? (made.set(key, make(cut)), made.get(key)!);
+  };
+  const whole = () => made.get("") ?? (made.set("", make()), made.get("")!);
+  return { get finishes() { return whole().finishes; }, get props() { return whole().props; }, get trees() { return whole().trees; }, notched };
 };
 
 /** Something in a finish and a colour: a solid, faced flat; or a mesh as

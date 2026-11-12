@@ -34,10 +34,22 @@ const unit = (a: V3): V3 => { const l = Math.hypot(...a) || 1; return [a[0] / l,
 export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometry & { colors?: number[]; across: number[][]; reach: number[]; at: number[] } {
   const p = geo.positions;
   const at = (i: number): V3 => [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
-  const key = (v: V3) => v.map((x) => Math.round(x * 1e4)).join(",");
+  // Each vertex's place, numbered: vertices at one place share a number.
+  const count = p.length / 3;
+  const places = new Map<string, number>();
+  const place = new Int32Array(count);
+  for (let i = 0; i < count; i++) {
+    const k = `${Math.round(p[i * 3] * 1e4)},${Math.round(p[i * 3 + 1] * 1e4)},${Math.round(p[i * 3 + 2] * 1e4)}`;
+    place[i] = places.get(k) ?? (places.set(k, places.size), places.size - 1);
+  }
   const tris: { v: V3[]; n: V3; c: V3; src: number[] }[] = [];
-  const edges = new Map<string, number[]>();
-  const edgeKey = (a: V3, b: V3) => { const [ka, kb] = [key(a), key(b)]; return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`; };
+  const edges = new Map<number, number[]>();
+  const edgeKey = (a: number, b: number) => (place[a] < place[b] ? place[a] * count + place[b] : place[b] * count + place[a]);
+  const file = <T>(into: Map<number, T[]>, k: number, tri: T) => {
+    const list = into.get(k);
+    if (list) list.push(tri);
+    else into.set(k, [tri]);
+  };
   for (let t = 0; t < geo.indices.length; t += 3) {
     const src = [geo.indices[t], geo.indices[t + 1], geo.indices[t + 2]];
     const v = src.map(at);
@@ -45,15 +57,13 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
     if (geo.normals.length && dot(n, [geo.normals[src[0] * 3], geo.normals[src[0] * 3 + 1], geo.normals[src[0] * 3 + 2]]) < 0) n = [-n[0], -n[1], -n[2]];
     const c: V3 = [(v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3, (v[0][2] + v[1][2] + v[2][2]) / 3];
     const ti = tris.push({ v, n, c, src }) - 1;
-    for (let k = 0; k < 3; k++) {
-      const e = edgeKey(v[(k + 1) % 3], v[(k + 2) % 3]);
-      edges.set(e, [...(edges.get(e) ?? []), ti]);
-    }
+    for (let k = 0; k < 3; k++) file(edges, edgeKey(src[(k + 1) % 3], src[(k + 2) % 3]), ti);
   }
 
   // Every triangle's own creases, and each filed by its two ends.
-  interface Crease { a: V3; b: V3; across: V3; line: string }
+  interface Crease { a: V3; b: V3; across: V3; line: number; tri: number }
   const cosMin = Math.cos((MIN_ANGLE * Math.PI) / 180);
+  const byCorner = new Map<number, Crease[]>();
   const own = tris.map((tri, ti): Crease[] => {
     const found: Crease[] = [];
     for (let k = 0; k < 3; k++) {
@@ -61,20 +71,20 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
       // Across the edge: the one other face, not counting one that faces
       // down — an eave also closes a roof from beneath, and that face is
       // never seen.
-      const other = (edges.get(edgeKey(a, b)) ?? []).filter((x) => x !== ti && (tri.n[2] < -0.5 || tris[x].n[2] > -0.5));
+      const line = edgeKey(tri.src[(k + 1) % 3], tri.src[(k + 2) % 3]);
+      const other = edges.get(line)!.filter((x) => x !== ti && (tri.n[2] < -0.5 || tris[x].n[2] > -0.5));
       if (other.length !== 1) continue;
       const o = tris[other[0]];
       if (dot(tri.n, o.n) > cosMin) continue;
       // Over, not in: the other face lies below this one's plane.
       const mid: V3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
       if (dot(sub(o.c, mid), tri.n) > -1e-5) continue;
-      found.push({ a, b, across: o.n, line: edgeKey(a, b) });
+      const crease = { a, b, across: o.n, line, tri: ti };
+      found.push(crease);
+      file(byCorner, place[tri.src[(k + 1) % 3]], crease);
+      file(byCorner, place[tri.src[(k + 2) % 3]], crease);
     }
     return found;
-  });
-  const byCorner = new Map<string, { crease: Crease; tri: number }[]>();
-  own.forEach((list, ti) => {
-    for (const crease of list) for (const end of [crease.a, crease.b]) byCorner.set(key(end), [...(byCorner.get(key(end)) ?? []), { crease, tri: ti }]);
   });
   /** A point's distance from the line through a and b. */
   const fromLine = (v: V3, a: V3, b: V3) => {
@@ -87,10 +97,10 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
     // Its own creases first, then its face's that touch its corners.
     const mine: Crease[] = [...own[ti]];
     const plane = dot(tri.n, tri.v[0]);
-    for (const corner of tri.v) {
-      for (const { crease, tri: other } of byCorner.get(key(corner)) ?? []) {
+    for (const corner of tri.src) {
+      for (const crease of byCorner.get(place[corner]) ?? []) {
         if (mine.length === 3) break;
-        const o = tris[other];
+        const o = tris[crease.tri];
         if (dot(o.n, tri.n) < 0.9999 || Math.abs(dot(tri.n, o.v[0]) - plane) > 1e-5) continue;
         if (!mine.some((m) => m.line === crease.line)) mine.push(crease);
       }
@@ -119,10 +129,11 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
 export function giveBevel(engine: EngineContext, mesh: Mesh, geo: ReturnType<typeof bevelled>) {
   const n = geo.reach.length / 3;
   const data = new Float32Array(n * 15);
-  for (let v = 0; v < n; v++) {
-    for (let j = 0; j < 3; j++) data.set(geo.across[j].slice(v * 3, v * 3 + 3), v * 15 + j * 3);
-    data.set(geo.reach.slice(v * 3, v * 3 + 3), v * 15 + 9);
-    data.set(geo.at.slice(v * 3, v * 3 + 3), v * 15 + 12);
+  for (let i = 0; i < n * 3; i++) {
+    const to = Math.floor(i / 3) * 15 + (i % 3);
+    for (let j = 0; j < 3; j++) data[to + j * 3] = geo.across[j][i];
+    data[to + 9] = geo.reach[i];
+    data[to + 12] = geo.at[i];
   }
   setMeshAttribute(engine, mesh, "bevel", data);
 }
