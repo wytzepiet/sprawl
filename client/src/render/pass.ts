@@ -257,6 +257,10 @@ function meshGroup(engine: Engine, mesh: Mesh): GPUBindGroup {
   }));
 }
 
+/** How far in front one thing lying on another is (`Mesh.lies`), in the
+ *  least steps of depth the GPU tells apart there. */
+const LIE = 64;
+
 /** How a mesh is drawn in a list: `undefined` while its pipeline builds, `null` if it is not drawn there. */
 function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): Draw | null | undefined {
   if (isShaderMaterial(material)) return list.pass === "forward" ? shaderDraw(engine, list.targets, mesh, material) : null;
@@ -270,7 +274,11 @@ function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): 
   const device = engine._device;
   const groupLayouts = bindGroupLayouts(c).map((d) => layoutOf(device, d));
   const t = list.targets;
-  const key = `${c.key}|${JSON.stringify(t)}`;
+  // What lies on another is in its plane, and in front of it by its depth
+  // alone, nudged as the GPU nudges it: not in the sun's map, where a
+  // sheet casts nothing on the one it lies on either way.
+  const lies = t.depthCompare === "greater-equal" ? mesh.lies : 0;
+  const key = `${c.key}|${JSON.stringify(t)}|${lies}`;
   const pipeline = pipelineOf(engine, key, () => {
     const module = device.createShaderModule({ code: c.code, label: c.key });
     return {
@@ -278,7 +286,7 @@ function drawOf(engine: Engine, list: DrawList, mesh: Mesh, material: unknown): 
       vertex: { module, entryPoint: "vs", buffers: c.vertexBuffers },
       fragment: { module, entryPoint: "fs", targets: t.colors },
       primitive: { topology: "triangle-list", cullMode: c.doubleSided ? "none" : "back", frontFace: "ccw" },
-      depthStencil: { format: t.depth, depthWriteEnabled: t.depthWrite, depthCompare: t.depthCompare },
+      depthStencil: { format: t.depth, depthWriteEnabled: t.depthWrite, depthCompare: t.depthCompare, depthBias: lies * LIE, depthBiasSlopeScale: lies },
     };
   });
   if (!pipeline) return pipeline;

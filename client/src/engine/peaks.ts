@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z, LEDGE, LEDGE_Z } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z, LEDGE } from "./objects/terrainGeometry";
 import { SECOND, SPAN } from "./slate";
 import { slate } from "./slateTexture";
 
@@ -212,7 +212,7 @@ const GRAD = (() => {
 })();
 const CLIFF_CUT = `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
 let cliffFar = ${FIELD("cliffUv")};
-let cliffLedge = input.worldPos.z < ${f(LEDGE_Z / 2)} && abs(input.worldNormal.z) > 0.5;
+let cliffLedge = input.worldPos.z < ${f(WATER_Z / 2)} && abs(input.worldNormal.z) > 0.5;
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
 let cliffBreak = ${f(CLIFF_RUN)} + ${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
 if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }
@@ -227,10 +227,9 @@ baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
-/** Its ledge lies just over the water, and casts from the water's own
- *  level: no shadow of it on the sea beside it, as of a thing afloat. In
- *  the shadow map alone (`SET_BACK`). */
-const LEDGE_DOWN = `\nif (abs(normal.z) > 0.5 && position.z < ${f(LEDGE_Z / 2)} && scene.viewProjection[2][3] == 0.) { finalWorld[3].z = finalWorld[3].z - ${f(LEDGE_Z - WATER_Z)}; }`;
+/** Its ledge lies on the sea or the beach and casts nothing on them: out
+ *  of the sun's map, sunk well under it there (`SET_BACK`). */
+const LEDGE_DARK = `\nif (abs(normal.z) > 0.5 && position.z < ${f(WATER_Z / 2)} && scene.viewProjection[2][3] == 0.) { finalWorld[3].z = finalWorld[3].z - 1.; }`;
 
 /** A chunk's land's cliff's material, with its field (`cliffField`), its
  *  foot wet where it stands in the sea, not on a beach (the water's
@@ -249,13 +248,13 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
     bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shore ?? none! }),
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL + LEDGE_DOWN, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
+        ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL + LEDGE_DARK, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ,
             CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
 let cliffAfloat = smoothstep(0., ${f(AFLOAT)}, textureSampleLevel(cliffShore, cliffShoreSampler, input.vCliffAt.xy / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)});
-let cliffUp = select(select(1., (input.worldPos.z - ${f(LEDGE_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), 0., cliffLedge);
+let cliffUp = select(select(1., (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), 0., cliffLedge);
 baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_WET_UP[0])}, ${f(ROCK_WET_UP[1])}, cliffUp)));`,
           },
   };

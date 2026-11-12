@@ -32,6 +32,11 @@ export class Mesh {
   /** Read when its world is written, as it is made: set before it is first drawn. */
   receiveShadows = false;
   renderOrder = 100;
+  /** How many things it lies on, in their very plane: a sheet on a sheet
+   *  has no height over it, so nothing of either shifts against the other
+   *  from any side; it is in front by this alone (`pass.ts`). Set before
+   *  it is first drawn. */
+  lies = 0;
   visible = true;
   /** While it is hidden only for being out of view: the ground it covers,
    *  x0 y0 x1 y1, where it still casts into the sun's map (`setMeshVisible`). */

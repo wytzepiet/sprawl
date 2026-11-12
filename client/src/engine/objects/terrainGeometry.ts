@@ -41,10 +41,11 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   return [...arrays, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
-/** The land stands on a cliff this high over the water; a beach lies
- *  down it, this high, at the water's edge. */
+/** The land stands on a cliff this high over the water. What lies at the
+ *  water's edge lies in the water's own plane, each on the one before
+ *  (`Mesh.lies`): the sea, a beach, the cliff's ledge, the sea's surf. */
 export const WATER_Z = -0.7;
-export const BEACH_Z = -0.66;
+export const SHORE_LIES = { water: 0, beach: 1, cliff: 2, surf: 3 };
 
 const ELEVATION: Record<Ground, number> = {
   Clay: 0,
@@ -202,10 +203,9 @@ export const CLIFF_Z = 0.0012;
 export const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
 /** How far in behind the cliff's wall its lip is laid on the wall's mesh. */
 const TUCK = 0.05;
-/** The ledge at the cliff's foot: this high, just over the beach; reaching
- *  in under the wall this far, in tiles, from its lip, and out past its
- *  foot this far at most, where the slate does not break it. */
-export const LEDGE_Z = BEACH_Z + 0.01;
+/** The ledge at the cliff's foot, on the beach or the sea: reaching in
+ *  under the wall this far, in tiles, from its lip, and out past its foot
+ *  this far at most, where the slate does not break it. */
 const LEDGE_UNDER = 0.2;
 export const LEDGE = 0.22;
 
@@ -423,7 +423,7 @@ function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
     (p, q) => (
       walls.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]),
       walls.polygon([p, q, back(q), back(p)], CLIFF_Z / 4),
-      walls.polygon([ledge(p, under), ledge(q, under), ledge(q, past), ledge(p, past)], LEDGE_Z)
+      walls.polygon([ledge(p, under), ledge(q, under), ledge(q, past), ledge(p, past)], WATER_Z)
     ),
     undefined,
     Infinity,

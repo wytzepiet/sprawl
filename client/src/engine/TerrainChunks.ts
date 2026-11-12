@@ -16,8 +16,7 @@ import {
   type MeshBuffers,
   cliffed,
   waterOf,
-  LEDGE_Z,
-  WATER_Z,
+  SHORE_LIES,
 } from "./objects/terrainGeometry";
 import { theme } from "./theme";
 import { GroundTiles } from "./ground";
@@ -39,9 +38,6 @@ const DETAIL_MAX_HALF = 30;
 /** A chunk's meshes, as last drawn: its land's cliff; its mountains. None
  *  where it has none. And its trees, kept as it is drawn again; and what
  *  goes with its materials. */
-/** How high over the rock's ledge the water washing over it lies. */
-const SURF = 0.02;
-
 interface ChunkMeshes {
   meshes: Mesh[];
   trees: Record<Kind, Grove>;
@@ -196,8 +192,8 @@ export class TerrainChunks {
     const { engine, scene, cull } = this.ctx;
     const [ox, oy] = parseKey(key).map((c) => c * CHUNK_SIZE);
     const [shore, cliff] = [this.shores.get(key) ?? null, this.cliffs.get(key) ?? null];
-    // Its water; and over its rock's ledge its surf, the same water again
-    // where a wave washes in over the ledge, just above it.
+    // Its water; and on its rock's ledge its surf, the same water again
+    // where a wave washes in over the ledge.
     const sheets = [waterMaterial(engine, shore, cliff), ...(shore && cliff ? [waterMaterial(engine, shore, cliff, true)] : [])];
     const meshes = sheets.map((sheet, surf) => {
       const mesh = meshOf(engine, `chunk_${key}_${surf ? "surf" : "water"}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
@@ -205,7 +201,7 @@ export class TerrainChunks {
       mesh.receiveShadows = true;
       mesh.position.x = ox;
       mesh.position.y = oy;
-      mesh.position.z = surf * (LEDGE_Z + SURF - WATER_Z);
+      mesh.lies = surf ? SHORE_LIES.surf : SHORE_LIES.water;
       cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
       live(mesh);
       addToScene(scene, mesh);
@@ -366,7 +362,8 @@ export class TerrainChunks {
     if (field) {
       const cliff = cliffMaterial(engine, field, shore);
       chunk.dispose.push(cliff.dispose);
-      add("cliff", geometry.cliff, cliff.material, [ox, oy]);
+      const mesh = add("cliff", geometry.cliff, cliff.material, [ox, oy]);
+      if (mesh) mesh.lies = SHORE_LIES.cliff;
     }
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights, [ox, oy]);
