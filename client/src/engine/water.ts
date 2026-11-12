@@ -296,8 +296,8 @@ const water = (surf: Rgb | null) => {
  *  (`tick`); its own textures are let go with `dispose`. Where on its chunk a
  *  pixel is: the mesh's own frame, however placed. Or its `surf`'s, the
  *  sea's colour given: the same water where a wave has washed in over the
- *  rock and nowhere else, for the cliff's foot's own mesh, drawn again,
- *  so the sea lies on the rock itself (`TerrainChunks`). */
+ *  rock and nowhere else, for the cliff's wall and ledge, drawn again, so
+ *  the sea lies on the rock itself (`TerrainChunks`). */
 export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Texture2D | null, surf: Rgb | null = null) {
   // As far from either as each reaches, where there is none.
   const far = shore && cliff ? null : createTexture2DFromPixels(engine, FAR, 1, 1, { format: "r8unorm" });

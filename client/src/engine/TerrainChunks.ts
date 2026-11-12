@@ -363,17 +363,17 @@ export class TerrainChunks {
       const cliff = cliffMaterial(engine, field, shore);
       chunk.dispose.push(cliff.dispose);
       add("cliff", geometry.cliff, cliff.material, [ox, oy]);
-      // Its foot lies on the sea or the beach, and casts nothing on them;
-      // and the sea on it, where a wave washes over its ledge and up its
-      // wall: the same mesh again, as water, drawn over the still town
-      // each frame.
-      const foot = add("foot", geometry.foot, cliff.material, [ox, oy], "lies");
-      if (foot) foot.lies = SHORE_LIES.foot;
+      // Its ledge lies on the sea or the beach, and casts nothing on them;
+      // and the sea on its wall and its ledge, where a wave washes over
+      // them: their mesh again, as water, drawn over the still town each
+      // frame.
+      const ledge = add("ledge", geometry.ledge, cliff.material, [ox, oy], "lies");
+      if (ledge) ledge.lies = SHORE_LIES.ledge;
       if (shore) {
         const surf = waterMaterial(engine, shore, field, WATERS.Sea);
         chunk.dispose.push(surf.dispose);
         chunk.tick = surf.tick;
-        const on = add("surf", geometry.foot, surf.material, [ox, oy], "moves");
+        const on = add("surf", geometry.washed, surf.material, [ox, oy], "moves");
         if (on) on.lies = SHORE_LIES.surf;
       }
     }

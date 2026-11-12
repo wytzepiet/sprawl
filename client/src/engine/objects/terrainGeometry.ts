@@ -23,10 +23,12 @@ export interface MeshBuffers {
 
 export interface ChunkGeometry {
   /** The land's cliff, if it has one: the plane under its edge it is
-   *  painted on, and its wall; and its foot, the ledge and as much of the
-   *  wall as the sea washes, which the sea lies on (`Mesh.lies`). */
+   *  painted on, and its wall; its ledge, which lies on the sea or the
+   *  beach (`Mesh.lies`); and what the sea washes of it, the wall and the
+   *  ledge again without the lip, for the sea's surf to be drawn on. */
   cliff: MeshBuffers;
-  foot: MeshBuffers;
+  ledge: MeshBuffers;
+  washed: MeshBuffers;
   /** The mountains, terraced (`layPeaks`); their heights and where their
    *  layers break, half floats in pairs, for the shader to light them by. */
   peaks: MeshBuffers;
@@ -39,15 +41,15 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.cliff, g.foot, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  const arrays: (ArrayBufferView | undefined)[] = [g.cliff, g.ledge, g.washed, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
   return [...arrays, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
 /** The land stands on a cliff this high over the water. What lies at the
  *  water's edge lies in the water's own plane, each on the one before
- *  (`Mesh.lies`): the sea, a beach, the cliff's foot, the sea's surf. */
+ *  (`Mesh.lies`): the sea, a beach, the cliff's ledge, the sea's surf. */
 export const WATER_Z = -0.7;
-export const SHORE_LIES = { water: 0, beach: 1, foot: 2, surf: 3 };
+export const SHORE_LIES = { water: 0, beach: 1, ledge: 2, surf: 3 };
 
 const ELEVATION: Record<Ground, number> = {
   Clay: 0,
@@ -211,10 +213,8 @@ const TUCK = 0.05;
 const LEDGE_UNDER = 0.2;
 export const LEDGE = 0.22;
 /** How far in under the wall's foot a wave washes at most, in tiles: over
- *  all the ledge and that far up the leaning wall (`water.ts`); and how
- *  much of the wall's run is its foot's, room to spare. */
+ *  all the ledge and that far up the leaning wall (`water.ts`). */
 export const CLIMB = 0.05;
-const WASHED = (2 * CLIMB) / CLIFF_RUN;
 
 // --- Chunk buffers -------------------------------------------------------
 
@@ -347,12 +347,14 @@ function append(buf: TerrainBuffers, geo: MeshGeometry, ox: number, oy: number, 
 class ChunkSink {
   /** The land's cliff: the plane under its edge its lip is painted on, and its wall. */
   cliffPlane = new TerrainBuffers(false);
-  /** And its foot: its ledge, and its wall's. */
-  cliffFoot = new TerrainBuffers(false);
+  /** Its ledge; and its wall and ledge again, what the sea washes. */
+  cliffLedge = new TerrainBuffers(false);
+  cliffWashed = new TerrainBuffers(false);
 
   reset(): void {
     this.cliffPlane.reset();
-    this.cliffFoot.reset();
+    this.cliffLedge.reset();
+    this.cliffWashed.reset();
   }
 }
 
@@ -394,9 +396,6 @@ const isLandTop = (t: Ground) => LAND.includes(t);
  *  back (`cliff.ts`), a byte a texel, the chunk and `CLIFF_REACH` round
  *  it: how far out from the lip each point lies, as the shader reads it,
  *  so the wall stands where the lip is cut. */
-const scaled = ([x, y]: Point, k: number): Point => [x * k, y * k];
-const WASHED_Z = WATER_Z + (CLIFF_Z - WATER_Z) * WASHED;
-
 function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
   const d = SHORE_DENSITY;
   const side = (CHUNK_SIZE + 2 * CLIFF_REACH) * d;
@@ -406,7 +405,7 @@ function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
   for (let k = 0; k < bytes.length; k++) decoded[k] = (bytes[k] / 255 - 0.5) * 2 * CLIFF_REACH;
   const far = (i: number, j: number) => decoded[j * side + i];
   const seaward = downhill((i, j) => -far(i, j), side, ([x, y]) => [(x + CLIFF_REACH) * d - 0.5, (y + CLIFF_REACH) * d - 0.5], () => CLIFF_RUN);
-  const [walls, foot] = [new Builder(), new Builder()];
+  const [walls, shelf, washed] = [new Builder(), new Builder(), new Builder()];
   const m = CLIFF_REACH * d;
   // Rows wholly inland: nothing crosses them.
   const rows = highest(decoded, side);
@@ -434,19 +433,18 @@ function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
     [m, m, m + CHUNK_SIZE * d, m + CHUNK_SIZE * d],
     0,
     (p, q) => {
-      // The wall down to its foot, and its foot on down to the water.
-      const [top, low] = [scaled(seaward(p), 1 - WASHED), scaled(seaward(q), 1 - WASHED)];
-      walls.wall(q, p, WASHED_Z, CLIFF_Z, [low, top]);
+      const flat = [ledge(p, under), ledge(q, under), ledge(q, past), ledge(p, past)];
+      for (const b of [walls, washed]) b.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]);
       walls.polygon([p, q, back(q), back(p)], CLIFF_Z / 4);
-      foot.wall(ledge(q, 1 - WASHED), ledge(p, 1 - WASHED), WATER_Z, WASHED_Z, [scaled(seaward(q), WASHED), scaled(seaward(p), WASHED)]);
-      foot.polygon([ledge(p, under), ledge(q, under), ledge(q, past), ledge(p, past)], WATER_Z);
+      for (const b of [shelf, washed]) b.polygon(flat, WATER_Z);
     },
     undefined,
     Infinity,
     rows,
   );
   append(sink.cliffPlane, walls, 0, 0, 0, NO_COLOUR);
-  append(sink.cliffFoot, foot, 0, 0, 0, NO_COLOUR);
+  append(sink.cliffLedge, shelf, 0, 0, 0, NO_COLOUR);
+  append(sink.cliffWashed, washed, 0, 0, 0, NO_COLOUR);
 }
 
 /** Whether a chunk's tiles, skirt and all, have the land's edge among
@@ -809,7 +807,8 @@ export function buildChunk(
 
   return {
     cliff: SINK.cliffPlane.take(),
-    foot: SINK.cliffFoot.take(),
+    ledge: SINK.cliffLedge.take(),
+    washed: SINK.cliffWashed.take(),
     ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),
   };
 }
