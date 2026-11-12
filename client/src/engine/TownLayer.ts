@@ -36,6 +36,10 @@ import { stale } from "./still";
 /** How many roads one tile may hold: the ground's two side by side, and
  *  the decks' over them. */
 const ROADS_A_TILE = 8;
+/** More dirty tiles than a hand leaves at a stroke are a town's worth,
+ *  made this long a frame. */
+const MANY_TILES = 400;
+const PART_MS = 6;
 /** Ground round what is built the town is drawn over: its pavement and
  *  its trees. */
 const TOWN_MARGIN = 4;
@@ -108,6 +112,10 @@ export class TownLayer {
   private decks = new Map<string, DeckPiece>();
   private concrete: Decks;
   private dirty = new Set<string>();
+  /** A town's worth of them being made over frames (`retile`), and the
+   *  world they are read from, until it changes. */
+  private paving: Promise<void> | null = null;
+  private paved: Town | null = null;
   /** Something changed that the next frame draws (`settle`). */
   private due = false;
   private tints: Tints;
@@ -225,6 +233,7 @@ export class TownLayer {
    *  town made at most once for it, and its worker begun at once, not at
    *  the next frame. */
   private settle() {
+    this.paved = null;
     if (this.due) return;
     this.due = true;
     queueMicrotask(() => this.drawDue());
@@ -443,13 +452,31 @@ export class TownLayer {
   /** The roads on each tile that changed, the shape each one's arms
    *  make: the world as a town in the fixture's frame round the map's
    *  origin, asked about those tiles alone. Two roads may share a tile,
-   *  side by side, each its own: `x,y#0` and `x,y#1`. */
+   *  side by side, each its own: `x,y#0` and `x,y#1`. A road laid is
+   *  drawn at once; a town's worth of tiles, as when the world arrives, a
+   *  part a frame in frames' spare time (`budget.ts`), each part from the
+   *  world as it then is, and shown together when the last is done. */
   private retile(world: () => Town) {
     if (!this.dirty.size) return;
+    if (this.dirty.size <= MANY_TILES) return this.pave(world(), Infinity);
+    this.paving ??= spread(
+      function* (this: TownLayer) {
+        while (this.dirty.size) {
+          this.pave((this.paved ??= this.world()), performance.now() + PART_MS);
+          yield;
+        }
+      }.call(this),
+    ).then(() => void (this.paving = null));
+  }
+
+  /** The dirty tiles' roads made, until the clock reads `until`. */
+  private pave(town: Town, until: number) {
     let decked = false;
     for (const key of this.dirty) {
+      if (performance.now() > until) break;
+      this.dirty.delete(key);
       const [x, y] = key.split(",").map(Number);
-      const surfaces = surfacesAt(world(), -x, -y);
+      const surfaces = surfacesAt(town, -x, -y);
       for (let i = 0; i < ROADS_A_TILE; i++) {
         const k = `${key}#${i}`;
         const s = surfaces[i];
@@ -464,7 +491,7 @@ export class TownLayer {
       }
     }
     if (decked) this.concrete.rebuild(this.decks.values());
-    this.dirty.clear();
+    if (this.dirty.size) return;
     this.roads.flush();
     lag("asphalt");
   }
