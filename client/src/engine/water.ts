@@ -168,6 +168,9 @@ const footOf = (field: string) => `((${field} - 0.5) * ${f(2 * CLIFF_REACH)} - $
  *  most, in tiles; and how far in a step up the wall counts for, a tile of
  *  height: the higher this, the less of the wall a wave reaches. */
 const [WASH, STEEP] = [0.3, 2];
+/** How much of a wave's flood over the rock is foam at its height, the
+ *  grain's cells aside. */
+const CHURN = 0.6;
 
 const water = (surf: Rgb | null) => {
   const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
@@ -220,7 +223,8 @@ const water = (surf: Rgb | null) => {
           `let rockIn = select(ledgeOut - cliffFoot, max(ledgeOut - rockFoot, 0.) + rockUp * ${f(STEEP)}, abs(input.worldNormal.z) < 0.5);`,
         ]
       : [`let rockIn = ledgeOut - cliffFoot;`]),
-    `let rockOver = ${f(WASH)} * rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore) - rockIn;`,
+    `let rockWave = rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore);`,
+    `let rockOver = ${f(WASH)} * rockWave - rockIn;`,
     // The surf is the water on the rock alone, none past its ledge's broken
     // edge, where its mesh runs on: the sea's colour, not the rock's, and
     // lying as flat as the sea does, however the rock stands.
@@ -297,6 +301,9 @@ const water = (surf: Rgb | null) => {
     // The rock's foam, thick at the water's edge on it (`rockOver`).
     `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, rockOver);`,
     `frothed = max(foam, rock * smoothstep(0.2, 0.7, fuzz * 0.6 + rock * rock * 0.6) * 0.85);`,
+    // A wave breaking over the rock is churned white: all of its flood as
+    // it comes in, the grain's cells opening in it as it drains back.
+    ...(surf ? [`frothed = max(frothed, rockWave * smoothstep(0.3, 0.8, fuzz * 0.5 + ${f(CHURN)} * rockWave - 0.2));`] : []),
     `}`,
     // The open sea's ripples, calmed where the waves come in, so theirs is
     // the shape there, and the swell's.
