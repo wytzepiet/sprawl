@@ -220,7 +220,7 @@ const GRAD = (() => {
   const e = f(1 / ((CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});`;
 })();
-const SEA = `let cliffSea = select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), ${f(ROCK_SWASH)} * (cliffBreak - cliffFar) / ${f(LEDGE_SINK)}, cliffLedge);
+const SEA = `let cliffSea = select(${f(CLIFF_RUN)}, ${f(ROCK_SWASH)} * (cliffBreak - cliffFar) / ${f(LEDGE_SINK)}, cliffLedge);
 let cliffAfloat = smoothstep(0., ${f(AFLOAT)}, textureSampleLevel(cliffShore, cliffShoreSampler, input.vCliffAt.xy / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)});
 let cliffBand = ${f(ROCK_SWASH * (1 + LEDGE_FOAM))} * cliffAfloat;`;
 /** The cliff stands still but for the sea washing up it, so it is drawn
@@ -240,9 +240,9 @@ let cliffLedge = input.worldPos.z < ${f(LEDGE_Z / 2)} && abs(input.worldNormal.z
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
 let cliffBreak = ${f(CLIFF_RUN)} + ${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
 if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }
-// The sea up its wall's foot and over its ledge, the ledge lower the
-// nearer its broken edge: cut there in the shadow map too, so what the
-// water washes over casts none on it.
+// The sea over its ledge, the ledge lower the nearer its broken edge, as
+// far in as its wall at most, which stands on the ledge and is never cut:
+// cut in the shadow map too, so what the water washes over casts none on it.
 ${GRAD}
 ${SEA}
 ${WASHED(wash)}`;
@@ -288,7 +288,7 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
 // Where the sea stands on it, as it is cut by: foam at the water's edge on
 // its ledge, the rock wet behind: all of its ledge, and up its wall's foot.
-baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, select(cliffSea, 0., cliffLedge))));
+baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(LEDGE_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), 0., cliffLedge))));
 let cliffFoam = select(0., cliffAfloat * (1. - smoothstep(0., ${f(LEDGE_FOAM * ROCK_SWASH)}, cliffSea - cliffReach)), cliffLedge);
 baseColor = mix(baseColor, vec3f(1.), cliffFoam);
 townShine = townShine * (1. - cliffFoam);`,
