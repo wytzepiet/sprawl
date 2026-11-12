@@ -657,25 +657,6 @@ pub(super) mod tests {
         assert_eq!(world.laid, 0);
     }
 
-    /// A town's roads are joined to the world by its way out, which a save
-    /// does not keep: opened again, they are joined still, and an island
-    /// laid apart from them is not.
-    #[test]
-    fn a_saved_town_is_still_joined() {
-        let mut world = Map::meadow(-8..8, -8..8);
-        world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 4, y: 2 }]);
-        world.place_road_path(&[GridCoord { x: 0, y: -4 }, GridCoord { x: 4, y: -4 }]);
-        let (town, apart) = (world.road_node_at(GridCoord { x: 4, y: 2 }).unwrap(), world.road_node_at(GridCoord { x: 4, y: -4 }).unwrap());
-        world.open_exit(world.road_node_at(GridCoord { x: 0, y: 2 }).unwrap());
-        let joined = |w: &Map, id| matches!(w.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined);
-        assert!(joined(&world, town) && !joined(&world, apart));
-
-        world.restore();
-
-        assert!(joined(&world, town), "the town's roads came back cut off");
-        assert!(!joined(&world, apart), "the island came back joined");
-    }
-
     /// A fresh world is the bare island: no road is born with the map, and
     /// nothing stands on it until the mayor builds.
     #[test]

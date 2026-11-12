@@ -171,7 +171,7 @@ impl Map {
             }
         }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road: vec![], laid, height, light: None, wide: vec![], side }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], road: vec![], laid, height, light: None, wide: vec![], side }),
             Some(coord),
         );
         if ground {

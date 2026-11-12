@@ -116,7 +116,7 @@ export function createStudio(main: Engine) {
   const street = Array.from({ length: 2 * STREET + 1 }, (_, k) => 100 + k);
   const node = (k: number): RoadNode => {
     const by = [street[k - 1], street[k + 1]].filter((n) => n !== undefined);
-    return { outgoing: by, incoming: by, joined: true, road: [], laid: true, height: 0, light: null, wide: [], side: [0, 0] };
+    return { outgoing: by, incoming: by, road: [], laid: true, height: 0, light: null, wide: [], side: [0, 0] };
   };
   const road = street.map((id, k): GameObjectEntry => ({ id, position: { x: k - STREET, y: 0 }, object: { kind: "RoadNode", data: node(k) } }));
   const lawn = () => {

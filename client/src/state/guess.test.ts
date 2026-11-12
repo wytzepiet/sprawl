@@ -12,10 +12,10 @@ import type { ClientMessage, GameObjectEntry, Operation, RoadNode, ServerMessage
  * did nothing.
  */
 
-const node = (id: number, x: number, links: number[], joined = true): GameObjectEntry => ({
+const node = (id: number, x: number, links: number[]): GameObjectEntry => ({
   id,
   position: { x, y: 0 },
-  object: { kind: "RoadNode", data: { outgoing: links, incoming: links, joined, road: [], laid: true, height: 0, light: null, wide: [], side: [0, 0] } },
+  object: { kind: "RoadNode", data: { outgoing: links, incoming: links, road: [], laid: true, height: 0, light: null, wide: [], side: [0, 0] } },
 });
 const GROUND = { h: 0, s: MIDDLE };
 const outs = (e: GameObjectEntry) => (e.object.data as RoadNode).outgoing;
@@ -45,7 +45,6 @@ describe("the hand's guesses", () => {
     guess(link(0, 1));
     const [b] = t.roads(1);
     expect(b.id).toBeLessThan(0);
-    expect((b.object.data as RoadNode).joined).toBe(true);
     expect(outs(t.roads(0)[0])).toEqual([b.id]);
     // The game's road lands before it says it is done: one road, the game's.
     t.update([{ op: "Upsert", data: node(1, 0, [10]) }, { op: "Upsert", data: node(10, 1, [1]) }]);

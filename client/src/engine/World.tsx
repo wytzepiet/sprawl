@@ -96,7 +96,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
   }
 
   const terrain = new TerrainChunks(ctx, casters()!, isBuilt, (x, y) => quays.has(`${x},${y}`));
-  // Red where no joined road reaches it; grey where any stock is bare.
+  // Red where no road reaches it; grey where any stock is bare.
   const lookOf = (entry: GameObjectEntry) =>
     !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY;
   const town = new TownLayer(ctx, casters()!, eachEntity, (x, y) => {
@@ -147,13 +147,13 @@ export default function World(props: { brush?: () => JSX.Element }) {
       if (now === undefined) drawn.delete(key);
       else drawn.set(key, now);
       // The town is drawn in chunks, most of a second on a grown town: a
-      // building that only traded, or only looks otherwise, or a road
-      // only joined, leaves it standing as it was.
+      // building that only traded, or only looks otherwise, leaves
+      // it standing as it was.
       const same = now !== undefined && was === now;
       perfCount(`ops.${entry?.object.kind ?? "deleted"}`);
       perfMark("world");
       // One that stands as it stood may still look otherwise, its shelves
-      // bare or stocked, or its street newly joined to the world: its
+      // bare or stocked: its
       // colour, and the town not drawn again.
       if (same && entry) for (const e of beside(entry)) town.recolour(e);
       else if (was !== undefined) perfCount(`redraw.${entry?.object.kind ?? "deleted"}`);

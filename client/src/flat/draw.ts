@@ -49,7 +49,6 @@ const ground = new WeakMap<Uint8Array, unknown>();
 
 const css = (c: Rgb, a = 1) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${a})`;
 const INK = "#1d2330";
-const RED = "#d23c32";
 
 const TERRAIN: Record<Ground, Rgb> = { Clay: theme.clay, Sea: theme.water, Water: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.rock };
 
@@ -128,7 +127,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     if (!on(e.position!.x, e.position!.y)) continue;
     const [ax, ay] = mid(e);
     const line = (road: boolean, to: [number, number]) => {
-      g.strokeStyle = !n.joined ? RED : css(road ? theme.highway : theme.road);
+      g.strokeStyle = css(road ? theme.highway : theme.road);
       g.beginPath();
       g.moveTo(ax, ay);
       g.lineTo(...to);

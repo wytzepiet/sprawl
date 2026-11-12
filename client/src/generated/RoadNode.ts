@@ -2,11 +2,6 @@
 
 export type RoadNode = { outgoing: Array<number>, incoming: Array<number>, 
 /**
- * Part of a network that reaches a harbour, the door everything comes
- * in and goes out by. Otherwise an island: drawn red, driven by nobody.
- */
-joined: boolean, 
-/**
  * The neighbours the way to is a road rather than a street: a through
  * road, which the streets that meet it give way to. Both ends hold it.
  * The mayor's buildings may front one as they do a street; the town's

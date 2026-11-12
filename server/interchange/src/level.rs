@@ -316,9 +316,6 @@ impl Level {
                     world.map.place_road_path_of(&[path[0], inner], false);
                 }
                 let end = path[path.len() - 1];
-                if let Some(node) = world.map.road_node_at(end) {
-                    world.map.open_exit(node);
-                }
                 gates.push(Gate { label: c, edge: path[0], end, way });
             }
         }

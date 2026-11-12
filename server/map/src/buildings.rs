@@ -884,39 +884,6 @@ mod tests {
             .expect("a road should be beside it")
     }
 
-    /// Red means one thing: not joined to the world. A road that reaches a
-    /// way out is how people arrive; one that reaches nothing is an
-    /// island, and every node of it says so — and stops saying so the moment
-    /// a road joins it up, or starts again when the road is cut.
-    #[test]
-    fn a_road_that_reaches_nothing_is_an_island() {
-        // The street's far end is its way out.
-        let mut world = Map::meadow(-8..140, -8..8).street(0..130);
-        world.open_exit(world.road_node_at(GridCoord { x: 129, y: 0 }).unwrap());
-        let joined = |world: &Map, at: GridCoord| {
-            let id = world.road_node_at(at).unwrap();
-            matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined)
-        };
-        assert!(joined(&world, GridCoord { x: 0, y: 0 }), "the street reaches its way out");
-
-        let lane: Vec<GridCoord> = (2..6).map(|y| GridCoord { x: 3, y }).collect();
-        world.place_road_path(&lane);
-        assert!(!joined(&world, GridCoord { x: 3, y: 4 }), "a lane touching nothing is an island");
-
-        world.place_road_path(&[GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }, GridCoord { x: 3, y: 2 }]);
-        assert!(joined(&world, GridCoord { x: 3, y: 5 }), "joined to the street, it is joined to the world");
-
-        lift_road(&mut world, GridCoord { x: 3, y: 1 });
-        assert!(!joined(&world, GridCoord { x: 3, y: 5 }), "cut off again");
-        assert!(joined(&world, GridCoord { x: 3, y: 0 }), "the street is unmoved");
-
-        // Cut the street between the town and its way out: the whole town
-        // is an island, and the far end still reaches beyond.
-        lift_road(&mut world, GridCoord { x: 60, y: 0 });
-        assert!(!joined(&world, GridCoord { x: 0, y: 0 }), "the town lost its way out");
-        assert!(joined(&world, GridCoord { x: 100, y: 0 }), "the far end still reaches beyond");
-    }
-
     #[test]
     fn a_door_opens_onto_the_street() {
         let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);

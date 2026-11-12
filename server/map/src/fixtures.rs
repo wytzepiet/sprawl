@@ -203,16 +203,6 @@ pub fn lay(world: &mut Map, text: &str, x0: i32, name: &str) -> (i32, i32, Strin
         }
     }
 
-    // Every network leads off the map: the first road of each, reading
-    // west to east down the columns, is an exit, and everything it
-    // reaches is joined. A real place cut out of a map is many.
-    for (col, row) in (0..w).flat_map(|col| (0..h).map(move |row| (col, row))) {
-        let Some(node) = world.road_node_at(at(col, row)) else { continue };
-        let joined = matches!(world.objects.get(node).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined);
-        if !joined {
-            world.open_exit(node);
-        }
-    }
     let title = notes.first().map(|n| n.trim_start_matches('#').trim().to_string()).unwrap_or_else(|| name.to_string());
     (w, h, title)
 }

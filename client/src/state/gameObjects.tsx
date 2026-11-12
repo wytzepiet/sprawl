@@ -81,21 +81,15 @@ function trackSign(entry: GameObjectEntry | undefined, id: number): boolean {
   return was || signedEntries.has(id);
 }
 const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
-/**
- * Does this building's door open onto a street joined to the world? A door
- * onto an island is no way in. Reactive on the signs' version, which moves
- * when a road lands, leaves or changes.
- */
+/** Does a road stand at this building's door? Reactive on the signs'
+ *  version, which moves when a road lands, leaves or changes. */
 export function reached(entry: GameObjectEntry): boolean {
   signsVersion();
   if (entry.object.kind !== "Building") return false;
   const b = entry.object.data as Building;
   const door = b.door;
   if (!door || !b.tiles.some((t) => t.x === door.tile.x && t.y === door.tile.y)) return false;
-  return (spatial.get(posKey(door.street.x, door.street.y)) ?? []).some((id) => {
-    const o = entities.get(String(id))?.object;
-    return o?.kind === "RoadNode" && o.data.joined;
-  });
+  return getObjectsAt(door.street.x, door.street.y).some((e) => e.object.kind === "RoadNode");
 }
 
 /** The building standing on this tile, any tile of its plot. */

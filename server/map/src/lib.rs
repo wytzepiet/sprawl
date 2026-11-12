@@ -15,7 +15,7 @@ pub mod pathfinding;
 pub mod roads;
 pub mod segments;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use fixed::{HashMap, HashSet};
 
 use model::{EdgeKey, EntityId, Building, BuildingKind, Car, GameObject, TerrainChunk};
@@ -224,13 +224,13 @@ impl Map {
         let entries: Vec<_> = self.objects.roads()
             .filter_map(|e| {
                 if let GameObject::RoadNode(ref node) = e.object {
-                    Some((e.id, node.outgoing.clone(), node.joined))
+                    Some((e.id, node.outgoing.clone()))
                 } else {
                     None
                 }
             })
             .collect();
-        for (id, outgoing, _) in &entries {
+        for (id, outgoing) in &entries {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
                 let lanes = if self.is_wide(*id, *neighbor) { 2 } else { 1 };
@@ -238,23 +238,6 @@ impl Map {
                 self.network.link(*id, *neighbor, len);
             }
         }
-        // A save keeps which nodes were joined, not which was the way out:
-        // each network that was joined gets its way out back at its first
-        // node, the oldest, which a new town's lane is. A save from before
-        // this kept none joined at all: its oldest node's network is the town's.
-        let none = !entries.iter().any(|(_, _, joined)| *joined);
-        let oldest = entries.iter().map(|(id, ..)| *id).min();
-        let mut ways_out: BTreeMap<crate::network::ComponentId, EntityId> = BTreeMap::new();
-        for (id, _, joined) in &entries {
-            if let (true, Some(c)) = (*joined || (none && Some(*id) == oldest), self.network.component_of(*id)) {
-                let first = ways_out.entry(c).or_insert(*id);
-                *first = (*first).min(*id);
-            }
-        }
-        for id in ways_out.into_values() {
-            self.network.set_exit(id, true);
-        }
-        self.mark_joined(entries.iter().map(|(id, ..)| *id));
     }
 
     /// Take a car off every edge deque along its route. Not just the edge it
@@ -326,13 +309,6 @@ impl Map {
         ids
     }
 
-    /// Make a road a way into the town, its first street, so what reaches
-    /// it is joined and a road that reaches none is drawn cut off.
-    pub fn open_exit(&mut self, node: EntityId) {
-        let turning = self.network.set_exit(node, true);
-        self.mark_joined(turning.into_iter().chain([node]));
-    }
-
     /// Update the spatial position of an entity.
     pub fn update_position(&mut self, id: EntityId, new_pos: GridCoord) {
         if let Some(entry) = self.objects.get(id) {
@@ -366,27 +342,7 @@ impl Map {
         let len = self.segment_length(from, to);
         let lanes = if self.is_wide(from, to) { 2 } else { 1 };
         self.edges.insert((from, to), EdgeSegment::new(lanes));
-        let turning = self.network.link(from, to, len);
-        self.mark_joined(turning.into_iter().chain([from, to]));
-    }
-
-    /// Keep nodes' marks in step with their network: joined to the world
-    /// by a way out, or an island. Only the nodes named are touched, and
-    /// only those whose mark actually changed are sent.
-    fn mark_joined(&mut self, ids: impl IntoIterator<Item = EntityId>) {
-        for id in ids {
-            let joined = self.network.joined(id);
-            let stale = matches!(
-                self.objects.get(id).map(|e| &e.object),
-                Some(GameObject::RoadNode(n)) if n.joined != joined
-            );
-            if stale
-                && let Some(e) = self.objects.get_mut(id)
-                && let GameObject::RoadNode(ref mut n) = e.object
-            {
-                n.joined = joined;
-            }
-        }
+        self.network.link(from, to, len);
     }
 
     /// Remove an edge.
@@ -398,8 +354,7 @@ impl Map {
         if self.edges.contains_key(&(to, from)) {
             self.network.close_way(from, to);
         } else {
-            let turning = self.network.unlink(from, to);
-            self.mark_joined(turning.into_iter().chain([from, to]));
+            self.network.unlink(from, to);
         }
     }
 

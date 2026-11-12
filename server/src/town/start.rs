@@ -66,7 +66,6 @@ fn lane(map: &mut Map, fishery: EntityId) -> Option<GridCoord> {
     }
     // Laid free: the town's road starts whole.
     map.place_road_path(&path);
-    map.open_exit(map.road_node_at(path[0])?);
     path.last().copied()
 }
 
