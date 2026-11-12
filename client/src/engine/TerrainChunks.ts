@@ -1,5 +1,6 @@
-import { addToScene, type Mesh, type Texture2D } from "./gpu";
+import { addToScene, readTexture, type Mesh, type Texture2D } from "./gpu";
 import { drawShore, shoreMap } from "./shore";
+import { cliffMap, drawCliff } from "./cliff";
 import { spread } from "./budget";
 import type { TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
@@ -14,6 +15,7 @@ import {
   type Ground,
   type ChunkGeometry,
   type MeshBuffers,
+  cliffed,
   waterOf,
 } from "./objects/terrainGeometry";
 import { theme } from "./theme";
@@ -63,9 +65,11 @@ export class TerrainChunks {
   private chunks = new Map<string, ChunkMeshes>();
   /** Each chunk's shore, if it has water (`shore.ts`). */
   private shores = new Map<string, Texture2D>();
-  /** Each chunk's water, if it has any: its mesh, its clock, its
-   *  material's textures to let go, and its land's cliff as it was drawn by. */
-  private waters = new Map<string, { mesh: Mesh; tick: () => void; dispose: () => void; cliff: Uint8Array | null }>();
+  /** Each chunk's cliff, if the land's edge runs through it (`cliff.ts`). */
+  private cliffs = new Map<string, Texture2D>();
+  /** Each chunk's water, if it has any: its mesh, its clock, and its
+   *  material's textures to let go. */
+  private waters = new Map<string, { mesh: Mesh; tick: () => void; dispose: () => void }>();
 
   private dirtyGeometry = new Set<string>();
   private dirtyTrees = new Set<string>();
@@ -155,6 +159,13 @@ export class TerrainChunks {
     const [cx, cy] = parseKey(key);
     const drawn = this.drawn(key);
     this.ground.set(key, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], drawn, within);
+    // Its cliff, if the land's edge runs through it: drawn from the same
+    // kinds, and again where it had one, as it now is.
+    if (cliffed(drawn) || this.cliffs.has(key)) {
+      const cliff = this.cliffs.get(key) ?? cliffMap(this.ctx.engine);
+      this.cliffs.set(key, cliff);
+      drawCliff(this.ctx.engine, this.ground.kinds(key)!, cliff, [cx * CHUNK_SIZE, cy * CHUNK_SIZE]);
+    }
     // Its shore, if it has water at or beside it: drawn from the same kinds.
     const wet = drawn.some((b, k) => (TYPE_BY_BYTE[b] === "Sea" || TYPE_BY_BYTE[b] === "Water") && [k % CHUNK_STRIDE, Math.floor(k / CHUNK_STRIDE)].every((i) => i > 0 && i < CHUNK_STRIDE - 1));
     if (!wet) return;
@@ -171,17 +182,16 @@ export class TerrainChunks {
 
 
   /** A chunk's water, up as its tiles arrive, not when the worker is done
-   *  with its land: a pan over the sea shows it at once. Where it breaks on
-   *  its land's cliff comes with the cliff (`applyGeometry`), and is kept
-   *  when the water is made again. It ripples every frame: drawn over the
-   *  still town, not into it. */
-  private flood(key: string, cliff = this.waters.get(key)?.cliff ?? null): void {
+   *  with its land: a pan over the sea shows it at once, breaking on its
+   *  land's cliff as that is drawn (`lay`). It ripples every frame: drawn
+   *  over the still town, not into it. */
+  private flood(key: string): void {
     this.drain(key);
     const buf = waterOf(this.drawn(key), WATERS);
     if (!buf.indices.length) return;
     const { engine, scene, cull } = this.ctx;
     const [ox, oy] = parseKey(key).map((c) => c * CHUNK_SIZE);
-    const water = waterMaterial(engine, this.shores.get(key) ?? null, cliff);
+    const water = waterMaterial(engine, this.shores.get(key) ?? null, this.cliffs.get(key) ?? null);
     const mesh = meshOf(engine, `chunk_${key}_water`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
     mesh.material = water.material;
     mesh.receiveShadows = true;
@@ -190,7 +200,7 @@ export class TerrainChunks {
     cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
     live(mesh);
     addToScene(scene, mesh);
-    this.waters.set(key, { mesh, tick: water.tick, dispose: water.dispose, cliff });
+    this.waters.set(key, { mesh, tick: water.tick, dispose: water.dispose });
   }
 
   private drain(key: string): void {
@@ -225,6 +235,8 @@ export class TerrainChunks {
     this.ground.delete(key);
     const shore = this.shores.get(key);
     if (shore) retire(shore), this.shores.delete(key);
+    const cliff = this.cliffs.get(key);
+    if (cliff) retire(cliff), this.cliffs.delete(key);
     this.drain(key);
     this.disposeChunk(key);
   }
@@ -299,7 +311,11 @@ export class TerrainChunks {
 
     let geometry: ChunkGeometry | null;
     try {
-      geometry = await this.builder.build(this.drawn(key), this.heights.get(key)!, cx, cy);
+      // Its cliff as the GPU drew it, read back for its wall to be traced along.
+      const cliff = this.cliffs.get(key);
+      const field = cliff ? await readTexture(this.ctx.engine, cliff, 0, 1) : null;
+      if (!this.tiles.has(key)) return;
+      geometry = await this.builder.build(this.drawn(key), this.heights.get(key)!, cx, cy, field && Comlink.transfer(field, [field.buffer]));
       perfMark("land built");
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
@@ -343,10 +359,9 @@ export class TerrainChunks {
     };
     // Its own materials: for its own shore, its own field, its own heights.
     const shore = this.shores.get(key) ?? null;
-    // Its water breaks on its cliff as it now is.
-    if (geometry.cliffField || this.waters.get(key)?.cliff) this.flood(key, geometry.cliffField);
-    if (geometry.cliffField) {
-      const cliff = cliffMaterial(engine, geometry.cliffField, shore);
+    const field = this.cliffs.get(key);
+    if (field) {
+      const cliff = cliffMaterial(engine, field, shore);
       chunk.dispose.push(cliff.dispose);
       add("cliff", geometry.cliff, cliff.material, [ox, oy]);
     }
@@ -419,6 +434,7 @@ export class TerrainChunks {
     for (const key of [...this.waters.keys()]) this.drain(key);
     this.ground.dispose();
     for (const shore of this.shores.values()) retire(shore);
+    for (const cliff of this.cliffs.values()) retire(cliff);
     this.shores.clear();
     this.worker.terminate();
     this.tiles.clear();

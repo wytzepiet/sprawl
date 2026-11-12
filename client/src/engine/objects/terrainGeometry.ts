@@ -22,10 +22,9 @@ export interface MeshBuffers {
 }
 
 export interface ChunkGeometry {
-  /** The land's cliff: the plane under its edge it is painted on, and how
-   *  far out from the edge each point is (`cliffField`), if it has one. */
+  /** The land's cliff, if it has one: the plane under its edge it is
+   *  painted on, and its wall. */
   cliff: MeshBuffers;
-  cliffField: Uint8Array | null;
   /** The mountains, terraced (`layPeaks`); their heights and where their
    *  layers break, half floats in pairs, for the shader to light them by. */
   peaks: MeshBuffers;
@@ -39,7 +38,7 @@ export const SHORE_REACH = 2;
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   const arrays: (ArrayBufferView | undefined)[] = [g.cliff, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
-  return [...arrays, g.cliffField ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
+  return [...arrays, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
 /** The land stands on a cliff this high over the water; a beach lies
@@ -191,8 +190,8 @@ export const CLIFF_RUN = 0.32;
  *  grass whole to their edge, room for what is built on them. */
 export const CLIFF_OUT = 0.3;
 /** And its edge wanders along the slate, as a mountain step's does, this
- *  far either way at most, in tiles: baked into the cliff's field
- *  (`cliffField`), which all read the edge by. */
+ *  far either way at most, in tiles: drawn into the cliff's field
+ *  (`cliff.ts`), which all read the edge by. */
 export const CLIFF_WANDER = 0.2;
 /** How far either side of the land's edge its cliff's field reaches, in
  *  tiles, and where its plane lies: over the land's rock, under its grass. */
@@ -377,120 +376,19 @@ export function waterOf(tiles: Uint8Array, colours: Record<"Sea" | "Water", Rgb>
   return WATER.take();
 }
 
-/**
- * How far each point of a chunk lies from land, as `ChunkGeometry.shore`
- * holds it. Land is the chunk's own ground, as drawn, and round it every
- * tile within reach that is not water, whole; the distance spreads out
- * from it in two sweeps across the grid, each cell taking its neighbours'
- * plus the step to them.
- */
-/** How far each texel of a grid `side` square lies from the nearest one
- *  `inside`, in texels: a chamfer sweep, forward and back. */
-function distances(inside: Uint8Array, side: number): Float32Array {
-  // Far beyond reach stands for none: nothing reads past it.
-  const none = 1e9;
-  const far = new Float32Array(side * side);
-  for (let k = 0; k < far.length; k++) far[k] = inside[k] ? 0 : none;
-  const D = Math.SQRT2;
-  for (let j = 0; j < side; j++) {
-    for (let i = 0, k = j * side; i < side; i++, k++) {
-      let f = far[k];
-      if (f === 0) continue;
-      if (i > 0) f = Math.min(f, far[k - 1] + 1);
-      if (j > 0) {
-        f = Math.min(f, far[k - side] + 1);
-        if (i > 0) f = Math.min(f, far[k - side - 1] + D);
-        if (i < side - 1) f = Math.min(f, far[k - side + 1] + D);
-      }
-      far[k] = f;
-    }
-  }
-  for (let j = side - 1; j >= 0; j--) {
-    for (let i = side - 1, k = j * side + side - 1; i >= 0; i--, k--) {
-      let f = far[k];
-      if (f === 0) continue;
-      if (i < side - 1) f = Math.min(f, far[k + 1] + 1);
-      if (j < side - 1) {
-        f = Math.min(f, far[k + side] + 1);
-        if (i < side - 1) f = Math.min(f, far[k + side + 1] + D);
-        if (i > 0) f = Math.min(f, far[k + side - 1] + D);
-      }
-      far[k] = f;
-    }
-  }
-  return far;
-}
-
-/** Which texels of a chunk and `reach` round it, `SHORE_DENSITY` to a tile,
- *  are ground of a kind that `is`, as the ground is drawn (`ground.ts`):
- *  each tile's weight a hump over three tiles (a quadratic B-spline), the
- *  ground where they come to half or more, so its edge runs along the
- *  tiles' sides and rounds their corners. Past the tiles known, as the
- *  last known. */
-function blend(sampler: TerrainSampler, originX: number, originY: number, reach: number, is: (t: Ground) => boolean): Uint8Array {
-  const d = SHORE_DENSITY;
-  const tiles = CHUNK_SIZE + 2 * reach;
-  const side = tiles * d;
-  const known = (v: number) => Math.max(-CHUNK_SKIRT, Math.min(CHUNK_SIZE + CHUNK_SKIRT - 1, v));
-  const inIt = (tx: number, ty: number) => (is(sampler.typeAt(originX + known(tx), originY + known(ty))!) ? 1 : 0);
-  // A texel's weights for the tile before its own, its own and the next.
-  const weights = Array.from({ length: d }, (_, k) => {
-    const u = (k + 0.5) / d - 0.5;
-    return [0.5 * (0.5 - u) ** 2, 0.75 - u * u, 0.5 * (0.5 + u) ** 2];
-  });
-  // Across each row of tiles, then up.
-  const across = new Float32Array((tiles + 2) * side);
-  for (let ty = -1; ty <= tiles; ty++) {
-    for (let i = 0; i < side; i++) {
-      const [tx, w] = [Math.floor(i / d), weights[i % d]];
-      across[(ty + 1) * side + i] = w[0] * inIt(tx - 1 - reach, ty - reach) + w[1] * inIt(tx - reach, ty - reach) + w[2] * inIt(tx + 1 - reach, ty - reach);
-    }
-  }
-  const mask = new Uint8Array(side * side);
-  for (let j = 0; j < side; j++) {
-    const [row, w] = [Math.floor(j / d) * side, weights[j % d]];
-    for (let i = 0; i < side; i++) mask[j * side + i] = w[0] * across[row + i] + w[1] * across[row + side + i] + w[2] * across[row + 2 * side + i] >= 0.5 ? 1 : 0;
-  }
-  return mask;
-}
-
-/** The chunk's part of a field `reach` wide round it, as bytes. */
-function inner(field: (k: number) => number, reach: number): Uint8Array {
-  const d = SHORE_DENSITY;
-  const side = (CHUNK_SIZE + 2 * reach) * d;
-  const n = CHUNK_SIZE * d;
-  const out = new Uint8Array(n * n);
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) out[j * n + i] = Math.max(0, Math.min(255, Math.round(field((j + reach * d) * side + i + reach * d) * 255)));
-  return out;
-}
-
 const isLandTop = (t: Ground) => LAND.includes(t);
 
-/** How far each point of a chunk lies out from the land's lip, its edge
- *  at its own height wandering along the slate, `SHORE_DENSITY` to a tile,
- *  inside negative, `CLIFF_REACH` either way from half-way; for its cliff
- *  to be painted by (`peaks.ts`) and the sea to break on (`water.ts`). And
- *  the cliff's wall under the lip, laid on its plane's mesh: from the lip
- *  down into the water, its foot `CLIFF_RUN` out, facing out to sea. */
-function cliffField(sink: ChunkSink, sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
+/** The cliff's wall under the land's lip, laid on its plane's mesh: from
+ *  the lip down into the water, its foot `CLIFF_RUN` out, facing out to
+ *  sea; traced along the chunk's cliff as the GPU drew it and it was read
+ *  back (`cliff.ts`), a byte a texel, the chunk and `CLIFF_REACH` round
+ *  it: how far out from the lip each point lies, as the shader reads it,
+ *  so the wall stands where the lip is cut. */
+function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
   const d = SHORE_DENSITY;
-  const mask = blend(sampler, originX, originY, CLIFF_REACH, isLandTop);
   const side = (CHUNK_SIZE + 2 * CLIFF_REACH) * d;
-  const out = distances(mask, side);
-  const into = distances(mask.map((v) => 1 - v), side);
-  // A texel's middle, from the chunk's corner; and its byte, as the shader
-  // reads it, so the wall stands where the lip is cut.
+  // A texel's middle, from the chunk's corner.
   const place = (i: number, j: number): Point => [(i + 0.5) / d - CLIFF_REACH, (j + 0.5) / d - CLIFF_REACH];
-  const bytes = new Uint8Array(side * side);
-  for (let j = 0; j < side; j++) {
-    for (let i = 0; i < side; i++) {
-      const k = j * side + i;
-      const edge = (out[k] - into[k]) / d - CLIFF_OUT;
-      // Past where the field reaches, whatever the slate.
-      const far = Math.abs(edge) > CLIFF_REACH + CLIFF_WANDER ? edge : edge - slateHeight(originX + (i + 0.5) / d - CLIFF_REACH, originY + (j + 0.5) / d - CLIFF_REACH) * CLIFF_WANDER;
-      bytes[k] = Math.max(0, Math.min(255, Math.round((0.5 + far / (2 * CLIFF_REACH)) * 255)));
-    }
-  }
   const decoded = new Float32Array(bytes.length);
   for (let k = 0; k < bytes.length; k++) decoded[k] = (bytes[k] / 255 - 0.5) * 2 * CLIFF_REACH;
   const far = (i: number, j: number) => decoded[j * side + i];
@@ -532,13 +430,18 @@ function cliffField(sink: ChunkSink, sampler: TerrainSampler, originX: number, o
     rows,
   );
   append(sink.cliffPlane, walls, 0, 0, 0, NO_COLOUR);
-  return inner((k) => bytes[k] / 255, CLIFF_REACH);
+}
+
+/** Whether a chunk's tiles, skirt and all, have the land's edge among
+ *  them: a cliff to draw (`cliff.ts`). */
+export function cliffed(tiles: Uint8Array): boolean {
+  const top = (k: number) => isLandTop(TYPE_BY_BYTE[tiles[k]]);
+  return tiles.some((_, k) => top(k) !== top(0));
 }
 
 /** The plane the land's cliff is painted on: a square under every tile
  *  within a tile of the land's edge. */
-function layCliffPlane(sink: ChunkSink, sampler: TerrainSampler, originX: number, originY: number): boolean {
-  let any = false;
+function layCliffPlane(sink: ChunkSink, sampler: TerrainSampler, originX: number, originY: number): void {
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
       const t = sampler.typeAt(x, y);
@@ -546,10 +449,8 @@ function layCliffPlane(sink: ChunkSink, sampler: TerrainSampler, originX: number
       const mine = isLandTop(t);
       if (!AROUND.some(([dx, dy]) => { const n = sampler.typeAt(x + dx, y + dy); return !!n && isLandTop(n) !== mine; })) continue;
       append(sink.cliffPlane, FULL_SQUARE, x - originX, y - originY, CLIFF_Z, NO_COLOUR);
-      any = true;
     }
   }
-  return any;
 }
 
 /**
@@ -868,6 +769,7 @@ export function buildChunk(
   heights: Uint8Array,
   chunkX: number,
   chunkY: number,
+  cliff: Uint8Array | null,
 ): ChunkGeometry | null {
   SINK.reset();
   const originX = chunkX * CHUNK_SIZE;
@@ -886,12 +788,10 @@ export function buildChunk(
     }
   }
   if (tileCount === 0) return null;
-  const cliffed = layCliffPlane(SINK, sampler, originX, originY);
-  const field = cliffed ? cliffField(SINK, sampler, originX, originY) : null;
+  if (cliff) layCliffPlane(SINK, sampler, originX, originY), layCliffWall(SINK, cliff);
 
   return {
     cliff: SINK.cliffPlane.take(),
-    cliffField: field,
     ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),
   };
 }

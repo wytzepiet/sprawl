@@ -1,8 +1,8 @@
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
-import { CALM } from "./peaks";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_REACH } from "./objects/terrainGeometry";
+import { CALM, cliffUv } from "./peaks";
 import { slate } from "./slateTexture";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { LACE_TILES, lace } from "./lace";
@@ -190,7 +190,7 @@ const water = () => {
     `let ripple = ${read("waterRipple", drift(LAYERS[0]))};`,
     `let swell = ripple.b;`,
     `let foamEdge = ${f(FOAM)} * (0.5 + 0.5 * swell) * (0.85 + 0.15 * sin(1.3 * ${time}));`,
-    `let cliffField = ${read("waterCliff", `${here} / ${f(CHUNK_SIZE)}`)}.r;`,
+    `let cliffField = ${read("waterCliff", cliffUv(here))}.r;`,
     `let slate = ${slateTop};`,
     // How far out from the cliff's foot, its lip wandering along the slate
     // (`cliffField`); as far as the field reaches is no cliff near at all.
@@ -284,17 +284,15 @@ const water = () => {
  *  cliff as `cliffField` gives it. Its clock ticks before each frame
  *  (`tick`); its own textures are let go with `dispose`. Where on its chunk a
  *  pixel is: the mesh's own frame, however placed. */
-export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Uint8Array | null) {
+export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Texture2D | null) {
   // As far from either as each reaches, where there is none.
-  const side = cliff ? CHUNK_SIZE * SHORE_DENSITY : 1;
-  const field = createTexture2DFromPixels(engine, cliff ?? FAR, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
-  const far = shore ? null : createTexture2DFromPixels(engine, FAR, 1, 1, { format: "r8unorm" });
+  const far = shore && cliff ? null : createTexture2DFromPixels(engine, FAR, 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
     name: "Water",
     priority: 210,
     getVaryings: () => [{ name: "vWaterAt", type: "vec2f" }],
     getSamplers: () => ["waterRipple", "waterShore", "waterCliff", "waterSlate", "waterLace"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: ripples(engine) }, { texture: shore ?? far! }, { texture: field }, { texture: slate(engine) }, { texture: lace(engine) }),
+    bindTextures: (out) => out.push({ texture: ripples(engine) }, { texture: shore ?? far! }, { texture: cliff ?? far! }, { texture: slate(engine) }, { texture: lace(engine) }),
     getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
     // Seconds, wrapped so a long session keeps the drift's precision.
     writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
@@ -304,6 +302,6 @@ export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cl
   return {
     material,
     tick: () => markMaterialUboDirty(material),
-    dispose: () => (retire(field), far && retire(far)),
+    dispose: () => far && retire(far),
   };
 }

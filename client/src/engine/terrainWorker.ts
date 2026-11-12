@@ -16,8 +16,9 @@ const api = {
     heights: Uint8Array,
     chunkX: number,
     chunkY: number,
+    cliff: Uint8Array | null,
   ): ChunkGeometry | null {
-    const geometry = buildChunk(tiles, heights, chunkX, chunkY);
+    const geometry = buildChunk(tiles, heights, chunkX, chunkY, cliff);
     // Transfer, don't clone — cloning would copy ~280KB per chunk and undo
     // the point of building off-thread.
     return geometry && Comlink.transfer(geometry, transferables(geometry));

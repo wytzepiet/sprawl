@@ -211,14 +211,17 @@ const LEDGE_FOAM = 0.35;
  *  plane, in the shadow map too. Only the facing: the colour is the
  *  stone's own. */
 const FIELD = (uv: string) => `((textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.).r - 0.5) * ${f(2 * CLIFF_REACH)})`;
-const CLIFF_CUT = `let cliffUv = input.vCliffAt.xy / ${f(CHUNK_SIZE)};
+/** Where a point of a chunk, in tiles from its low corner, is on its
+ *  cliff's texture: the chunk and `CLIFF_REACH` round it. */
+export const cliffUv = (at: string) => `((${at} + ${f(CLIFF_REACH)}) / ${f(CHUNK_SIZE + 2 * CLIFF_REACH)})`;
+const CLIFF_CUT = `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffLedge = input.worldPos.z < ${f(LEDGE_Z / 2)} && abs(input.worldNormal.z) > 0.5;
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
 let cliffBreak = ${f(CLIFF_RUN)} + ${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
 if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }`;
 const LAND_CLIFF = (() => {
-  const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
+  const e = f(1 / ((CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});
 let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffSlate = slateRead(input.worldPos.xy);
@@ -235,9 +238,7 @@ N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
  *  it on the whole: the cliff stands still (`still.ts`), and the sea's own
  *  foam churns at its foot (`water.ts`); its textures let go with
  *  `dispose`. */
-export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: Texture2D | null) {
-  const side = CHUNK_SIZE * SHORE_DENSITY;
-  const texture = createTexture2DFromPixels(engine, field, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
+export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: Texture2D | null) {
   const none = shore ? null : createTexture2DFromPixels(engine, new Uint8Array([0]), 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
     name: "LandCliff",
@@ -271,5 +272,5 @@ townShine = townShine * (1. - cliffFoam);`,
           },
   };
   const material = rock(plugin);
-  return { material, dispose: () => (retire(texture), none && retire(none)) };
+  return { material, dispose: () => none && retire(none) };
 }

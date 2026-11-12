@@ -188,6 +188,11 @@ const NINE = nine("input.vGroundAt", "groundKinds");
 export const dryAt = (at: string, texture: string) => `${nine(at, texture)}
 ${field("groundDry", DRY)}
 let dry = step(0.5, groundDry.x);`;
+/** And whether it is on the land the cliff stands under, `land`, for the
+ *  cliff to be measured from (`cliff.ts`). */
+export const landAt = (at: string, texture: string) => `${nine(at, texture)}
+${field("groundLand", bits(LAND))}
+let land = step(0.5, groundLand.x);`;
 /** How far inside a layer's edge, in tiles, a pixel that far in the layer
  *  is (`field`), as it is along a straight edge: out to a tile and a
  *  half either way, negative beyond the edge. */

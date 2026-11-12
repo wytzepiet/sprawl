@@ -63,11 +63,11 @@ async function build() {
   new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull).set("0,0", [0, 0], new Uint8Array(36 * 36).map((_, k) => k % 7));
   const { waterMaterial } = await import("../engine/water");
   waterMaterial(ctx.engine, null, null);
-  waterMaterial(ctx.engine, anything(), new Uint8Array(64));
+  waterMaterial(ctx.engine, anything(), anything());
   const { peakMaterial, cliffMaterial } = await import("../engine/peaks");
   peakMaterial(ctx.engine, new Uint16Array(64), [0, 0]);
-  cliffMaterial(ctx.engine, new Uint8Array(64), null);
-  cliffMaterial(ctx.engine, new Uint8Array(64), anything());
+  cliffMaterial(ctx.engine, anything(), null);
+  cliffMaterial(ctx.engine, anything(), anything());
   const { TownLayer } = await import("../engine/TownLayer");
   const town = new TownLayer(ctx, anything(), () => {}, () => undefined, anything()) as any;
   const { kerbField } = await import("../engine/kerbs");

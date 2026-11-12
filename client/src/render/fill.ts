@@ -223,19 +223,19 @@ export function mostOf(engine: Engine, source: Texture2D, of: string): Texture2D
 /** A filled texture of bytes, four a texel, read back from the GPU, its
  *  smaller copy `level` down: what was drawn there, for what must be
  *  worked out here. */
-export async function readTexture(engine: Engine, texture: Texture2D, level: number): Promise<Uint8Array> {
+export async function readTexture(engine: Engine, texture: Texture2D, level: number, bytes = 4): Promise<Uint8Array> {
   const device = engine._device;
   const [width, height] = [texture.width >> level, texture.height >> level];
   // A row of a copy is a multiple of 256 bytes long.
-  const row = Math.ceil((width * 4) / 256) * 256;
+  const row = Math.ceil((width * bytes) / 256) * 256;
   const buffer = device.createBuffer({ size: row * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   const encoder = device.createCommandEncoder();
   encoder.copyTextureToBuffer({ texture: texture.texture, mipLevel: level }, { buffer, bytesPerRow: row }, { width, height });
   device.queue.submit([encoder.finish()]);
   await buffer.mapAsync(GPUMapMode.READ);
   const padded = new Uint8Array(buffer.getMappedRange());
-  const out = new Uint8Array(width * height * 4);
-  for (let y = 0; y < height; y++) out.set(padded.subarray(y * row, y * row + width * 4), y * width * 4);
+  const out = new Uint8Array(width * height * bytes);
+  for (let y = 0; y < height; y++) out.set(padded.subarray(y * row, y * row + width * bytes), y * width * bytes);
   buffer.destroy();
   return out;
 }
