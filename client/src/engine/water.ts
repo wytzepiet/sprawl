@@ -120,9 +120,9 @@ const LACE_DRIFT = 0.15;
  *  of a lace behind it, thinning out where the waves start. */
 const LACE_FAR = 0.35;
 /** Round the rocks the sea is always broken: a fuzz of foam within this
- *  far of a cliff's foot, in tiles, its grain this many tiles across,
+ *  far of a cliff's ledge, in tiles, its grain this many tiles across,
  *  churning this fast, in tiles a second. */
-const ROCK_REACH = 0.18;
+const ROCK_REACH = 0.08;
 /** And the sea breaks white only this close to rock, in tiles. */
 const ROCK_BREAK = 0.5;
 const FUZZ_TILES = 0.7;
