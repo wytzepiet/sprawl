@@ -1,13 +1,13 @@
-import { addToScene, markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "./gpu";
+import { addToScene, createFilledTexture, createTexture2DFromPixels, fillTexture, markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { setTint, townMaterial, type TownMaterial } from "./material";
-import { drop, meshOf } from "./geometry";
+import { drop, meshOf, retire } from "./geometry";
 import { theme } from "./theme";
 import { Atlas } from "./atlas";
 import { grain, grainSlope } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, LAYER_ORDER, PAVED_Z, RIM } from "./town/draw";
-import { keyOf, paintOf, runsOn, shapeOf, wearOf, type Surface } from "./town/surface";
+import { keyOf, MARKS, marksOf, runsOn, shapeOf, type Surface } from "./town/surface";
 import { ROAD_Z } from "./objects/roadGeometry";
 import type { Lift } from "./decks";
 import type { MeshGeometry } from "./geometry";
@@ -19,7 +19,9 @@ import type { MeshGeometry } from "./geometry";
  * its first channel how far each point lies inside the road's outline,
  * negative beyond it, so a pixel off the road is dropped; in its second,
  * how far inside its kerbs, so the road rolls over them as the paving
- * does (`kerbs.ts`), but not where it runs on into the next tile. A tile
+ * does (`kerbs.ts`), but not where it runs on into the next tile. Its
+ * paint and its wear are drawn into the same slot of a texture beside
+ * it, on the GPU, from the shape's marks (`marksOf`). A tile
  * says which slot is its shape, so all the streets are one draw, and all
  * the through roads another, over them.
  */
@@ -33,8 +35,7 @@ const SPAN = 1.5;
 /** How far a kerb running on into the next tile is carried past its end. */
 const RUN_ON = 0.5;
 
-/** A road shape's channels: how far inside its outline, its kerbs, its
- *  paint (`paintOf`), and its wear (`wearOf`). */
+/** A road shape's channels: how far inside its outline, and its kerbs. */
 function bake(surface: Surface): Float32Array[] {
   const flat = flatPolygons(shapeOf(surface), 0);
   const density = SLOT / SPAN;
@@ -53,20 +54,15 @@ function bake(surface: Surface): Float32Array[] {
   });
   // As far in as the kerb rounds over or the edge crumbles.
   const kerbed = kerbDistances(kerbs, ORIGIN, ORIGIN, density, SLOT, SLOT, Math.max(RIM, CRUMBLE) + 2 / density);
-  // The paint, in the road frame: the tile's own, turned half round.
-  const paint = paintOf(surface);
-  const painted = new Float32Array(SLOT * SLOT);
-  const wear = wearOf(surface);
-  const worn = new Float32Array(SLOT * SLOT);
-  for (let j = 0; j < SLOT; j++) {
-    for (let i = 0; i < SLOT; i++) {
-      const [x, y] = [-(ORIGIN + (i + 0.5) / density), -(ORIGIN + (j + 0.5) / density)];
-      painted[j * SLOT + i] = paint(x, y);
-      worn[j * SLOT + i] = wear(x, y);
-    }
-  }
-  return [outline, kerbed, painted, worn];
+  return [outline, kerbed];
 }
+
+/** A slot's paint and wear, each texel's from the marks in `src0`: in
+ *  the road frame, the tile's own turned half round. */
+const PAINTED = `${MARKS}
+fn fill(at: vec2f) -> vec4f {
+  return vec4f(marks(-(${ORIGIN} + (at - floor(at / ${SLOT}.) * ${SLOT}.) * ${SPAN / SLOT})), 0., 0.);
+}`;
 
 /** Asphalt: its grain over this many tiles, tilting its facing this far;
  *  and of its stones, this share each tilted its own way as far as this
@@ -99,7 +95,7 @@ const n = (x: number) => x.toFixed(4);
 // the slot, whether it is on the road and how far inside the kerbs. A deck's
 // tile is lifted (`decks.ts`'s `Lift`): up to its height, and a slope's
 // eased up across it, its facing tilted with it.
-function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): MaterialPlugin {
+function roadPlugin(engine: EngineContext, atlas: Atlas, paint: () => Texture2D, lifted: boolean): MaterialPlugin {
   return {
     name: "Road",
     priority: 210,
@@ -119,9 +115,10 @@ function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): Mater
     ],
     getSamplers: () => [
       { texture: "roadAtlas", sampler: "roadAtlasSampler" },
+      { texture: "roadPaint", sampler: "roadPaintSampler" },
       { texture: "roadGrain", sampler: "roadGrainSampler" },
     ],
-    bindTextures: (out) => out.push({ texture: atlas.upload() }, { texture: grain(engine) }),
+    bindTextures: (out) => out.push({ texture: atlas.upload() }, { texture: paint() }, { texture: grain(engine) }),
     getUniforms: () => ({ ubo: [{ name: "roadGrid", type: "vec2<f32>" }] }),
     writeUbo: (data, offsets) => data.set(atlas.grid, offsets.get("roadGrid")! / 4),
     getCustomCode: (stage) =>
@@ -152,14 +149,15 @@ let roadUv = (vec2f(roadSlotN - material.roadGrid.x * floor(roadSlotN / material
 let roadTexel = 1. / (material.roadGrid * ${n(SLOT)});
 let roadAt = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.);
 let roadD = roadAt.rg;
+let roadMarks = textureSampleLevel(roadPaint, roadPaintSampler, roadUv, 0.).rg;
 if (roadD.r < 0.) { discard; }
 if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `// The paint: white, worn a little by the grain, laid over before the tint
 // is, so it is undone here.
-let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadAt.b) * (0.8 + 0.2 * roadGrainAt);
+let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadMarks.r) * (0.8 + 0.2 * roadGrainAt);
 // Worn where the wheels run, under the paint: a little darker, its grain
 // ground down smoother, polished to a sheen.
-let roadWorn = roadAt.a * (0.75 + 0.25 * roadCrumbleBy) * (1. - roadPaint);
+let roadWorn = roadMarks.g * (0.75 + 0.25 * roadCrumbleBy) * (1. - roadPaint);
 townShine = max(roadGlinting * (1. - roadWorn), ${n(POLISH)} * roadWorn);
 baseColor = baseColor * (1. - ${n(WEAR)} * roadWorn);
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
@@ -214,6 +212,10 @@ const DECK_CUTS = 12;
  *  lifted onto a deck. */
 export class RoadTiles {
   private atlas: Atlas;
+  /** Each slot's marks, and the texture the first `painted` are drawn in. */
+  private marks: Float32Array[] = [];
+  private paint!: Texture2D;
+  private painted = 0;
   private kinds: Kind[];
   private at = new Map<string, { kind: number; index: number }>();
 
@@ -221,7 +223,7 @@ export class RoadTiles {
     private engine: EngineContext,
     private scene: SceneContext,
   ) {
-    this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)), 4);
+    this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)));
     // Street, through, deck street, deck through (`kindOf`).
     this.kinds = [0, 1, 2, 3].map((k): Kind => {
       const [through, deck] = [k % 2 === 1, k >= 2];
@@ -234,7 +236,7 @@ export class RoadTiles {
       const mesh = meshOf(engine, `roads_${deck ? "deck_" : ""}${through ? "through" : "street"}`, geo);
       giveBevel(engine, mesh, geo);
       // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
-      const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, deck)], 0.7);
+      const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, () => this.paint, deck)], 0.7);
       setTint(material, theme.road);
       mesh.material = material;
       mesh.renderOrder = LAYER_ORDER.road;
@@ -246,7 +248,7 @@ export class RoadTiles {
       setThinInstanceCount(mesh, 0);
       return { mesh, material, matrices, slots, lifts, keys: [], dirty: false };
     });
-    this.atlas.upload();
+    this.flush();
     for (const kind of this.kinds) addToScene(scene, kind.mesh);
   }
 
@@ -271,7 +273,7 @@ export class RoadTiles {
       setThinInstances(kind.mesh, kind.matrices, capacity);
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
-    kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => bake(surface));
+    kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => (this.marks.push(marksOf(surface)), bake(surface)));
     if (kind.lifts && lift) kind.lifts.set(lift, index * LIFT);
     kind.keys.push(key);
     kind.dirty = true;
@@ -298,7 +300,20 @@ export class RoadTiles {
 
   /** Every tile drawn as it now is. */
   flush() {
-    this.atlas.upload();
+    const { width, height } = this.atlas.upload();
+    // Grown, the paint is drawn again from the first, on a texture as large.
+    if (this.paint?.height !== height) {
+      if (this.paint) retire(this.paint);
+      this.paint = createFilledTexture(this.engine, width, height, "rg16float");
+      this.painted = 0;
+    }
+    for (; this.painted < this.marks.length; this.painted++) {
+      const marks = this.marks[this.painted];
+      const from = createTexture2DFromPixels(this.engine, marks, marks.length / 4, 1, { format: "rgba32float" });
+      const [col, row] = [this.painted % this.atlas.grid[0], Math.floor(this.painted / this.atlas.grid[0])];
+      fillTexture(this.engine, this.paint, PAINTED, [from], [col * SLOT, row * SLOT, SLOT, SLOT]);
+      from.texture.destroy();
+    }
     this.kinds.forEach((kind) => {
       if (!kind.dirty) return;
       kind.dirty = false;
@@ -311,6 +326,7 @@ export class RoadTiles {
   dispose() {
     for (const kind of this.kinds) drop(this.scene, kind.mesh);
     this.atlas.dispose();
+    retire(this.paint);
     this.at.clear();
   }
 }

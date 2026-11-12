@@ -7,9 +7,9 @@ const COLS = 16;
 
 /**
  * Shapes drawn on squares: each baked once, the first time it is met, into
- * a slot of one shared texture of half floats, two or four to a texel,
+ * a slot of one shared texture of half floats, two to a texel,
  * read smoothly. A square drawn says which slot is its shape, so every square of
- * a kind is one draw (`roads.ts`, `ground.ts`). When it gains rows its
+ * a kind is one draw (`roads.ts`). When it gains rows its
  * texture is a new one, and `regrown` is told, so what reads it is bound
  * to the new one.
  */
@@ -26,14 +26,13 @@ export class Atlas {
     private engine: EngineContext,
     readonly side: number,
     private regrown: () => void,
-    private channels: 2 | 4 = 2,
   ) {
     this.grow();
     this.texture = this.make();
   }
 
   private make() {
-    return createTexture2DFromPixels(this.engine, this.data, COLS * this.side, this.rows * this.side, { format: this.channels === 2 ? "rg16float" : "rgba16float", minFilter: "linear", magFilter: "linear" });
+    return createTexture2DFromPixels(this.engine, this.data, COLS * this.side, this.rows * this.side, { format: "rg16float", minFilter: "linear", magFilter: "linear" });
   }
 
   /** Slots across the texture, and down. */
@@ -50,7 +49,7 @@ export class Atlas {
     const slot = this.slots.size;
     if (slot >= this.rows * COLS) this.grow();
     const baked = bake();
-    const [col, row, side, n] = [slot % COLS, Math.floor(slot / COLS), this.side, this.channels];
+    const [col, row, side, n] = [slot % COLS, Math.floor(slot / COLS), this.side, 2];
     for (let j = 0; j < side; j++) {
       for (let i = 0; i < side; i++) {
         const at = ((row * side + j) * COLS * side + col * side + i) * n;
@@ -86,7 +85,7 @@ export class Atlas {
 
   private grow() {
     this.rows = Math.max(4, this.rows * 2);
-    const data = new Uint16Array(COLS * this.side * this.rows * this.side * this.channels);
+    const data = new Uint16Array(COLS * this.side * this.rows * this.side * 2);
     data.set(this.data);
     this.data = data;
   }

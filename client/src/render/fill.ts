@@ -47,8 +47,9 @@ const pipelines = new WeakMap<GPUDevice, Map<string, GPURenderPipeline>>();
 /** Every texel of `target` worked out on the GPU, once: `code` is WGSL with
  *  `fn fill(at: vec2f) -> vec4f`, `at` the texel's middle in texels, reading
  *  `sources` as `src0`, `src1`… by `textureLoad`. A map that is a value a
- *  pixel, made where pixels are made instead of texel by texel in a worker. */
-export function fillTexture(engine: Engine, target: Texture2D, code: string, sources: Texture2D[]) {
+ *  pixel, made where pixels are made instead of texel by texel in a worker.
+ *  Or only the texels `within` (x, y, wide, high), the rest left as they are. */
+export function fillTexture(engine: Engine, target: Texture2D, code: string, sources: Texture2D[], within?: [number, number, number, number]) {
   const device = engine._device;
   const byCode = pipelines.get(device) ?? new Map<string, GPURenderPipeline>();
   pipelines.set(device, byCode);
@@ -65,8 +66,9 @@ ${code}
     byCode.set(key, pipeline);
   }
   const encoder = device.createCommandEncoder();
-  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: top(target), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
+  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: top(target), loadOp: within ? "load" : "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
   pass.setPipeline(pipeline);
+  if (within) pass.setScissorRect(...within);
   if (sources.length) pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: sources.map((s, k) => ({ binding: k, resource: s.view })) }));
   pass.draw(3);
   pass.end();

@@ -312,6 +312,10 @@ interface Path {
   half: number[];
   at: number[];
   seams: [number, number];
+  /** The same for a shader to sample (`MARKS`): whether it runs on before
+   *  and after, its half-widths at its ends, the point it runs on from,
+   *  its curve's three, and the point it runs on to. */
+  curve: number[];
 }
 const CURVE = 16;
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -331,7 +335,7 @@ function pathOf(p: P, a: Way, b: Way, carried = true): Path {
   const at = [0];
   for (let k = 1; k < pts.length; k++) at.push(at[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
   const first = aOn ? 1 : 0;
-  return { pts, half, at, seams: [at[first], at[first + CURVE]] };
+  return { pts, half, at, seams: [at[first], at[first + CURVE]], curve: [+!!aOn, +!!bOn, ha, hb, ...pts[0], ...sa.at, ...p, ...sb.at, ...pts[pts.length - 1]] };
 }
 
 /** The way a path runs at point k, and its left (`(-uy, ux)`). */
@@ -339,26 +343,6 @@ function wayAt({ pts }: Path, k: number): [number, number] {
   const [p, q] = [pts[Math.max(0, k - 1)], pts[Math.min(pts.length - 1, k + 1)]];
   const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
   return [(q[0] - p[0]) / len, (q[1] - p[1]) / len];
-}
-
-/** Where a point is from a path: how far from it, to its left (negative
- *  to its right), how far along, and how wide the road is there. */
-function near(path: Path, x: number, y: number): { side: number; along: number; half: number; d: number } {
-  let best = { side: 0, along: 0, half: 0, d: Infinity };
-  for (let k = 0; k + 1 < path.pts.length; k++) {
-    const [a, b] = [path.pts[k], path.pts[k + 1]];
-    const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
-    const len2 = ex * ex + ey * ey || 1;
-    const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / len2));
-    const [px, py] = [a[0] + ex * t, a[1] + ey * t];
-    const d = Math.hypot(x - px, y - py);
-    if (d < best.d) {
-      const len = Math.sqrt(len2);
-      const side = ((x - a[0]) * -ey + (y - a[1]) * ex) / len;
-      best = { side, along: path.at[k] + (path.at[k + 1] - path.at[k]) * t, half: path.half[k] + (path.half[k + 1] - path.half[k]) * t, d };
-    }
-  }
-  return best;
 }
 
 /** A tile's arms as its asphalt is laid: one runs on over the seam into
@@ -452,7 +436,7 @@ function laneOf(p: P, a: Way, l: Lane, b: Way, m: Lane): Path {
   }
   const at = [0];
   for (let k = 1; k < pts.length; k++) at.push(at[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
-  return { pts, half, at, seams: [0, at[CURVE]] };
+  return { pts, half, at, seams: [0, at[CURVE]], curve: [0, 0, l[1], m[1], ...A, ...A, ...C, ...B, ...B] };
 }
 
 /** A tile's road from one arm to another with no other: its one path. */
@@ -505,7 +489,7 @@ export function shapeOf(surface: Surface): Polygon[] {
         for (const [i, l] of lanesOf(w[3], into).entries()) {
           if (used.has(`${k}${into ? "i" : "o"}${i}`)) continue;
           const pts: P[] = into ? [at, p] : [p, at];
-          parts.push(strip({ pts, half: [], at: [0, 1], seams: [0, 1] }, () => l));
+          parts.push(strip({ pts, half: [], at: [0, 1], seams: [0, 1], curve: [] }, () => l));
         }
       }
     }
@@ -557,113 +541,65 @@ const CLEAR = 0.32;
 const EDGE_IN = 0.06;
 const EDGE_LINE = 0.03;
 
-/** A dash's distance in, `s` along from a seam: dashes centred on seams. */
-const dashed = (s: number, dash: number) => dash / 2 - Math.abs((((s + dash) % (2 * dash)) + 2 * dash) % (2 * dash) - dash);
 
 /**
- * A tile's paint, as a distance in its own frame: how far inside a line
- * a point is, negative outside. Along a road that runs through, the
+ * A tile's paint and wear, as marks for a shader to draw (`MARKS`), each
+ * `MARK` numbers: its kind, what it is measured by, and the path it
+ * follows if it follows one. Along a road that runs through, the
  * paint follows the curve its cars drive: a two-way's dashed middle, and
  * the line between a road of two's lanes; which way a one-way runs is
  * not painted (`interchange/flow.ts` shows it while building). At a junction, a two-way's middle is dashed
  * along each arm from short of the middle; at lights, a stop line across
  * each way in. A priority road has a solid line along each edge, carried
  * on through its junctions and across a side road's mouth. Drives are
- * painted nothing.
+ * painted nothing. And where its road is worn: two tracks down each
+ * lane, where its cars' wheels run, along the curve they drive
+ * (`laneOf`). Through a junction, only the ways its cars may go are
+ * worn, so its turns are seen without a line of paint.
  */
-export function paintOf(surface: Surface): (x: number, y: number) => number {
+export const MARK = 32;
+const [MIDDLE, EDGES, STOP_LINE, EDGES_ON, ARM, TRACKS] = [1, 2, 3, 4, 5, 6];
+export function marksOf(surface: Surface): Float32Array {
   const { through, ways, light } = surface;
   const p = pointOf(surface);
   const roads = roadsOf(ways);
-  const marks: ((x: number, y: number) => number)[] = [];
+  const marks: number[][] = [];
+  const mark = (kind: number, by: number[], path?: Path) => {
+    const m: number[] = Array(MARK).fill(0);
+    [kind, ...by].forEach((v, k) => (m[k] = v));
+    path?.curve.forEach((v, k) => (m[12 + k] = v));
+    marks.push(m);
+  };
+  const lined = (flow?: Flow | "d") => +["t", "O", "I"].includes(flow ?? "t");
   const junction = roads.length >= 3;
   const run = runOf(p, roads);
   if (run) {
     const [a, b] = roads;
     const mid = (run.seams[0] + run.seams[1]) / 2;
-    const flowAt = (along: number) => (along < mid ? a[3] : b[3]);
-    const fromSeam = (along: number) => (along < mid ? along - run.seams[0] : run.seams[1] - along);
     // A two-way's middle, and the line between a road of two's lanes.
-    if ([a, b].some(([, , , f]) => ["t", "O", "I"].includes(f ?? "t"))) {
-      marks.push((x, y) => {
-        const n = near(run, x, y);
-        if (!["t", "O", "I"].includes(flowAt(n.along) ?? "t")) return -1;
-        return Math.min(LINE / 2 - Math.abs(n.side), dashed(fromSeam(n.along), DASH));
-      });
-    }
+    if (lined(a[3]) || lined(b[3])) mark(MIDDLE, [mid, ...run.seams, lined(a[3]), lined(b[3])], run);
     // A priority road's edges, where it runs on as one.
-    if (through && (a[2] || b[2])) {
-      marks.push((x, y) => {
-        const n = near(run, x, y);
-        if (!(n.along < mid ? a[2] : b[2])) return -1;
-        return EDGE_LINE / 2 - Math.abs(Math.abs(n.side) - (n.half - EDGE_IN));
-      });
-    }
+    if (through && (a[2] || b[2])) mark(EDGES, [mid, +!!a[2], +!!b[2]], run);
   }
-  // At lights, a stop line across each way in.
-  if (light && junction) {
-    for (const [dc, dr, , flow] of roads) {
-      if (flow === "o") continue;
-      const len = Math.hypot(dc, dr);
-      const [ux, uy] = [dc / len, dr / len];
+  for (const [dc, dr, , flow] of junction ? roads : []) {
+    const len = Math.hypot(dc, dr);
+    // At lights, a stop line across each way in.
+    if (light && flow !== "o") {
       const hw = halfOf(flow);
-      const [lo, hi] = flow === "i" ? [-hw, hw] : [0, hw];
-      marks.push((x, y) => {
-        const [px, py] = [x - p[0], y - p[1]];
-        const along = px * ux + py * uy - CLEAR;
-        const across = px * uy - py * ux;
-        return Math.min(along, STOP - along, (hi - lo) / 2 - 0.02 - Math.abs(across - (lo + hi) / 2));
-      });
+      mark(STOP_LINE, [...p, len, dc / len, dr / len, ...(flow === "i" ? [-hw, hw] : [0, hw])]);
     }
+    // A two-way's middle, and the line between a road of two's lanes,
+    // along each arm from short of the middle.
+    if (lined(flow)) mark(ARM, [...p, len, dc / len, dr / len]);
   }
   if (through && junction) {
     // The priority road through the junction: its edges carried on,
     // solid across a side road's mouth.
     const main = roads.filter(([, , on]) => on);
-    if (main.length === 2) {
-      const path = pathOf(p, main[0], main[1], false);
-      marks.push((x, y) => {
-        const n = near(path, x, y);
-        return EDGE_LINE / 2 - Math.abs(Math.abs(n.side) - (n.half - EDGE_IN));
-      });
-    }
+    if (main.length === 2) mark(EDGES_ON, [], pathOf(p, main[0], main[1], false));
   }
-  // At a junction, a two-way's middle, and the line between a road of
-  // two's lanes, along each arm from short of the middle.
-  if (junction) {
-    for (const [dc, dr, , flow] of roads) {
-      if (!["t", "O", "I"].includes(flow ?? "t")) continue;
-      const len = Math.hypot(dc, dr);
-      const [ux, uy] = [dc / len, dr / len];
-      marks.push((x, y) => {
-        const [px, py] = [x - p[0], y - p[1]];
-        const s = px * ux + py * uy;
-        const across = Math.abs(px * uy - py * ux);
-        return Math.min(LINE / 2 - across, dashed(len / 2 - s, DASH), s - CLEAR, len / 2 + RUN - s);
-      });
-    }
-  }
-  return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
-}
-
-/**
- * Where a tile's road is worn, from nothing to one: two tracks down each
- * lane, where its cars' wheels run, along the curve they drive
- * (`laneOf`). Through a junction, only the ways its cars may go are
- * worn, so its turns are seen without a line of paint.
- */
-export function wearOf(surface: Surface): (x: number, y: number) => number {
-  const p = pointOf(surface);
-  const roads = roadsOf(surface.ways);
-  const tracks: ((x: number, y: number) => number)[] = [];
-  for (const { path } of roads.length >= 2 ? lanesThrough(surface, p, roads) : []) {
-    tracks.push((x, y) => {
-      const n = near(path, x, y);
-      const d = Math.min(Math.abs(n.side - WHEELS), Math.abs(n.side + WHEELS));
-      return Math.exp(-((d / TRACK) ** 2));
-    });
-  }
-  return (x, y) => tracks.reduce((most, t) => Math.max(most, t(x, y)), 0);
+  for (const { path } of roads.length >= 2 ? lanesThrough(surface, p, roads) : []) mark(TRACKS, [], path);
+  return new Float32Array([marks.length, 0, 0, 0, ...marks.flat()]);
 }
 
 /** A car's wheels, this far either side of its lane's middle; the track
@@ -673,6 +609,88 @@ const TRACK = 0.05;
 
 /** A stop line's width along its way. */
 const STOP = 0.05;
+
+const f = (x: number) => x.toFixed(5);
+/**
+ * The marks drawn, WGSL: `fn marks(q: vec2f) -> vec2f`, a point's paint,
+ * how far inside a line it is, negative outside, and its wear, from
+ * nothing to one; of the marks in `src0`, four numbers a texel, their
+ * count first. A path is sampled as `pathOf` samples it, and a point
+ * measured from it: how far from it, to its left (negative to its
+ * right), how far along, and how wide the road is there.
+ */
+export const MARKS = /* wgsl */ `
+fn num(i: i32) -> vec4f { return textureLoad(src0, vec2i(i, 0), 0); }
+struct Near { side: f32, along: f32, half: f32, d: f32 }
+fn closer(best: Near, q: vec2f, a: vec2f, b: vec2f, at: vec2f, half: vec2f) -> Near {
+  let e = b - a;
+  let len2 = select(dot(e, e), 1., dot(e, e) == 0.);
+  let t = clamp(dot(q - a, e) / len2, 0., 1.);
+  let d = distance(q, a + e * t);
+  if (d >= best.d) { return best; }
+  return Near(dot(q - a, vec2f(-e.y, e.x)) / sqrt(len2), mix(at.x, at.y, t), mix(half.x, half.y, t), d);
+}
+fn near(mark: i32, q: vec2f) -> Near {
+  let ends = num(mark + 3);
+  let a = num(mark + 4);
+  let b = num(mark + 5);
+  let c = num(mark + 6);
+  var best = Near(0., 0., 0., 1e30);
+  var at = 0.;
+  if (ends.x > 0.) {
+    at = distance(a.xy, a.zw);
+    best = closer(best, q, a.xy, a.zw, vec2f(0., at), ends.zz);
+  }
+  var was = a.zw;
+  var wide = ends.z;
+  for (var k = 1; k <= ${CURVE}; k++) {
+    let t = f32(k) / ${CURVE}.;
+    let pt = (1. - t) * (1. - t) * a.zw + 2. * t * (1. - t) * b.xy + t * t * b.zw;
+    let h = mix(ends.z, ends.w, t * t * (3. - 2. * t));
+    let to = at + distance(was, pt);
+    best = closer(best, q, was, pt, vec2f(at, to), vec2f(wide, h));
+    at = to;
+    was = pt;
+    wide = h;
+  }
+  if (ends.y > 0.) { best = closer(best, q, b.zw, c.xy, vec2f(at, at + distance(b.zw, c.xy)), ends.ww); }
+  return best;
+}
+// A dash's distance in, s along from a seam: dashes centred on seams.
+fn dashed(s: f32) -> f32 { return ${f(DASH / 2)} - abs((((s + ${f(DASH)}) % ${f(2 * DASH)}) + ${f(2 * DASH)}) % ${f(2 * DASH)} - ${f(DASH)}); }
+fn marks(q: vec2f) -> vec2f {
+  var paint = -1.;
+  var wear = 0.;
+  let count = i32(num(0).x);
+  for (var k = 0; k < count; k++) {
+    let mark = 1 + k * ${MARK / 4};
+    let m = num(mark);
+    let by = num(mark + 1);
+    let kind = i32(m.x);
+    if (kind == ${STOP_LINE} || kind == ${ARM}) {
+      // Along its arm from where the road stands, and across it.
+      let s = dot(q - m.yz, by.xy);
+      let across = dot(q - m.yz, vec2f(by.y, -by.x));
+      if (kind == ${STOP_LINE}) {
+        paint = max(paint, min(min(s - ${f(CLEAR)}, ${f(STOP + CLEAR)} - s), (by.w - by.z) / 2. - 0.02 - abs(across - (by.z + by.w) / 2.)));
+      } else {
+        paint = max(paint, min(min(${f(LINE / 2)} - abs(across), dashed(m.w / 2. - s)), min(s - ${f(CLEAR)}, m.w / 2. + ${f(RUN)} - s)));
+      }
+      continue;
+    }
+    let n = near(mark, q);
+    let first = n.along < m.y;
+    if (kind == ${MIDDLE}) {
+      if (select(by.y, by.x, first) > 0.) { paint = max(paint, min(${f(LINE / 2)} - abs(n.side), dashed(select(m.w - n.along, n.along - m.z, first)))); }
+    } else if (kind == ${EDGES} || kind == ${EDGES_ON}) {
+      if (kind == ${EDGES_ON} || select(m.w, m.z, first) > 0.) { paint = max(paint, ${f(EDGE_LINE / 2)} - abs(abs(n.side) - (n.half - ${f(EDGE_IN)}))); }
+    } else {
+      let d = min(abs(n.side - ${f(WHEELS)}), abs(n.side + ${f(WHEELS)})) / ${f(TRACK)};
+      wear = max(wear, exp(-d * d));
+    }
+  }
+  return vec2f(paint, wear);
+}`;
 
 
 /** An edge of a tile's asphalt, as drawn for its instance (x and y the
