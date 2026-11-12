@@ -1,6 +1,4 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
-import { swashFn } from "./water";
-import { ripples } from "./waves";
+import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
@@ -190,22 +188,14 @@ ${HEIGHT_AT}`,
  *  where the grass stops (`ground.ts`). */
 const CLIFF_INNER = 0.9;
 
-/** How far up the cliff's face a wave washes, at most, in tiles of it,
- *  the rock showing wet behind, this much darker, this far again. */
-const ROCK_SWASH = 0.07;
+/** Its foot is wet where the sea is: its ledge, and this far up its wall,
+ *  in tiles of it, fading out over as much again, this much darker. Where
+ *  the water's `shore` says there is water at the rock itself, this far out
+ *  from dry ground and beyond, in tiles; none of it on a beach. The sea's
+ *  own waves and foam are the water's, drawn over it (`water.ts`). */
 const ROCK_WET = 0.2;
-const ROCK_WET_REACH = 0.6;
-/** Only where the sea is: where the water's `shore` says there is water
- *  at the rock itself, this far out from dry ground and beyond, in tiles;
- *  none of it on a beach, where there is none. One answer, the water's
- *  own, to where the sea is. */
-const AFLOAT = 0.25;
-/** Its ledge sinks to the water at its broken edge, a swash's height
- *  over this far, in tiles, and on up inland, so a wave washes over it
- *  from the edge in as a line and never over a flat of it at once; foam
- *  lying on it at the wave's edge, this much of the swash's height deep. */
-export const LEDGE_SINK = 0.15;
-const LEDGE_FOAM = 0.35;
+const ROCK_WET_UP = [0.07, 0.11];
+export const AFLOAT = 0.25;
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
  *  from the lip down into the water, lit by where it is on the map, as a
@@ -220,32 +210,13 @@ const GRAD = (() => {
   const e = f(1 / ((CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY));
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});`;
 })();
-const SEA = `let cliffSea = select(${f(CLIFF_RUN)}, ${f(ROCK_SWASH)} * (cliffBreak - cliffFar) / ${f(LEDGE_SINK)}, cliffLedge);
-let cliffAfloat = smoothstep(0., ${f(AFLOAT)}, textureSampleLevel(cliffShore, cliffShoreSampler, input.vCliffAt.xy / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)});
-let cliffBand = ${f(ROCK_SWASH * (1 + LEDGE_FOAM))} * cliffAfloat;`;
-/** The cliff stands still but for the sea washing up it, so it is drawn
- *  twice (`still.ts`), as a beach is (`ground.ts`): all but the band
- *  the waves wash over, foam and all, kept; and that band, live
- *  (`wash`), cut where the water stands on it now. */
-const WASHED = (wash: boolean) =>
-  wash
-    ? `if (cliffSea >= cliffBand) { discard; }
-let cliffReach = ${f(ROCK_SWASH)} * cliffWash(material.cliffTime, input.worldPos.xy) * cliffAfloat;
-if (cliffSea < cliffReach) { discard; }`
-    : `if (cliffSea < cliffBand) { discard; }
-let cliffReach = 0.;`;
-const CLIFF_CUT = (wash: boolean) => `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
+const CLIFF_CUT = `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffLedge = input.worldPos.z < ${f(LEDGE_Z / 2)} && abs(input.worldNormal.z) > 0.5;
 let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
 let cliffBreak = ${f(CLIFF_RUN)} + ${f(LEDGE)} * saturate(0.5 + 0.5 * slateRead(input.worldPos.xy).z + 0.4 * slateRead(input.worldPos.xy * 3.1).z);
 if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }
-// The sea over its ledge, the ledge lower the nearer its broken edge, as
-// far in as its wall at most, which stands on the ledge and is never cut:
-// cut in the shadow map too, so what the water washes over casts none on it.
-${GRAD}
-${SEA}
-${WASHED(wash)}`;
+${GRAD}`;
 const LAND_CLIFF = (() => {
   return `let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffSlate = slateRead(input.worldPos.xy);
@@ -256,13 +227,10 @@ baseColor = vec3f(${rgb(STONE)});
 N = normalize(vec3f(cliffOut * cliffTilt + cliffGrain.xy * ${f(RELIEF)}, 1.));`;
 })();
 
-/** A chunk's land's cliff's material, with its field (`cliffField`), the
- *  sea up its wall's foot where it stands in the sea, not on a beach (the
- *  water's `shore`, if the chunk has water), as high as the waves wash up
- *  it on the whole: the cliff stands still (`still.ts`), and the sea's own
- *  foam churns at its foot (`water.ts`); its textures let go with
- *  `dispose`. */
-export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: Texture2D | null, wash = false) {
+/** A chunk's land's cliff's material, with its field (`cliffField`), its
+ *  foot wet where it stands in the sea, not on a beach (the water's
+ *  `shore`, if the chunk has water); its textures let go with `dispose`. */
+export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: Texture2D | null) {
   const none = shore ? null : createTexture2DFromPixels(engine, new Uint8Array([0]), 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
     name: "LandCliff",
@@ -272,28 +240,20 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
       { name: "vCliffX", type: "vec2f" },
       { name: "vCliffY", type: "vec2f" },
     ],
-    getSamplers: () => ["slate", "cliffField", "cliffShore", ...(wash ? ["cliffRipple"] : [])].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shore ?? none! }, ...(wash ? [{ texture: ripples(engine) }] : [])),
-    // The water's clock (`water.ts`), so the waves at the foot keep time.
-    ...(wash && {
-      getUniforms: () => ({ ubo: [{ name: "cliffTime", type: "f32" as const }] }),
-      writeUbo: (data: Float32Array, offsets: Map<string, number>) => void (data[offsets.get("cliffTime")! / 4] = (performance.now() / 1000) % 3600),
-    }),
+    getSamplers: () => ["slate", "cliffField", "cliffShore"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: shore ?? none! }),
     getCustomCode: (stage) =>
       stage === "vertex"
         ? { CUSTOM_VERTEX_UPDATE_WORLDPOS: SET_BACK_WGSL, CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
-            CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ + (wash ? `\n${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}` : ""),
-            CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT(wash),
+            CUSTOM_FRAGMENT_DEFINITIONS: SLATE_READ,
+            CUSTOM_FRAGMENT_UPDATE_ALPHA: CLIFF_CUT,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
-// Where the sea stands on it, as it is cut by: foam at the water's edge on
-// its ledge, the rock wet behind: all of its ledge, and up its wall's foot.
-baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(LEDGE_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), 0., cliffLedge))));
-let cliffFoam = select(0., cliffAfloat * (1. - smoothstep(0., ${f(LEDGE_FOAM * ROCK_SWASH)}, cliffSea - cliffReach)), cliffLedge);
-baseColor = mix(baseColor, vec3f(1.), cliffFoam);
-townShine = townShine * (1. - cliffFoam);`,
+let cliffAfloat = smoothstep(0., ${f(AFLOAT)}, textureSampleLevel(cliffShore, cliffShoreSampler, input.vCliffAt.xy / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)});
+let cliffUp = select(select(1., (input.worldPos.z - ${f(LEDGE_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), 0., cliffLedge);
+baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_WET_UP[0])}, ${f(ROCK_WET_UP[1])}, cliffUp)));`,
           },
   };
   const material = rock(plugin);
-  return { material, tick: () => markMaterialUboDirty(material), dispose: () => none && retire(none) };
+  return { material, dispose: () => none && retire(none) };
 }

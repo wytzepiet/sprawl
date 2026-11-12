@@ -64,11 +64,11 @@ async function build() {
   const { waterMaterial } = await import("../engine/water");
   waterMaterial(ctx.engine, null, null);
   waterMaterial(ctx.engine, anything(), anything());
+  waterMaterial(ctx.engine, anything(), anything(), true);
   const { peakMaterial, cliffMaterial } = await import("../engine/peaks");
   peakMaterial(ctx.engine, new Uint16Array(64), [0, 0]);
   cliffMaterial(ctx.engine, anything(), null);
   cliffMaterial(ctx.engine, anything(), anything());
-  cliffMaterial(ctx.engine, anything(), anything(), true);
   const { TownLayer } = await import("../engine/TownLayer");
   const town = new TownLayer(ctx, anything(), () => {}, () => undefined, anything()) as any;
   const { kerbField } = await import("../engine/kerbs");

@@ -2,7 +2,7 @@ import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, ty
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, LEDGE, SHORE_REACH } from "./objects/terrainGeometry";
-import { CALM, cliffUv, LEDGE_SINK } from "./peaks";
+import { AFLOAT, CALM, cliffUv } from "./peaks";
 import { slate } from "./slateTexture";
 import { SECOND, SPAN as SLATE_SPAN } from "./slate";
 import { LACE_TILES, lace } from "./lace";
@@ -159,7 +159,7 @@ export const swashFn = (R: (uv: string) => string, name: string) =>
 
 const f = (x: number) => x.toFixed(4);
 const FAR = new Uint8Array([255]);
-const water = () => {
+const water = (surf: boolean) => {
   const [at, here, time] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime"];
   const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
   // Where a reading is on the texture: drifting, then turned.
@@ -196,6 +196,14 @@ const water = () => {
     // (`cliffField`); as far as the field reaches is no cliff near at all.
     `let cliffFoot = (cliffField - 0.5) * ${f(2 * CLIFF_REACH)} - ${f(CLIFF_RUN)} + step(0.995, cliffField) * 9.;`,
     `let ashore = min(shore, max(cliffFoot, 0.));`,
+    // How far out from the water's edge on the rock: the edge at its
+    // ledge's, broken along the slate as the cliff breaks it (`peaks.ts`'
+    // `cliffBreak`), and as far in over the ledge as the wave has washed,
+    // where the sea is at the rock, not a beach.
+    `let ledgeEdge = cliffFoot - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, dpdx(${at}), dpdy(${at})) + 0.4 * ledgeSlate(${at} * 3.1, dpdx(${at}) * 3.1, dpdy(${at}) * 3.1));`,
+    `let rockOver = ledgeEdge + ${f(LEDGE_SINK)} * rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore);`,
+    // The surf is the water over the ledge alone, barely any of it.
+    ...(surf ? [`if (ledgeEdge >= 0. || rockOver < 0.) { discard; }`] : []),
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
     // Worked out here, where every pixel goes, as a neighbour's reading is.
@@ -265,16 +273,14 @@ const water = () => {
     // whole is less opaque; none past a full cut.
     `let laceCut = 1.05 - 1.15 * cover;`,
     `let foam = max(smoothstep(laceCut, laceCut + ${f(LACE_SOFT)}, lace) * mix(${f(LACE_SHOW)}, 1., cover), crest);`,
-    // The rock's foam, thick at its foot: where its ledge goes under, in
-    // from its edge, broken along the slate as the cliff breaks it
-    // (`peaks.ts`' `cliffBreak`), as far as the wave has washed over it.
-    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, cliffFoot + ${f(LEDGE_SINK)} * rockWash(${time}, ${at}) - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, acrossX, acrossY) + 0.4 * ledgeSlate(${at} * 3.1, acrossX * 3.1, acrossY * 3.1)));`,
+    // The rock's foam, thick at the water's edge on it (`rockOver`).
+    `let rock = 1. - smoothstep(0., ${f(ROCK_REACH)}, rockOver);`,
     `frothed = max(foam, rock * smoothstep(0.2, 0.7, fuzz * 0.6 + rock * rock * 0.6) * 0.85);`,
     `}`,
     // The open sea's ripples, calmed where the waves come in, so theirs is
     // the shape there, and the swell's.
     `N = normalize(N + vec3f(-(${slope}) * mix(${f(INSHORE_CALM)}, 1., smoothstep(${f(WAVE_FROM * 0.5)}, ${f(SHORE_REACH)}, ashore)) - seaward * swellSlope, 0.));`,
-    `baseColor = (mix(baseColor * ${f(DEEP)}, mix(vec3f(${TURQUOISE.map(f).join(", ")}), vec3f(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)})));`,
+    `baseColor = (mix(baseColor * ${f(DEEP)}, mix(vec3f(${TURQUOISE.map(f).join(", ")}), vec3f(${PALE.map(f).join(", ")}), exp(-${surf ? '0.' : 'shore'} / ${f(NEAR)})), exp(-${surf ? '0.' : 'shore'} / ${f(CLARITY)})));`,
     `baseColor = (mix(baseColor, vec3f(mix(${f(FOAM_THIN)}, ${f(FOAM_WHITE)}, pow(frothed, ${f(FOAM_SCARCE)}))), frothed));`,
     // Foam is matte, its light scattered every way, not the sea's gloss.
     `roughness = mix(roughness, ${f(FOAM_ROUGH)}, frothed);`,
@@ -293,12 +299,17 @@ const ledgeSlate = () => {
 }`;
 };
 
+/** How far in over the rock's ledge a wave washes from its broken edge,
+ *  at most, in tiles. */
+const LEDGE_SINK = 0.15;
 /** A material for one chunk's water, its colour the mesh's own, by
  *  vertex, its shore the chunk's (`shore.ts`), if it has one, its land's
  *  cliff as `cliffField` gives it. Its clock ticks before each frame
  *  (`tick`); its own textures are let go with `dispose`. Where on its chunk a
- *  pixel is: the mesh's own frame, however placed. */
-export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Texture2D | null) {
+ *  pixel is: the mesh's own frame, however placed. Or its `surf`'s: the
+ *  same water where a wave has washed in over the rock's ledge and nowhere
+ *  else, for a sheet of it laid over the ledge (`TerrainChunks`). */
+export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cliff: Texture2D | null, surf = false) {
   // As far from either as each reaches, where there is none.
   const far = shore && cliff ? null : createTexture2DFromPixels(engine, FAR, 1, 1, { format: "r8unorm" });
   const plugin: MaterialPlugin = {
@@ -310,7 +321,7 @@ export function waterMaterial(engine: EngineContext, shore: Texture2D | null, cl
     getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
     // Seconds, wrapped so a long session keeps the drift's precision.
     writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
-    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_DEFINITIONS: `${ledgeSlate()}\n${swashFn((uv) => `textureSampleLevel(waterRipple, waterRippleSampler, ${uv}, 0.).b`, "rockWash")}`, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water() }),
+    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_DEFINITIONS: `${ledgeSlate()}\n${swashFn((uv) => `textureSampleLevel(waterRipple, waterRippleSampler, ${uv}, 0.).b`, "rockWash")}`, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water(surf) }),
   };
   const material = townMaterial([plugin], WATER_ROUGHNESS);
   return {
