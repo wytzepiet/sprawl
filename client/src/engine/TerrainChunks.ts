@@ -41,6 +41,8 @@ interface ChunkMeshes {
   meshes: Mesh[];
   trees: Record<Kind, Grove>;
   dispose: (() => void)[];
+  /** Its cliff's wash's clock, where the sea washes up it. */
+  tick: (() => void) | null;
 }
 
 /** The sea a shade deeper than a lake. */
@@ -107,6 +109,7 @@ export class TerrainChunks {
       this.updateDetail();
       this.flush();
       for (const water of this.waters.values()) water.tick();
+      for (const chunk of this.chunks.values()) chunk.tick?.();
     });
   }
 
@@ -330,12 +333,12 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [] };
+    const chunk: ChunkMeshes = { meshes: [], trees: old?.trees ?? { broad: grove("chunk", [ox, oy]), conifer: grove("chunk", [ox, oy], "conifer") }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     // A mesh of what there is, if anything, placed from the chunk's corner
     // or, the mountains' laid where they are on the map, not.
-    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number]) => {
+    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], moves = false) => {
       if (!buf.indices.length) return null;
       const mesh = meshOf(engine, `chunk_${key}_${name}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
       mesh.material = material;
@@ -344,8 +347,10 @@ export class TerrainChunks {
       mesh.position.y = at[1];
       // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
       this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
+      // What moves is drawn over the still town each frame, and casts nothing.
+      if (moves) live(mesh);
+      else this.casters.add(mesh);
       addToScene(scene, mesh);
-      this.casters.add(mesh);
       chunk.meshes.push(mesh);
       return mesh;
     };
@@ -356,6 +361,13 @@ export class TerrainChunks {
       const cliff = cliffMaterial(engine, field, shore);
       chunk.dispose.push(cliff.dispose);
       add("cliff", geometry.cliff, cliff.material, [ox, oy]);
+      // And where the sea washes up it, the band the waves cover, again.
+      if (shore) {
+        const wash = cliffMaterial(engine, field, shore, true);
+        chunk.dispose.push(wash.dispose);
+        chunk.tick = wash.tick;
+        add("cliff_wash", geometry.cliff, wash.material, [ox, oy], true);
+      }
     }
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights, [ox, oy]);

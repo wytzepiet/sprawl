@@ -68,6 +68,7 @@ async function build() {
   peakMaterial(ctx.engine, new Uint16Array(64), [0, 0]);
   cliffMaterial(ctx.engine, anything(), null);
   cliffMaterial(ctx.engine, anything(), anything());
+  cliffMaterial(ctx.engine, anything(), anything(), true);
   const { TownLayer } = await import("../engine/TownLayer");
   const town = new TownLayer(ctx, anything(), () => {}, () => undefined, anything()) as any;
   const { kerbField } = await import("../engine/kerbs");
