@@ -96,7 +96,7 @@ const CREST_TAIL = 0.08;
 const CREST_MOTTLE = 0.85;
 /** Where the waves come in, the open sea's ripples are this much of
  *  themselves. */
-const INSHORE_CALM = 0.2;
+const INSHORE_CALM = 0.55;
 export const SWASH = 0.26;
 /** The swash starts up the sand this far through a wave before the crest
  *  reaches it, as the broken water runs ahead of its white. */
