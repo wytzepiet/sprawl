@@ -195,10 +195,11 @@ const CLIFF_INNER = 0.9;
 const ROCK_SWASH = 0.07;
 const ROCK_WET = 0.2;
 const ROCK_WET_REACH = 0.6;
-/** Only where the sea reaches it, the less the wider the beach between:
- *  as much of this far out to sea from its foot as is water, in tiles
- *  (`shore`, 0 on a beach). */
-const ROCK_REACHED = 0.5;
+/** Only where the sea is: where the water's `shore` says there is water
+ *  at the rock itself, this far out from dry ground and beyond, in tiles;
+ *  none of it on a beach, where there is none. One answer, the water's
+ *  own, to where the sea is. */
+const AFLOAT = 0.25;
 /** Its ledge sinks to the water at its broken edge from this far in, in
  *  tiles, so a wave washes over it from the edge in; foam lying on it at
  *  the wave's edge, this much of the swash's height deep. */
@@ -219,8 +220,7 @@ const GRAD = (() => {
   return `let cliffGrad = vec2f(${FIELD(`cliffUv + vec2f(${e}, 0.)`)} - ${FIELD(`cliffUv - vec2f(${e}, 0.)`)}, ${FIELD(`cliffUv + vec2f(0., ${e})`)} - ${FIELD(`cliffUv - vec2f(0., ${e})`)});`;
 })();
 const SEA = `let cliffSea = select(select(${f(CLIFF_RUN)}, (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), ${f(ROCK_SWASH)} * saturate((cliffBreak - cliffFar) / ${f(LEDGE_SINK)}), cliffLedge);
-let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (max(${f(CLIFF_RUN)} - cliffFar, 0.) + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
-let cliffAfloat = min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffSeaward, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
+let cliffAfloat = smoothstep(0., ${f(AFLOAT)}, textureSampleLevel(cliffShore, cliffShoreSampler, input.vCliffAt.xy / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)});
 let cliffBand = ${f(ROCK_SWASH * (1 + LEDGE_FOAM))} * cliffAfloat;`;
 /** The cliff stands still but for the sea washing up it, so it is drawn
  *  twice (`still.ts`), as a beach is (`ground.ts`): all but the band
