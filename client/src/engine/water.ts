@@ -2,7 +2,7 @@ import type { Rgb } from "./rgb";
 import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import { townMaterial } from "./material";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, CLIMB, SHORE_REACH } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, CLIMB, LEAN, SHORE_REACH, WATER_Z } from "./objects/terrainGeometry";
 import { AFLOAT, CALM, cliffUv, ledgeOut, slateRead } from "./peaks";
 import { slate } from "./slateTexture";
 import { SPAN as SLATE_SPAN } from "./slate";
@@ -202,11 +202,15 @@ const water = (surf: Rgb | null) => {
     // `cliffBreak`), and as a wave washes in, over the ledge and up the
     // wall's foot, where the sea is at the rock, not a beach.
     `let ledgeOut = ${ledgeOut(at)};`,
-    `let rockOver = cliffFoot - mix(ledgeOut, ${f(-CLIMB)}, rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore));`,
+    // Where on the rock: on its ledge and on the sea, as far out from its
+    // wall's foot as the cliff's field says; on its wall, the surf's alone,
+    // as far in under the foot as the wall leans for its height there.
+    `let rockAt = ${surf ? `select(cliffFoot, (${f(WATER_Z)} - input.worldPos.z) * ${f(LEAN)}, input.worldPos.z > ${f(WATER_Z + 0.001)})` : "cliffFoot"};`,
+    `let rockOver = rockAt - mix(ledgeOut, ${f(-CLIMB)}, rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore));`,
     // The surf is the water on the rock alone, none past its ledge's broken
-    // edge, where its mesh runs on: the sea's colour, not the
-    // rock's, and lying as flat as the sea does, however the rock stands.
-    ...(surf ? [`if (rockOver < 0. || cliffFoot > ledgeOut) { discard; }`, `baseColor = vec3f(${[surf.r, surf.g, surf.b].map(f).join(", ")});`, `N = vec3f(0., 0., 1.);`] : []),
+    // edge, where its mesh runs on: the sea's colour, not the rock's, and
+    // lying as flat as the sea does, however the rock stands.
+    ...(surf ? [`if (rockOver < 0. || rockAt > ledgeOut) { discard; }`, `baseColor = vec3f(${[surf.r, surf.g, surf.b].map(f).join(", ")});`, `N = vec3f(0., 0., 1.);`] : []),
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
     // Worked out here, where every pixel goes, as a neighbour's reading is.
