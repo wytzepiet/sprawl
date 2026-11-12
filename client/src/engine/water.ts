@@ -202,8 +202,9 @@ const water = (surf: boolean) => {
     // where the sea is at the rock, not a beach.
     `let ledgeEdge = cliffFoot - ${f(LEDGE)} * saturate(0.5 + 0.5 * ledgeSlate(${at}, dpdx(${at}), dpdy(${at})) + 0.4 * ledgeSlate(${at} * 3.1, dpdx(${at}) * 3.1, dpdy(${at}) * 3.1));`,
     `let rockOver = ledgeEdge + ${f(LEDGE_SINK)} * rockWash(${time}, ${at}) * smoothstep(0., ${f(AFLOAT)}, shore);`,
-    // The surf is the water over the ledge alone.
-    ...(surf ? [`if (ledgeEdge >= 0. || rockOver < 0.) { discard; }`] : []),
+    // The surf is the water over the ledge alone, and a little past its
+    // edge, over the water it is, so none of the ledge's edge shows between.
+    ...(surf ? [`if (ledgeEdge >= ${f(SURF_PAST)} || rockOver < 0.) { discard; }`] : []),
     // Seaward on the map, where the shore's distance climbs: its climb on
     // the screen, turned back through the map's own across the screen.
     // Worked out here, where every pixel goes, as a neighbour's reading is.
@@ -302,6 +303,8 @@ const ledgeSlate = () => {
 /** How far in over the rock's ledge a wave washes from its broken edge,
  *  at most, in tiles. */
 const LEDGE_SINK = 0.1;
+/** And how far its surf runs on past the ledge's edge, in tiles. */
+const SURF_PAST = 0.06;
 /** A material for one chunk's water, its colour the mesh's own, by
  *  vertex, its shore the chunk's (`shore.ts`), if it has one, its land's
  *  cliff as `cliffField` gives it. Its clock ticks before each frame
