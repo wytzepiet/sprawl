@@ -1,4 +1,4 @@
-import { createFilledTexture, fillTexture, mostOf, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, mostOf, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
 
 /**
  * The water's ripple, drawn on the GPU (`water.ts` reads it, as do the
@@ -45,18 +45,13 @@ const RIPPLE = `fn fill(at: vec2f) -> vec4f {
   return vec4f(sum / vec3f(vec2f(max(most.x, most.y)), most.z), 1.);
 }`;
 
-const DRAWN = new WeakMap<EngineContext, Texture2D>();
 /** An engine's ripple, drawn once. */
-export function ripples(engine: EngineContext): Texture2D {
-  let texture = DRAWN.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, n, n, "rgba16float", true);
-    const sum = createFilledTexture(engine, n, n, "rgba32float");
-    fillTexture(engine, sum, SUM, []);
-    const most = mostOf(engine, sum, "abs(h)");
-    fillTexture(engine, texture, RIPPLE, [sum, most]);
-    for (const t of [sum, most]) releaseTexture(t);
-    DRAWN.set(engine, texture);
-  }
+export const ripples = drawnOnce("waves", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, n, n, "rgba16float", true);
+  const sum = createFilledTexture(engine, n, n, "rgba32float");
+  fillTexture(engine, sum, SUM, []);
+  const most = mostOf(engine, sum, "abs(h)");
+  fillTexture(engine, texture, RIPPLE, [sum, most]);
+  for (const t of [sum, most]) releaseTexture(t);
   return texture;
-}
+});

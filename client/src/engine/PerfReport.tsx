@@ -26,6 +26,48 @@ export function perfCount(name: string, by = 1) {
   if (run) counts.set(name, (counts.get(name) ?? 0) + by);
 }
 
+/** When things first and last happened since the page was asked for, and
+ *  how often, by name: what a start is made of, posted while the
+ *  bench settles (`startup`). */
+const marks = new Map<string, [number, number, number]>();
+export function perfMark(name: string, at = performance.now()) {
+  if (!run) return;
+  const m = marks.get(name);
+  if (m) (m[1] = at), m[2]++;
+  else marks.set(name, [at, at, 1]);
+}
+perfMark("script");
+
+/** A start, as it is posted: the marks; what was fetched, the largest,
+ *  with when each began and ended and its bytes over the wire; and the
+ *  tasks that held the page over fifty milliseconds. */
+function startup() {
+  const round = (v: number) => Math.round(v);
+  const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  const fetched = (performance.getEntriesByType("resource") as PerformanceResourceTiming[]).map((r) => ({ what: r.name.split("/").pop()!.split("?")[0], from: round(r.startTime), to: round(r.responseEnd), bytes: r.transferSize }));
+  return {
+    marks: Object.fromEntries([...marks].map(([k, [first, last, count]]) => [k, [round(first), round(last), count]])),
+    page: nav ? { response: round(nav.responseEnd), parsed: round(nav.domContentLoadedEventEnd) } : null,
+    fetched: { count: fetched.length, bytes: fetched.reduce((t, r) => t + r.bytes, 0), last: Math.max(0, ...fetched.map((r) => r.to)), largest: fetched.sort((a, b) => b.bytes - a.bytes).slice(0, 8) },
+    held: held.sort((a, b) => b[1] - a[1]).slice(0, 12),
+    heldMs: round(held.reduce((t, h) => t + h[1], 0)),
+    pipelines: pipelinesTotal,
+  };
+}
+export type Startup = ReturnType<typeof startup>;
+/** The long tasks so far, when each began and how long it held the page:
+ *  from before this module loaded too, where the browser kept them. */
+const held: [number, number][] = [];
+if (run && typeof PerformanceObserver !== "undefined") {
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) held.push([Math.round(e.startTime), Math.round(e.duration)]);
+    }).observe({ type: "longtask", buffered: true });
+  } catch {
+    // Not every browser tells of long tasks: then none are reported.
+  }
+}
+
 /** What the GPU is asked to make and given, counted where the WebGPU API is
  *  called, whichever renderer calls it: patched as the module loads, before
  *  the engine (`Canvas.tsx`) asks for a device. */
@@ -257,7 +299,11 @@ export default function PerfReport() {
     sent.push(body);
     // The last settle lasts until the traffic has filled the streets and
     // the town is drawn: five seconds with no drawing of it.
-    if (!(PHASES[phase] === "settle" && PHASES[phase + 1] !== "settle" && (simNow() < filled || body.counts["town.draws"]))) phase++;
+    const settling = PHASES[phase] === "settle";
+    if (!(settling && PHASES[phase + 1] !== "settle" && (simNow() < filled || body.counts["town.draws"]))) phase++;
+    // What the start was made of, as far as it has come: the last of
+    // these, as the bench begins, is the whole of it.
+    if (settling) void fetch("/perf", { method: "POST", body: JSON.stringify({ at: body.at, tab: run, phase: "startup", startup: startup() }) });
     phaseBegan = performance.now();
     // Set here, not as the frame is drawn: a frame not drawn would never set it back.
     forced.fps = PHASES[phase] === "off" ? 0 : PHASES[phase] === "f60" ? 60 : null;

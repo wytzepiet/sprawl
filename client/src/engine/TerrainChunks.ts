@@ -24,6 +24,7 @@ import { live } from "./still";
 import { grove, plant, showGrove, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import { slateRead } from "./slateTexture";
+import { perfMark } from "./PerfReport";
 
 import { groundCover } from "./view";
 
@@ -90,7 +91,7 @@ export class TerrainChunks {
     private isQuay: (x: number, y: number) => boolean,
   ) {
     this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
-    this.slated = slateRead(ctx.engine).then((texels) => this.builder.slate(texels));
+    this.slated = slateRead(ctx.engine).then((texels) => (perfMark("slate read"), this.builder.slate(texels)));
 
     this.stop = ctx.beforeRender(() => {
       this.updateDetail();
@@ -239,12 +240,14 @@ export class TerrainChunks {
     const current = () => this.tiles.has(key) && this.generation.get(key) === generation;
     if (!current()) return;
     this.applyGeometry(key, geometry);
+    perfMark("land in");
     yield;
     if (current()) this.rebuildTrees(key);
   }
 
   private async requestBuild(key: string): Promise<void> {
     await this.slated;
+    perfMark("land asked");
     const tiles = this.tiles.get(key);
     if (!tiles) {
       this.disposeChunk(key);
@@ -256,6 +259,7 @@ export class TerrainChunks {
     let geometry: ChunkGeometry | null;
     try {
       geometry = await this.builder.build(this.drawn(key), this.heights.get(key)!, cx, cy);
+      perfMark("land built");
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.

@@ -1,4 +1,4 @@
-import { createFilledTexture, fillTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, type EngineContext, type Texture2D } from "./gpu";
 import { CROWN_REACH, CROWN_TEXELS, LIT } from "./crowns";
 
 /**
@@ -120,14 +120,9 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(1., 0., 0., 0.);
 }`;
 
-const DRAWN = new WeakMap<EngineContext, Texture2D>();
 /** An engine's conifers, drawn once. */
-export function conifers(engine: EngineContext): Texture2D {
-  let texture = DRAWN.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, CONIFERS * CROWN_TEXELS, CONIFER_LAYERS * CROWN_TEXELS, "rgba8unorm", true);
-    fillTexture(engine, texture, CONIFER, []);
-    DRAWN.set(engine, texture);
-  }
+export const conifers = drawnOnce("conifers", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, CONIFERS * CROWN_TEXELS, CONIFER_LAYERS * CROWN_TEXELS, "rgba8unorm", true);
+  fillTexture(engine, texture, CONIFER, []);
   return texture;
-}
+});

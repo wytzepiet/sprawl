@@ -1,4 +1,4 @@
-import { RANDOM, createFilledTexture, fillTexture, stampTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, RANDOM, stampTexture, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 
 /**
@@ -71,17 +71,12 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(0.5 + slope * ${f(wave / 16)}, 0.5 + rounded(p) / 2., 1.);
 }`;
 
-const RIPPLES = new WeakMap<EngineContext, Texture2D>();
 /** The sand's ripples, an engine's, drawn once. */
-export function sandRipples(engine: EngineContext): Texture2D {
-  let texture = RIPPLES.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
-    const heights = createFilledTexture(engine, n, n, "r16float");
-    stampTexture(engine, heights, PACKET, PACKETS, true, "add");
-    fillTexture(engine, texture, SLOPES, [heights]);
-    retire(heights);
-    RIPPLES.set(engine, texture);
-  }
+export const sandRipples = drawnOnce("sand", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
+  const heights = createFilledTexture(engine, n, n, "r16float");
+  stampTexture(engine, heights, PACKET, PACKETS, true, "add");
+  fillTexture(engine, texture, SLOPES, [heights]);
+  retire(heights);
   return texture;
-}
+});

@@ -1,4 +1,4 @@
-import { SHAPE_READ, createFilledTexture, fillTexture, layTexture, releaseTexture, shapesTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, layTexture, releaseTexture, SHAPE_READ, shapesTexture, type EngineContext, type Texture2D } from "./gpu";
 
 /**
  * A wheat field's stages, drawn on the GPU (`objects/field.ts` reads them): a square
@@ -231,21 +231,16 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(0.5 - eased / length(vec3f(eased, 1.)) * 0.5, min(1., here.g * shade / 1.25), here.b);
 }`;
 
-const DRAWN = new WeakMap<EngineContext, Texture2D>();
 /** An engine's wheat, drawn once. */
-export function wheat(engine: EngineContext): Texture2D {
-  let texture = DRAWN.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, n, WHEAT_STRIDE * WHEAT_STAGES, "rgba8unorm", true);
-    const numbers = strokes();
-    const shapes = shapesTexture(engine, numbers);
-    const [laid, field, across] = [createFilledTexture(engine, n, n * WHEAT_STAGES, "rgba32float"), createFilledTexture(engine, n, n * WHEAT_STAGES, "rgba32float"), createFilledTexture(engine, n, n * WHEAT_STAGES, "r32float")];
-    layTexture(engine, laid, STROKES, numbers.length / 12, [shapes], [-1, 0, 0, 0]);
-    fillTexture(engine, field, FIELD, [laid]);
-    fillTexture(engine, across, ACROSS, [field]);
-    fillTexture(engine, texture, WHEAT, [field, across]);
-    for (const t of [shapes, laid, field, across]) releaseTexture(t);
-    DRAWN.set(engine, texture);
-  }
+export const wheat = drawnOnce("wheat", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, n, WHEAT_STRIDE * WHEAT_STAGES, "rgba8unorm", true);
+  const numbers = strokes();
+  const shapes = shapesTexture(engine, numbers);
+  const [laid, field, across] = [createFilledTexture(engine, n, n * WHEAT_STAGES, "rgba32float"), createFilledTexture(engine, n, n * WHEAT_STAGES, "rgba32float"), createFilledTexture(engine, n, n * WHEAT_STAGES, "r32float")];
+  layTexture(engine, laid, STROKES, numbers.length / 12, [shapes], [-1, 0, 0, 0]);
+  fillTexture(engine, field, FIELD, [laid]);
+  fillTexture(engine, across, ACROSS, [field]);
+  fillTexture(engine, texture, WHEAT, [field, across]);
+  for (const t of [shapes, laid, field, across]) releaseTexture(t);
   return texture;
-}
+});

@@ -2,7 +2,7 @@ import { lag } from "./lag";
 import { addToScene, holdPicture, markMaterialUboDirty, remadeWithin, type MaterialPlugin, type Mesh } from "./gpu";
 import { night } from "./lights";
 import { spread } from "./budget";
-import { perfCount } from "./PerfReport";
+import { perfCount, perfMark } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
 import { ROOF } from "./roofs";
 import type { EngineContext } from "./Canvas";
@@ -433,6 +433,7 @@ export class TownLayer {
         lag("chunks");
         const took = performance.now() - started;
         perfCount("town.draws");
+        perfMark("town drawn");
         perfCount("town.drawMs", took);
         if (import.meta.env.DEV && took > SLOW_MS) console.warn(`[town] ${todo.length} chunks drawn in ${took.toFixed(0)} ms, off the main thread`);
         if (this.stale.size || this.heldDirty) this.settle();

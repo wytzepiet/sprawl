@@ -1,4 +1,4 @@
-import { RANDOM, SHAPE_READ, createFilledTexture, fillTexture, layTexture, releaseTexture, shapesTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, layTexture, RANDOM, releaseTexture, SHAPE_READ, shapesTexture, whenDrawn, type EngineContext, type Texture2D } from "./gpu";
 import { BROAD_LAYERS, CROWNS, CROWN_REACH, CROWN_TEXELS, LEAF_TILT, LIT, ROWS } from "./crowns";
 import { stale } from "./still";
 
@@ -121,33 +121,30 @@ fn fill(at: vec2f) -> vec4f {
 
 const NOTHING = `fn fill(at: vec2f) -> vec4f { return vec4f(1., 0., 0., 0.); }`;
 
-const DRAWN = new WeakMap<EngineContext, { texture: Texture2D; ready: Promise<void> }>();
-function crowns(engine: EngineContext) {
-  let it = DRAWN.get(engine);
-  if (!it) {
-    const texture = createFilledTexture(engine, WIDE, HIGH, "rgba8unorm", true);
-    fillTexture(engine, texture, NOTHING, []);
-    const grown = new Promise<Uint8Array>((done) => {
-      const worker = new Worker(new URL("./crownsWorker.ts", import.meta.url), { type: "module" });
-      worker.onmessage = ({ data }: MessageEvent<Uint8Array>) => (worker.terminate(), done(data));
-    });
-    const ready = grown.then((bytes) => {
-      const numbers = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-      const shapes = shapesTexture(engine, numbers);
-      const laid = createFilledTexture(engine, WIDE, HIGH, "rgba16float");
-      const [row, round] = [createFilledTexture(engine, WIDE, T, "rg16float"), createFilledTexture(engine, WIDE, T, "rg16float")];
-      layTexture(engine, laid, SHAPES, numbers.length / 12, [shapes], [-1, 0, 0, 0]);
-      fillTexture(engine, row, TOP, [laid]);
-      fillTexture(engine, round, ROUND, [row]);
-      fillTexture(engine, texture, CROWN, [laid, round]);
-      for (const t of [shapes, laid, row, round]) releaseTexture(t);
-      stale();
-    });
-    it = { texture, ready };
-    DRAWN.set(engine, it);
-  }
+const crowns = drawnOnce("broadleaves", (engine: EngineContext): { texture: Texture2D; ready: Promise<void> } => {
+  const texture = createFilledTexture(engine, WIDE, HIGH, "rgba8unorm", true);
+  fillTexture(engine, texture, NOTHING, []);
+  const grown = new Promise<Uint8Array>((done) => {
+    const worker = new Worker(new URL("./crownsWorker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = ({ data }: MessageEvent<Uint8Array>) => (worker.terminate(), done(data));
+  });
+  const ready = grown.then((bytes) => {
+    const began = performance.now();
+    const numbers = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+    const shapes = shapesTexture(engine, numbers);
+    const laid = createFilledTexture(engine, WIDE, HIGH, "rgba16float");
+    const [row, round] = [createFilledTexture(engine, WIDE, T, "rg16float"), createFilledTexture(engine, WIDE, T, "rg16float")];
+    layTexture(engine, laid, SHAPES, numbers.length / 12, [shapes], [-1, 0, 0, 0]);
+    fillTexture(engine, row, TOP, [laid]);
+    fillTexture(engine, round, ROUND, [row]);
+    fillTexture(engine, texture, CROWN, [laid, round]);
+    for (const t of [shapes, laid, row, round]) releaseTexture(t);
+    whenDrawn(engine, "broadleaves laid", began);
+    stale();
+  });
+  const it = { texture, ready };
   return it;
-}
+});
 
 /** An engine's broadleaves: nothing of any until they are grown and
  *  drawn, so no tree shows before its crown does. */

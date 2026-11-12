@@ -1,4 +1,4 @@
-import { RANDOM, createFilledTexture, fillTexture, stampTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, RANDOM, stampTexture, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 
 /**
@@ -108,17 +108,12 @@ fn fill(at: vec2f) -> vec4f {
 }`;
 
 /** The lawn, an engine's, drawn once. */
-const LAWNS = new WeakMap<EngineContext, Texture2D>();
-export function lawn(engine: EngineContext): Texture2D {
-  let texture = LAWNS.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
-    const heights = createFilledTexture(engine, n, n, "rg16float");
-    stampTexture(engine, heights, BLADE, BLADES, true);
-    stampTexture(engine, heights, FLOWERS, HEADS * 3, false);
-    fillTexture(engine, texture, SLOPES, [heights]);
-    retire(heights);
-    LAWNS.set(engine, texture);
-  }
+export const lawn = drawnOnce("lawn", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
+  const heights = createFilledTexture(engine, n, n, "rg16float");
+  stampTexture(engine, heights, BLADE, BLADES, true);
+  stampTexture(engine, heights, FLOWERS, HEADS * 3, false);
+  fillTexture(engine, texture, SLOPES, [heights]);
+  retire(heights);
   return texture;
-}
+});

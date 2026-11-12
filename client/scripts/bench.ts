@@ -21,6 +21,7 @@
 import { args, CLIENT, flag, has, launch, word } from "./lib";
 import { costLines, PHASES, summarise, type Report } from "../src/engine/bench";
 import type { CostReport } from "../src/engine/cost";
+import type { Startup } from "../src/engine/PerfReport";
 
 const at = args.indexOf("--compare");
 const compare = at < 0 ? null : args.splice(at, 3).slice(1);
@@ -37,7 +38,7 @@ const fetchRuns = async (tab?: string): Promise<Report[]> =>
 
 if (compare) {
   const [a, b] = await Promise.all(compare.map(async (tab) => {
-    const reports = (await fetchRuns(tab)).filter((r) => !r.phase.endsWith("cost"));
+    const reports = (await fetchRuns(tab)).filter((r) => !r.phase.endsWith("cost") && r.phase !== "startup");
     if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
     const r = reports[0];
     console.log(`${tab}: ${r.canvas.join("×")} at ${r.dpr}x, ${r.gpu}`);
@@ -99,7 +100,7 @@ if (!tab) {
   // A report every five seconds, a phase each.
   for (let n = 0; n < PHASES.length; ) {
     await page.waitForTimeout(5000);
-    const now = (await fetchRuns(tab)).length;
+    const now = (await fetchRuns(tab)).filter((r) => r.phase !== "startup").length;
     if (now === n && now > 0) console.log(`no report in five seconds after ${n}`);
     n = now;
     process.stdout.write(`\r${n}/${PHASES.length} reports`);
@@ -109,7 +110,7 @@ if (!tab) {
 }
 
 const lines = await fetchRuns(tab);
-const reports = lines.filter((r) => !r.phase.endsWith("cost"));
+const reports = lines.filter((r) => !r.phase.endsWith("cost") && r.phase !== "startup");
 if (!reports.length) throw new Error(`no reports for ${tab} at ${url}`);
 const [first] = reports;
 console.log(`${tab}: ${first.canvas.join("×")} at ${first.dpr}x, ${first.gpu}\n${first.agent}`);
@@ -142,6 +143,20 @@ for (const s of summarise(reports)) {
   for (const [what, n] of errors) console.log(`       error ×${n}: ${what}`);
   const worst = mine.flatMap((r) => r.long).sort((a, b) => b.ms - a.ms)[0];
   if (worst) console.log(`       longest frame ${worst.ms} ms: ${worst.scripts.slice(0, 3).map((s) => `${s.what} ${s.ms}`).join(", ") || "no script"}`);
+}
+// What the start was made of, in the order it happened: seconds since the
+// page was asked for; a thing that happened often, its first and its last.
+const start = (lines.findLast((r) => r.phase === "startup") as unknown as { startup: Startup } | undefined)?.startup;
+if (start) {
+  const s = (ms: number) => (ms / 1000).toFixed(2).padStart(7);
+  console.log(`\nthe start, seconds since the page was asked for`);
+  const rows: [number, string][] = Object.entries(start.marks).map(([name, [first, last, count]]) => [first, `${s(first)}  ${name}${count > 1 ? `, ×${count}, the last at ${s(last).trim()}` : ""}`]);
+  if (start.page) rows.push([start.page.response, `${s(start.page.response)}  page fetched`], [start.page.parsed, `${s(start.page.parsed)}  page parsed`]);
+  rows.push([start.fetched.last, `${s(start.fetched.last)}  last of ${start.fetched.count} files fetched, ${(start.fetched.bytes / 1024).toFixed(0)} KB over the wire`]);
+  for (const [, line] of rows.sort((a, b) => a[0] - b[0])) console.log(line);
+  console.log(`largest files: ${start.fetched.largest.map((f) => `${f.what} ${(f.bytes / 1024).toFixed(0)} KB ${s(f.from).trim()}-${s(f.to).trim()}`).join(", ")}`);
+  console.log(`page held ${(start.heldMs / 1000).toFixed(2)} s in long tasks; the longest: ${start.held.map(([at, ms]) => `${ms} ms at ${s(at).trim()}`).join(", ")}`);
+  console.log(`${start.pipelines} pipelines made`);
 }
 for (const [phase, title] of [["cost", "what each kind costs, far out, by day"], ["d-cost", "close in, by day"], ["n-cost", "close in, by night"]]) {
   const cost = (lines.find((r) => r.phase === phase) as unknown as { cost: CostReport } | undefined)?.cost;

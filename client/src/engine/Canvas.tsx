@@ -1,5 +1,5 @@
 import { work } from "./budget";
-import { perfCount, run } from "./PerfReport";
+import { perfCount, perfMark, run } from "./PerfReport";
 import {
   createContext,
   useContext,
@@ -153,7 +153,9 @@ export default function Canvas(props: ParentProps) {
   onCleanup(() => stop());
 
   const initCanvas = async (el: HTMLCanvasElement) => {
+    perfMark("canvas");
     const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO });
+    perfMark("device");
     const stopResizing = enableSurfaceResizeObserver(engine.surfaces[0]);
     const scene = createSceneContext(engine);
     const land = theme.land;
@@ -253,6 +255,7 @@ export default function Canvas(props: ParentProps) {
       if (seen !== was) lastMoved = now;
       perfCount("frame.jsMs", performance.now() - began);
       perfCount("frame.count");
+      perfMark("frame");
       // A share of the clock, not of the frame: on a slow device a frame
       // takes long, and work given a frame's fixed slice falls behind for
       // good, the town and every update waiting on it.

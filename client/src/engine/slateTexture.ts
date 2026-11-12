@@ -1,4 +1,4 @@
-import { createFilledTexture, fillTexture, mostOf, readTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, mostOf, readTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
 import { EDGE_LEVEL, SIDE } from "./slate";
 
 /**
@@ -149,23 +149,18 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(0.5 - slope / length(vec3f(slope, 1.)) * 0.5, (load(p) - most.x) / (most.y - most.x), 1.);
 }`;
 
-const DRAWN = new WeakMap<EngineContext, { texture: Texture2D; read: Promise<Uint8Array> }>();
-function drawn(engine: EngineContext) {
-  let it = DRAWN.get(engine);
-  if (!it) {
-    const texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
-    const [plates, soft, height] = [createFilledTexture(engine, n, n, "r32float"), createFilledTexture(engine, n, n, "rg32float"), createFilledTexture(engine, n, n, "r32float")];
-    fillTexture(engine, plates, PLATES, []);
-    fillTexture(engine, soft, SOFT, [plates]);
-    fillTexture(engine, height, HEIGHT, [soft]);
-    const most = mostOf(engine, height, "vec4f(-h.r, h.r, 0., 0.)");
-    fillTexture(engine, texture, SLATE, [height, most]);
-    for (const t of [plates, soft, height, most]) releaseTexture(t);
-    it = { texture, read: readTexture(engine, texture, EDGE_LEVEL) };
-    DRAWN.set(engine, it);
-  }
+const drawn = drawnOnce("slate", (engine: EngineContext): { texture: Texture2D; read: Promise<Uint8Array> } => {
+  const texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
+  const [plates, soft, height] = [createFilledTexture(engine, n, n, "r32float"), createFilledTexture(engine, n, n, "rg32float"), createFilledTexture(engine, n, n, "r32float")];
+  fillTexture(engine, plates, PLATES, []);
+  fillTexture(engine, soft, SOFT, [plates]);
+  fillTexture(engine, height, HEIGHT, [soft]);
+  const most = mostOf(engine, height, "vec4f(-h.r, h.r, 0., 0.)");
+  fillTexture(engine, texture, SLATE, [height, most]);
+  for (const t of [plates, soft, height, most]) releaseTexture(t);
+  const it = { texture, read: readTexture(engine, texture, EDGE_LEVEL) };
   return it;
-}
+});
 
 /** An engine's slate, drawn once. The cliffs the land stands on break
  *  along it too (`ground.ts`). */

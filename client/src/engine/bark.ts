@@ -1,4 +1,4 @@
-import { createFilledTexture, fillTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, releaseTexture, type EngineContext, type Texture2D } from "./gpu";
 
 /**
  * Bark, as a log's is (`objects/sawmill.ts` reads it), drawn on the GPU: a
@@ -61,17 +61,12 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(clamp(slope, vec2f(-1.), vec2f(1.)) * 0.5 + 0.5, 1. - ${f(DEEP)} * pow(1. - high(p), 1.5), 1.);
 }`;
 
-const DRAWN = new WeakMap<EngineContext, Texture2D>();
 /** An engine's bark, drawn once. */
-export function bark(engine: EngineContext): Texture2D {
-  let texture = DRAWN.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, w, h, "rgba8unorm", true);
-    const height = createFilledTexture(engine, w, h, "r32float");
-    fillTexture(engine, height, HEIGHT, []);
-    fillTexture(engine, texture, BARK, [height]);
-    releaseTexture(height);
-    DRAWN.set(engine, texture);
-  }
+export const bark = drawnOnce("bark", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, w, h, "rgba8unorm", true);
+  const height = createFilledTexture(engine, w, h, "r32float");
+  fillTexture(engine, height, HEIGHT, []);
+  fillTexture(engine, texture, BARK, [height]);
+  releaseTexture(height);
   return texture;
-}
+});

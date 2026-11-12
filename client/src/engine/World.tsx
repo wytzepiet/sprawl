@@ -1,5 +1,5 @@
 import { onCleanup, createEffect, createMemo, on, type JSX } from "solid-js";
-import { perfCount } from "./PerfReport";
+import { perfCount, perfMark } from "./PerfReport";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
@@ -151,6 +151,7 @@ export default function World(props: { brush?: () => JSX.Element }) {
       // only joined, leaves it standing as it was.
       const same = now !== undefined && was === now;
       perfCount(`ops.${entry?.object.kind ?? "deleted"}`);
+      perfMark("world");
       // One that stands as it stood may still look otherwise, its shelves
       // bare or stocked, or its street newly joined to the world: its
       // colour, and the town not drawn again.

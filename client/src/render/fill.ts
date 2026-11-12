@@ -1,5 +1,28 @@
 import type { Engine } from "./engine";
 import { createTexture2DFromPixels, mipmaps, type Texture2D } from "./texture";
+import { perfMark, run } from "../engine/PerfReport";
+
+/** What `draw` makes for an engine, made once, the first time it is asked
+ *  for; and, in a bench, when it was asked for and when the GPU had drawn
+ *  it (`PerfReport.tsx`). */
+export function drawnOnce<T>(name: string, draw: (engine: Engine) => T): (engine: Engine) => T {
+  const made = new WeakMap<Engine, T>();
+  return (engine) => {
+    if (!made.has(engine)) {
+      const began = performance.now();
+      made.set(engine, draw(engine));
+      whenDrawn(engine, name, began);
+    }
+    return made.get(engine)!;
+  };
+}
+/** A bench's marks of something drawn: when it began, and when the GPU
+ *  had done all it was given by now. */
+export function whenDrawn(engine: Engine, name: string, began: number) {
+  if (!run) return;
+  perfMark(`draw ${name}`, began);
+  void engine._device.queue.onSubmittedWorkDone().then(() => perfMark(`drawn ${name}`));
+}
 
 /** A texture a shader can fill (`fillTexture`), read smoothly; `tiling`,
  *  one that repeats and is read from far off too, its smaller copies made

@@ -1,4 +1,4 @@
-import { RANDOM, createFilledTexture, fillTexture, type EngineContext, type Texture2D } from "./gpu";
+import { createFilledTexture, drawnOnce, fillTexture, RANDOM, type EngineContext, type Texture2D } from "./gpu";
 
 /**
  * The lace foam leaves as a broken wave runs back (`water.ts` reads it),
@@ -65,14 +65,9 @@ fn fill(at: vec2f) -> vec4f {
   return vec4f(net * thick + (0.6 * lumpy(whole, 61, 9u) + 0.4 * lumpy(whole, 127, 10u) - 0.5) * ${f(FRAY)});
 }`;
 
-const DRAWN = new WeakMap<EngineContext, Texture2D>();
 /** An engine's lace, drawn once. */
-export function lace(engine: EngineContext): Texture2D {
-  let texture = DRAWN.get(engine);
-  if (!texture) {
-    texture = createFilledTexture(engine, n, n, "r8unorm", true);
-    fillTexture(engine, texture, LACE, []);
-    DRAWN.set(engine, texture);
-  }
+export const lace = drawnOnce("lace", (engine: EngineContext): Texture2D => {
+  const texture = createFilledTexture(engine, n, n, "r8unorm", true);
+  fillTexture(engine, texture, LACE, []);
   return texture;
-}
+});
