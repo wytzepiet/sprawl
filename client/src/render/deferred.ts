@@ -199,14 +199,14 @@ const REACH = 1.2;
     // However high what stands there is, as a cliff is: only what stands far off past the reach is nothing to this pixel.
     shut += max(stands * step(d, 3. * REACH), folds) * w;
   }
-  return vec4f(1. - 2. * shut / whole);
+  return vec4f(1. - 1.2 * shut / whole);
 }`;
 
 /** The G-buffer lit: sun in the still map's shade, sky, lamps; linear, glow added. */
 export const RELIGHT = /* wgsl */ `${COMMON}
 /** The sun is dimmed in nooks too, by this share of the sky's: sky light
  *  alone hardly shows in daylight. */
-const SUN_IN_NOOKS = 0.8;
+const SUN_IN_NOOKS = 0.6;
 /** The open sky here, its taps' noise smoothed over 4x4 of like depth. */
 fn openAt(texel: vec2i, depth: f32) -> f32 {
   let last = vec2i(textureDimensions(openSky)) - 1;
