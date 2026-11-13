@@ -672,6 +672,22 @@ function half(v: number): number {
   return sign | (e << 10) | ((x & 0x7fffff) >>> 13);
 }
 
+/** How far inside the edge of the tiles where `is` holds a point of the
+ *  map is, in tiles, negative outside: the nine tiles round it blended by
+ *  a hump over three (a quadratic B-spline), half at the edge, as the
+ *  ground is drawn (`ground.ts`'s `field` and `groundIn`), out to a tile
+ *  and a half either way. */
+function inside(x: number, y: number, is: (x: number, y: number) => boolean): number {
+  const [cx, cy] = [Math.floor(x), Math.floor(y)];
+  const hump = (u: number) => [0.5 * (0.5 - u) ** 2, 0.75 - u * u, 0.5 * (0.5 + u) ** 2];
+  const [wx, wy] = [hump(x - cx - 0.5), hump(y - cy - 0.5)];
+  let f = 0;
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) if (is(cx + i - 1, cy + j - 1)) f += wx[i] * wy[j];
+  const g = Math.abs(f - 0.5);
+  const d = g > 1 / 3 ? 1.5 - Math.cbrt(Math.max(3 - 6 * g, 0)) : Math.sqrt(3) * Math.cos(Math.acos(-2.3094011 * g) / 3 - 2.0943951);
+  return Math.sign(f - 0.5) * d;
+}
+
 function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number, originY: number): { mesh: MeshBuffers; heights: Uint16Array | null } {
   const rock = (x: number, y: number) => sampler.typeAt(x, y) === "Mountain";
   const out = new Builder();
@@ -680,25 +696,15 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   // its layers break, the slate's added.
   const raw = new Float32Array(heights.length / 2);
   for (let k = 0; k < raw.length; k++) raw[k] = (heights[2 * k] | (heights[2 * k + 1] << 8)) / PEAK_UNIT;
-  // Eased in from a line in from the rock's edge, which is the tiles'
-  // edge: there the heights jump, and the first wall would stand straight
-  // down the grid. And on out past it, under the grass, below nothing.
-  const reach = Math.ceil(FOOT_EASE + FOOT_JAG);
-  const [tx0, ty0] = [originX - PEAK_APRON - reach, originY - PEAK_APRON - reach];
-  const span = CHUNK_SIZE + 2 * (PEAK_APRON + reach) + 1;
-  const open = Uint8Array.from({ length: span * span }, (_, k) => (rock(tx0 + (k % span), ty0 + Math.floor(k / span)) ? 0 : 1));
+  // Eased in from a line in from the rock's edge, the edge the grass
+  // stops at (`ground.ts`): a stair of tiles cut to a slant, not the
+  // tiles' own squares, which the first walls would follow in teeth. And
+  // on out past it, under the grass, below nothing.
   for (let j = 0; j < PEAK_SIDE && raw.length; j++) {
     for (let i = 0; i < PEAK_SIDE; i++) {
       const [x, y] = place(i, j);
-      const inside = !open[(Math.floor(y) - ty0) * span + Math.floor(x) - tx0];
-      let d = reach;
-      for (let ty = Math.floor(y) - reach; ty <= Math.floor(y) + reach; ty++) {
-        for (let tx = Math.floor(x) - reach; tx <= Math.floor(x) + reach; tx++) {
-          if (open[(ty - ty0) * span + tx - tx0] !== (inside ? 1 : 0)) continue;
-          d = Math.min(d, Math.hypot(Math.max(tx - x, 0, x - tx - 1), Math.max(ty - y, 0, y - ty - 1)));
-        }
-      }
-      const u = (inside ? d : -d) - FOOT_JAG * (0.15 + 0.85 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))));
+      const d = inside(x, y, rock);
+      const u = d - FOOT_JAG * (0.15 + 0.85 * Math.min(1, Math.max(0, 0.5 + 1.5 * slateHeight(2 * x, 2 * y, true))));
       const t = Math.min(1, Math.max(0, u / FOOT_EASE));
       const e = t * t * (3 - 2 * t);
       const own = raw[j * PEAK_SIDE + i];
