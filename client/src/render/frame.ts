@@ -203,6 +203,8 @@ function makeFrame(scene: Scene): Frame {
   const linear = device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" });
   const clamped = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   const blankSky = device.createTexture({ size: [1, 1, 6], format: "rgba16float", usage: GPUTextureUsage.TEXTURE_BINDING });
+  /** No picture (the studio): nothing is in a nook. */
+  const blankOpen = device.createTexture({ size: [1, 1], format: "r8unorm", usage: GPUTextureUsage.TEXTURE_BINDING });
   const lut = brdfLut(engine);
   const arrayView = (t: GPUTexture) => t.createView({ dimension: "2d-array" });
   const layerView = (t: GPUTexture) => t.createView({ dimension: "2d", baseArrayLayer: 0, arrayLayerCount: 1 });
@@ -269,7 +271,7 @@ function makeFrame(scene: Scene): Frame {
     ]);
     resources = {
       key,
-      forward: device.createBindGroup({ layout: FORWARD_LAYOUT, entries: [...common.map((e) => ({ binding: e.binding - 5, resource: e.resource })), { binding: 8, resource: { buffer: screenBins.buffer } }] }),
+      forward: device.createBindGroup({ layout: FORWARD_LAYOUT, entries: [...common.map((e) => ({ binding: e.binding - 5, resource: e.resource })), { binding: 8, resource: { buffer: screenBins.buffer } }, { binding: 9, resource: (picture?.open ?? blankOpen).createView() }] }),
       open: gbuffers.map((g) => device.createBindGroup({ layout: OPEN_LAYOUT, entries: [...g, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }] })),
       relight: gbuffers.map((g) =>
         device.createBindGroup({ layout: RELIGHT_LAYOUT, entries: [...g, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }, { binding: 15, resource: picture!.open.createView() }] }),
@@ -377,7 +379,8 @@ function makeFrame(scene: Scene): Frame {
     u.set("viewProjection", vp);
     u.set("view", view);
     u.set("vEyePosition", [cam.position.x, cam.position.y, cam.position.z, 1]);
-    u.set("vImageInfos", [ip.exposure, ip.contrast ?? 1, 0.8, 1]);
+    u.set("vImageInfos", [ip.exposure, ip.contrast ?? 1, 0.8, stillVp ? AO : 0]);
+    if (stillVp) u.set("stillView", stillVp);
     if (sun) {
       const d = sun.direction;
       const len = Math.hypot(d.x, d.y, d.z) || 1;

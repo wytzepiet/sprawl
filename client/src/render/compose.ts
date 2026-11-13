@@ -89,7 +89,7 @@ const SCENE_FIELDS: Field[] = [
   { name: "viewProjection", type: "mat4x4f" },
   { name: "view", type: "mat4x4f" },
   { name: "vEyePosition", type: "vec4f" },
-  /** exposure, contrast, the sky cube's lodGenerationScale (Lite's 0.8), 1. */
+  /** exposure, contrast, the sky cube's lodGenerationScale (Lite's 0.8), how much the open sky's share is felt (0 with no picture). */
   { name: "vImageInfos", type: "vec4f" },
   /** Toward the sun: Lite's light direction, negated. */
   { name: "sunDir", type: "vec4f" },
@@ -103,6 +103,8 @@ const SCENE_FIELDS: Field[] = [
   { name: "shadowMatrix", type: "mat4x4f" },
   /** darkness, mapSize, 1 / mapSize, frustumEdgeFalloff (Lite's shadowsInfo; darkness 1 while shadows are off). */
   { name: "shadowInfo", type: "vec4f" },
+  /** The still picture's eye: where a point is in it, for its open sky. */
+  { name: "stillView", type: "mat4x4f" },
 ];
 const SCENE = struct(SCENE_FIELDS);
 
@@ -164,6 +166,17 @@ const FORWARD_BINDINGS = `${LIGHT_WGSL}
 @group(3) @binding(6) var brdfLUT: texture_2d<f32>;
 @group(3) @binding(7) var brdfSampler: sampler;
 ${binsAt(3, 8)}
+@group(3) @binding(9) var openSky: texture_2d<f32>;
+// The open sky the still picture has where this point is (OPEN in deferred.ts),
+// smoothed: what moves in a nook, or washes into one, dims with it.
+fn _r_openAt(worldPos: vec3f) -> f32 {
+let c = scene.stillView * vec4f(worldPos, 1.0);
+let uv = vec2f(c.x / c.w * 0.5 + 0.5, 0.5 - c.y / c.w * 0.5);
+let texel = 1.5 / vec2f(textureDimensions(openSky));
+var sum = 0.0;
+for (var i = 0; i < 4; i++) { sum += textureSampleLevel(openSky, brdfSampler, uv + texel * vec2f(f32(i & 1) * 2.0 - 1.0, f32(i >> 1) * 2.0 - 1.0), 0.0).r; }
+return 1.0 - (1.0 - sum / 4.0) * abs(scene.vImageInfos.w);
+}
 fn _r_shadowOf(map: texture_depth_2d_array, worldPos: vec3f) -> f32 {
 let posFromLight = scene.shadowMatrix * vec4f(worldPos, 1.0);
 let clipSpace = posFromLight.xyz / posFromLight.w;
@@ -198,7 +211,9 @@ let _r_directAlphaG = _r_directRoughness * _r_directRoughness + 0.0005;
 let _r_brdf = textureSample(brdfLUT, brdfSampler, vec2f(NdotV, roughness)).rgb;
 var _r_diffuse = vec3f(0.0);
 var _r_specular = vec3f(0.0);
-let _r_sf = select(1.0, min(_r_shadowOf(shadowStatic, input.worldPos), _r_shadowOf(shadowLive, input.worldPos)), mesh.receiveShadows > 0.5);
+let _r_open = _r_openAt(input.worldPos);
+occlusion *= _r_open;
+let _r_sf = select(1.0, min(_r_shadowOf(shadowStatic, input.worldPos), _r_shadowOf(shadowLive, input.worldPos)), mesh.receiveShadows > 0.5) * mix(1.0, _r_open, 0.6);
 let _r_L = normalize(scene.sunDir.xyz);
 let _r_NdotL = max(dot(N, _r_L), 0.0);
 _r_diffuse += surfaceAlbedo * (1.0 / PI) * _r_NdotL * scene.sunColor.rgb * _r_sf;
@@ -507,5 +522,6 @@ export const FORWARD_GROUP: GPUBindGroupLayoutDescriptor = {
     { binding: 6, visibility: FRAGMENT, texture: {} },
     { binding: 7, visibility: FRAGMENT, sampler: {} },
     { binding: 8, visibility: FRAGMENT, buffer: { type: "read-only-storage" } },
+    { binding: 9, visibility: FRAGMENT, texture: {} },
   ],
 };
