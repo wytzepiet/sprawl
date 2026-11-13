@@ -164,8 +164,6 @@ export const OPEN = /* wgsl */ `${COMMON}
 const TAPS = 16;
 /** How far round, in tiles, a pixel looks for what shelters it. */
 const REACH = 1.2;
-/** How near a painted fold must be to be felt: paint is fine, and further off its noise is all a tap finds. */
-const FOLD = 0.25;
 @fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
   let texel = vec2i(p.xy);
   if (textureLoad(gDepth, texel, 0) <= 0.) { return vec4f(1.); }
@@ -192,10 +190,12 @@ const FOLD = 0.25;
     let d = length(v) + 1e-4;
     // Something standing over the tap: the sky it hides.
     let stands = max(dot(v, N) / d - 0.1, 0.);
-    // The tap's surface turned back toward this pixel: a fold, real or painted.
+    // The tap's surface turned steeply toward this pixel stands as a wall
+    // would, even if it is only painted so (a cliff's broken ledge, lying
+    // flat on the beach); a gentle turn is the paint's grain, and nothing.
     let across = v - N * dot(v, N);
     let Nq = normalize(textureLoad(gNormal, q, 0).xyz * 2. - 1.);
-    let folds = max(-dot(Nq, across) / (length(across) + 1e-4) - 0.25, 0.) * saturate(1. - d / FOLD);
+    let folds = saturate((-dot(Nq, across) / (length(across) + 1e-4) - 0.5) * 2.);
     // However high what stands there is, as a cliff is: only what stands far off past the reach is nothing to this pixel.
     shut += max(stands * step(d, 3. * REACH), folds) * w;
   }
