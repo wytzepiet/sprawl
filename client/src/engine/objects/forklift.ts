@@ -219,10 +219,8 @@ export function forkliftAt(yard: Yard, lifts: Lift[], now: number): { truck: Pos
 }
 
 /** A building's forklifts, each its yard and its runs: `runs` its lifts.
- *  Its pad's packages
- *  stand on `base`; `slotOf` is where a run's package stands on its
- *  vehicle (`liftSlot`). */
-export function yardsOf(id: number, data: Building, pad: Pad, base: number, runs: Lift[], slotOf: (l: Lift, j: number) => { at: Pose; z: number; edge: number; face?: number; via?: P } | null): { yard: Yard; mine: Lift[] }[] {
+ *  `slotOf` is where a run's package stands on its vehicle (`liftSlot`). */
+export function yardsOf(id: number, data: Building, pad: Pad, runs: Lift[], slotOf: (l: Lift, j: number) => { at: Pose; z: number; edge: number; face?: number; via?: P } | null): { yard: Yard; mine: Lift[] }[] {
   /** A run's `j`th package's two ends: where it stands on the pad, the
    *  next free place or the last taken as the pad is seen when it is
    *  taken up or set down there, its bay's face toward the forklift; and
@@ -234,7 +232,7 @@ export function yardsOf(id: number, data: Building, pad: Pad, base: number, runs
     const when = l.start + (j + (l.onto ? PICK : DROP)) * l.every - 1;
     const seen = packagesOf(data, l.good) + runs.filter((m) => m.good === l.good).reduce((n, m) => n + atPad(m, when), 0);
     const [slot, up] = placeIn(bay, l.onto ? seen - 1 : seen);
-    const onPad: End = { at: slot.at, face: bay.face, z: base + up * ITEMS[l.good].h, inside: bay.inside, reach: FORKS };
+    const onPad: End = { at: slot.at, face: bay.face, z: up * ITEMS[l.good].h, inside: bay.inside, reach: FORKS };
     const there = slotOf(l, j);
     if (!there) return null;
     // The side it comes from: the pad's, or its aisle mouth's.

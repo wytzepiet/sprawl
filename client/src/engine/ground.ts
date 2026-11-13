@@ -10,7 +10,7 @@ import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";
 import { lawn, LAWN_TILES } from "./lawn";
 import { LAYER_ORDER } from "./town/draw";
-import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, TYPE_BY_BYTE, SHORE_LIES, WATER_Z, type Ground } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, LAND_LIES, TYPE_BY_BYTE, SHORE_LIES, WATER_Z, type Ground } from "./objects/terrainGeometry";
 import { live } from "./still";
 import { theme } from "./theme";
 import type { Rgb } from "./rgb";
@@ -215,16 +215,16 @@ const [other1, other2] = [`${n(97 / SIDE)}, ${n(41 / SIDE)}`, `${n(23 / SIDE)}, 
 
 /** The sheets a chunk's land is drawn as, top down: the wood floor, the
  *  clay and the grass as one, the topmost a pixel is on; the rock under
- *  them, the land's cliff painted between (`CLIFF_Z`); and the beach, down
+ *  them, the land's cliff painted between (`LAND_LIES`); and the beach, down
  *  the cliff. The land stands still but for the beach's swash, so the
  *  beach is drawn twice (`still.ts`): all but the band the swash runs
  *  over, still; and the sand of that band alone, as the waves leave it,
  *  live (`wash`). */
 const SHEETS = {
-  turf: { layers: [4, 3, 2], z: 0.002, order: 0, lies: 0 },
-  rock: { layers: [1], z: 0, order: 1, lies: 0 },
-  beach: { layers: [0], z: WATER_Z, order: 2, lies: SHORE_LIES.beach },
-  wash: { layers: [0], z: WATER_Z, order: 2, lies: SHORE_LIES.beach },
+  turf: { layers: [4, 3, 2], z: 0, order: 0, lies: 0, plane: LAND_LIES.turf },
+  rock: { layers: [1], z: 0, order: 1, lies: 0, plane: LAND_LIES.rock },
+  beach: { layers: [0], z: WATER_Z, order: 2, lies: SHORE_LIES.beach, plane: null },
+  wash: { layers: [0], z: WATER_Z, order: 2, lies: SHORE_LIES.beach, plane: null },
 };
 type Sheet = keyof typeof SHEETS;
 
@@ -390,10 +390,11 @@ export class GroundTiles {
     }
     for (const sheet of wanted) {
       if (chunk.sheets.has(sheet)) continue;
-      const { z, order, lies } = SHEETS[sheet];
+      const { z, order, lies, plane } = SHEETS[sheet];
       const S = CHUNK_SIZE;
       const mesh = meshOf(this.engine, `ground_${key}_${sheet}`, { positions: [0, 0, 0, S, 0, 0, S, S, 0, 0, S, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
       const material = townMaterial([groundPlugin(this.engine, chunk.kinds, sheet)]);
+      material.plane = plane;
       mesh.material = material;
       mesh.renderOrder = LAYER_ORDER.ground + order;
       mesh.lies = lies;

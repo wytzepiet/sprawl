@@ -200,7 +200,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
   for (const [e, b] of buildings) {
     const pad = padOf(b);
     if (!b.tiles.some((t) => on(t.x, t.y)) || (!pad.docked && !b.lifts.some((l) => ends(l) > world.now))) continue;
-    for (const { yard, mine } of yardsOf(e.id, b, pad, 0, b.lifts, (l, j) => {
+    for (const { yard, mine } of yardsOf(e.id, b, pad, b.lifts, (l, j) => {
       const car = cars.find(([c]) => c.id === l.car)?.[1];
       return car ? liftSlot(l, car, j) : null;
     })) {

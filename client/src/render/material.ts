@@ -50,6 +50,14 @@ export interface OwnPbrMaterial {
   reflectance: number;
   materialAlpha: number;
   doubleSided: boolean;
+  /** The plane its flat parts lie in, if they lie on others' in it: its
+   *  height, and how many things there they lie on. A sheet on a sheet has
+   *  no height over it, so nothing of either shifts against the other from
+   *  any side: every mesh's pixels in a plane are given the plane's own
+   *  depth, the same number whichever mesh, a few of its least steps
+   *  nearer for each thing under it, and for each thousandth of a tile it
+   *  stands over the plane (`compose.ts`). Set before it is first drawn. */
+  plane: [height: number, on: number] | null;
   _uboVersion: number;
 }
 
@@ -61,6 +69,7 @@ export function createPbrMaterial(props: { plugins?: MaterialPlugin[]; roughness
     reflectance: 0.04,
     materialAlpha: 1,
     doubleSided: props.doubleSided ?? false,
+    plane: null,
     _uboVersion: 0,
   };
 }

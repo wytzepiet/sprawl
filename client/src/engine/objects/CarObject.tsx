@@ -9,7 +9,7 @@ import { carShape, ROUNDING } from "./carShape";
 import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import { running as runs } from "./field";
-import { CAR, ROAD_Z, VAN } from "./roadGeometry";
+import { CAR, VAN } from "./roadGeometry";
 import { BED_TOP, DECK_Z, FERRY_SHAPE, LORRY_SHAPE, bedShape } from "./sea";
 import type { Drive } from "./driver";
 import { carried, colourOf, driveOf, forgetDrive, LIVERY, moment, type Moment, onBed, PALETTE, travelled, bedLength } from "./motion";
@@ -24,8 +24,7 @@ const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 const vanGeo = boxGeometry(VAN.w, VAN.l, VAN.h);
 
 /** A box sits on the road: its centre is half its height up. */
-const CAR_Z = ROAD_Z + CAR.h / 2;
-const GROUND = ROAD_Z;
+const CAR_Z = CAR.h / 2;
 /** How high a cab's headlight hangs, inside it, so it lights the road
  *  ahead and none of the cab (`lights.ts`). */
 const CAB_LIGHT = 0.09;
@@ -104,7 +103,7 @@ function bodyOf(pool: InstancePool, id: number, car: Car, parked: boolean): { ke
       return { key: paint(pool, "ferry" + p, FERRY_SHAPE, LIVERY.ferry, PAINT_COAT, true, !parked), z: DECK_Z };
     case "Truck":
     case "Van":
-      return { key: paint(pool, "lorry_cab" + p, LORRY_SHAPE, LIVERY.cab, PAINT_COAT, true, !parked), z: GROUND, light: CAB_LIGHT };
+      return { key: paint(pool, "lorry_cab" + p, LORRY_SHAPE, LIVERY.cab, PAINT_COAT, true, !parked), z: 0, light: CAB_LIGHT };
     case "Tractor":
       // A box in the farm's green until it has a shape of its own.
       return { key: paint(pool, "tractor" + p, vanGeo, LIVERY.tractor, PAINT_COAT, true, !parked), z: CAR_Z, light: 0 };
@@ -129,7 +128,7 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
   const look = bodyOf(pool, id, car, !moving);
   const body = place(pool, [{ key: look.key }], first.m.body, look.z + first.lift);
   const bedL = bedLength(car.role);
-  const bed = first.m.bed ? placeShape(pool, bedShape(bedL, moving), first.m.bed, GROUND + first.lift) : null;
+  const bed = first.m.bed ? placeShape(pool, bedShape(bedL, moving), first.m.bed, first.lift) : null;
   // What stands on its deck, each what and where it is: at the berth the
   // harbour's forklifts change it (`deckSeen`).
   const deck: { key: string; it: ReturnType<typeof place> }[] = [];
@@ -163,7 +162,7 @@ export function mountCar(entry: GameObjectEntry, pool: InstancePool, ctx: Engine
     let same = 0;
     while (same < aboard.length && same < want.length && aboard[same].good === want[same]) same++;
     for (const { it } of aboard.splice(same)) it.remove();
-    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedL, k), GROUND + lift + BED_TOP) });
+    for (let k = same; k < want.length; k++) aboard.push({ good: want[k], it: placeShape(pool, itemOf(want[k], moving), onBed(m.bed, bedL, k), lift + BED_TOP) });
     if (moving) aboard.forEach(({ it }, k) => it.move(onBed(m.bed!, bedL, k), lift));
   };
   load(first.m, first.lift, simNow());

@@ -4,7 +4,7 @@ import { BED_TOP, CAB_BLOCK, DECK_Z, deckPose, FERRY, sailing } from "./sea";
 import { ITEM } from "./goods";
 import { liftsOf, progress } from "./pads";
 import { rgb } from "../rgb";
-import { CAB, LANE_OFFSET, ROAD_Z, TRUCK, VAN } from "./roadGeometry";
+import { CAB, LANE_OFFSET, TRUCK, VAN } from "./roadGeometry";
 import { spot } from "../tiles";
 import type { Car, Good, Lift, Pose, RoadNode, Run, Sail, Trip } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
@@ -236,7 +236,7 @@ export function moment(id: number, car: Car, now: number, along?: number): Momen
  *  place. */
 export function slotOn(id: number, car: Car, now: number, i: number): { at: Pose; z: number } | null {
   const m = moment(id, car, now);
-  if (m?.bed) return { at: onBed(m.bed, bedLength(car.role), i), z: ROAD_Z + BED_TOP };
+  if (m?.bed) return { at: onBed(m.bed, bedLength(car.role), i), z: BED_TOP };
   if (m && car.role === "Ferry") return { at: deckPlace(m.body, i), z: DECK_Z };
   return null;
 }

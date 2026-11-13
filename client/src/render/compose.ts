@@ -300,6 +300,22 @@ function hash(s: string) {
   return (4294967296 * (2097151 & b) + (a >>> 0)).toString(36);
 }
 
+/** A step of a plane's depth, of itself: sixteen of the least a float
+ *  tells apart; and how far over its plane a mesh still lies in it, in
+ *  tiles. */
+const [PLANE_STEP, PLANE_THIN] = ["1.9073486e-6", "0.005"];
+const PLANE_WGSL = `fn _r_planeDepth(pixel: vec2f, height: f32) -> f32 {
+  let ndc = vec2f(pixel.x * scene.screen.z * 2. - 1., 1. - pixel.y * scene.screen.w * 2.);
+  let m = transpose(scene.viewProjection);
+  // The point of the plane that lands on the pixel: two lines across it.
+  let a = m[0] - ndc.x * m[3];
+  let b = m[1] - ndc.y * m[3];
+  let c = -vec2f(a.z * height + a.w, b.z * height + b.w);
+  let at = vec2f(c.x * b.y - a.y * c.y, a.x * c.y - c.x * b.x) / (a.x * b.y - a.y * b.x);
+  let clip = scene.viewProjection * vec4f(at, height, 1.);
+  return clip.z / clip.w;
+}`;
+
 export function compose(material: OwnPbrMaterial, pass: Pass, layout: VertexLayout): Composed {
   const plugins = enabledPlugins(material);
   const h = hooksOf(plugins);
@@ -409,13 +425,24 @@ let colorF90 = vec3f(1.0);
 var surfaceAlbedo = baseColor * (1.0 - material.reflectance) * (1.0 - metallic);
 ${h.MF}`;
   const params = `input: Varyings${doubleSided ? ", @builtin(front_facing) frontFacing: bool" : ""}`;
+  // A plane's own depth under a pixel (`OwnPbrMaterial.plane`): where the
+  // line through the pixel's middle meets it, worked out from the pixel
+  // alone, so it is the same number in every mesh's shader; the mesh's own
+  // depth where it is not in the plane.
+  const plane = material.plane;
+  const [depthOut, depthIs] = plane
+    ? [
+        "@builtin(frag_depth) depth: f32, ",
+        `select(input.clipPos.z, _r_planeDepth(input.clipPos.xy, ${plane[0].toFixed(5)}) * (1. + (${plane[1].toFixed(1)} + (input.worldPos.z - ${plane[0].toFixed(5)}) * 1000.) * ${PLANE_STEP}), abs(input.worldPos.z - ${plane[0].toFixed(5)}) < ${PLANE_THIN}), `,
+      ]
+    : ["", ""];
   const fragment = {
     shadow: `@fragment fn fs(${params}) {
 ${toAT}
 }`,
     // NI is affine in `color`: from 0 it is the emissive, from 1 that plus
     // the light's weight. Emissive kept as e / (1 + e); lit as the mean.
-    gbuffer: `struct _r_GBuffer { @location(0) albedo: vec4f, @location(1) normal: vec4f, @location(2) extra: vec4f }
+    gbuffer: `struct _r_GBuffer { ${depthOut}@location(0) albedo: vec4f, @location(1) normal: vec4f, @location(2) extra: vec4f }
 @fragment fn fs(${params}) -> _r_GBuffer {
 ${toAT}
 ${toMF}
@@ -434,22 +461,24 @@ _r_c1 = color;
 if (!(alpha > 0.4)) { discard; }
 let _r_lit = _r_c1 - _r_c0;
 let _r_glow = max(_r_c0, vec3f(0.0));
-return _r_GBuffer(vec4f(baseColor, (_r_lit.r + _r_lit.g + _r_lit.b) / 3.0), vec4f(N * 0.5 + 0.5, roughness), vec4f(_r_glow / (1.0 + _r_glow), metallic));
+return _r_GBuffer(${depthIs}vec4f(baseColor, (_r_lit.r + _r_lit.g + _r_lit.b) / 3.0), vec4f(N * 0.5 + 0.5, roughness), vec4f(_r_glow / (1.0 + _r_glow), metallic));
 }`,
     forward: `${FORWARD_BINDINGS}
-@fragment fn fs(${params}) -> @location(0) vec4f {
+struct _r_Forward { ${depthOut}@location(0) color: vec4f }
+@fragment fn fs(${params}) -> _r_Forward {
 ${toAT}
 ${toMF}
 ${LIGHTING}
 ${h.NI}
 ${TONE_OUT}
 ${h.BC}
-return vec4f(color, alpha * material.materialAlpha);
+return _r_Forward(${depthIs}vec4f(color, alpha * material.materialAlpha));
 }`,
   }[pass];
 
   const code = `const PASS_SHADOW = ${pass === "shadow"};
 ${SCENE_WGSL}
+${plane && pass !== "shadow" ? PLANE_WGSL : ""}
 struct Material {
 ${ubo.body}
 }

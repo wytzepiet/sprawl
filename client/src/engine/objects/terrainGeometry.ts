@@ -47,9 +47,15 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
 
 /** The land stands on a cliff this high over the water. What lies at the
  *  water's edge lies in the water's own plane, each on the one before
- *  (`Mesh.lies`): the sea, a beach, the cliff's ledge, the sea's surf. */
+ *  (`Mesh.lies`): the sea, a beach, the cliff's ledge, the sea's surf, the
+ *  sea and its surf moving and the rest still. */
 export const WATER_Z = -0.7;
 export const SHORE_LIES = { water: 0, beach: 1, ledge: 2, surf: 3 };
+/** And the land is one plane, at no height: all that is flat on it lies in
+ *  it, each on the ones before (a material's `plane`). What stands on it
+ *  has its own height, and no place here. */
+const LAID = ["rock", "foot", "cliff", "turf", "field", "crop", "street", "through", "line", "paving", "cap"] as const;
+export const LAND_LIES = Object.fromEntries(LAID.map((name, k) => [name, [0, k]])) as unknown as Record<(typeof LAID)[number], [height: number, on: number]>;
 
 const ELEVATION: Record<Ground, number> = {
   Clay: 0,
@@ -199,14 +205,14 @@ export const CLIFF_OUT = 0.3;
  *  (`cliff.ts`), which all read the edge by. */
 export const CLIFF_WANDER = 0.2;
 /** How far either side of the land's edge its cliff's field reaches, in
- *  tiles, and where its plane lies: over the land's rock, under its grass. */
+ *  tiles. Its plane lies on the land's rock, under its grass (`LAND_LIES`). */
 export const CLIFF_REACH = 2;
-export const CLIFF_Z = 0.0012;
 /** How far a wall's foot stands out for its height: the land's cliff's
  *  and a mountain layer's alike. */
-export const LEAN = CLIFF_RUN / (CLIFF_Z - WATER_Z);
-/** How far in behind the cliff's wall its lip is laid on the wall's mesh. */
-const TUCK = 0.05;
+export const LEAN = CLIFF_RUN / -WATER_Z;
+/** How far in behind the cliff's wall its lip is laid on the wall's mesh,
+ *  and how far down it has sloped by there. */
+const [TUCK, TUCKED] = [0.05, 0.01];
 /** The ledge at the cliff's foot, on the beach or the sea: reaching in
  *  under the wall this far, in tiles, from its lip, and out past its foot
  *  this far at most, where the slate does not break it. */
@@ -406,14 +412,14 @@ function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
   const m = CLIFF_REACH * d;
   // Rows wholly inland: nothing crosses them.
   const rows = highest(decoded, side);
-  // And behind its top a strip of the lip, just under the plane and lit as
-  // it is, uncut (the shader takes it for the wall's top), so where
-  // the plane's cut, read from the field by the sampler, falls short of the
-  // wall, the lip runs on to it: the plane need not overhang the wall, nor
-  // shade it.
+  // And behind its top a strip of the lip, sloping in under the plane from
+  // the wall's top and lit as the plane is, uncut (a wall to the shader, by
+  // the way it faces), so where the plane's cut, read from the field by the
+  // sampler, falls short of the wall, the lip runs on to it: the plane
+  // need not overhang the wall, nor shade it.
   const back = (p: Point): Point => {
     const [x, y] = seaward(p);
-    return [p[0] - (x / CLIFF_RUN) * TUCK, p[1] - (y / CLIFF_RUN) * TUCK];
+    return [(-x / CLIFF_RUN) * TUCK, (-y / CLIFF_RUN) * TUCK];
   };
   // And at its foot a ledge, from under the wall out past it, lit as the
   // wall is and cut where the slate breaks it (`peaks.ts`), so the cliff
@@ -431,8 +437,8 @@ function layCliffWall(sink: ChunkSink, bytes: Uint8Array): void {
     0,
     (p, q) => {
       const flat = [ledge(p, under), ledge(q, under), ledge(q, past), ledge(p, past)];
-      for (const b of [walls, washed]) b.wall(q, p, WATER_Z, CLIFF_Z, [seaward(q), seaward(p)]);
-      walls.polygon([p, q, back(q), back(p)], CLIFF_Z / 4);
+      for (const b of [walls, washed]) b.wall(q, p, WATER_Z, 0, [seaward(q), seaward(p)]);
+      walls.wall(q, p, -TUCKED, 0, [back(q), back(p)]);
       for (const b of [shelf, washed]) b.polygon(flat, WATER_Z);
     },
     undefined,
@@ -460,7 +466,7 @@ function layCliffPlane(sink: ChunkSink, sampler: TerrainSampler, originX: number
       if (!t) continue;
       const mine = isLandTop(t);
       if (!AROUND.some(([dx, dy]) => { const n = sampler.typeAt(x + dx, y + dy); return !!n && isLandTop(n) !== mine; })) continue;
-      append(sink.cliffPlane, FULL_SQUARE, x - originX, y - originY, CLIFF_Z, NO_COLOUR);
+      append(sink.cliffPlane, FULL_SQUARE, x - originX, y - originY, 0, NO_COLOUR);
     }
   }
 }
@@ -486,10 +492,9 @@ export const PEAK_SAMPLES = 8;
 const PEAK_UNIT = 1024;
 export const PEAK_APRON = 1;
 export const PEAK_SIDE = (CHUNK_SIZE + PEAK_APRON * 2) * PEAK_SAMPLES + 1;
-/** Over the sand, under the grass (`LAYERS`); and how far out under the
- *  grass beside it the rock's foot reaches, of a tile, the sand having the
- *  rest, so the grass's fray shows whichever is nearer. */
-export const FOOT_Z = 0.001;
+/** How far out under the grass beside it the rock's foot reaches
+ *  (`LAND_LIES`), of a tile, the sand having the rest, so the grass's fray
+ *  shows whichever is nearer. */
 const FOOT = 0.5;
 /** The rock is laid in layers this many tiles high, the first standing
  *  where the heights reach this far above the ground, so its foot follows
@@ -732,7 +737,7 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   // fold the wall over itself in teeth.
   const outward = downhill(h, PEAK_SIDE, ([x, y]) => [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES], (steep) => Math.min(LEAN * LAYER, (0.5 * LAYER) / Math.max(steep * PEAK_SAMPLES, 1e-3)));
   for (let k = 1; begins(k) <= top; k++) {
-    const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
+    const [lo, hi] = [(k - 1) * LAYER, k * LAYER];
     contour(at, place, cells, begins(k), (p, q) => out.wall(p, q, lo, hi, [outward(p), outward(q)]), (polygon) => out.polygon(polygon, hi), begins(k + 1), rows);
   }
   // The rock's own ground, on its tiles; its foot under the grass beside
@@ -741,12 +746,12 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
       if (rock(x, y)) {
-        out.polygon([[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]], FOOT_Z);
+        out.polygon([[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]], 0);
         continue;
       }
       const t = sampler.typeAt(x, y);
       if (t !== "Grass" && t !== "Forest" && t !== "Clay") continue;
-      const flat = (...points: Point[]) => out.polygon(points, FOOT_Z);
+      const flat = (...points: Point[]) => out.polygon(points, 0);
       if (rock(x - 1, y)) flat([x, y], [x + FOOT, y], [x + FOOT, y + 1], [x, y + 1]);
       if (rock(x + 1, y)) flat([x + 1 - FOOT, y], [x + 1, y], [x + 1, y + 1], [x + 1 - FOOT, y + 1]);
       if (rock(x, y - 1)) flat([x, y], [x + 1, y], [x + 1, y + FOOT], [x, y + FOOT]);

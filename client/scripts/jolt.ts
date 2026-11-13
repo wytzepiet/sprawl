@@ -45,7 +45,7 @@ function* poses(t: number): Generator<[number | string, string, Pose]> {
     if (e.object.kind === "Building") {
       const b = e.object.data;
       const pad = padOf(b);
-      if (pad.bays.length) for (const [k, { yard, mine }] of yardsOf(id, b, pad, 0, b.lifts, slotOf).entries()) yield [`${id}.${k}`, `${b.kind} forklift`, forkliftAt(yard, mine, t).truck];
+      if (pad.bays.length) for (const [k, { yard, mine }] of yardsOf(id, b, pad, b.lifts, slotOf).entries()) yield [`${id}.${k}`, `${b.kind} forklift`, forkliftAt(yard, mine, t).truck];
     }
     if (e.object.kind !== "Car" || e.object.data.role === "Ferry") continue;
     const m = moment(id, e.object.data, t);

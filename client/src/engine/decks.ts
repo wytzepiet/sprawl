@@ -3,8 +3,7 @@ import { drop, meshOf, type MeshGeometry, type P } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { rgb, type Rgb } from "./rgb";
 import { CHAMFER, CUT } from "./kerbs";
-import { ROAD_Z } from "./objects/roadGeometry";
-import { flatPolygons, PAVED_Z } from "./town/draw";
+import { flatPolygons } from "./town/draw";
 import { seams, shapeOf, type Surface } from "./town/surface";
 import { area } from "./town/footprint";
 import type { Casters } from "./DayNightCycle";
@@ -38,7 +37,7 @@ const WALL_OUT = 0.035;
 const OVERLAP = 0.015;
 const FOOT = 0.045;
 /** A parapet's least height: at a slope's foot, a little over the
- *  ground's kerb (`KERB_Z`, 0.012 over the road) it runs onto. */
+ *  ground it runs onto. */
 const LOW = 0.02;
 /** A pier's side. */
 const PIER = 0.14;
@@ -47,7 +46,7 @@ const CONCRETE = rgb(0.74, 0.73, 0.7);
 const STEP = 0.06;
 
 /** How high a road's surface stands at a height, in half-levels. */
-export const deckZ = (height: number) => ROAD_Z + PAVED_Z + height * HALF_LEVEL;
+export const deckZ = (height: number) => height * HALF_LEVEL;
 
 const ease = (u: number) => u * u * (3 - 2 * u);
 
@@ -99,7 +98,7 @@ export function liftOf({ height = 0, climb, run, ways }: Surface): Lift {
  *  frame: `roads.ts`'s shader, here. */
 export function liftAt([z0, z1, z2, z3, dx, dy, off]: Lift, x: number, y: number): number {
   const u = Math.max(0, Math.min(1, (x + 0.5) * dx + (y + 0.5) * dy + off));
-  return ROAD_Z + PAVED_Z + z0 + u * (z1 + u * (z2 + u * z3));
+  return z0 + u * (z1 + u * (z2 + u * z3));
 }
 
 /** A deck's road tile, where it is. */
@@ -220,7 +219,7 @@ function finer(ring: P[]): P[] {
 function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: number) {
   const lift = liftOf(surface);
   // As high as the road has risen off the ground, down to a kerb's.
-  const rise = ([x, y]: P) => liftAt(lift, -x, -y) - ROAD_Z - PAVED_Z;
+  const rise = ([x, y]: P) => liftAt(lift, -x, -y);
   const wall = (p: P) => Math.max(LOW, Math.min(WALL, rise(p)));
   // The road frame: the tile's turned half round, its middle at -0.5.
   const top = ([x, y]: P, dz = 0): V3 => [ox - x, oy - y, liftAt(lift, -x, -y) + dz];

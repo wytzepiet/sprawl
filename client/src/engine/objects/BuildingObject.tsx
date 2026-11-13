@@ -3,7 +3,6 @@ import { hex, type Rgb } from "../rgb";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { BLUEPRINTS, FACINGS, standing } from "../../blueprints";
-import { KERB_Z } from "../town/draw";
 import { INSET } from "../town/footprint";
 import { keepField } from "./field";
 import { shownTimeOfDay } from "../DayNightCycle";
@@ -140,7 +139,7 @@ export function mountBuilding(
     void modelOf({ name, notch: docks ? [at, docks * DOCK_PITCH / 2, wall] : null, side }).then((it) => {
       if (!drop) return;
       const finishes = placing(ctx.engine, docks ? `${name}_bay${docks}_${at}` : name, it).map((finish) => {
-        const one = placeShape(pool, { ...finish, moves: false }, { at: o, heading: Math.atan2(dy, dx) }, KERB_Z - 0.012);
+        const one = placeShape(pool, { ...finish, moves: false }, { at: o, heading: Math.atan2(dy, dx) }, 0);
         if (finish.glass) glowing(pool.finish(finish.key)!.material), lights(ctx);
         return one;
       });
@@ -149,7 +148,7 @@ export function mountBuilding(
       const props = new Float32Array(it.props.length * PROP_FLOATS);
       it.props.forEach((p, k) => {
         const [x, y] = onMap(p.at), [tx, ty] = onMap(p.to ?? p.at);
-        props.set([PROP_KINDS.indexOf(p.kind), x - o[0], y - o[1], KERB_Z - 0.012 + p.at[2], p.size, p.high, tx - o[0], ty - o[1]], k * PROP_FLOATS);
+        props.set([PROP_KINDS.indexOf(p.kind), x - o[0], y - o[1], p.at[2], p.size, p.high, tx - o[0], ty - o[1]], k * PROP_FLOATS);
       });
       const meshes = placeProps(ctx, props, [o[0], o[1]], pool.casters);
       const trees = it.trees.length ? stand(ctx, it.trees.map(([x, y, scale], k) => ({ at: onMap([x, y]), scale, shade: k % 3 })), theme, pool.casters) : () => {};
@@ -175,7 +174,7 @@ export function mountBuilding(
         return ctx.beforeRender(() => {
           const t = shownTimeOfDay() * 24;
           const open = t >= 11.5 && t < 14;
-          if (open && !out.length) out = [at("tableLeg", [0.008, 0.008, 0.15], IRON, a, KERB_Z), at("tableTop", [0.06, 0.06, 0.006], PARASOL, a, KERB_Z + 0.05), at("parasol", [0.12, 0.12, 0.012], PARASOL, a, KERB_Z + 0.145)];
+          if (open && !out.length) out = [at("tableLeg", [0.008, 0.008, 0.15], IRON, a, 0), at("tableTop", [0.06, 0.06, 0.006], PARASOL, a, 0.05), at("parasol", [0.12, 0.12, 0.012], PARASOL, a, 0.145)];
           if (!open && out.length) {
             for (const one of out) pool.removeInstance(one.key, one.id), placed.splice(placed.indexOf(one), 1);
             out = [];
@@ -191,7 +190,6 @@ export function mountBuilding(
   setLifts(entry.id, data.lifts);
   const pad = padOf(data);
   const runs = data.lifts;
-  const base = KERB_Z;
   const stood = (pad?.bays ?? []).map(() => [] as { remove(): void }[]);
   const lay = (now: number) =>
     pad?.bays.forEach((bay, b) => {
@@ -200,13 +198,13 @@ export function mountBuilding(
       while (have.length > Math.max(0, want)) have.pop()!.remove();
       while (have.length < want) {
         const [at, up] = placeIn(bay, have.length);
-        have.push(placeShape(pool, itemOf(bay.good, false), at, base + up * ITEMS[bay.good].h));
+        have.push(placeShape(pool, itemOf(bay.good, false), at, up * ITEMS[bay.good].h));
       }
     });
   lay(simNow());
   const working = pad && runs.some((l) => ends(l) + REST_MS > simNow());
   // A front's forklifts stand by its docks; a site's come out to a lift.
-  const forks = (pad && (pad.docked || working) ? yardsOf(entry.id, data, pad, base, runs, slotOf) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, base), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
+  const forks = (pad && (pad.docked || working) ? yardsOf(entry.id, data, pad, runs, slotOf) : []).map((f) => ({ ...f, truck: placeShape(pool, FORKLIFT, f.yard.home, 0), load: null as { remove(): void; move(p: Pose, lift?: number): void } | null }));
   const stop = working
     ? ctx.beforeRender(() => {
         const now = simNow();
@@ -215,9 +213,9 @@ export function mountBuilding(
           const at = forkliftAt(f.yard, f.mine, now);
           f.truck.move(at.truck);
           const good = at.load && f.mine.find((l) => l.start <= now && ends(l) > now)?.good;
-          if (good && !f.load) f.load = placeShape(pool, itemOf(good, true), at.load!.at, base);
+          if (good && !f.load) f.load = placeShape(pool, itemOf(good, true), at.load!.at, 0);
           if (!at.load && f.load) (f.load.remove(), (f.load = null));
-          if (at.load) f.load!.move(at.load.at, at.load.z - base);
+          if (at.load) f.load!.move(at.load.at, at.load.z);
         }
       })
     : () => {};

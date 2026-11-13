@@ -3,7 +3,7 @@ import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z, LEDGE } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, LEDGE } from "./objects/terrainGeometry";
 import { SECOND, SPAN } from "./slate";
 import { slate } from "./slateTexture";
 
@@ -134,7 +134,7 @@ let peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
 let peakLip = select(0., 1. - smoothstep(0., ${f(LIP)}, peakIn), peakLayer > 0.5);
 let peakCliff = 1. - smoothstep(peakRun * 0.8, peakRun, peakBelow);
 let peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
-let peakDepth = select(0., ceil((${at}.z - ${f(FOOT_Z)}) / ${f(LAYER)} - 0.001) * ${f(LAYER)} + ${f(FOOT_Z)} - ${at}.z, abs(input.worldNormal.z) < 0.5);
+let peakDepth = select(0., ceil(${at}.z / ${f(LAYER)} - 0.001) * ${f(LAYER)} - ${at}.z, abs(input.worldNormal.z) < 0.5);
 let peakLean = peakRun / ${f(LAYER)};
 let peakGrain = slateRead(${at}.xy + peakFall / peakSteep * peakDepth * peakCliff * (sqrt(1. + peakLean * peakLean) - peakLean));
 baseColor = vec3f(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
@@ -218,14 +218,14 @@ const GRAD = (() => {
 const CLIFF_CUT = `let cliffUv = ${cliffUv("input.vCliffAt.xy")};
 let cliffFar = ${FIELD("cliffUv")};
 let cliffLedge = input.worldPos.z < ${f(WATER_Z / 2)} && abs(input.worldNormal.z) > 0.5;
-let cliffWall = input.worldPos.z < ${f(CLIFF_Z / 2)} && !cliffLedge;
+let cliffWall = abs(input.worldNormal.z) < 0.5;
 let cliffBreak = ${f(CLIFF_RUN)} + ${ledgeOut("input.worldPos.xy")};
 if ((!cliffWall && !cliffLedge && (cliffFar > 0. || cliffFar < ${f(-CLIFF_INNER)})) || (cliffLedge && cliffFar > cliffBreak)) { discard; }
 ${GRAD}`;
 const LAND_CLIFF = (() => {
   return `let cliffFace = normalize(cliffGrad.x * input.vCliffX + cliffGrad.y * input.vCliffY + 1e-6);
 let cliffSlate = slateRead(input.worldPos.xy);
-let cliffGrain = slateRead(input.worldPos.xy + cliffFace * select(0., ${f(CLIFF_Z)} - input.worldPos.z, cliffWall) * ${f(UNROLL)});
+let cliffGrain = slateRead(input.worldPos.xy + cliffFace * select(0., -input.worldPos.z, cliffWall) * ${f(UNROLL)});
 let cliffOut = normalize(cliffFace + cliffSlate.xy * ${f(TURN)});
 let cliffTilt = select((1. - smoothstep(0., ${f(LIP)}, -cliffFar)) * ${f(ROLL)}, mix(${f(ROLL)}, ${f(CLIFF_TILT)}, smoothstep(0., ${f(STEEPEN)}, cliffFar)), cliffFar > 0.);
 baseColor = vec3f(${rgb(STONE)});

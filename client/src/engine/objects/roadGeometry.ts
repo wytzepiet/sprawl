@@ -30,10 +30,6 @@ export const CAB = { w: 0.17, l: 0.17, h: 0.21 };
  *  widened with the drawn road. */
 export const LANE_OFFSET = 0.1;
 const CURVE_SEGMENTS = 8;
-// A road stands clear of the ground, so the pen sees the step up to it and
-// outlines it: 0.03 over the grass, and still 0.02 over a terrain patch
-// laid on the grass. Lots, their markings and cars sit relative to it.
-export const ROAD_Z = 0.03;
 
 // --- Geometry helpers ---
 

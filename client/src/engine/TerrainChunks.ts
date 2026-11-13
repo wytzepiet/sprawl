@@ -16,6 +16,7 @@ import {
   type MeshBuffers,
   cliffed,
   waterOf,
+  LAND_LIES,
   SHORE_LIES,
 } from "./objects/terrainGeometry";
 import { theme } from "./theme";
@@ -362,12 +363,15 @@ export class TerrainChunks {
     if (field) {
       const cliff = cliffMaterial(engine, field, shore);
       chunk.dispose.push(cliff.dispose);
+      cliff.material.plane = LAND_LIES.cliff;
       add("cliff", geometry.cliff, cliff.material, [ox, oy]);
       // Its ledge lies on the sea or the beach, and casts nothing on them;
       // and the sea on its wall and its ledge, where a wave washes over
       // them: their mesh again, as water, drawn over the still town each
       // frame.
-      const ledge = add("ledge", geometry.ledge, cliff.material, [ox, oy], "lies");
+      const foot = cliffMaterial(engine, field, shore);
+      chunk.dispose.push(foot.dispose);
+      const ledge = add("ledge", geometry.ledge, foot.material, [ox, oy], "lies");
       if (ledge) ledge.lies = SHORE_LIES.ledge;
       if (shore) {
         const surf = waterMaterial(engine, shore, field, WATERS.Sea);
@@ -380,6 +384,7 @@ export class TerrainChunks {
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights, [ox, oy]);
       chunk.dispose.push(peaks.dispose);
+      peaks.material.plane = LAND_LIES.foot;
       add("peaks", geometry.peaks, peaks.material, [0, 0]);
     }
     this.chunks.set(key, chunk);

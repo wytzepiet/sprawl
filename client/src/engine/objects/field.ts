@@ -5,6 +5,7 @@ import { drop, meshOf } from "../geometry";
 import { grain } from "../ground";
 import { townMaterial, type TownMaterial } from "../material";
 import { LAYER_ORDER } from "../town/draw";
+import { LAND_LIES } from "./terrainGeometry";
 import type { Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { simNow } from "../../network/clock";
@@ -51,8 +52,7 @@ type P = { x: number; y: number };
 /** What a field shows: a stage of the cycle, and how far grown. */
 export type Look = { stage: "Grass" | "Ploughed" | "Sown" | "Cut"; growth: number };
 
-/** The field lies a little over the land, the crop up to this high. */
-export const FIELD_Z = 0.008;
+/** The field lies on the land (`LAND_LIES`), the crop up to this high. */
 const CROP_H = 0.08;
 /** How long a sown crop takes to ripen, as the server has it. */
 export const RIPEN = 1_800_000;
@@ -259,7 +259,7 @@ class Strips {
     [this.mesh, ...this.crops] = [this.positions, ...this.raised].map((positions, i) => {
       const which = i && this.grows[i - 1] + 1;
       const mesh = meshOf(ctx.engine, `${name}${which ? `_crop${which}` : ""}`, { positions, normals, indices });
-      mesh.material = material(this.paint, which);
+      mesh.material = Object.assign(material(this.paint, which), { plane: which ? LAND_LIES.crop : LAND_LIES.field });
       mesh.receiveShadows = true;
       mesh.renderOrder = LAYER_ORDER.field;
       setMeshAttribute(ctx.engine, mesh, "strip", data);
@@ -276,7 +276,7 @@ class Strips {
     [this.z, this.hs] = [z, hs];
     for (let i = 0; i < this.sunk.length; i++) {
       this.positions[i * 3 + 2] = z - this.sunk[i];
-      this.raised.forEach((raised, c) => (raised[i * 3 + 2] = z - this.sunk[i] + 0.001 + hs[this.grows[c]]));
+      this.raised.forEach((raised, c) => (raised[i * 3 + 2] = z - this.sunk[i] + hs[this.grows[c]]));
     }
     updateMeshPositions(this.ctx.engine, this.mesh, this.positions);
     this.crops.forEach((crop, c) => updateMeshPositions(this.ctx.engine, crop, this.raised[c]));
@@ -444,7 +444,9 @@ class Field {
     if (!strips) return;
     // In steps of the cuts' texels: no finer is seen.
     if (out?.run) strips.paint.reach = Math.floor(strips.drawn.passing((simNow() - out.run.started) / out.run.pace) * CUT_RES) / CUT_RES;
-    strips.lift(FIELD_Z, out ? [this.look, out.after].map(heightOf) : [heightOf(this.look)]);
+    // Its strips' edges sink under their neighbours', the deepest to the
+    // land's own height.
+    strips.lift(2 * SUNK, out ? [this.look, out.after].map(heightOf) : [heightOf(this.look)]);
     strips.repaint();
   }
 

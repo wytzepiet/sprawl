@@ -6,9 +6,9 @@ import { Atlas } from "./atlas";
 import { grain, grainSlope } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
-import { flatPolygons, LAYER_ORDER, PAVED_Z, RIM } from "./town/draw";
+import { flatPolygons, LAYER_ORDER, RIM } from "./town/draw";
 import { keyOf, MARKS, marksOf, runsOn, shapeOf, type Surface } from "./town/surface";
-import { ROAD_Z } from "./objects/roadGeometry";
+import { LAND_LIES } from "./objects/terrainGeometry";
 import type { Lift } from "./decks";
 import type { MeshGeometry } from "./geometry";
 
@@ -227,17 +227,17 @@ export class RoadTiles {
     // Street, through, deck street, deck through (`kindOf`).
     this.kinds = [0, 1, 2, 3].map((k): Kind => {
       const [through, deck] = [k % 2 === 1, k >= 2];
-      // The square over the slot's span, at the road's height: through
-      // roads over the streets that meet them, a street's end running on
-      // under one. With the bevel's data, as every town material rounds
-      // creases; a square has none.
-      const z = ROAD_Z + PAVED_Z + (through ? 0.001 : 0);
-      const geo = bevelled(square(z, deck ? DECK_CUTS : 1));
+      // The square over the slot's span, lying on the land: through roads
+      // on the streets that meet them, a street's end running on under
+      // one. With the bevel's data, as every town material rounds creases;
+      // a square has none.
+      const geo = bevelled(square(0, deck ? DECK_CUTS : 1));
       const mesh = meshOf(engine, `roads_${deck ? "deck_" : ""}${through ? "through" : "street"}`, geo);
       giveBevel(engine, mesh, geo);
       // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
       const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, () => this.paint, deck)], 0.7);
       setTint(material, theme.road);
+      material.plane = through ? LAND_LIES.through : LAND_LIES.street;
       mesh.material = material;
       mesh.renderOrder = LAYER_ORDER.road;
       mesh.receiveShadows = true;

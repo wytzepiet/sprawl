@@ -2,7 +2,6 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../geometry";
 import { rgb, type Rgb } from "../rgb";
 import type { Theme } from "../theme";
-import { ROAD_Z } from "../objects/roadGeometry";
 import { dress, HEDGE_THICK, type Dressing, type Hedge } from "./dressing";
 import { pavement } from "./surface";
 import { facts } from "./facts";
@@ -27,11 +26,6 @@ const CAP = rgb(0.88, 0.86, 0.81);
 const QUAY_FOOT = -0.78;
 const CAP_W = 0.07;
 
-/** How far over the grass the roads lie. */
-export const PAVED_Z = 0.02;
-/** The paving's height: over the roads, which are cut into it, a kerb's
- *  step down to them (`kerbs.ts`). */
-export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
 /** The order the ground's layers are drawn in (a mesh's `renderOrder`;
  *  anything else is drawn at 100): from the top down, so a pixel covered by
  *  a roof, the paving, a road or a field is thrown out by the depth test before the
@@ -39,8 +33,7 @@ export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
  *  frame a tenth or more over a town (`bun run cost`), more at night, when
  *  each shaded pixel pays for the lamps over it. */
 export const LAYER_ORDER = { mass: 80, pavement: 85, road: 90, field: 95, ground: 120 };
-/** The lines painted on the docks' asphalt, just over it: a worn white. */
-const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
+/** The lines painted on the docks' asphalt: a worn white. */
 const LINE = rgb(0.82, 0.81, 0.77);
 
 /**
@@ -58,7 +51,7 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
   const paved = pavement(town);
-  add("pavement", flatPolygons(paved, KERB_Z), theme.paved);
+  add("pavement", flatPolygons(paved, 0), theme.paved);
   const { wall, cap } = quay(town, paved);
   add("quay", wall, QUAY);
   add("quayCap", cap, CAP);
@@ -66,10 +59,10 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
   // Each wound as the sheets' outlines are.
-  add("lines", flatPolygons(dressing.dockLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
+  add("lines", flatPolygons(dressing.dockLines.map((q) => [area(q) < 0 ? [...q].reverse() : q]), 0), LINE);
   add("hedges", hedgeMesh(dressing.hedges), HEDGE);
   // A street lamp stands on the pavement, a prop like what stands on a roof.
-  const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: KERB_Z, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
+  const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: 0, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
   return { pieces, dressing, props: [...mass.props, ...lamps] };
 }
 
@@ -92,7 +85,7 @@ function hedgeMesh(hedges: Hedge[]): MeshGeometry {
     const flip = cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] > 0;
     for (let i = 1; i + 1 < pts.length; i++) g.indices.push(base, base + (flip ? i + 1 : i), base + (flip ? i : i + 1));
   };
-  const [lo, hi, r, w] = [KERB_Z, KERB_Z + HEDGE_HIGH, HEDGE_ROUND, HEDGE_THICK / 2];
+  const [lo, hi, r, w] = [0, HEDGE_HIGH, HEDGE_ROUND, HEDGE_THICK / 2];
   // Its cross-section, out from its line and up: foot, shoulder, top.
   const ring = [[-w, lo], [-w, hi - r], [-w + r, hi], [w - r, hi], [w, hi - r], [w, lo]];
   for (const [[x0, y0], [x1, y1]] of hedges) {
@@ -138,8 +131,8 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
       else if (kind(at(0.08)) !== "water" || !quayed(kind(at(-0.08)))) return;
       // The map's frame is the plan's turned half round.
       const p = (q: number[], o: number, z: number): number[] => [-(q[0] - n[0] * o), -(q[1] - n[1] * o), z];
-      face(wall, [p(a, 0, KERB_Z), p(b, 0, KERB_Z), p(b, 0, QUAY_FOOT), p(a, 0, QUAY_FOOT)], [-n[0], -n[1], 0]);
-      face(cap, [p(a, 0, KERB_Z + 0.004), p(b, 0, KERB_Z + 0.004), p(b, CAP_W, KERB_Z + 0.004), p(a, CAP_W, KERB_Z + 0.004)], [0, 0, 1]);
+      face(wall, [p(a, 0, 0), p(b, 0, 0), p(b, 0, QUAY_FOOT), p(a, 0, QUAY_FOOT)], [-n[0], -n[1], 0]);
+      face(cap, [p(a, 0, 0), p(b, 0, 0), p(b, CAP_W, 0), p(a, CAP_W, 0)], [0, 0, 1]);
     });
   }
   return { wall, cap };

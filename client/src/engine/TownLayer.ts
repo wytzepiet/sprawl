@@ -16,7 +16,8 @@ import type { TownApi } from "./townWorker";
 import { theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS, gateOf } from "../blueprints";
-import { KERB_Z, LAYER_ORDER } from "./town/draw";
+import { LAYER_ORDER } from "./town/draw";
+import { LAND_LIES } from "./objects/terrainGeometry";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { surfacesAt } from "./town/surface";
@@ -175,6 +176,7 @@ export class TownLayer {
     let material = this.pieces.get(key);
     if (!material) {
       material = townMaterial([bevelPlugin()]);
+      material.plane = name === "lines" ? LAND_LIES.line : name === "quayCap" ? LAND_LIES.cap : null;
       setTint(material, colour);
       this.pieces.set(key, material);
     }
@@ -599,7 +601,7 @@ export class TownLayer {
       // The masses carry each surface's building: its slot, its colour set.
       if (p.name === "mass" && p.geo.colors) for (let k = 2; k < p.geo.colors.length; k += 4) p.geo.colors[k] = p.geo.colors[k] === HELD ? this.tints.set(HELD, HELD_BLUE) : this.slotOf(p.geo.colors[k], byId);
       const paved = p.name === "pavement";
-      const geo = bevelled(paved ? square(cut, KERB_Z) : p.geo);
+      const geo = bevelled(paved ? square(cut, 0) : p.geo);
       const mesh = meshOf(engine, `town_${p.name}_${key}`, geo);
       giveBevel(engine, mesh, geo);
       const colour = p.colour ?? WHITE;
@@ -628,6 +630,7 @@ export class TownLayer {
       PAVING_ROUGHNESS,
     );
     setTint(material, colour);
+    material.plane = LAND_LIES.paving;
     return material;
   }
 
