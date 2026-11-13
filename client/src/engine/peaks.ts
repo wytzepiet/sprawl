@@ -6,6 +6,7 @@ import { lacquer } from "./bevel";
 import { CHUNK_SIZE, CLIFF_REACH, CLIFF_RUN, EDGE, FOOT_Z, JAG_FOOT, LAYER, LEAN, STEEPEST, WANDER, WANDERS, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, SHORE_DENSITY, SHORE_REACH, WATER_Z, CLIFF_Z, LEDGE } from "./objects/terrainGeometry";
 import { SECOND, SPAN } from "./slate";
 import { slate } from "./slateTexture";
+import { theme } from "./theme";
 
 /**
  * The mountains as dark slate: terraces, each layer a flat top on a wall
@@ -201,6 +202,16 @@ const CLIFF_INNER = 0.9;
 const ROCK_WET = 0.2;
 const ROCK_WET_UP = [0.07, 0.11];
 export const AFLOAT = 0.25;
+/** Where it stands on a beach: the sand blown up over its ledge's broken
+ *  edge, this far in, in tiles, its line wandering this much along the
+ *  slate; and the rock shaded where it meets the sand, this much darker,
+ *  over this far in from the sand, and this far up its wall. So the rock
+ *  sits down into the beach, not cut out and laid on it. */
+const DRIFT = 0.05;
+const DRIFT_WANDER = 0.04;
+const NOOK = 0.35;
+const NOOK_IN = 0.14;
+const NOOK_UP = 0.1;
 /** The land's cliff (`cliffField`): its lip, painted on the plane under
  *  the land's edge, rolling over as a mountain layer's does; and its wall,
  *  from the lip down into the water, lit by where it is on the map, as a
@@ -256,7 +267,14 @@ export function cliffMaterial(engine: EngineContext, texture: Texture2D, shore: 
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${LAND_CLIFF}
 let cliffAfloat = smoothstep(0., ${f(AFLOAT)}, textureSampleLevel(cliffShore, cliffShoreSampler, input.vCliffAt.xy / ${f(CHUNK_SIZE)}, 0.).r * ${f(SHORE_REACH)});
 let cliffUp = select(select(1., (input.worldPos.z - ${f(WATER_Z)}) / ${f(-WATER_Z)} * ${f(CLIFF_RUN)}, cliffWall), 0., cliffLedge);
-baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_WET_UP[0])}, ${f(ROCK_WET_UP[1])}, cliffUp)));`,
+baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_WET_UP[0])}, ${f(ROCK_WET_UP[1])}, cliffUp)));
+let cliffOnSand = 1. - cliffAfloat;
+// On the ledge itself, flat on the beach; the wall's lean takes its lower half for ledge by its facing.
+let cliffToSand = select(1., cliffBreak - cliffFar, abs(input.worldPos.z - ${f(WATER_Z)}) < 0.01);
+let cliffNook = max(1. - smoothstep(0., ${f(NOOK_IN)}, cliffToSand), 1. - smoothstep(0., ${f(NOOK_UP)}, select(1., cliffUp, cliffWall)));
+let cliffDrift = (1. - smoothstep(0., ${f(DRIFT)}, cliffToSand + cliffSlate.z * ${f(DRIFT_WANDER)})) * cliffOnSand;
+baseColor = mix(baseColor * (1. - ${f(NOOK)} * cliffNook * cliffOnSand), vec3f(${rgb(theme.beach)}) * (1. - 0.5 * ${f(NOOK)}), cliffDrift);
+N = normalize(mix(N, vec3f(0., 0., 1.), cliffDrift));`,
           },
   };
   const material = rock(plugin);
