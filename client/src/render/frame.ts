@@ -435,7 +435,7 @@ function makeFrame(scene: Scene): Frame {
     if (deferred() && (!picture || picture.w !== pw || picture.h !== ph)) {
       if (picture) for (const t of [...picture.sets.flatMap((g) => [g.albedo, g.normal, g.extra, g.depth]), picture.lit, picture.open]) t.destroy();
       const set = (): GBuffer => ({ albedo: texture(pw, ph, "rgba8unorm"), normal: texture(pw, ph, "rgba8unorm"), extra: texture(pw, ph, "rgba8unorm"), depth: texture(pw, ph, "depth32float") });
-      picture = { w: pw, h: ph, sets: [set(), set()], lit: texture(pw, ph, "rgba16float"), open: texture(pw, ph, "r8unorm") };
+      picture = { w: pw, h: ph, sets: [set(), set()], lit: texture(pw, ph, "rgba16float"), open: texture(Math.ceil(pw / 2), Math.ceil(ph / 2), "r8unorm") };
       [from, next, stillVp] = ["", null, null];
     }
     bindResources();

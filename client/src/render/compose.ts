@@ -172,7 +172,7 @@ ${binsAt(3, 8)}
 fn _r_openAt(worldPos: vec3f) -> f32 {
 let c = scene.stillView * vec4f(worldPos, 1.0);
 let uv = vec2f(c.x / c.w * 0.5 + 0.5, 0.5 - c.y / c.w * 0.5);
-let texel = 1.5 / vec2f(textureDimensions(openSky));
+let texel = 0.75 / vec2f(textureDimensions(openSky));
 var sum = 0.0;
 for (var i = 0; i < 4; i++) { sum += textureSampleLevel(openSky, brdfSampler, uv + texel * vec2f(f32(i & 1) * 2.0 - 1.0, f32(i >> 1) * 2.0 - 1.0), 0.0).r; }
 return max(1.0 - (1.0 - sum / 4.0) * abs(scene.vImageInfos.w), 0.0);
