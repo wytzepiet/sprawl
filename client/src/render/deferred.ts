@@ -165,7 +165,10 @@ const TAPS = 16;
 /** How far round, in tiles, a pixel looks for what shelters it. */
 const REACH = 1.2;
 @fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
-  let texel = vec2i(p.xy);
+  // A texel of it to every 2x2 of the picture's: shade is soft, and it is
+  // found again every time the picture is drawn, eight times a second as
+  // the camera pans.
+  let texel = vec2i(p.xy) * 2;
   if (textureLoad(gDepth, texel, 0) <= 0.) { return vec4f(1.); }
   let size = vec2f(textureDimensions(gDepth));
   let at = pictureAt(texel, size);
@@ -207,18 +210,22 @@ export const RELIGHT = /* wgsl */ `${COMMON}
 /** The sun is dimmed in nooks too, by this share of the sky's: sky light
  *  alone hardly shows in daylight. */
 const SUN_IN_NOOKS = 0.6;
-/** The open sky here, its taps' noise smoothed over 4x4 of like depth. */
+/** The open sky here, its taps' noise smoothed over the 2x2 of its texels
+ *  round it (4x4 of the picture's), each as much as its depth is like this one's. */
 fn openAt(texel: vec2i, depth: f32) -> f32 {
   let last = vec2i(textureDimensions(openSky)) - 1;
+  let at = (vec2f(texel) + 0.5) * 0.5 - 0.5;
+  let base = vec2i(floor(at));
+  let u = at - floor(at);
   var sum = 0.;
   var weight = 0.;
-  for (var y = -2; y < 2; y++) {
-    for (var x = -2; x < 2; x++) {
-      let q = clamp(texel + vec2i(x, y), vec2i(0), last);
-      let w = saturate(1. - abs(textureLoad(gDepth, q, 0) - depth) / (depth * 0.02)) + 1e-4;
-      sum += textureLoad(openSky, q, 0).r * w;
-      weight += w;
-    }
+  for (var i = 0; i < 4; i++) {
+    let o = vec2i(i & 1, i >> 1);
+    let q = clamp(base + o, vec2i(0), last);
+    let b = mix(1. - u, u, vec2f(o));
+    let w = b.x * b.y * saturate(1. - abs(textureLoad(gDepth, q * 2, 0) - depth) / (depth * 0.02)) + 1e-4;
+    sum += textureLoad(openSky, q, 0).r * w;
+    weight += w;
   }
   return max(1. - (1. - sum / weight) * abs(f.image.w), 0.);
 }
