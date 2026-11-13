@@ -175,7 +175,7 @@ let uv = vec2f(c.x / c.w * 0.5 + 0.5, 0.5 - c.y / c.w * 0.5);
 let texel = 1.5 / vec2f(textureDimensions(openSky));
 var sum = 0.0;
 for (var i = 0; i < 4; i++) { sum += textureSampleLevel(openSky, brdfSampler, uv + texel * vec2f(f32(i & 1) * 2.0 - 1.0, f32(i >> 1) * 2.0 - 1.0), 0.0).r; }
-return 1.0 - (1.0 - sum / 4.0) * abs(scene.vImageInfos.w);
+return max(1.0 - (1.0 - sum / 4.0) * abs(scene.vImageInfos.w), 0.0);
 }
 fn _r_shadowOf(map: texture_depth_2d_array, worldPos: vec3f) -> f32 {
 let posFromLight = scene.shadowMatrix * vec4f(worldPos, 1.0);
@@ -213,7 +213,7 @@ var _r_diffuse = vec3f(0.0);
 var _r_specular = vec3f(0.0);
 let _r_open = _r_openAt(input.worldPos);
 occlusion *= _r_open;
-let _r_sf = select(1.0, min(_r_shadowOf(shadowStatic, input.worldPos), _r_shadowOf(shadowLive, input.worldPos)), mesh.receiveShadows > 0.5) * mix(1.0, _r_open, 0.6);
+let _r_sf = select(1.0, min(_r_shadowOf(shadowStatic, input.worldPos), _r_shadowOf(shadowLive, input.worldPos)), mesh.receiveShadows > 0.5) * mix(1.0, _r_open, 0.8);
 let _r_L = normalize(scene.sunDir.xyz);
 let _r_NdotL = max(dot(N, _r_L), 0.0);
 _r_diffuse += surfaceAlbedo * (1.0 / PI) * _r_NdotL * scene.sunColor.rgb * _r_sf;

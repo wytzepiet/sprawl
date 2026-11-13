@@ -193,14 +193,14 @@ const FOLD = 0.25;
     let folds = max(-dot(Nq, across) / (length(across) + 1e-4) - 0.25, 0.) * saturate(1. - d / FOLD);
     shut += max(stands, folds) / (1. + d * d / (REACH * REACH));
   }
-  return vec4f(1. - 1.5 * shut / f32(TAPS));
+  return vec4f(1. - 2.5 * shut / f32(TAPS));
 }`;
 
 /** The G-buffer lit: sun in the still map's shade, sky, lamps; linear, glow added. */
 export const RELIGHT = /* wgsl */ `${COMMON}
 /** The sun is dimmed in nooks too, by this share of the sky's: sky light
  *  alone hardly shows in daylight. */
-const SUN_IN_NOOKS = 0.6;
+const SUN_IN_NOOKS = 0.8;
 /** The open sky here, its taps' noise smoothed over 4x4 of like depth. */
 fn openAt(texel: vec2i, depth: f32) -> f32 {
   let last = vec2i(textureDimensions(openSky)) - 1;
@@ -214,7 +214,7 @@ fn openAt(texel: vec2i, depth: f32) -> f32 {
       weight += w;
     }
   }
-  return 1. - (1. - sum / weight) * abs(f.image.w);
+  return max(1. - (1. - sum / weight) * abs(f.image.w), 0.);
 }
 @fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
   let texel = vec2i(p.xy);
