@@ -28,14 +28,11 @@ pub const SIDE: i32 = (CHUNK_SIZE + APRON * 2) * SAMPLES + 1;
 /// the way, and how far in it goes on rising, slowly, to its heart, so a
 /// range drains outwards from its middle, never into it; how much of its
 /// height is each; how much the map's height raises or lowers it there;
-/// and how much fine detail the rain finds to start on. The first climb
-/// no steeper than the foot's layers can stand about a tile apart: crowded
-/// closer, their ledges thin to slivers and the notches the rain cuts in
-/// one line up with the next, in jagged flutes.
+/// and how much fine detail the rain finds to start on.
 const PEAK: f32 = 8.0;
-const SPINE: f32 = 4.0;
+const SPINE: f32 = 2.0;
 const HEART: f32 = 10.0;
-const CLIMB: f32 = 0.35;
+const CLIMB: f32 = 0.55;
 const STRETCH: f32 = 0.8;
 const DETAIL: f32 = 0.06;
 /// How far in from the edge, in tiles, the foot is kept at the ground.
