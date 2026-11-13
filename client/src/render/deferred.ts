@@ -163,7 +163,7 @@ fn lamp(s: Surface, l: Light, V: vec3f) -> vec3f {
 export const OPEN = /* wgsl */ `${COMMON}
 const TAPS = 16;
 /** How far round, in tiles, a pixel looks for what shelters it. */
-const REACH = 0.8;
+const REACH = 1.2;
 /** How near a painted fold must be to be felt: paint is fine, and further off its noise is all a tap finds. */
 const FOLD = 0.25;
 @fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
@@ -177,10 +177,15 @@ const FOLD = 0.25;
   // A turn of the taps for each pixel (interleaved gradient noise); the relight smooths it.
   let spin = 6.2831853 * fract(52.9829189 * fract(dot(p.xy, vec2f(0.06711056, 0.00583715))));
   var shut = 0.;
+  var whole = 0.;
   for (var i = 0; i < TAPS; i++) {
     let k = f32(i) + 0.5;
     let a = spin + k * 2.39996323;
-    let c = f.stillView * vec4f(at + (T * cos(a) + B * sin(a)) * REACH * sqrt(k / f32(TAPS)), 1.);
+    let r = sqrt(k / f32(TAPS));
+    // A tap counts the less the further out it is: the shade fades away from what casts it.
+    let w = 1. - r;
+    whole += w;
+    let c = f.stillView * vec4f(at + (T * cos(a) + B * sin(a)) * REACH * r, 1.);
     let q = clamp(vec2i(vec2f(c.x / c.w * 0.5 + 0.5, 0.5 - c.y / c.w * 0.5) * size), vec2i(0), vec2i(size) - 1);
     if (textureLoad(gDepth, q, 0) <= 0.) { continue; }
     let v = pictureAt(q, size) - at;
@@ -191,9 +196,10 @@ const FOLD = 0.25;
     let across = v - N * dot(v, N);
     let Nq = normalize(textureLoad(gNormal, q, 0).xyz * 2. - 1.);
     let folds = max(-dot(Nq, across) / (length(across) + 1e-4) - 0.25, 0.) * saturate(1. - d / FOLD);
-    shut += max(stands, folds) / (1. + d * d / (REACH * REACH));
+    // However high what stands there is, as a cliff is: only what stands far off past the reach is nothing to this pixel.
+    shut += max(stands * step(d, 3. * REACH), folds) * w;
   }
-  return vec4f(1. - 2.5 * shut / f32(TAPS));
+  return vec4f(1. - 2. * shut / whole);
 }`;
 
 /** The G-buffer lit: sun in the still map's shade, sky, lamps; linear, glow added. */
