@@ -12,6 +12,7 @@
   #pop small { font-size: 12px; font-weight: 500; color: var(--dim); margin-left: 4px; }
   #bar { width: 90px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
   #bar i { display: block; height: 100%; width: 0; background: var(--go); border-radius: 3px; transition: width .4s; }
+  #gift { background: var(--go); color: var(--ink); font-weight: 700; padding: 7px 12px; }
   #next { font-size: 11px; color: var(--dim); margin-top: 3px; }
   #clock { top: var(--t); right: var(--r); display: flex; gap: 4px; padding: 6px; }
   button { font: inherit; color: var(--text); background: none; border: 0; border-radius: 12px; padding: 7px 10px; cursor: pointer; }
@@ -34,7 +35,7 @@
   @media (max-width: 700px) { #offer { top: calc(var(--t) + 58px); flex-direction: column; } #offer button { width: 250px; } #say { white-space: normal; text-align: center; width: max-content; } }
 </style>
 <canvas id="c"></canvas>
-<div id="top" class="pane"><div><div id="pop">8<small>people</small></div></div><div><div id="bar"><i></i></div><div id="next"></div></div></div>
+<div id="top" class="pane"><div><div id="pop">8<small>people</small></div></div><div><div id="bar"><i></i></div><div id="next"></div></div><button id="gift" hidden>Pick</button></div>
 <div id="clock" class="pane"><button data-s="0">Ⅱ</button><button data-s="1" class="on">1×</button><button data-s="3">3×</button><button id="snd">♪</button></div>
 <div id="hint" class="pane"></div>
 <div id="offer" class="pane"></div>
@@ -105,14 +106,17 @@ for (const b of document.querySelectorAll('#clock button[data-s]')) b.onclick = 
 };
 $('snd').onclick = () => { sound = !sound; $('snd').style.opacity = sound ? 1 : 0.35; };
 
+let offerOpen = false;
+$('gift').onclick = () => { offerOpen = !offerOpen; showOffer(); };
 function showOffer() {
   const el = $('offer');
-  if (!sim.offer) { el.className = 'pane'; return; }
+  $('gift').hidden = !sim.offer;
+  if (!sim.offer || !offerOpen) { el.className = 'pane'; return; }
   el.innerHTML = '';
   sim.offer.forEach((k, i) => {
     const b = document.createElement('button');
     b.innerHTML = `<b>${PICKS[k].name}</b><span>${PICKS[k].say}</span>`;
-    b.onclick = () => { sim.pick(i); showOffer(); buildTools(); };
+    b.onclick = () => { sim.pick(i); offerOpen = false; showOffer(); buildTools(); };
     el.appendChild(b);
   });
   el.className = 'pane show';
@@ -401,9 +405,9 @@ function hud() {
   $('pop').firstChild.nodeValue = sim.pop || sim.houses.reduce((n, h) => n + PEOPLE[h.level], 0);
   const m = sim.milestone, to = MILESTONES[m], from = m ? MILESTONES[m - 1] : 0;
   $('bar').firstElementChild.style.width = to ? Math.max(0, Math.min(100, (sim.pop - from) / (to - from) * 100)) + '%' : '100%';
-  $('next').textContent = sim.offer ? 'Choose one' : to ? `next pick at ${to}` : '';
+  $('next').textContent = sim.offer ? 'a pick is waiting' : to ? `next pick at ${to}` : '';
   const hungry = sim.houses.filter(h => h.hungry).length;
-  $('hint').textContent = sim.offer ? '' : !sim.stats.hauled
+  $('hint').textContent = sim.offer && offerOpen ? '' : !sim.stats.hauled
     ? 'The town wants bread. An oven bakes it from flour and logs. Wheat grows on the meadow and a mill grinds it; logs come from a woodcutter by the forest. Things pass to whatever they touch or along a belt, and a dock beside a road lets lorries bring what is missing and take what is made.'
     : hungry > sim.houses.length * 0.15 ? `${hungry} homes found no food at the shop. The town waits until they are fed.` : '';
 }
