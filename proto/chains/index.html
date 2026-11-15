@@ -52,7 +52,7 @@
 </style>
 <canvas id="c"></canvas>
 <div id="top" class="pane"><div id="pop">8<small>people</small></div><div id="bar"><i></i></div><div id="next"></div></div>
-<div id="clock" class="pane"><button data-s="0">Ⅱ</button><button data-s="1">1×</button><button data-s="3">3×</button><button data-s="8">8×</button><button id="snd">♪</button></div>
+<div id="clock" class="pane"><button data-s="0">Ⅱ</button><button data-s="1">1×</button><button data-s="3">3×</button><button data-s="8">8×</button><button id="snd">♪</button><button id="auto" title="Let a rule-made player build while you watch">Auto</button></div>
 <div id="hint" class="pane"></div>
 <div id="offer" class="pane"></div>
 <div id="say" class="pane"></div>
@@ -65,7 +65,7 @@
 const { W, H, N, GROUND, GR, DT } = Sim;
 const query = new URLSearchParams(location.search);
 const sim = new Sim(+query.get('seed') || 7, Tree);
-const bot = query.get('bot') ? new Bot(sim, query.get('bot')) : null;
+let bot = query.get('bot') ? new Bot(sim, query.get('bot')) : null;
 const goods = Tree.goods, homes = Tree.homes, kinds = sim.kinds;
 const { rr: lrr, disc: ldisc, EDGE } = Look;
 const cv = document.getElementById('c');
@@ -731,5 +731,7 @@ function frame() {
 }
 buildTools(); say(); setSpeed(speed); hud();
 requestAnimationFrame(frame);
+$('auto').classList.toggle('on', !!bot);
+$('auto').onclick = () => { bot = bot ? null : new Bot(sim, 'clever'); window.bot = bot; $('auto').classList.toggle('on', !!bot); };
 Object.assign(window, { sim, bot, cam, toScreen, setTool, setSpeed, look });
 </script>

@@ -23,8 +23,6 @@ const TUNE = {
   grow: 8, reach: 14, quiet: 2,   // a new home this often, this far from a shop, not this near industry
   hand: 0.3,          // seconds between crates passed by touch
   ship: 90, shipLoad: 24,
-  staff: false,       // homes send a worker to every building
-  shift: 40,          // seconds a worker stays
 };
 
 function rng(seed) {
@@ -48,7 +46,7 @@ function Sim(seed = 7, tree, opts) {
   this.edges = new Map(); this.floods = new Map();
   this.events = [];
   this.tier = 0; this.ver2 = 0; this.sgv = -1; this.bgv = -1; this.pop = 0; this.took = {}; this.offer = null; this.pickN = 0;
-  this.stats = { made: {}, used: {}, sold: {}, touch: {}, trips: {}, tiles: {}, shipped: {}, ghosts: 0, waitCar: 0, waitLorry: 0, driveCar: 0, driveLorry: 0, built: 0, grown: 0 };
+  this.stats = { made: {}, used: {}, sold: {}, touch: {}, trips: {}, tiles: {}, by: {}, shipped: {}, ghosts: 0, waitCar: 0, waitLorry: 0, driveCar: 0, driveLorry: 0, built: 0, grown: 0 };
   this.flow = new Map(); this.wait = new Float32Array(N);
   this.growAt = this.T.grow; this.second = 1; this.shipAt = this.T.ship;
   this.nextId = 1;
@@ -141,7 +139,7 @@ P.why = function (kind, x, y) {
 P.place = function (kind, x, y, free) {
   if (this.why(kind, x, y)) return null;
   const K = this.kinds[kind], t = y * W + x;
-  const b = { id: this.nextId++, kind, K, x, y, t, have: {}, made: {}, inc: {}, res: {}, fed: {}, prog: 0, boost: 0, state: '', lack: null, door: -1, near: [], garages: 0, fleet: [], think: 0, handAt: 0, rr: 0, staff: 0, born: this.time,
+  const b = { id: this.nextId++, kind, K, x, y, t, have: {}, made: {}, inc: {}, res: {}, fed: {}, prog: 0, boost: 0, state: '', lack: null, door: -1, near: [], lights: [], garages: 0, fleet: [], think: 0, handAt: 0, rr: 0, staff: 0, born: this.time,
     s: { busy: 0, full: 0, away: 0, lack: {}, empty: {} }, site: null };
   if (!free && K.cost && Object.keys(K.cost).length) b.site = { need: { ...K.cost }, inc: {}, since: this.time };
   if (K.need) b.need = { ...K.need };
@@ -213,12 +211,22 @@ P.goodOpen = function (g) {
 };
 P.cap = function (b, g) {
   const K = b.K, T = this.T;
-  if (K.shop) return T.shelf;
+  if (K.shop) return Math.max(2, Math.ceil(T.shelf * this.appetite(g)));
   if (K.builder) return T.stock;
   if (K.harbour) return T.quay;
   if (b.need) return b.need[g] || 0;
   if (K.ins && K.ins[g]) return K.ins[g] * 2 + T.load;
-  return 2;   // the boost
+  return (this.tree.boost || {}).keep || 2;   // the boost
+};
+// a shelf is as long as homes' appetite for the good: the full shelf for what they eat most of, a short one for what they eat little of
+P.appetite = function (g) {
+  if (!this.app) {
+    this.app = {};
+    for (const L of this.tree.homes) for (const k in L.eat) this.app[k] = Math.max(this.app[k] || 0, L.eat[k]);
+    const most = Math.max(...Object.values(this.app));
+    for (const k in this.app) this.app[k] /= most;
+  }
+  return this.app[g] || 1;
 };
 P.room = function (b, g) { return this.cap(b, g) - (b.have[g] || 0) - (b.inc[g] || 0); };
 
@@ -237,13 +245,12 @@ P.hand = function (b, g) {
 };
 P.given = function (b, g, n) {   // a great work takes what it is given for good
   b.need[g] -= n; b.have[g] -= n;
-  if (!Object.values(b.need).some(v => v > 0) && !b.done) { b.done = true; this.events.push({ type: 'done', x: b.x, y: b.y }); }
+  if (!Object.values(b.need).some(v => v > 0) && !b.done) { b.done = this.time; this.apply(b.K.gives || {}); this.events.push({ type: 'done', x: b.x, y: b.y }); }
 };
 
 P.speed = function (b) {
   let s = 1;
   if (b.boost > 0) s *= this.tree.boost.speed;
-  if (this.T.staff && b.K.time) s *= b.staff > 0 ? 1 : 0.5;
   return s;
 };
 
@@ -256,7 +263,7 @@ P.stepParts = function (dt) {
     if (!K.time) continue;
     if (b.prog === 0) {
       b.state = ''; b.lack = null;
-      if (K.out && Object.keys(K.out).some(g => (b.made[g] || 0) + K.out[g] > this.T.yard * this.T.load)) b.state = 'full';
+      if (K.out && Object.keys(K.out).some(g => (b.made[g] || 0) >= this.T.yard * this.T.load)) b.state = 'full';   // whatever a batch is, the yard takes it
       else if (K.ins && (b.lack = Object.keys(K.ins).find(g => (b.have[g] || 0) < K.ins[g]) || null)) b.state = 'lack';
       else {
         for (const g in K.ins || {}) { b.have[g] -= K.ins[g]; add(this.stats.used, g, K.ins[g]); }
@@ -269,7 +276,6 @@ P.stepParts = function (dt) {
       if (b.prog >= 1) {
         b.prog = 0; if (b.boost > 0) b.boost--;
         for (const g in K.out || {}) { add(b.made, g, K.out[g]); add(this.stats.made, g, K.out[g]); }
-        if (K.power) b.lit = this.time + K.time * 1.5;
       }
     }
   }
@@ -332,17 +338,23 @@ P.remove = function (v) {
 // the road went from under it: home at once, the errand off
 P.bail = function (v) {
   this.offRoad(v);
-  if (v.kind === 'car') { if (v.at) { v.at.staff--; v.at = null; } v.home.next = this.time + 10; v.state = 'home'; v.to = null; return; }
+  if (v.kind === 'car') { v.home.next = this.time + 10; v.state = 'home'; v.to = null; v.load = null; return; }
   this.dropJob(v); v.state = 'home'; v.to = null;
 };
 
 P.arrive = function (v) {
   this.offRoad(v);
-  if (v.state === 'back') { if (v.kind === 'car') { v.state = 'home'; v.to = null; } else { v.state = 'unloading'; v.wait = v.load ? this.T.dropTime : 0; } return; }
+  if (v.state === 'back') { if (v.kind === 'car') { v.state = 'home'; v.to = null; this.unpack(v); } else { v.state = 'unloading'; v.wait = v.load ? this.T.dropTime : 0; } return; }
   if (v.kind === 'car') {
-    if (v.errand === 'work') { v.state = 'working'; v.wait = this.T.shift; v.at = v.to; v.to.staff++; }
-    else { v.state = 'shopping'; v.wait = 1.2; }
+    v.state = 'shopping'; v.wait = 1.2;
   } else { v.state = v.job.type === 'fetch' ? 'loading' : 'dropping'; v.wait = v.job.type === 'fetch' ? this.T.loadTime : this.T.dropTime; }
+};
+
+// a car home from the builder's yard: the home is that much nearer moving up
+P.unpack = function (v) {
+  const h = v.home;
+  if (v.load && h.site) { for (const g in v.load) h.site.need[g] -= v.load[g]; this.events.push({ type: 'drop', x: h.x + 0.5, y: h.y + 0.5 }); this.built(h); }
+  v.load = null;
 };
 
 P.stepVehicle = function (v, dt) {
@@ -406,7 +418,10 @@ P.goHome = function (v, from) {
 P.done = function (v) {
   if (v.kind === 'car') {
     const h = v.home, s = v.to;
-    if (v.state === 'working') { s.staff--; v.at = null; h.rest = this.time + this.T.shift * 0.5; }
+    if (v.errand === 'build') {
+      v.load = {};
+      if (!s.dead && h.site) for (const g in h.site.need) { const n = Math.min(h.site.need[g], Math.floor(s.have[g] || 0)); if (n > 0) { s.have[g] -= n; v.load[g] = n; } }
+    }
     else if (!s.dead) {
       let got = 0;
       for (const g in h.pantry) {
@@ -479,8 +494,8 @@ P.dispatch = function (b) {
   if (b.K.builder) {
     let best = null, bl = null, bd = 1e9;
     const f = this.flood(b.door);
-    for (const s of this.sites()) {
-      if (s.door < 0 || f.dist[s.door] < 0) continue;
+    for (const s of this.parts) {   // what the player placed; a home fetches its own
+      if (!s.site || s.door < 0 || f.dist[s.door] < 0) continue;
       let left = T.load, load = null;
       for (const g in s.site.need) {
         const n = Math.min(left, s.site.need[g] - (s.site.inc[g] || 0), b.have[g] || 0);
@@ -500,15 +515,15 @@ P.dispatch = function (b) {
   const B = this.tree.boost;
   const list = this.wants(b).map(g => ({ g, fill: ((b.have[g] || 0) + (b.inc[g] || 0)) / this.cap(b, g) + (B && g === B.good ? 1 : 0) })).sort((p, q) => p.fill - q.fill);
   for (const { g } of list) {
-    const room = this.room(b, g);
-    if (room < 1) continue;
-    const src = this.source(b, g, Math.min(room, T.load));   // a full load or none: a lorry never leaves for a crate
+    const room = this.room(b, g), full = Math.min(T.load, this.cap(b, g));
+    if (room < full) continue;   // a full load or none, at both ends: a lorry never leaves for a crate
+    const src = this.source(b, g, b.K.harbour ? T.load * 1.5 : full);   // the ship gets only what is to spare
     if (!src) continue;
     const n = Math.min(T.load, room, src.made[g] - (src.res[g] || 0));
     add(src.res, g, n); add(b.inc, g, n);
     idle.job = { type: 'fetch', g, n, from: src }; idle.to = src; idle.tag = g;
     const p = this.path(b.door, src.door);
-    add(this.stats.trips, g, 1); add(this.stats.tiles, g, p.length * 2);
+    add(this.stats.trips, g, 1); add(this.stats.tiles, g, p.length * 2); add(this.stats.by, b.kind, 1);
     return this.send(idle, p, 'out');
   }
 };
@@ -545,7 +560,9 @@ P.stepShip = function () {
     if (!b.K.harbour || b.site) continue;
     let left = this.T.shipLoad;
     for (const g of this.wants(b)) { const n = Math.min(left, b.have[g] || 0); if (n) { b.have[g] -= n; left -= n; add(this.stats.shipped, g, n); } }
-    for (const g in b.K.brings || {}) b.made[g] = Math.min(this.T.quay, (b.made[g] || 0) + b.K.brings[g]);
+    const took = this.T.shipLoad - left;
+    for (const g in b.K.brings || {}) { const n = Math.min(this.T.quay - (b.made[g] || 0), b.K.brings[g] + (b.K.trade || 0) * took); if (n > 0) { add(b.made, g, n); add(this.stats.made, g, n); } }
+    b.calls = (b.calls || 0) + 1;
     this.events.push({ type: 'ship', x: b.x, y: b.y });
   }
 };
@@ -567,15 +584,12 @@ P.stepHouses = function (dt) {
       if (best) { h.car.to = best; h.car.errand = 'shop'; h.car.tag = 'car'; this.send(h.car, this.path(h.door, best.door), 'out'); h.next = this.time + 4; continue; }
       h.next = this.time + 5;
     }
-    if (this.T.staff && this.time >= h.rest) {
-      const f = this.flood(h.door);
+    if (h.site) {   // moving up: the car goes to the nearest builder's yard for what the home grows with
+      const need = h.site.need, f = this.flood(h.door);
       let best = null, bd = 1e9;
-      for (const b of this.parts) {
-        if (!b.K.time || b.site || b.door < 0 || f.dist[b.door] < 0) continue;
-        const d = f.dist[b.door] + b.staff * 30;   // an empty floor first, then the near one
-        if (d < bd) { bd = d; best = b; }
-      }
-      if (best) { h.car.to = best; h.car.errand = 'work'; h.car.tag = 'work'; this.send(h.car, this.path(h.door, best.door), 'out'); h.rest = this.time + 5; }
+      for (const b of this.parts) if (b.K.builder && !b.site && b.door >= 0 && f.dist[b.door] >= 0 && f.dist[b.door] < bd && Object.keys(need).some(g => need[g] > 0 && b.have[g] >= 1)) { bd = f.dist[b.door]; best = b; }
+      h.next = this.time + 4;
+      if (best) { h.car.to = best; h.car.errand = 'build'; h.car.tag = 'car'; this.send(h.car, this.path(h.door, best.door), 'out'); continue; }
     }
   }
 };
@@ -585,14 +599,20 @@ P.stepSecond = function () {
   const homes = this.tree.homes, k = 0.04, goods = this.shopGoods(), mats = this.buildGoods();
   const asked = {};
   for (const s of this.sites()) for (const g in s.site.need) if (s.site.need[g] - (s.site.inc[g] || 0) > 0) asked[g] = true;
+  // a home asks to move up for what a builder has in its yard; where none has it one home asks, the pin, and the rest wait
+  const builders = this.parts.filter(b => b.K.builder && !b.site);
+  const can = homes.map(L => L.grow ? builders.reduce((n, b) => n + Math.min(...Object.keys(L.grow).map(g => Math.floor((b.have[g] || 0) / L.grow[g]))), 0) : 0);
+  const asking = homes.map(() => false);
+  for (const h of this.houses) if (h.site) { can[h.level]--; asking[h.level] = true; }
   for (const h of this.houses) {
     const L = homes[h.level], nx = homes[h.level + 1];
     let ok = true;
     for (const g in L.eat) { h.sat[g] += ((h.pantry[g] > 0 ? 1 : 0) - h.sat[g]) * k; if (h.sat[g] < 0.6) ok = false; }
     h.hungry = !ok;
     if (ok && nx && !h.site && (nx.tier || 0) <= this.tier && this.time - h.grew > 25 && h.shop && !h.shop.dead
-      && Object.keys(L.eat).every(g => h.sat[g] > 0.8) && Object.keys(nx.eat).every(g => g in L.eat || h.shop.have[g] > 0.05) && this.rnd() < 0.08)
-      h.site = { need: { ...L.grow }, inc: {}, since: this.time };
+      && Object.keys(L.eat).every(g => h.sat[g] > 0.8) && Object.keys(nx.eat).every(g => g in L.eat || h.shop.have[g] > 0.05) && (can[h.level] > 0 || !asking[h.level]) && this.rnd() < 0.08) {
+      h.site = { need: { ...L.grow }, inc: {}, since: this.time }; can[h.level]--; asking[h.level] = true;
+    }
   }
   for (const b of this.parts) {
     if (b.site) continue;
@@ -604,6 +624,7 @@ P.stepSecond = function () {
     if (b.fleet.length) s.away += (b.fleet.filter(v => v.state !== 'home').length / b.fleet.length - s.away) * k;
     if (K.shop) for (const g of goods) s.empty[g] = (s.empty[g] || 0) + ((b.have[g] > 0.05 ? 0 : 1) - (s.empty[g] || 0)) * k;
     if (K.builder) for (const g of mats) s.empty[g] = (s.empty[g] || 0) + ((asked[g] && !(b.have[g] >= 1) ? 1 : 0) - (s.empty[g] || 0)) * k;
+    if (K.harbour || b.need) for (const g of this.wants(b)) s.empty[g] = (s.empty[g] || 0) + ((b.have[g] >= 1 || b.inc[g] > 0 ? 0 : 1) - (s.empty[g] || 0)) * k;
   }
 };
 
@@ -618,8 +639,10 @@ P.loud = function () {
 
 P.grow = function () {
   if (!this.houses.length || this.houses.length >= 400) return;
-  const hungry = this.houses.filter(h => h.hungry).length;
-  if (hungry > this.houses.length * 0.15) return;
+  // a fed town draws people twice as fast as one where a home in ten is hungry; past 15% nobody comes
+  const hungry = this.houses.filter(h => h.hungry).length / this.houses.length;
+  this.growAt = this.time + this.T.grow * (0.5 + 5 * hungry);
+  if (hungry > 0.15) return;
   const shops = this.parts.filter(s => s.K.shop && !s.site && s.door >= 0);
   const loud = this.loud();
   let best = -1, bs = 1e9;
@@ -628,7 +651,7 @@ P.grow = function () {
     for (let t = 0; t < N; t++) {
       if (!this.road[t] || f.dist[t] < 0 || f.dist[t] > this.T.reach) continue;
       for (const n of this.nextTo(t)) {
-        if (loud[n] || !this.free(n)) continue;
+        if (loud[n] || !this.free(n) || this.road[2 * t - n]) continue;   // beside a road, never across the end of one
         const score = f.dist[t] + this.rnd() * 5;
         if (score < bs) { bs = score; best = n; }
       }
@@ -645,21 +668,28 @@ P.count = function () {
   const reached = t => t.pop != null ? n >= t.pop : this.houses.filter(h => h.level >= t.level).length >= t.homes;
   while (this.tier + 1 < tiers.length && reached(tiers[this.tier + 1])) { this.tier++; this.ver2 = this.time; this.changed(); this.events.push({ type: 'tier', tier: this.tier }); }
   const at = this.tree.pickAt || [];
-  if (!this.offer && this.pickN < at.length && n >= at[this.pickN]) {
-    const left = Object.keys(this.tree.picks).filter(k => !this.took[k] && (this.tree.picks[k].tier || 0) <= this.tier);
-    this.offer = left.sort(() => this.rnd() - 0.5).slice(0, 3);
-    this.pickN++;
-    if (this.offer.length) this.events.push({ type: 'offer' }); else this.offer = null;
-  }
+  if (!this.offer && this.pickN < at.length && n >= at[this.pickN]) { this.pickN++; this.offerPicks(); }
+};
+P.offerPicks = function () {
+  const left = Object.keys(this.tree.picks).filter(k => !this.took[k] && (this.tree.picks[k].tier || 0) <= this.tier);
+  this.offer = left.sort(() => this.rnd() - 0.5).slice(0, 3);
+  if (this.offer.length) this.events.push({ type: 'offer' }); else this.offer = null;
+};
+
+// what a pick or a finished work changes
+P.apply = function (p) {
+  for (const key in p.tune || {}) this.T[key] = typeof p.tune[key] === 'string' ? this.T[key] * +p.tune[key].slice(1) : p.tune[key];
+  for (const kind in p.kinds || {}) Object.assign(this.kinds[kind], p.kinds[kind]);
+  if (p.offer && !this.offer) this.offerPicks();
+  this.changed();
 };
 
 P.pick = function (i) {
   if (!this.offer || !this.offer[i]) return false;
   const k = this.offer[i], p = this.tree.picks[k];
   this.took[k] = 1;
-  for (const key in p.tune || {}) this.T[key] = typeof p.tune[key] === 'string' ? this.T[key] * +p.tune[key].slice(1) : p.tune[key];
-  for (const kind in p.kinds || {}) Object.assign(this.kinds[kind], p.kinds[kind]);
-  this.offer = null; this.changed();
+  this.apply(p);
+  this.offer = null;
   this.events.push({ type: 'pick', k });
   return true;
 };
@@ -671,7 +701,8 @@ P.trace = function (g, seen = []) {
   if (seen.includes(g)) return { g, kind: 'loop', chain: seen };
   seen = seen.concat(g);
   const makers = this.parts.filter(b => !b.site && ((b.K.out && b.K.out[g]) || (b.K.brings && b.K.brings[g])));
-  const what = Object.keys(this.kinds).find(k => this.open(k) && ((this.kinds[k].out || {})[g] || (this.kinds[k].brings || {})[g]));
+  const open = Object.keys(this.kinds).filter(k => this.open(k));
+  const what = open.find(k => (this.kinds[k].out || {})[g]) || open.find(k => (this.kinds[k].brings || {})[g]);   // a works before a ship
   if (!makers.length) {
     const site = this.parts.find(b => b.site && b.kind === what);
     if (!site) return { g, kind: 'build', what, chain: seen };
@@ -680,20 +711,22 @@ P.trace = function (g, seen = []) {
   }
   const avg = f => makers.reduce((n, b) => n + f(b), 0) / makers.length;
   if (makers.some(b => (b.made[g] || 0) - (b.res[g] || 0) >= this.T.load) || avg(b => b.s.full) > 0.3) return { g, kind: 'haul', chain: seen };
-  let worst = null, wl = 0.3;
-  for (const i in makers[0].K.ins || {}) { const l = avg(b => b.s.lack[i] || 0); if (l > wl) { wl = l; worst = i; } }
-  if (worst) return this.trace(worst, seen);
-  return { g, kind: avg(b => b.s.busy) > 0.7 ? 'more' : 'wait', what, chain: seen };
+  // what its makers stand still for most, when they stand still for want of things a third of the time
+  let worst = null, wl = 0, all = 0;
+  for (const i in makers[0].K.ins || {}) { const l = avg(b => b.s.lack[i] || 0); all += l; if (l > wl) { wl = l; worst = i; } }
+  if (all > 0.3) return this.trace(worst, seen);
+  return { g, kind: avg(b => b.K.time ? b.s.busy : 1) > 0.7 ? 'more' : 'wait', what, chain: seen };
 };
 
 // the town's worst shortage and where it comes from
-P.diagnose = function () {
+P.diagnose = function (need) {
   let worst = null, ws = 0.25;
-  const look = (b, g, need) => { const e = b.s.empty[g] || 0; if (e > ws) { ws = e; worst = { g, at: b, need }; } };
+  const look = (b, g, need, w = 1) => { const e = (b.s.empty[g] || 0) * w; if (e > ws) { ws = e; worst = { g, at: b, need }; } };
   for (const b of this.parts) {
     if (b.site) continue;
-    if (b.K.shop) for (const g of this.shopGoods()) look(b, g, 'shop');
-    if (b.K.builder) for (const g of this.buildGoods()) look(b, g, 'builder');
+    if (b.K.shop && need !== 'builder') for (const g of this.shopGoods()) look(b, g, 'shop');
+    if (b.K.builder && need !== 'shop') for (const g of this.buildGoods()) look(b, g, 'builder');
+    if (!need && (b.K.harbour || b.need)) for (const g of this.wants(b)) look(b, g, 'work', 0.6);   // the town first
   }
   if (!worst) return null;
   return Object.assign(this.trace(worst.g), { want: worst.g, at: worst.at, share: ws, need: worst.need });
@@ -709,7 +742,7 @@ P.tick = function () {
   for (const v of [...this.vehicles]) this.stepVehicle(v, DT);
   this.stepShip();
   if (this.time >= this.second) { this.second += 1; this.stepSecond(); }
-  if (this.time >= this.growAt) { this.growAt = this.time + this.T.grow; this.grow(); this.count(); }
+  if (this.time >= this.growAt) { this.growAt = this.time + this.T.grow; this.grow(); this.count(); }   // grow() says when the next comes
 };
 P.run = function (seconds) { for (let n = Math.round(seconds / DT); n > 0; n--) this.tick(); };
 

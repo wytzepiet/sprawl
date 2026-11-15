@@ -6,10 +6,11 @@ const [mins = 30, seeds = 4, ...rest] = process.argv.slice(2);
 const opts = Object.fromEntries(rest.map(kv => { const [k, v] = kv.split('='); return [k, isNaN(+v) ? (v === 'true' ? true : v === 'false' ? false : v) : +v]; }));
 const tree = require(path.resolve(opts.tree || path.join(__dirname, 'tree.js'))); delete opts.tree;
 const verbose = opts.v; delete opts.v;
+const only = opts.only; delete opts.only;   // only=naive runs the one player
 const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
 const pct = x => (x * 100).toFixed(0) + '%';
 const card = {};
-for (const mode of ['naive', 'clever']) {
+for (const mode of only ? [only] : ['naive', 'clever']) {
   const all = [];
   for (let seed = 1; seed <= +seeds; seed++) {
     const { s, bot, rows, tierAt } = run({ minutes: +mins, seed, mode, tree, opts });
@@ -40,5 +41,5 @@ for (const mode of ['naive', 'clever']) {
   what was wrong, share of time: ${Object.entries(probs).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k === '-' ? 'nothing' : k} ${pct(v)}`).join(', ')}
   shipped: ${avg(r => r.shipped).toFixed(0)}`);
 }
-const c = card.clever.avg, n = card.naive.avg;
-console.log(`CLEVER AGAINST NAIVE: people x${(c(r => r.pop) / n(r => r.pop)).toFixed(2)}, lorry tiles per crate x${(c(r => r.haul) / n(r => r.haul)).toFixed(2)}`);
+const c = !only && card.clever.avg, n = !only && card.naive.avg;
+if (!only) console.log(`CLEVER AGAINST NAIVE: people x${(c(r => r.pop) / n(r => r.pop)).toFixed(2)}, lorry tiles per crate x${(c(r => r.haul) / n(r => r.haul)).toFixed(2)}`);
