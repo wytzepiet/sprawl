@@ -23,11 +23,11 @@ const GOODS = {
 
 const KINDS = {
   harvester:  { name: 'Harvester',  out: 'wheat', time: 4, on: MEADOW, say: 'Cuts wheat. Stands on a meadow.' },
-  mill:       { name: 'Mill',       in: 'wheat', out: 'flour', time: 1.2, say: 'Grinds wheat into flour.' },
-  oven:       { name: 'Oven',       in: 'flour', out: 'bread', time: 2, say: 'Bakes flour into bread.' },
-  woodcutter: { name: 'Woodcutter', out: 'log', time: 4, near: FOREST, lock: 'wood', say: 'Cuts logs. Stands beside a forest.' },
-  sawmill:    { name: 'Sawmill',    in: 'log', out: 'plank', time: 2, lock: 'wood', say: 'Saws logs into planks.' },
-  workshop:   { name: 'Workshop',   in: 'plank', out: 'furniture', time: 5, lock: 'wood', say: 'Builds furniture from planks.' },
+  mill:       { name: 'Mill',       ins: ['wheat'], out: 'flour', time: 1.2, say: 'Grinds wheat into flour.' },
+  oven:       { name: 'Oven',       ins: ['flour', 'log'], out: 'bread', time: 2, say: 'Bakes flour into bread over a log fire.' },
+  woodcutter: { name: 'Woodcutter', out: 'log', time: 4, near: FOREST, say: 'Cuts logs. Stands beside a forest.' },
+  sawmill:    { name: 'Sawmill',    ins: ['log'], out: 'plank', time: 2, lock: 'wood', say: 'Saws logs into planks.' },
+  workshop:   { name: 'Workshop',   ins: ['plank'], out: 'furniture', time: 5, lock: 'wood', say: 'Builds furniture from planks.' },
   fishery:    { name: 'Fishery',    out: 'fish', time: 3.5, near: WATER, lock: 'fish', say: 'Catches fish. Stands beside water.' },
   dock:       { name: 'Dock',       dock: true, say: 'Where lorries stop. Needs a road beside it.' },
   shop:       { name: 'Shop',       dock: true, shop: true, say: 'The town drives here to buy. Its lorry fetches from docks.' },
@@ -35,7 +35,7 @@ const KINDS = {
 };
 
 const PICKS = {
-  wood:  { name: 'Woodworks',      say: 'Woodcutter, sawmill and workshop. Houses grow with furniture.' },
+  wood:  { name: 'Woodworks',      say: 'Sawmill and workshop. Houses grow with furniture.' },
   fish:  { name: 'Fishery',        say: 'Fish from the water. Bigger houses want it.' },
   lorry: { name: 'Second lorry',   say: 'Every dock and shop gets one more lorry.' },
   big:   { name: 'Bigger lorries', say: 'A lorry carries twice as much.' },
@@ -191,7 +191,7 @@ P.place = function (kind, sx, sy, dir = 0) {
     b = { id: this.nextId++, kind, sx, sy, size: 1, dir, item: null };
     this.cell[sy * SW + sx] = b; this.belts.push(b); this.changed(); return b;
   }
-  const p = { id: this.nextId++, kind, sx, sy, size: 2, inBuf: 0, out: 0, prog: 0, rr: 0, busy: false, state: '' };
+  const p = { id: this.nextId++, kind, sx, sy, size: 2, inBuf: {}, lack: null, out: 0, prog: 0, rr: 0, busy: false, state: '' };
   if (KINDS[kind].dock) Object.assign(p, { pile: {}, res: {}, inc: {}, fed: {}, wants: [], needs: [], door: -1, fleet: [], think: 0 });
   for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) this.cell[(sy + dy) * SW + sx + dx] = p;
   this.parts.push(p);
@@ -243,7 +243,7 @@ P.leads = function (b) {
     if (n.kind === 'belt') { if ((n.dir + 2) % 4 === q.dir) break; q = n; continue; }
     if (n.kind === 'shop') lead = this.shopWants();
     else if (n.kind === 'dock') lead = null;
-    else if (KINDS[n.kind].in) lead = [KINDS[n.kind].in];
+    else if (KINDS[n.kind].ins) lead = KINDS[n.kind].ins;
     break;
   }
   b.lv = this.ver; b.lead = lead;
@@ -272,15 +272,16 @@ P.canTake = function (q, g, d, from) {
   }
   if (q.kind === 'shop') return this.shopWants().includes(g) && (q.pile[g] || 0) < this.shelf;
   if (q.kind === 'dock') return !from.pile && this.total(q) < DOCK_CAP + 4;
-  return KINDS[q.kind].in === g && q.inBuf < IN_CAP;
+  return !!KINDS[q.kind].ins && KINDS[q.kind].ins.includes(g) && (q.inBuf[g] || 0) < IN_CAP;
 };
 
 P.give = function (q, g, from) {
   if (q.kind === 'belt') {
     const s = from.size / 2;
     q.item = { g, p: 0, fx: from.sx + s, fy: from.sy + s };
+    (q.seen = q.seen || {})[g] = this.time;
   } else if (q.pile) { q.pile[g] = (q.pile[g] || 0) + 1; q.fed[g] = this.time; }
-  else q.inBuf++;
+  else q.inBuf[g] = (q.inBuf[g] || 0) + 1;
 };
 
 P.hand = function (p, g) {
@@ -309,14 +310,17 @@ P.stepMachines = function (dt) {
     if (K.dock) continue;
     p.busy = false;
     if (p.out < OUT_CAP) {
-      if (K.in && p.prog === 0 && p.inBuf > 0) { p.inBuf--; p.prog = 1e-6; }
-      if (!K.in || p.prog > 0) {
+      if (K.ins && p.prog === 0) {
+        p.lack = K.ins.find(g => !p.inBuf[g]) || null;
+        if (!p.lack) { for (const g of K.ins) p.inBuf[g]--; p.prog = 1e-6; }
+      }
+      if (!K.ins || p.prog > 0) {
         p.prog += dt / K.time; p.busy = true;
         if (p.prog >= 1) { p.prog = 0; p.out++; }
       }
     }
     if (p.out > 0 && this.hand(p, K.out)) p.out--;
-    p.state = p.out >= OUT_CAP ? 'full' : K.in && !p.busy ? 'empty' : '';
+    p.state = p.out >= OUT_CAP ? 'full' : K.ins && !p.busy ? 'empty' : '';
   }
 };
 
@@ -468,9 +472,10 @@ P.done = function (v) {
 // ---- docks: what they ask for, and their lorries ----------------------
 
 // a machine that a belt or its maker already feeds asks no lorry for anything
-P.fedByHand = function (m) {
-  const g = KINDS[m.kind].in;
-  return this.around(m).some(e => e.q.kind === 'belt' ? e.q.dir === (e.d + 2) % 4 : KINDS[e.q.kind].out === g);
+P.fedByHand = function (m, g) {
+  return this.around(m).some(e => e.q.kind === 'belt'
+    ? e.q.dir === (e.d + 2) % 4 && e.q.seen && this.time - (e.q.seen[g] ?? -99) < 60
+    : KINDS[e.q.kind].out === g);
 };
 
 P.dockWants = function (d) {
@@ -479,7 +484,7 @@ P.dockWants = function (d) {
   for (const e of this.around(d)) {
     let l = [];
     if (e.q.kind === 'belt') { if ((e.q.dir + 2) % 4 !== e.d) l = this.leads(e.q) || []; }
-    else if (KINDS[e.q.kind].in && !this.fedByHand(e.q)) l = [KINDS[e.q.kind].in];
+    else if (KINDS[e.q.kind].ins) l = KINDS[e.q.kind].ins.filter(g => !this.fedByHand(e.q, g));
     for (const g of l) if (!w.includes(g)) w.push(g);
   }
   return w;

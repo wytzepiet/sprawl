@@ -76,7 +76,7 @@ function ping(freq, len = 0.09, vol = 0.05, type = 'sine') {
 }
 
 // ---- the palette ----
-const TOOLS = ['view', 'road', 'belt', 'dock', 'harvester', 'mill', 'oven', 'shop', 'woodcutter', 'sawmill', 'workshop', 'fishery', 'erase'];
+const TOOLS = ['view', 'road', 'belt', 'dock', 'harvester', 'mill', 'woodcutter', 'oven', 'shop', 'sawmill', 'workshop', 'fishery', 'erase'];
 const NAMES = { view: 'Look', road: 'Road', erase: 'Clear' };
 const SAY = { view: 'Drag to look round. Tap a thing to see what it is doing.', road: 'Drag to lay a road. The town builds along it.', erase: 'Drag over roads, belts and machines to clear them.' };
 function buildTools() {
@@ -86,7 +86,7 @@ function buildTools() {
     if (K && K.lock && !sim.unlocked[K.lock]) continue;
     const b = document.createElement('button');
     let dots = '';
-    if (K && K.out) dots = (K.in ? `<i style="background:${GOODS[K.in].col}"></i>›` : '') + `<i style="background:${GOODS[K.out].col}"></i>`;
+    if (K && K.out) dots = (K.ins ? K.ins.map(g => `<i style="background:${GOODS[g].col}"></i>`).join('+') + '›' : '') + `<i style="background:${GOODS[K.out].col}"></i>`;
     b.innerHTML = `<div class="dots">${dots || (k === 'view' ? '✥' : k === 'road' ? '▬' : k === 'erase' ? '✕' : k === 'belt' ? '»' : k === 'dock' ? '▣' : '⌂')}</div>${K ? K.name : NAMES[k]}`;
     b.className = k === tool ? 'on' : '';
     b.onclick = () => { tool = k; picked = null; buildTools(); say(); };
@@ -177,7 +177,7 @@ function describe(p) {
     if (p.door < 0) return `${K.name}: no road beside it`;
     return `${K.name}: holds ${has}` + (p.wants.length ? `, its lorry fetches ${p.wants.map(g => GOODS[g].name.toLowerCase()).join(' and ')}` : '');
   }
-  return `${K.name}: ` + (p.state === 'full' ? `full, nowhere to put its ${GOODS[K.out].name.toLowerCase()}` : p.state === 'empty' ? `waiting for ${GOODS[K.in].name.toLowerCase()}` : 'working');
+  return `${K.name}: ` + (p.state === 'full' ? `full, nowhere to put its ${GOODS[K.out].name.toLowerCase()}` : p.state === 'empty' ? `waiting for ${GOODS[p.lack || K.ins[0]].name.toLowerCase()}` : 'working');
 }
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
@@ -324,7 +324,7 @@ function drawPart(p, t) {
     if (p.busy && (p.kind === 'oven' || p.kind === 'sawmill') && Math.random() < 0.04) fx.push({ k: 'puff', x: c[0] + 0.28, y: c[1] - 0.3, t: 0, life: 1.6 });
     if (p.prog > 0) { cx.fillStyle = 'rgba(0,0,0,.25)'; cx.fillRect(x + 0.15, y + 0.86, 0.7, 0.05); cx.fillStyle = '#fff'; cx.fillRect(x + 0.15, y + 0.86, 0.7 * p.prog, 0.05); }
     for (let i = 0; i < p.out; i++) crate(x + 0.86 - i * 0.15, y + 0.16, 0.16, K.out);
-    if (p.state === 'empty') { cx.strokeStyle = GOODS[K.in].col; cx.lineWidth = 0.05; cx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4); cx.beginPath(); cx.arc(x + 0.17, y + 0.17, 0.1, 0, 7); cx.stroke(); cx.globalAlpha = 1; }
+    if (p.state === 'empty') { cx.strokeStyle = GOODS[p.lack || K.ins[0]].col; cx.lineWidth = 0.05; cx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4); cx.beginPath(); cx.arc(x + 0.17, y + 0.17, 0.1, 0, 7); cx.stroke(); cx.globalAlpha = 1; }
   }
   if (p.pile && p.door < 0) { cx.fillStyle = '#e2604a'; cx.beginPath(); cx.arc(x + 0.86, y + 0.14, 0.13, 0, 7); cx.fill(); cx.fillStyle = '#fff'; cx.fillRect(x + 0.84, y + 0.06, 0.04, 0.1); cx.fillRect(x + 0.84, y + 0.18, 0.04, 0.04); }
 }
@@ -404,7 +404,7 @@ function hud() {
   $('next').textContent = sim.offer ? 'Choose one' : to ? `next pick at ${to}` : '';
   const hungry = sim.houses.filter(h => h.hungry).length;
   $('hint').textContent = sim.offer ? '' : !sim.stats.hauled
-    ? 'The town wants bread. Stand a harvester on a meadow, then a mill, an oven and a dock, each touching the next or joined by a belt. Lay a road from the dock to the town and the shop sends its lorry.'
+    ? 'The town wants bread. An oven bakes it from flour and logs. Wheat grows on the meadow and a mill grinds it; logs come from a woodcutter by the forest. Things pass to whatever they touch or along a belt, and a dock beside a road lets lorries bring what is missing and take what is made.'
     : hungry > sim.houses.length * 0.15 ? `${hungry} homes found no food at the shop. The town waits until they are fed.` : '';
 }
 
