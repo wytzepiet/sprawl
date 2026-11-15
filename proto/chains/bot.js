@@ -3,7 +3,10 @@
 // obvious thing about it. `naive` puts a works near town; `clever` puts it
 // where its heaviest crates travel least, touching what it can.
 //   node bot.js [minutes] [seed] [naive|clever] [key=value …]
-const Sim = require('./sim.js');
+(function (root) {
+
+const node = typeof module !== 'undefined';
+const Sim = node ? require('./sim.js') : root.Sim;
 const { W, H, N, GR, DIRS } = Sim;
 const cx = W / 2, cy = H / 2;
 const md = (t, u) => Math.abs(t % W - u % W) + Math.abs(((t / W) | 0) - ((u / W) | 0));
@@ -184,7 +187,7 @@ B.step = function () {
 
 // ---- a run, and what it measured ---------------------------------------
 
-function run({ minutes = 20, seed = 7, mode = 'clever', tree = require('./tree.js'), opts = {}, each } = {}) {
+function run({ minutes = 20, seed = 7, mode = 'clever', tree = node ? require('./tree.js') : root.Tree, opts = {}, each } = {}) {
   const s = new Sim(seed, tree, opts), bot = new Bot(s, mode);
   const rows = [], tierAt = [0];
   let prev = JSON.parse(JSON.stringify(s.stats));
@@ -224,9 +227,10 @@ function junctions(s, n = 5) {
   return out.sort((a, b) => b.total - a.total).slice(0, n);
 }
 
-module.exports = { Bot, run, junctions };
+Object.assign(Bot, { run, junctions });
+if (node) module.exports = { Bot, run, junctions }; else root.Bot = Bot;
 
-if (require.main === module) {
+if (node && require.main === module) {
   const [mins, seed, mode, ...rest] = process.argv.slice(2);
   const opts = Object.fromEntries(rest.map(kv => { const [k, v] = kv.split('='); return [k, isNaN(+v) ? v === 'true' : +v]; }));
   const { s, bot, rows, tierAt } = run({ minutes: +mins || 20, seed: +seed || 7, mode: mode || 'clever', opts });
@@ -243,3 +247,5 @@ if (require.main === module) {
   for (const k in by) { const l = by[k], a = f => (l.reduce((n, p) => n + f(p), 0) / l.length * 100).toFixed(0).padStart(4); const lk = {}; for (const p of l) for (const g in { ...p.s.lack, ...p.s.empty }) lk[g] = (lk[g] || 0) + (p.s.lack[g] || p.s.empty[g] || 0) / l.length; console.log(k.padEnd(11), String(l.length).padStart(2), a(p => p.s.busy), a(p => p.s.full), a(p => p.s.away), ' ' + Object.entries(lk).filter(e => e[1] > 0.05).map(e => `${e[0]} ${(e[1] * 100).toFixed(0)}%`).join(', ')); }
   for (const j of junctions(s)) console.log(`junction ${j.x},${j.y}: ${j.total} passes, ${j.lorries} lorries of ${j.goods} goods, waited ${j.wait}s`, JSON.stringify(j.f));
 }
+
+})(this);

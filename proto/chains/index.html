@@ -1,0 +1,735 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sprawl Chains</title>
+<style>
+  /* one screen: the map fills it, black panes float at the edges */
+  :root { --grass: #a8d27a; --ink: #0b0c0e; --ink2: #1b1d20; --ink3: #24262a; --text: #f2f1ec; --soft: #d9d8d2; --dim: #9a9c9f; --line: #2a2c30; --go: #8fd36b; --no: #ff9a85;
+    --t: calc(12px + env(safe-area-inset-top, 0px)); --b: calc(12px + env(safe-area-inset-bottom, 0px)); --l: max(12px, env(safe-area-inset-left, 0px)); --r: max(12px, env(safe-area-inset-right, 0px)); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--grass); overflow: hidden; font: 14px/1.3 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; color: var(--text); touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .pane { position: fixed; background: var(--ink); border-radius: 18px; padding: 10px 14px; }
+  #top { top: var(--t); left: var(--l); min-width: 132px; }
+  #pop { font-size: 26px; font-weight: 700; line-height: 1; }
+  #pop small { font-size: 12px; font-weight: 500; color: var(--dim); margin-left: 5px; }
+  #bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 8px; }
+  #bar i { display: block; height: 100%; width: 0; background: var(--go); border-radius: 3px; transition: width .4s; }
+  #next { font-size: 11.5px; color: var(--dim); margin-top: 4px; white-space: nowrap; }
+  #clock { top: var(--t); right: var(--r); display: flex; gap: 2px; padding: 6px; }
+  button { font: inherit; color: var(--text); background: none; border: 0; border-radius: 12px; padding: 7px 10px; cursor: pointer; }
+  button.on { background: var(--ink3); }
+  button:focus-visible { outline: 2px solid var(--go); }
+  #hint { top: calc(var(--t) + 88px); left: var(--l); max-width: min(340px, calc(100vw - 24px)); font-size: 13px; color: var(--soft); }
+  #hint:empty { display: none; }
+  #hint.moment { color: var(--text); }
+  #hint b { color: var(--go); font-weight: 600; }
+  #offer { top: var(--t); left: 50%; transform: translateX(-50%); display: none; gap: 8px; padding: 10px; max-width: calc(100vw - 24px); }
+  #offer.show { display: flex; }
+  #offer button { background: var(--ink2); text-align: left; padding: 10px 12px; width: 150px; }
+  #offer button b { display: block; font-size: 14px; margin-bottom: 3px; }
+  #offer button span { font-size: 11.5px; color: var(--dim); }
+  #say { bottom: calc(var(--b) + 88px); left: 50%; transform: translateX(-50%); font-size: 12.5px; padding: 6px 12px; border-radius: 12px; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  #say:empty { display: none; }
+  #say.no { color: var(--no); }
+  #tools { bottom: var(--b); left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 6px; max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; touch-action: pan-x; overscroll-behavior: contain; }
+  #tools::-webkit-scrollbar { display: none; }
+  #tools button { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 60px; padding: 8px 7px 6px; font-size: 11.5px; white-space: nowrap; flex: none; }
+  #tools .dots { display: flex; align-items: center; gap: 2px; height: 12px; color: var(--dim); font-size: 10px; line-height: 1; }
+  #tools .dots i { width: 9px; height: 9px; border-radius: 3px; display: block; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+  #tools .dots i.gr { border-radius: 50%; }
+  #tools .dots svg, #tools .dots img { width: 14px; height: 14px; display: block; }
+  #tools .cost { display: flex; align-items: center; gap: 2px; height: 9px; font-size: 9.5px; color: var(--dim); line-height: 1; }
+  #tools .cost i { width: 6px; height: 6px; border-radius: 2px; display: block; margin-right: 3px; }
+  #tools button.new { animation: fresh 1s ease-in-out infinite alternate; }
+  @keyframes fresh { from { box-shadow: inset 0 0 0 1.5px rgba(143,211,107,.25); } to { box-shadow: inset 0 0 0 1.5px rgba(143,211,107,1); background: #17240f; } }
+  @media (max-width: 700px) {
+    #offer { top: calc(var(--t) + 88px); flex-direction: column; } #offer button { width: 250px; }
+    #say { white-space: normal; text-align: center; width: max-content; }
+    #clock button { padding: 7px 8px; }
+    #tools { left: 8px; right: 8px; transform: none; max-width: none; }
+  }
+</style>
+<canvas id="c"></canvas>
+<div id="top" class="pane"><div id="pop">8<small>people</small></div><div id="bar"><i></i></div><div id="next"></div></div>
+<div id="clock" class="pane"><button data-s="0">Ⅱ</button><button data-s="1">1×</button><button data-s="3">3×</button><button data-s="8">8×</button><button id="snd">♪</button></div>
+<div id="hint" class="pane"></div>
+<div id="offer" class="pane"></div>
+<div id="say" class="pane"></div>
+<div id="tools" class="pane"></div>
+<script src="sim.js"></script>
+<script src="tree.js"></script>
+<script src="look.js"></script>
+<script src="bot.js"></script>
+<script>
+const { W, H, N, GROUND, GR, DT } = Sim;
+const query = new URLSearchParams(location.search);
+const sim = new Sim(+query.get('seed') || 7, Tree);
+const bot = query.get('bot') ? new Bot(sim, query.get('bot')) : null;
+const goods = Tree.goods, homes = Tree.homes, kinds = sim.kinds;
+const { rr: lrr, disc: ldisc, EDGE } = Look;
+const cv = document.getElementById('c');
+let cx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let cw = 0, ch = 0, dpr = 1;
+const cam = { x: W / 2 + 0.5, y: H / 2 + 0.5, s: 36 };
+let tool = 'view', speed = [0, 1, 3, 8].includes(+query.get('speed')) && query.get('speed') !== null ? +query.get('speed') : 1, hover = null, sound = true, picked = null;
+const fx = [], fresh = new Map();
+
+function resize() {
+  dpr = Math.min(2, devicePixelRatio || 1);
+  cw = innerWidth; ch = innerHeight;
+  cv.width = cw * dpr; cv.height = ch * dpr;
+}
+addEventListener('resize', resize); resize();
+cam.s = Math.max(22, Math.min(64, cw / 26));
+
+// ---- words ----
+const col = g => (goods[g] || {}).col || '#999';
+const gn = g => ((goods[g] || {}).name || g).toLowerCase();
+const kn = k => ((kinds[k] || {}).name || k).toLowerCase();
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const an = s => (/^[aeiou]/i.test(s) ? 'an ' : 'a ') + s;
+const plural = s => /s$/i.test(s) ? s : /[^aeiou]y$/i.test(s) ? s.slice(0, -1) + 'ies' : s + 's';
+const list = l => l.length < 2 ? l.join('') : l.slice(0, -1).join(', ') + ' and ' + l[l.length - 1];
+const some = (n, g) => `${n} ${n === 1 ? gn(g).replace(/([^s])s$/, '$1') : gn(g)}`;
+const crates = o => list(Object.keys(o || {}).filter(g => o[g] >= 1).map(g => some(Math.floor(o[g]), g)));
+const makerOf = g => Object.keys(kinds).find(k => sim.open(k) && ((kinds[k].out || {})[g] || (kinds[k].brings || {})[g]));
+const total = o => Object.values(o || {}).reduce((a, b) => a + Math.max(0, b), 0);
+
+// ---- sound: small pings ----
+let ac = null; const lastPing = {};
+function ping(freq, len = 0.09, vol = 0.05, type = 'sine') {
+  if (!sound) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const now = ac.currentTime;
+    if (now - (lastPing[freq] || 0) < 0.06) return;
+    lastPing[freq] = now;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, now); g.gain.exponentialRampToValueAtTime(0.0001, now + len);
+    o.connect(g).connect(ac.destination); o.start(now); o.stop(now + len);
+  } catch (e) {}
+}
+
+// ---- the tools ----
+const NAMES = { view: 'Look', road: 'Road', erase: 'Clear' };
+const ICON = {
+  view: '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><path d="M9 9l4 4"/></svg>',
+  road: '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M1 7h12" stroke-width="6" opacity=".45"/><path d="M2 7h2M6 7h2M10 7h2" stroke-width="1.4"/></svg>',
+  erase: '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>',
+};
+function sayKind(k) {
+  const K = kinds[k];
+  if (K.say) return K.say;
+  const beside = K.near ? ` Stands beside ${K.near}.` : '';
+  let s;
+  if (K.shop) s = 'its lorry stocks the shelf and homes drive to it.';
+  else if (K.builder) s = 'its lorry brings sites and growing homes what they cost.';
+  else if (K.garage) s = 'one more lorry for every building it touches.';
+  else if (K.harbour) s = `a ship takes ${list((Tree.exports || []).map(gn)) || 'what is brought'} away${K.brings ? ' and lands ' + list(Object.keys(K.brings).map(gn)) : ''}.`;
+  else if (K.need) s = `the town's great work. It takes ${crates(K.need)} and keeps them.`;
+  else if (K.out) s = `makes ${crates(K.out)}${K.ins ? ' from ' + crates(K.ins) : ''}.`;
+  else s = '';
+  return `${K.name}: ${s}${beside} Tap grass to place it.`;
+}
+const SAY = { view: 'Drag to look round. Tap a thing to see what it is doing.', road: 'Drag to lay a road. Homes come along roads near a shop.', erase: 'Drag over roads and buildings to clear them.' };
+
+function iconOf(k) {   // the building as the map draws it, small
+  const c = document.createElement('canvas'), was = cx;
+  c.width = c.height = 56;
+  cx = c.getContext('2d'); cx.scale(56, 56); cx.lineCap = cx.lineJoin = 'round';
+  const K = kinds[k];
+  drawPart({ kind: k, K, x: 0, y: 0, t: 0, have: {}, made: {}, fleet: [], near: [], door: 0, prog: 0, state: '', site: null, need: K.need ? {} : undefined, icon: true }, 0);
+  cx = was;
+  return `<img src="${c.toDataURL()}">`;
+}
+function buildTools() {
+  const el = $('tools'), left = el.scrollLeft; el.innerHTML = '';
+  const sq = (g, n = 1) => `<i style="background:${col(g)}"></i>`.repeat(Math.min(4, Math.max(1, Math.round(n))));
+  for (const k of ['view', 'road', 'erase', ...Object.keys(kinds).filter(k => sim.open(k))]) {
+    const K = kinds[k], b = document.createElement('button');
+    let dots = ICON[k], cost = '';
+    if (K) {
+      const outs = { ...K.out, ...K.brings };
+      if (Object.keys(outs).length && !K.harbour) dots = (K.ins ? Object.keys(K.ins).map(g => sq(g, K.ins[g])).join('') : K.near ? `<i class="gr" style="background:${Look.ground(K.near).col}"></i>` : '') + '›' + Object.keys(outs).map(g => sq(g, outs[g])).join('');
+      else dots = iconOf(k);
+      cost = Object.keys(K.cost || {}).map(g => `${K.cost[g]}<i style="background:${col(g)}"></i>`).join('') || 'free';
+    }
+    b.innerHTML = `<div class="dots">${dots}</div>${K ? K.name : NAMES[k]}<div class="cost">${cost}</div>`;
+    b.dataset.k = k;
+    b.className = (k === tool ? 'on' : '') + (fresh.has(k) ? ' new' : '');
+    b.onclick = () => setTool(k);
+    el.appendChild(b);
+  }
+  el.scrollLeft = left;
+}
+function setTool(k) {
+  tool = k; picked = null; flowSeen.clear(); fresh.delete(k); spotsKey = '';
+  for (const b of $('tools').children) b.className = (b.dataset.k === k ? 'on' : '') + (fresh.has(b.dataset.k) ? ' new' : '');
+  say();
+}
+function say(text, no) {
+  const el = $('say');
+  el.textContent = text || (kinds[tool] ? sayKind(tool) : SAY[tool]) || '';
+  el.className = 'pane' + (no ? ' no' : '');
+}
+function setSpeed(s) {
+  speed = s;
+  document.querySelectorAll('#clock button[data-s]').forEach(x => x.classList.toggle('on', +x.dataset.s === speed));
+}
+for (const b of document.querySelectorAll('#clock button[data-s]')) b.onclick = () => setSpeed(+b.dataset.s);
+$('snd').onclick = () => { sound = !sound; $('snd').style.opacity = sound ? 1 : 0.35; };
+
+function showOffer() {
+  const el = $('offer');
+  if (!sim.offer) { el.className = 'pane'; return; }
+  el.innerHTML = '';
+  sim.offer.forEach((k, i) => {
+    const b = document.createElement('button'), p = Tree.picks[k];
+    b.innerHTML = `<b>${p.name}</b><span>${p.say || ''}</span>`;
+    b.onclick = () => { sim.pick(i); showOffer(); buildTools(); };
+    el.appendChild(b);
+  });
+  el.className = 'pane show';
+}
+
+// ---- pointer ----
+const toWorld = (px, py) => [(px - cw / 2) / cam.s + cam.x, (py - ch / 2) / cam.s + cam.y];
+const toScreen = (wx, wy) => [(wx - cam.x) * cam.s + cw / 2, (wy - cam.y) * cam.s + ch / 2];
+const pts = new Map();
+let drag = null, pinch = null;
+function stepTo(from, to, each) {   // walk a grid line, one side step at a time
+  let [x, y] = from;
+  for (let guard = 0; guard < 400 && (x !== to[0] || y !== to[1]); guard++) {
+    const dx = to[0] - x, dy = to[1] - y;
+    if (Math.abs(dx) >= Math.abs(dy)) x += Math.sign(dx); else y += Math.sign(dy);
+    each(x, y);
+  }
+}
+function act(wx, wy, first) {
+  const t = [Math.floor(wx), Math.floor(wy)];
+  const each = tool === 'road'
+    ? (x, y) => { if (sim.setRoad(x, y)) ping(330, 0.05, 0.03, 'triangle'); }
+    : (x, y) => { if (sim.erase(x, y)) ping(180, 0.07, 0.04, 'triangle'); };
+  if (first) each(t[0], t[1]); else stepTo(drag.last, t, each);
+  drag.last = t;
+}
+function build(wx, wy) {
+  const x = Math.floor(wx), y = Math.floor(wy), why = sim.why(tool, x, y);
+  if (why) { say(why + '.', true); ping(140, 0.12, 0.04, 'square'); return; }
+  sim.place(tool, x, y); ping(440, 0.08, 0.05); ping(660, 0.1, 0.04); say();
+}
+function look(wx, wy) {
+  const x = Math.floor(wx), y = Math.floor(wy);
+  picked = sim.inside(x, y) ? sim.at[y * W + x] : null;
+  flowSeen.clear();
+  say(describe(picked));
+}
+function describe(p) {
+  if (!p) return '';
+  if (!p.K) {
+    const L = homes[p.level], nx = homes[p.level + 1], name = L.name;
+    if (p.door < 0) return `${name}: no road beside it.`;
+    if (p.site) return `${name} growing into ${an(nx.name.toLowerCase())}: waits for ${crates(p.site.need) || 'its last load'} from a builder.`;
+    if (p.hungry) return `${name}: goes without ${gn(lowest(p))}.`;
+    let more = '';
+    if (nx && (nx.tier || 0) <= sim.tier) {
+      const miss = Object.keys(nx.eat).filter(g => !(g in L.eat) && !(p.shop && p.shop.have[g] > 0.05));
+      more = miss.length ? ` It grows once its shop sells ${list(miss.map(gn))}.` : ' It will grow soon.';
+    }
+    return `${name}, ${L.people} people: fed.${more}`;
+  }
+  const K = p.K, name = K.name;
+  if (p.dead) return '';
+  if (p.site) {
+    const need = crates(p.site.need) || 'its last load';
+    if (p.door < 0) return `${name}, a site: waits for ${need}, and no road is beside it.`;
+    const none = Object.keys(p.site.need).filter(g => p.site.need[g] - (p.site.inc[g] || 0) > 0 && !sim.parts.some(b => b.K.builder && !b.site && b.have[g] >= 1));
+    return `${name}, a site: waits for ${need}` + (none.length ? `; no builder holds ${list(none.map(gn))} yet.` : ' from the builder.');
+  }
+  if (p.door < 0) return `${name}: no road beside it, so no lorry can come or go.`;
+  if (K.shop) {
+    const out = sim.shopGoods().filter(g => !(p.have[g] > 0.05));
+    return `${name}: holds ${crates(p.have) || 'nothing'}` + (out.length ? `; out of ${list(out.map(gn))}.` : '.');
+  }
+  if (K.builder) { const n = sim.sites().length; return `${name}: holds ${crates(p.have) || 'nothing'}; ${n ? n + (n === 1 ? ' site waits.' : ' sites wait.') : 'no site waits.'}`; }
+  if (K.garage) return `${name}: one more lorry for each building it touches.`;
+  if (K.harbour) return `${name}: the ship comes in ${Math.max(0, Math.ceil(sim.shipAt - sim.time))} s; ${crates(p.have) || 'nothing'} waits to sail` + (crates(p.made) ? `, ${crates(p.made)} landed.` : '.');
+  if (p.need) return p.done ? `${name}: finished.` : `${name}: still needs ${crates(p.need)}.`;
+  const out = list(Object.keys(K.out || {}).map(gn));
+  const state = p.state === 'full' ? `full, its ${out} wait to be fetched` : p.state === 'lack' ? `waits for ${gn(p.lack)}` : 'working';
+  const away = p.fleet.find(v => v.job && v.job.type === 'fetch');
+  return `${name}: ${state}. ` + (K.ins ? `Holds ${crates(p.have) || 'nothing'}; ` : '') + `${crates(p.made) || 'nothing'} ready.` + (away ? ` Its lorry fetches ${gn(away.job.g)}.` : '');
+}
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: cam.s, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 }; drag = null; return; }
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  if (tool === 'view' || kinds[tool] || e.button === 1 || e.button === 2) { drag = { pan: true, tap: e.button === 0, moved: 0 }; return; }
+  drag = {};
+  act(wx, wy, true);
+});
+cv.addEventListener('pointermove', e => {
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  hover = e.pointerType === 'touch' && !pts.has(e.pointerId) ? null : [wx, wy];
+  if (!pts.has(e.pointerId)) return;
+  const was = pts.get(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && pts.size === 2) {
+    const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+    const [ox, oy] = toWorld(mx, my);
+    cam.s = Math.max(9, Math.min(110, pinch.s * d / pinch.d));
+    cam.x = ox - (mx - cw / 2) / cam.s - (mx - pinch.mx) / cam.s; cam.y = oy - (my - ch / 2) / cam.s - (my - pinch.my) / cam.s;
+    pinch.mx = mx; pinch.my = my; clampCam();
+    return;
+  }
+  if (!drag) return;
+  if (drag.pan) { cam.x -= (e.clientX - was[0]) / cam.s; cam.y -= (e.clientY - was[1]) / cam.s; drag.moved += Math.abs(e.clientX - was[0]) + Math.abs(e.clientY - was[1]); clampCam(); }
+  else act(wx, wy, false);
+});
+const up = e => {
+  if (drag && drag.pan && drag.tap && drag.moved < 8 && e.type === 'pointerup') { const w = toWorld(e.clientX, e.clientY); if (tool === 'view') look(...w); else build(...w); }
+  pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) drag = null;
+  if (e.pointerType === 'touch') hover = null;
+};
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('pointerleave', () => { hover = null; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  cam.s = Math.max(9, Math.min(110, cam.s * Math.exp(-e.deltaY * 0.0015)));
+  cam.x = wx - (e.clientX - cw / 2) / cam.s; cam.y = wy - (e.clientY - ch / 2) / cam.s; clampCam();
+}, { passive: false });
+function clampCam() { cam.x = Math.max(0, Math.min(W, cam.x)); cam.y = Math.max(0, Math.min(H, cam.y)); }
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') setTool('view');
+  if (e.key === ' ') setSpeed(speed ? 0 : 1);
+});
+
+// ---- the land, drawn once ----
+const TP = 32, land = document.createElement('canvas');
+land.width = W * TP; land.height = H * TP;
+Look.land(land.getContext('2d'), sim, TP);
+
+// ---- drawing ----
+const T = () => performance.now() / 1000;
+let simClock = 0;
+function rr(x, y, w, h, r, fill, stroke) { lrr(cx, x, y, w, h, r, fill, stroke); }
+function crate(x, y, s, g, hollow) {
+  const c = col(g);
+  if (hollow) { cx.lineWidth = s * 0.24; rr(x - s * 0.4, y - s * 0.4, s * 0.8, s * 0.8, s * 0.2, 'rgba(255,255,255,.6)', c); return; }
+  cx.lineWidth = Math.max(0.018, s * 0.14);
+  rr(x - s / 2, y - s / 2, s, s, s * 0.25, c, Look.lum(c.length === 7 ? c : '#999999') < 0.3 ? 'rgba(255,255,255,.55)' : EDGE);
+}
+// a line of crates: a list of goods, from x leftwards or rightwards
+function line(gs, x, y, s, step, hollow) { gs.forEach((g, i) => crate(x + i * step, y, s, g, hollow)); }
+const spread = (o, max, scale = 1) => { const out = []; for (const g in o) for (let n = Math.round(o[g] * scale); n > 0 && out.length < max; n--) out.push(g); return out; };
+
+function drawRoads() {
+  cx.lineCap = 'round'; cx.lineJoin = 'round';
+  const pass = (w, c, dash) => {
+    cx.lineWidth = w; cx.strokeStyle = c; cx.setLineDash(dash || []); cx.beginPath();
+    for (let t = 0; t < N; t++) if (sim.road[t]) {
+      const x = t % W + 0.5, y = ((t / W) | 0) + 0.5;
+      let any = false;
+      if (x < W - 1 && sim.road[t + 1]) { cx.moveTo(x, y); cx.lineTo(x + 1, y); any = true; }
+      if (y < H - 1 && sim.road[t + W]) { cx.moveTo(x, y); cx.lineTo(x, y + 1); any = true; }
+      if (!any && !dash) { cx.moveTo(x, y); cx.lineTo(x + 0.001, y); }
+    }
+    cx.stroke(); cx.setLineDash([]);
+  };
+  pass(0.86, '#8fb866'); pass(0.72, '#676c73'); pass(0.03, '#9aa0a8', [0.14, 0.2]);
+}
+
+// rows of stock, a good a row, each as full as its share of `cap`
+function stock(b, gs, of, y0, h) {
+  const step = Math.min(0.15, h / Math.max(1, gs.length)), s = Math.min(0.115, step * 0.82);
+  gs.forEach((g, r) => {
+    const n = Math.ceil(Math.min(1, of(g) / sim.cap(b, g)) * 6 - 0.001);
+    for (let i = 0; i < n; i++) crate(b.x + 0.19 + i * 0.125, b.y + y0 + r * step, s, g);
+  });
+}
+function glyph(b, L, t, x, y, k = 1) {
+  cx.save(); cx.translate(x, y); cx.scale(k, k); cx.lineWidth = 0.025; cx.lineCap = cx.lineJoin = 'round';
+  L.glyph(cx, { t: t + b.x * 0.7 + b.y * 1.3, busy: b.prog > 0, letter: L.letter });
+  cx.restore();
+}
+function waterBy(b) { for (const n of sim.nextTo(b.t)) if (sim.terrain[n] === GR.water) return [n % W - b.x, ((n / W) | 0) - b.y]; return null; }
+
+function drawPart(b, t) {
+  const K = b.K, x = b.x, y = b.y, L = Look.kind(b.kind, K, goods), far = cam.s < 15 && !b.icon;
+  cx.lineWidth = 0.03;
+  if (b.site) {
+    cx.setLineDash([0.1, 0.09]); cx.lineWidth = 0.045;
+    rr(x + 0.07, y + 0.07, 0.86, 0.86, 0.16, 'rgba(255,255,255,.3)', 'rgba(11,12,14,.75)');
+    cx.setLineDash([]);
+    cx.globalAlpha = 0.4; drawPart({ ...b, site: null, icon: true, door: 0, have: {}, made: {}, fleet: [], need: K.need ? {} : undefined }, 0); cx.globalAlpha = 1;
+    const gs = spread(b.site.need, 10), per = gs.length > 5 ? Math.ceil(gs.length / 2) : gs.length;
+    gs.forEach((g, i) => crate(x + 0.5 + ((i % per) - (per - 1) / 2) * 0.155, y + (gs.length > per ? 0.66 : 0.76) + ((i / per) | 0) * 0.155, 0.15, g, true));
+    return;
+  }
+  rr(x + 0.07, y + 0.11, 0.9, 0.9, 0.18, 'rgba(30,40,20,.22)');
+  if (K.shop) {
+    rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.16, '#f6efe0', '#b9ad93');
+    cx.save(); cx.beginPath(); cx.roundRect(x + 0.05, y + 0.05, 0.9, 0.3, [0.16, 0.16, 0.05, 0.05]); cx.clip();
+    for (let i = 0; i < 6; i++) { cx.fillStyle = i % 2 ? '#f6efe0' : '#e2604a'; cx.fillRect(x + 0.05 + i * 0.15, y + 0.05, 0.15, 0.3); }
+    cx.restore();
+    cx.fillStyle = 'rgba(40,30,20,.18)'; cx.fillRect(x + 0.07, y + 0.35, 0.86, 0.035);
+    if (!far && !b.icon) stock(b, sim.shopGoods(), g => b.have[g] || 0, 0.5, 0.42);
+  } else if (K.builder) {
+    rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.16, '#d7d9dc', '#8b9097');
+    cx.save(); cx.beginPath(); cx.roundRect(x + 0.05, y + 0.05, 0.9, 0.24, [0.16, 0.16, 0.04, 0.04]); cx.clip();
+    cx.fillStyle = '#e9c24a'; cx.fillRect(x, y, 1, 0.3);
+    cx.strokeStyle = '#1b1d20'; cx.lineWidth = 0.075; cx.beginPath();
+    for (let i = -1; i < 7; i++) { cx.moveTo(x + i * 0.2, y + 0.32); cx.lineTo(x + i * 0.2 + 0.26, y + 0.02); }
+    cx.stroke(); cx.restore();
+    if (b.icon) { cx.lineWidth = 0.05; cx.strokeStyle = '#8b9097'; cx.setLineDash([0.08, 0.08]); cx.strokeRect(x + 0.2, y + 0.42, 0.6, 0.38); cx.setLineDash([]); }
+    else if (!far) stock(b, sim.buildGoods(), g => b.have[g] || 0, 0.43, 0.48);
+  } else if (K.garage) {
+    rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.16, '#5b616b', EDGE);
+    rr(x + 0.17, y + 0.3, 0.66, 0.6, 0.05, '#aeb4bc', 'rgba(20,20,20,.5)');
+    cx.strokeStyle = 'rgba(40,45,55,.6)'; cx.lineWidth = 0.03; cx.beginPath();
+    for (let i = 1; i < 5; i++) { cx.moveTo(x + 0.2, y + 0.3 + i * 0.12); cx.lineTo(x + 0.8, y + 0.3 + i * 0.12); }
+    cx.stroke();
+    rr(x + 0.17, y + 0.13, 0.66, 0.1, 0.04, '#f2b84b');
+    cx.save(); cx.translate(x + 0.5, y + 0.6); cx.scale(0.7, 0.7); lorry('#f2b84b', null); cx.restore();
+  } else if (K.harbour) {
+    const w = waterBy(b) || [0, 1];
+    rr(x + 0.5 - 0.13 + w[0] * 0.5, y + 0.5 - 0.13 + w[1] * 0.5, 0.26 + Math.abs(w[0]) * 0.5, 0.26 + Math.abs(w[1]) * 0.5, 0.04, '#a9825a', EDGE);
+    rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.16, '#c9ccd0', '#8b9097');
+    rr(x + 0.12, y + 0.12, 0.76, 0.76, 0.1, '#4f7fa8');
+    cx.strokeStyle = '#f2f1ec'; cx.lineWidth = 0.055; cx.lineCap = 'round'; cx.beginPath();
+    cx.moveTo(x + 0.5, y + 0.3); cx.lineTo(x + 0.5, y + 0.7); cx.moveTo(x + 0.39, y + 0.4); cx.lineTo(x + 0.61, y + 0.4);
+    cx.moveTo(x + 0.3, y + 0.55); cx.quadraticCurveTo(x + 0.33, y + 0.72, x + 0.5, y + 0.72); cx.quadraticCurveTo(x + 0.67, y + 0.72, x + 0.7, y + 0.55); cx.stroke();
+    ldisc(cx, x + 0.5, y + 0.26, 0.05, null, '#f2f1ec');
+    if (!far) { line(spread(b.have, 6, 0.5), x + 0.19, y + 0.19, 0.11, 0.125); line(spread(b.made, 6, 0.5), x + 0.81, y + 0.83, 0.11, -0.125); }
+    if (!b.icon) {
+      const until = sim.shipAt - sim.time, since = sim.T.ship - until, away = Math.max(0, Math.min(1, (since - 5) / 10, until / 12));
+      if (away < 1) {
+        cx.save(); cx.globalAlpha = 1 - away * away; cx.translate(x + 0.5 + w[0] * (1.15 + away * 2.5), y + 0.5 + w[1] * (1.15 + away * 2.5) + Math.sin(t * 2) * 0.02); cx.rotate(Math.atan2(w[1], w[0]) + Math.PI / 2);
+        cx.lineWidth = 0.03; cx.fillStyle = '#f2f1ec'; cx.beginPath(); cx.moveTo(-0.38, -0.12); cx.lineTo(0.26, -0.12); cx.quadraticCurveTo(0.44, 0, 0.26, 0.12); cx.lineTo(-0.38, 0.12); cx.closePath(); cx.fill(); cx.strokeStyle = EDGE; cx.stroke();
+        rr(-0.33, -0.07, 0.16, 0.14, 0.03, '#e2604a'); line(spread(b.K.brings || {}, 3, 0.2), -0.08, 0, 0.1, 0.11);
+        cx.restore();
+      }
+    }
+  } else if (K.need) {
+    // a great work rises a step for each fifth of what it needs
+    const all = total(K.need), done = b.icon ? 0.6 : all ? 1 - total(b.need) / all : 1, steps = 5, up = Math.round(done * steps);
+    rr(x + 0.03, y + 0.03, 0.94, 0.94, 0.14, '#d9d3c4', '#9c947f');
+    for (let i = 0; i < steps; i++) {
+      const q = 0.82 - i * 0.15, built = i < up;
+      cx.lineWidth = 0.025;
+      if (!built) cx.setLineDash([0.05, 0.05]);
+      rr(x + 0.5 - q / 2, y + 0.5 - q / 2 - i * 0.012, q, q, 0.08, built ? Look.mix('#cfc7b2', '#fbf6e6', i / (steps - 1)) : null, built ? 'rgba(60,45,30,.45)' : 'rgba(60,45,30,.35)');
+      cx.setLineDash([]);
+    }
+    if (b.done || up >= steps) { ldisc(cx, x + 0.5, y + 0.45, 0.09 + 0.01 * Math.sin(t * 3), '#f0c64a', 'rgba(60,45,30,.6)'); }
+    else if (!far && !b.icon) line(Object.keys(b.need).filter(g => b.need[g] > 0).slice(0, 5), x + 0.2, y + 0.84, 0.13, 0.15, true);
+  } else {
+    rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.18, L.body, EDGE);
+    rr(x + 0.1, y + 0.1, 0.8, 0.16, 0.09, L.dark ? 'rgba(255,255,255,.13)' : 'rgba(255,255,255,.3)');
+    glyph(b, L, t, x + 0.5, y + 0.5, b.icon ? 1.15 : 1);
+    if (b.icon) return;
+    if (b.prog > 0 && speed && K.ins && Math.random() < 0.03) fx.push({ k: 'puff', x: x + 0.76, y: y + 0.2, t: 0, life: 1.6 });
+    if (far) return;
+    line(spread(b.have, 6), x + 0.18, y + 0.18, 0.11, 0.125);
+    const made = spread(b.made, 12), full = b.state === 'full';
+    made.forEach((g, i) => crate(x + 0.83 - (i % 6) * 0.13, y + 0.81 - ((i / 6) | 0) * 0.125, 0.12, g));
+    if (full) {   // the yard brims over
+      const g = Object.keys(K.out)[0], w = Math.sin(t * 5 + b.id) * 0.012;
+      [[0.97, 0.7], [1.0, 0.86 + w], [0.9, 0.97], [0.76, 1.0 - w], [0.62, 0.96]].forEach(p => crate(x + p[0], y + p[1], 0.12, g));
+    }
+    if (b.prog > 0) { cx.fillStyle = 'rgba(0,0,0,.3)'; cx.fillRect(x + 0.15, y + 0.895, 0.7, 0.035); cx.fillStyle = '#fff'; cx.fillRect(x + 0.15, y + 0.895, 0.7 * Math.min(1, b.prog), 0.035); }
+  }
+  if (b.door < 0) { ldisc(cx, x + 0.86, y + 0.14, 0.13, '#e2604a'); cx.fillStyle = '#fff'; cx.fillRect(x + 0.84, y + 0.06, 0.04, 0.1); cx.fillRect(x + 0.84, y + 0.18, 0.04, 0.04); }
+}
+
+function drawHouse(h) {
+  const S = Look.home(h.level, homes.length), x = h.x + 0.5, y = h.y + 0.5;
+  const grow = Math.min(1, (sim.time - h.grew) * 2.5), q = S.size * (0.4 + 0.6 * grow + 0.15 * Math.sin(grow * Math.PI));
+  cx.lineWidth = 0.03;
+  rr(x - q / 2 + 0.04, y - q / 2 + 0.07, q, q, 0.12, 'rgba(30,40,20,.22)');
+  rr(x - q / 2, y - q / 2, q, q, 0.12, '#f6efe0', 'rgba(60,45,30,.5)');
+  rr(x - q / 2 + 0.07, y - q / 2 + 0.07, q - 0.14, q - 0.14, 0.07, S.roof);
+  cx.fillStyle = 'rgba(255,255,255,.35)'; cx.fillRect(x - q / 2 + 0.07, y - 0.015, q - 0.14, 0.03);
+  for (let i = 1; i <= S.floors; i++) { const w = (q - 0.14) * (1 - i / (S.floors + 1.6)); cx.lineWidth = 0.02; rr(x - w / 2, y - w / 2, w, w, 0.05, Look.mix(S.roof, '#ffffff', 0.12 + 0.13 * i), 'rgba(60,45,30,.3)'); }
+  if (h.site) {   // scaffolding, and what the builder still owes it
+    const s = Math.min(0.96, q + 0.2), a = x - s / 2, b = y - s / 2, w = 0.11;
+    cx.strokeStyle = '#6e4a2b'; cx.lineWidth = 0.03; cx.fillStyle = '#e8c58d';
+    cx.beginPath(); cx.rect(a, b, w, s); cx.rect(a, b, s, w); cx.fill(); cx.stroke();
+    cx.beginPath();
+    for (let i = 1; i < 5; i++) { cx.moveTo(a, b + s * i / 5); cx.lineTo(a + w, b + s * i / 5); cx.moveTo(a + s * i / 5, b); cx.lineTo(a + s * i / 5, b + w); }
+    cx.stroke();
+    if (cam.s >= 15) { const gs = spread(h.site.need, 6); gs.forEach((g, i) => crate(x + (i - (gs.length - 1) / 2) * 0.15, y + s / 2 - 0.02, 0.14, g, true)); }
+  }
+}
+const lowest = h => Object.keys(homes[h.level].eat).reduce((a, g) => h.sat[g] < h.sat[a] ? g : a);
+
+// crates crossing where two buildings touch: the town's belt
+let links = [], linksKey = '';
+function findLinks() {
+  const key = sim.ver + '|' + sim.ver2 + '|' + sim.tier + '|' + Math.floor(sim.time / 2);
+  if (key === linksKey) return;
+  linksKey = key; links = [];
+  for (const b of sim.parts) {
+    if (b.site) continue;
+    const outs = Object.keys({ ...b.K.out, ...b.K.brings });
+    if (!outs.length) continue;
+    for (const q of b.near) { if (q.site || q.dead) continue; const w = sim.wants(q); for (const g of outs) if (w.includes(g)) links.push({ a: b, b: q, g }); }
+  }
+}
+function drawLinks(t) {
+  findLinks();
+  for (const l of links) {
+    const a = l.a, b = l.b, dx = b.x - a.x, dy = b.y - a.y, mx = (a.x + b.x) / 2 + 0.5, my = (a.y + b.y) / 2 + 0.5;
+    const live = sim.time - (b.fed[l.g] ?? -9) < 1.5;
+    cx.save(); cx.translate(mx, my); cx.rotate(Math.atan2(dy, dx));
+    rr(-0.17, -0.12, 0.34, 0.24, 0.07, live ? '#0b0c0e' : 'rgba(11,12,14,.5)');
+    cx.strokeStyle = live ? '#f2f1ec' : 'rgba(242,241,236,.55)'; cx.lineWidth = 0.035; cx.lineCap = cx.lineJoin = 'round'; cx.beginPath();
+    cx.moveTo(-0.045, -0.06); cx.lineTo(0.035, 0); cx.lineTo(-0.045, 0.06); cx.stroke();
+    if (live) { const u = (t * 2.4 + a.id * 0.37) % 1; crate(-0.22 + u * 0.44, 0, 0.1 + 0.05 * Math.sin(u * Math.PI), l.g); }
+    cx.restore();
+  }
+}
+
+function lorry(cab, load) {
+  rr(-0.3, -0.125, 0.44, 0.25, 0.04, '#e9e6de', 'rgba(30,25,20,.6)');
+  rr(0.15, -0.115, 0.17, 0.23, 0.05, cab, 'rgba(30,25,20,.6)');
+  if (load) spread(load, 8).forEach((g, i) => crate(-0.24 + ((i / 2) | 0) * 0.105, i % 2 ? 0.055 : -0.055, 0.095, g));
+}
+function doorWay(b) { return b.door < 0 ? [0, 1] : [b.door % W - b.x, ((b.door / W) | 0) - b.y]; }
+// lorries at home stand in their bay, nose to the road, under the eaves
+function drawParked() {
+  for (const b of sim.parts) {
+    const home = b.fleet.filter(v => v.state === 'home');
+    if (!home.length) continue;
+    const d = doorWay(b), cab = Look.kind(b.kind, b.K, goods).body;
+    home.forEach((v, k) => {
+      const o = (k - (home.length - 1) / 2) * 0.24;
+      cx.save(); cx.translate(b.x + 0.5 + d[0] * 0.5 - d[1] * o, b.y + 0.5 + d[1] * 0.5 + d[0] * o); cx.rotate(Math.atan2(d[1], d[0])); cx.scale(0.78, 0.78); cx.lineWidth = 0.03;
+      lorry(cab, null); cx.restore();
+    });
+  }
+}
+function drawVehicle(v) {
+  let x, y, a;
+  if (v.state === 'home') return;
+  if (!v.on) {
+    const p = v.state === 'out' || v.state === 'back' ? null : v.state === 'unloading' ? v.home : v.to;
+    const tile = v.path[v.path.length - 1] ?? -1;
+    if (tile < 0) return;
+    const tx = tile % W + 0.5, ty = ((tile / W) | 0) + 0.5;
+    if (!p) { const s = v.path[Math.min(v.i, v.path.length - 1)]; x = s % W + 0.5; y = ((s / W) | 0) + 0.5; a = 0; }
+    else { const px = p.x + 0.5, py = p.y + 0.5, j = ((v.id * 37) % 7 - 3) * 0.05; x = tx + (px - tx) * 0.42 + j; y = ty + (py - ty) * 0.42 - j; a = Math.atan2(py - ty, px - tx); }
+  } else ({ x, y, a } = sim.where(v));
+  cx.save(); cx.translate(x, y); cx.rotate(a); cx.lineWidth = 0.025;
+  if (v.kind === 'car') {
+    rr(-0.19, -0.105, 0.38, 0.21, 0.07, `hsl(${v.hue} 62% 62%)`, 'rgba(30,25,20,.6)');
+    rr(-0.06, -0.075, 0.14, 0.15, 0.03, 'rgba(255,255,255,.55)');
+  } else lorry(Look.kind(v.home.kind, v.home.K, goods).body, v.load);
+  cx.restore();
+}
+
+// what is wanted and is not there: a pin, and a ring where work stands still
+function bubble(x, y, gs, t, seed) {
+  const b = Math.sin(t * 3 + seed) * 0.035;
+  gs.forEach((g, i) => {
+    const px = x + (i - (gs.length - 1) / 2) * 0.33, py = y + b;
+    cx.fillStyle = '#0b0c0e'; cx.beginPath(); cx.arc(px, py, 0.16, 0, 7); cx.moveTo(px - 0.07, py + 0.13); cx.lineTo(px, py + 0.25); cx.lineTo(px + 0.07, py + 0.13); cx.fill();
+    crate(px, py, 0.15, g);
+  });
+}
+function drawPins(t) {
+  for (const b of sim.parts) {
+    if (b.site) continue;
+    if (b.state === 'lack' && b.lack) {
+      const u = (t * 0.9 + b.id * 0.31) % 1;
+      cx.strokeStyle = col(b.lack); cx.globalAlpha = 1 - u * 0.75; cx.lineWidth = 0.075 - u * 0.03;
+      cx.beginPath(); cx.arc(b.x + 0.5, b.y + 0.5, 0.36 + u * 0.2, 0, 7); cx.stroke(); cx.globalAlpha = 1;
+    }
+    if (b.K.shop) { const out = sim.shopGoods().filter(g => !(b.have[g] > 0.05)); if (out.length) bubble(b.x + 0.5, b.y - 0.12, out.slice(0, 4), t, b.id); }
+  }
+  for (const h of sim.houses) if (h.hungry) bubble(h.x + 0.5, h.y + 0.02, [lowest(h)], t, h.id);
+}
+
+// the chosen thing: who it fetches from, and who fetches from it
+const flowSeen = new Map();
+function drawFlows(t) {
+  const p = picked;
+  if (!p || p.dead || tool !== 'view') return;
+  const note = (a, b, g) => { if (a && b && a !== b && !a.dead && !b.dead) flowSeen.set(a.id + '>' + b.id + '>' + g, { a, b, g, at: sim.time }); };
+  for (const v of sim.vehicles) {
+    if (v.kind === 'car') { if (v.state !== 'home' && v.to && (v.to === p || v.home === p)) note(v.to, v.home, ''); continue; }
+    const j = v.job; if (!j) continue;
+    if (j.type === 'fetch') { if (v.home === p || j.from === p) note(j.from, v.home, j.g); }
+    else if (v.home === p || j.site === p) note(v.home, j.site, Object.keys(j.load)[0]);
+  }
+  if (!p.K && p.shop && !flowSeen.size) note(p.shop, p, '');
+  cx.lineCap = 'round';
+  for (const [k, f] of flowSeen) {
+    const age = sim.time - f.at;
+    if (age > 40 || f.a.dead || f.b.dead) { flowSeen.delete(k); continue; }
+    const ax = f.a.x + 0.5, ay = f.a.y + 0.5, bx = f.b.x + 0.5, by = f.b.y + 0.5, c = f.g ? col(f.g) : '#ffffff';
+    cx.globalAlpha = Math.max(0.25, 1 - age / 40);
+    cx.strokeStyle = 'rgba(11,12,14,.7)'; cx.lineWidth = 0.07; cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(bx, by); cx.stroke();
+    cx.strokeStyle = c; cx.lineWidth = 0.04; cx.setLineDash([0.16, 0.14]); cx.lineDashOffset = -t * 0.9; cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(bx, by); cx.stroke(); cx.setLineDash([]);
+    ldisc(cx, ax, ay, 0.07, c, 'rgba(11,12,14,.8)');
+    const a = Math.atan2(by - ay, bx - ax);
+    cx.fillStyle = c; cx.strokeStyle = 'rgba(11,12,14,.8)'; cx.lineWidth = 0.025; cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx - Math.cos(a - 0.45) * 0.22, by - Math.sin(a - 0.45) * 0.22); cx.lineTo(bx - Math.cos(a + 0.45) * 0.22, by - Math.sin(a + 0.45) * 0.22); cx.closePath(); cx.fill(); cx.stroke();
+    cx.globalAlpha = 1;
+  }
+  cx.lineWidth = 0.05; rr(p.x + 0.01, p.y + 0.01, 0.98, 0.98, 0.2, null, '#ffffff');
+}
+
+// where the kind in hand may stand, when it must stand beside something
+let spots = [], spotsKey = '';
+function drawGhost() {
+  if (tool === 'view') return;
+  const K = kinds[tool];
+  if (K && K.near) {
+    const key = tool + sim.ver;
+    if (key !== spotsKey) { spotsKey = key; spots = []; for (let t = 0; t < N; t++) if (!sim.why(tool, t % W, (t / W) | 0)) spots.push(t); }
+    cx.fillStyle = 'rgba(255,255,255,.3)'; cx.beginPath();
+    for (const t of spots) cx.roundRect(t % W + 0.2, ((t / W) | 0) + 0.2, 0.6, 0.6, 0.14);
+    cx.fill();
+  }
+  if (!hover) return;
+  const x = Math.floor(hover[0]), y = Math.floor(hover[1]);
+  cx.lineWidth = 0.04;
+  if (tool === 'road') { rr(x + 0.1, y + 0.1, 0.8, 0.8, 0.2, sim.canRoad(x, y) ? 'rgba(255,255,255,.35)' : 'rgba(226,96,74,.4)'); return; }
+  if (tool === 'erase') { rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.18, 'rgba(226,96,74,.35)', '#e2604a'); return; }
+  const ok = !sim.why(tool, x, y);
+  rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.18, ok ? 'rgba(255,255,255,.4)' : 'rgba(226,96,74,.4)', ok ? '#fff' : '#e2604a');
+}
+
+function drawFx(dt) {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i]; f.t += dt;
+    const u = f.t / f.life;
+    if (u >= 1) { fx.splice(i, 1); continue; }
+    if (f.k === 'puff') { cx.fillStyle = `rgba(255,255,255,${0.5 * (1 - u)})`; cx.beginPath(); cx.arc(f.x + u * 0.15, f.y - u * 0.7, 0.07 + u * 0.14, 0, 7); cx.fill(); }
+    if (f.k === 'ring') { cx.strokeStyle = f.c || `rgba(255,255,255,${1 - u})`; cx.globalAlpha = f.c ? 1 - u : 1; cx.lineWidth = 0.06 * (1 - u); cx.beginPath(); cx.arc(f.x, f.y, 0.3 + u * (f.r || 0.7), 0, 7); cx.stroke(); cx.globalAlpha = 1; }
+  }
+}
+
+// ---- the panes ----
+function opening() {
+  const want = Object.keys(homes[0].eat)[0], k = makerOf(want);
+  if (!k) return `The town wants ${gn(want)}.`;
+  const K = kinds[k], where = q => q.near ? ` beside ${q.near}` : '';
+  const from = Object.keys(K.ins || {}).map(g => { const m = makerOf(g); return m ? `${gn(g)} from ${an(kn(m))}${where(kinds[m])}` : gn(g); });
+  return `The town wants ${gn(want)}. ${cap(an(kn(k)))}${where(K)} makes it` + (from.length ? ` from ${list(Object.keys(K.ins).map(gn))}: ${list(from)}.` : '.')
+    + ' Each building sends its lorry for what it lacks, and takes it straight from a neighbour it touches. What you place is a site until the builder brings its cost.';
+}
+function sentence(d) {
+  const want = gn(d.want), g = gn(d.g), holder = d.need === 'builder' ? 'builder' : 'shop';
+  const head = d.need === 'builder' ? `The builders are out of ${want}.` : `${cap(want)} is short.`;
+  const via = d.g !== d.want ? ` It waits for ${g}.` : '';
+  const K = kinds[d.what], what = d.what ? kn(d.what) : '';
+  if (d.kind === 'build') return what ? `${head}${via} Nothing makes ${g}: build ${an(what)}${K.near ? ' beside ' + K.near : ''}.` : `${head}${via} Nothing can make ${g} yet.`;
+  if (d.kind === 'more') return `${head}${via} The ${plural(what)} are working flat out: build another.`;
+  if (d.kind === 'site') return `${head}${via} ${cap(an(what))} is being built and waits for the builder.`;
+  if (d.kind === 'wait') return `${head}${via} The ${plural(what)} are only getting going.`;
+  if (d.kind === 'haul') return d.g === d.want
+    ? `${head} There is ${g} at its makers, but the ${holder}'s lorry cannot keep up: build a ${holder} nearer to them, or a garage beside this one.`
+    : `${head} ${cap(g)} waits at its makers: whoever uses it cannot fetch it fast enough. Stand them closer, let them touch, or add a garage.`;
+  return `${head}${via}`;
+}
+const firstWant = Object.keys(homes[0].eat);
+let trouble = { want: '', since: 0 }, moment = null;
+function hintText() {
+  if (sim.offer) return '';
+  if (moment && T() < moment.until) return moment.html;
+  if (!sim.parts.some(b => b.K.out && firstWant.some(g => b.K.out[g]))) return opening();
+  const d = sim.diagnose(), want = d ? d.want : '';
+  if (want !== trouble.want) trouble = { want, since: sim.time };
+  return d && sim.time - trouble.since > 10 ? sentence(d) : '';
+}
+function hud() {
+  let pop = 0; for (const h of sim.houses) pop += homes[h.level].people;
+  $('pop').firstChild.nodeValue = pop;
+  const t = Tree.tiers[sim.tier + 1];
+  let have = 1, of = 1, words = 'Every step is open';
+  if (t) {
+    if (t.pop != null) { have = pop; of = t.pop; words = 'people'; }
+    else { have = sim.houses.filter(h => h.level >= t.level).length; of = t.homes; words = plural(homes[t.level].name); }
+    words = `${Math.min(have, of)} of ${of} ${words}`;
+  }
+  $('bar').firstElementChild.style.width = Math.max(0, Math.min(100, have / of * 100)) + '%';
+  $('next').textContent = sim.offer ? 'Choose one' : words;
+  const el = $('hint'), html = hintText();
+  if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; el.className = 'pane' + (moment && html === moment.html ? ' moment' : ''); }
+  const now = T();
+  for (const [k, until] of fresh) if (now > until) { fresh.delete(k); const b = $('tools').querySelector(`[data-k="${k}"]`); if (b) b.classList.remove('new'); }
+}
+function stepOpened(tier) {
+  const opened = Object.keys(kinds).filter(k => (kinds[k].tier || 0) === tier);
+  const grown = homes.map((L, i) => i && (L.tier || 0) === tier ? `${plural(homes[i - 1].name)} can grow into ${plural(L.name)}.` : '').filter(Boolean);
+  for (const k of opened) fresh.set(k, T() + 14);
+  moment = { until: T() + 9, html: `<b>A new step.</b> ${opened.length ? 'You can now build ' + list(opened.map(k => an(kn(k)))) + '. ' : ''}${grown.join(' ')}` };
+  buildTools();
+  const b = opened.length && $('tools').querySelector(`[data-k="${opened[0]}"]`);
+  if (b && b.scrollIntoView) b.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+}
+
+// ---- time ----
+let botAt = 3;
+function advance() {
+  sim.tick();
+  if (bot && sim.time >= botAt) { botAt = sim.time + 3; bot.step(); }
+}
+function events() {
+  const quiet = sim.events.length > 150;   // a long run behind the page's back: no fireworks
+  for (const e of sim.events.splice(0)) {
+    if (e.type === 'tier') { stepOpened(e.tier); ping(523, 0.2, 0.06); ping(784, 0.3, 0.06); ping(1047, 0.4, 0.05); }
+    if (e.type === 'offer') { showOffer(); ping(660, 0.2, 0.06); ping(990, 0.3, 0.05); }
+    if (e.type === 'pick') { showOffer(); buildTools(); ping(520, 0.15, 0.06); ping(780, 0.25, 0.06); }
+    if (quiet) continue;
+    if (e.type === 'house') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 0.7 }); ping(700 + Math.random() * 200, 0.12, 0.04); }
+    if (e.type === 'grow') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 0.9 }); ping(880, 0.15, 0.05); ping(1320, 0.2, 0.04); }
+    if (e.type === 'built') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 0.9 }); ping(587, 0.12, 0.05); ping(880, 0.18, 0.04); }
+    if (e.type === 'done') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 1.6, r: 2, c: '#f0c64a' }); ping(784, 0.3, 0.06); ping(1175, 0.5, 0.05); }
+    if (e.type === 'ship') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 1.2, r: 1.2 }); ping(196, 0.5, 0.05, 'triangle'); }
+    if (e.type === 'buy') ping(1040, 0.04, 0.012);
+    if (e.type === 'drop') { fx.push({ k: 'ring', x: e.x, y: e.y, t: 0, life: 0.5, c: e.g && col(e.g) }); ping(260, 0.08, 0.05, 'triangle'); }
+  }
+}
+
+let lastT = T(), acc = 0, hudAt = 0;
+function frame() {
+  const now = T(), dt = Math.min(0.1, now - lastT); lastT = now;
+  acc += dt * speed;
+  let n = 0;
+  while (acc >= DT && n++ < 40) { advance(); acc -= DT; }
+  if (n >= 40) acc = 0;
+  simClock += dt * Math.min(speed, 1.5);
+  events();
+  if (now > hudAt) { hudAt = now + 0.3; hud(); if (picked && tool === 'view') say(describe(picked)); }
+
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx.fillStyle = '#a8d27a'; cx.fillRect(0, 0, cw, ch);
+  cx.translate(cw / 2, ch / 2); cx.scale(cam.s, cam.s); cx.translate(-cam.x, -cam.y);
+  cx.imageSmoothingEnabled = true;
+  cx.fillStyle = Look.ground('water').col; cx.fillRect(-60, H - 2, W + 120, 60);
+  cx.drawImage(land, 0, 0, W, H);
+  drawRoads();
+  drawParked();
+  for (const h of sim.houses) drawHouse(h);
+  for (const p of sim.parts) drawPart(p, simClock);
+  drawLinks(simClock);
+  for (const v of sim.vehicles) if (v.kind === 'lorry') drawVehicle(v);
+  for (const v of sim.vehicles) if (v.kind === 'car') drawVehicle(v);
+  drawPins(now);
+  drawFlows(simClock);
+  drawFx(dt);
+  drawGhost();
+  requestAnimationFrame(frame);
+}
+buildTools(); say(); setSpeed(speed); hud();
+requestAnimationFrame(frame);
+Object.assign(window, { sim, bot, cam, toScreen, setTool, setSpeed, look });
+</script>
