@@ -1,0 +1,447 @@
+<title>Sprawl Works</title>
+<style>
+  /* one screen: the map fills it, black panes float at the edges */
+  :root { --grass: #a8d27a; --ink: #0b0c0e; --ink2: #1b1d20; --ink3: #24262a; --text: #f2f1ec; --soft: #d9d8d2; --dim: #9a9c9f; --line: #2a2c30; --go: #8fd36b; --no: #ff9a85;
+    --t: calc(12px + env(safe-area-inset-top, 0px)); --b: calc(12px + env(safe-area-inset-bottom, 0px)); --l: max(12px, env(safe-area-inset-left, 0px)); --r: max(12px, env(safe-area-inset-right, 0px)); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--grass); overflow: hidden; font: 14px/1.3 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; color: var(--text); touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .pane { position: fixed; background: var(--ink); border-radius: 18px; padding: 10px 14px; }
+  #top { top: var(--t); left: var(--l); display: flex; align-items: center; gap: 12px; }
+  #pop { font-size: 26px; font-weight: 700; line-height: 1; }
+  #pop small { font-size: 12px; font-weight: 500; color: var(--dim); margin-left: 4px; }
+  #bar { width: 90px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 0; background: var(--go); border-radius: 3px; transition: width .4s; }
+  #next { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  #clock { top: var(--t); right: var(--r); display: flex; gap: 4px; padding: 6px; }
+  button { font: inherit; color: var(--text); background: none; border: 0; border-radius: 12px; padding: 7px 10px; cursor: pointer; }
+  button.on { background: var(--ink3); }
+  button:focus-visible { outline: 2px solid var(--go); }
+  #hint { top: calc(var(--t) + 62px); left: var(--l); max-width: min(340px, calc(100vw - 24px)); font-size: 13px; color: var(--soft); }
+  #hint:empty { display: none; }
+  #offer { top: var(--t); left: 50%; transform: translateX(-50%); display: none; gap: 8px; padding: 10px; max-width: calc(100vw - 24px); }
+  #offer.show { display: flex; }
+  #offer button { background: var(--ink2); text-align: left; padding: 10px 12px; width: 150px; }
+  #offer button b { display: block; font-size: 14px; margin-bottom: 3px; }
+  #offer button span { font-size: 11.5px; color: var(--dim); }
+  #say { bottom: calc(var(--b) + 72px); left: 50%; transform: translateX(-50%); font-size: 12.5px; padding: 6px 12px; border-radius: 12px; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+  #say:empty { display: none; }
+  #say.no { color: var(--no); }
+  #tools { bottom: var(--b); left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 6px; max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; }
+  #tools button { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 58px; padding: 8px 6px 7px; font-size: 11.5px; }
+  #tools .dots { display: flex; align-items: center; gap: 3px; height: 10px; color: var(--dim); font-size: 9px; }
+  #tools .dots i { width: 9px; height: 9px; border-radius: 3px; display: block; }
+  @media (max-width: 700px) { #offer { top: calc(var(--t) + 58px); flex-direction: column; } #offer button { width: 250px; } #say { white-space: normal; text-align: center; width: max-content; } }
+</style>
+<canvas id="c"></canvas>
+<div id="top" class="pane"><div><div id="pop">8<small>people</small></div></div><div><div id="bar"><i></i></div><div id="next"></div></div></div>
+<div id="clock" class="pane"><button data-s="0">Ⅱ</button><button data-s="1" class="on">1×</button><button data-s="3">3×</button><button id="snd">♪</button></div>
+<div id="hint" class="pane"></div>
+<div id="offer" class="pane"></div>
+<div id="say" class="pane"></div>
+<div id="tools" class="pane"></div>
+<script src="sim.js"></script>
+<script>
+const { W, H, SW, SH, GRASS, MEADOW, FOREST, WATER, DIRS, GOODS, KINDS, PICKS, PEOPLE, MILESTONES, DT } = Sim;
+const sim = new Sim(+new URLSearchParams(location.search).get('seed') || 7);
+const cv = document.getElementById('c'), cx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let cw = 0, ch = 0, dpr = 1;
+const cam = { x: 22, y: 13.5, s: 36 };
+let tool = 'view', speed = 1, beltDir = 0, hover = null, sound = true, picked = null;
+const fx = [];
+
+function resize() {
+  dpr = Math.min(2, devicePixelRatio || 1);
+  cw = innerWidth; ch = innerHeight;
+  cv.width = cw * dpr; cv.height = ch * dpr;
+}
+addEventListener('resize', resize); resize();
+cam.s = Math.max(15, Math.min(44, Math.min(cw / 34, ch / 18)));
+
+// ---- sound: small pings ----
+let ac = null; const lastPing = {};
+function ping(freq, len = 0.09, vol = 0.05, type = 'sine') {
+  if (!sound) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const now = ac.currentTime;
+    if (now - (lastPing[freq] || 0) < 0.06) return;
+    lastPing[freq] = now;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, now); g.gain.exponentialRampToValueAtTime(0.0001, now + len);
+    o.connect(g).connect(ac.destination); o.start(now); o.stop(now + len);
+  } catch (e) {}
+}
+
+// ---- the palette ----
+const TOOLS = ['view', 'road', 'belt', 'dock', 'harvester', 'mill', 'oven', 'shop', 'woodcutter', 'sawmill', 'workshop', 'fishery', 'erase'];
+const NAMES = { view: 'Look', road: 'Road', erase: 'Clear' };
+const SAY = { view: 'Drag to look round. Tap a thing to see what it is doing.', road: 'Drag to lay a road. The town builds along it.', erase: 'Drag over roads, belts and machines to clear them.' };
+function buildTools() {
+  const el = $('tools'); el.innerHTML = '';
+  for (const k of TOOLS) {
+    const K = KINDS[k];
+    if (K && K.lock && !sim.unlocked[K.lock]) continue;
+    const b = document.createElement('button');
+    let dots = '';
+    if (K && K.out) dots = (K.in ? `<i style="background:${GOODS[K.in].col}"></i>›` : '') + `<i style="background:${GOODS[K.out].col}"></i>`;
+    b.innerHTML = `<div class="dots">${dots || (k === 'view' ? '✥' : k === 'road' ? '▬' : k === 'erase' ? '✕' : k === 'belt' ? '»' : k === 'dock' ? '▣' : '⌂')}</div>${K ? K.name : NAMES[k]}`;
+    b.className = k === tool ? 'on' : '';
+    b.onclick = () => { tool = k; picked = null; buildTools(); say(); };
+    el.appendChild(b);
+  }
+}
+function say(text, no) {
+  const el = $('say');
+  el.textContent = text || (KINDS[tool] ? KINDS[tool].say : SAY[tool]) || '';
+  el.className = 'pane' + (no ? ' no' : '');
+}
+buildTools(); say();
+for (const b of document.querySelectorAll('#clock button[data-s]')) b.onclick = () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll('#clock button[data-s]').forEach(x => x.classList.toggle('on', x === b));
+};
+$('snd').onclick = () => { sound = !sound; $('snd').style.opacity = sound ? 1 : 0.35; };
+
+function showOffer() {
+  const el = $('offer');
+  if (!sim.offer) { el.className = 'pane'; return; }
+  el.innerHTML = '';
+  sim.offer.forEach((k, i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<b>${PICKS[k].name}</b><span>${PICKS[k].say}</span>`;
+    b.onclick = () => { sim.pick(i); showOffer(); buildTools(); };
+    el.appendChild(b);
+  });
+  el.className = 'pane show';
+}
+
+// ---- pointer ----
+const toWorld = (px, py) => [(px - cw / 2) / cam.s + cam.x, (py - ch / 2) / cam.s + cam.y];
+const pts = new Map();
+let drag = null, pinch = null;
+function anchor(wx, wy) {   // the half-grid cell a tool would act on
+  if (KINDS[tool] && tool !== 'belt') return [Math.round(wx * 2) - 1, Math.round(wy * 2) - 1];
+  return [Math.floor(wx * 2), Math.floor(wy * 2)];
+}
+function stepTo(from, to, each) {   // walk a grid line, one side step at a time
+  let [x, y] = from;
+  for (let guard = 0; guard < 400 && (x !== to[0] || y !== to[1]); guard++) {
+    const dx = to[0] - x, dy = to[1] - y;
+    if (Math.abs(dx) >= Math.abs(dy)) x += Math.sign(dx); else y += Math.sign(dy);
+    each(x, y);
+  }
+}
+function act(wx, wy, first) {
+  if (tool === 'road') {
+    const t = [Math.floor(wx), Math.floor(wy)];
+    const lay = (x, y) => { if (sim.setRoad(x, y)) ping(330, 0.05, 0.03, 'triangle'); };
+    if (first) lay(t[0], t[1]); else stepTo(drag.last, t, lay);
+    drag.last = t;
+  } else if (tool === 'belt') {
+    const c = [Math.floor(wx * 2), Math.floor(wy * 2)];
+    if (first) { if (sim.place('belt', c[0], c[1], beltDir)) ping(520, 0.04, 0.025, 'triangle'); }
+    else stepTo(drag.last, c, (x, y) => {
+      const px = drag.at[0], py = drag.at[1];
+      beltDir = DIRS.findIndex(d => d[0] === x - px && d[1] === y - py);
+      const prev = sim.partAt(px, py);
+      if (prev && prev.kind === 'belt') sim.place('belt', px, py, beltDir);
+      if (sim.place('belt', x, y, beltDir)) ping(520, 0.04, 0.025, 'triangle');
+      drag.at = [x, y];
+    });
+    if (first) drag.at = c;
+    drag.last = c;
+  } else if (tool === 'erase') {
+    if (sim.erase(Math.floor(wx * 2), Math.floor(wy * 2))) ping(180, 0.07, 0.04, 'triangle');
+  } else if (KINDS[tool] && first) {
+    const [sx, sy] = anchor(wx, wy), why = sim.why(tool, sx, sy);
+    if (why) { say(why, true); ping(140, 0.12, 0.04, 'square'); }
+    else { sim.place(tool, sx, sy); ping(440, 0.08, 0.05); ping(660, 0.1, 0.04); say(); }
+  }
+}
+function look(wx, wy) {
+  const p = sim.partAt(Math.floor(wx * 2), Math.floor(wy * 2));
+  const h = sim.inside(Math.floor(wx), Math.floor(wy)) && sim.houseAt[Math.floor(wy) * W + Math.floor(wx)];
+  picked = p || h || null;
+  say(describe(picked));
+}
+function describe(p) {
+  if (!p) return '';
+  if (p.level) return `Home of ${PEOPLE[p.level]}: ` + (p.door < 0 ? 'no road to drive on' : p.hungry ? 'found no food at the shop' : 'fed') + (p.level === 1 && sim.unlocked.wood ? `, furniture ${p.furn}/2 to grow` : p.level === 2 && sim.unlocked.fish ? `, fish ${p.fish}/4 to grow` : '');
+  const K = KINDS[p.kind];
+  if (p.kind === 'belt') return 'Belt' + (p.item ? ': carrying ' + GOODS[p.item.g].name.toLowerCase() : '');
+  if (p.pile) {
+    const has = Object.keys(p.pile).filter(g => p.pile[g] > 0).map(g => `${p.pile[g]} ${GOODS[g].name.toLowerCase()}`).join(', ') || 'nothing';
+    if (p.door < 0) return `${K.name}: no road beside it`;
+    return `${K.name}: holds ${has}` + (p.wants.length ? `, its lorry fetches ${p.wants.map(g => GOODS[g].name.toLowerCase()).join(' and ')}` : '');
+  }
+  return `${K.name}: ` + (p.state === 'full' ? `full, nowhere to put its ${GOODS[K.out].name.toLowerCase()}` : p.state === 'empty' ? `waiting for ${GOODS[K.in].name.toLowerCase()}` : 'working');
+}
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: cam.s, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 }; drag = null; return; }
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  if (tool === 'view' || e.button === 1 || e.button === 2) { drag = { pan: true, x: e.clientX, y: e.clientY, moved: 0 }; return; }
+  drag = {};
+  act(wx, wy, true);
+});
+cv.addEventListener('pointermove', e => {
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  hover = e.pointerType === 'touch' && !pts.has(e.pointerId) ? null : [wx, wy];
+  if (!pts.has(e.pointerId)) return;
+  const was = pts.get(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && pts.size === 2) {
+    const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+    const [ox, oy] = toWorld(mx, my);
+    cam.s = Math.max(12, Math.min(90, pinch.s * d / pinch.d));
+    cam.x = ox - (mx - cw / 2) / cam.s - (mx - pinch.mx) / cam.s; cam.y = oy - (my - ch / 2) / cam.s - (my - pinch.my) / cam.s;
+    pinch.mx = mx; pinch.my = my;
+    return;
+  }
+  if (!drag) return;
+  if (drag.pan) { cam.x -= (e.clientX - was[0]) / cam.s; cam.y -= (e.clientY - was[1]) / cam.s; drag.moved += Math.abs(e.clientX - was[0]) + Math.abs(e.clientY - was[1]); clampCam(); }
+  else act(wx, wy, false);
+});
+const up = e => {
+  if (drag && drag.pan && drag.moved < 6 && tool === 'view') look(...toWorld(e.clientX, e.clientY));
+  pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) drag = null;
+  if (e.pointerType === 'touch') hover = null;
+};
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('pointerleave', () => { hover = null; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  cam.s = Math.max(12, Math.min(90, cam.s * Math.exp(-e.deltaY * 0.0015)));
+  cam.x = wx - (e.clientX - cw / 2) / cam.s; cam.y = wy - (e.clientY - ch / 2) / cam.s; clampCam();
+}, { passive: false });
+function clampCam() { cam.x = Math.max(0, Math.min(W, cam.x)); cam.y = Math.max(0, Math.min(H, cam.y)); }
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') { tool = 'view'; buildTools(); say(); }
+  if (e.key === ' ') { speed = speed ? 0 : 1; document.querySelectorAll('#clock button[data-s]').forEach(x => x.classList.toggle('on', +x.dataset.s === speed)); }
+});
+
+// ---- the land, drawn once ----
+const TP = 32, land = document.createElement('canvas');
+land.width = W * TP; land.height = H * TP;
+(function () {
+  const g = land.getContext('2d');
+  let s = 12345; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = '#a8d27a'; g.fillRect(0, 0, land.width, land.height);
+  const at = (x, y) => sim.inside(x, y) ? sim.terrain[y * W + x] : GRASS;
+  const blob = (k, col, grow) => {
+    g.fillStyle = col; g.beginPath();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (at(x, y) === k) g.roundRect(x * TP - grow, y * TP - grow, TP + grow * 2, TP + grow * 2, 9);
+    g.fill();
+  };
+  blob(WATER, '#e8dfae', 5); blob(WATER, '#7fc4e4', 0);
+  blob(MEADOW, '#e6dc8e', 2);
+  blob(FOREST, '#8fc26c', 3);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const k = at(x, y), px = x * TP, py = y * TP;
+    if (k === MEADOW) { g.strokeStyle = '#d3c56a'; g.lineWidth = 1.5; g.beginPath(); for (let i = 0; i < 4; i++) { const a = px + 4 + i * 8, b = py + 6 + r() * 6; g.moveTo(a, b); g.lineTo(a, b + 14); } g.stroke(); }
+    if (k === FOREST) for (let i = 0; i < 3; i++) { const a = px + 6 + r() * 20, b = py + 6 + r() * 20, q = 6 + r() * 4; g.fillStyle = '#5c9e58'; g.beginPath(); g.arc(a, b, q, 0, 7); g.fill(); g.fillStyle = '#6fb166'; g.beginPath(); g.arc(a - 1.5, b - 1.5, q * 0.6, 0, 7); g.fill(); }
+    if (k === WATER && r() < 0.5) { g.strokeStyle = '#a5d8ef'; g.lineWidth = 1.5; g.beginPath(); const a = px + 6 + r() * 10, b = py + 8 + r() * 16; g.moveTo(a, b); g.lineTo(a + 10, b); g.stroke(); }
+  }
+})();
+
+// ---- drawing ----
+const T = () => performance.now() / 1000;
+let simClock = 0;
+function rr(x, y, w, h, r, fill, stroke) {
+  cx.beginPath(); cx.roundRect(x, y, w, h, r);
+  if (fill) { cx.fillStyle = fill; cx.fill(); }
+  if (stroke) { cx.strokeStyle = stroke; cx.stroke(); }
+}
+function crate(x, y, s, g) { cx.lineWidth = 0.02; rr(x - s / 2, y - s / 2, s, s, s * 0.25, GOODS[g].col, 'rgba(40,30,20,.55)'); }
+
+function drawRoads() {
+  cx.lineCap = 'round'; cx.lineJoin = 'round';
+  const pass = (w, col, dash) => {
+    cx.lineWidth = w; cx.strokeStyle = col; cx.setLineDash(dash || []); cx.beginPath();
+    for (let t = 0; t < W * H; t++) if (sim.road[t]) {
+      const x = t % W + 0.5, y = ((t / W) | 0) + 0.5;
+      let any = false;
+      if (x < W - 1 && sim.road[t + 1]) { cx.moveTo(x, y); cx.lineTo(x + 1, y); any = true; }
+      if (y < H - 1 && sim.road[t + W]) { cx.moveTo(x, y); cx.lineTo(x, y + 1); any = true; }
+      if (!any && !dash) { cx.moveTo(x, y); cx.lineTo(x + 0.001, y); }
+    }
+    cx.stroke(); cx.setLineDash([]);
+  };
+  pass(0.86, '#8fb866'); pass(0.72, '#676c73'); pass(0.03, '#9aa0a8', [0.14, 0.2]);
+}
+
+function drawBelts(t) {
+  for (const b of sim.belts) {
+    const x = b.sx / 2, y = b.sy / 2;
+    cx.fillStyle = '#3c4046'; cx.fillRect(x - 0.005, y - 0.005, 0.51, 0.51);
+    cx.save(); cx.translate(x + 0.25, y + 0.25); cx.rotate(b.dir * Math.PI / 2);
+    cx.fillStyle = '#4d525a'; cx.fillRect(-0.25, -0.17, 0.5, 0.34);
+    cx.strokeStyle = '#6b727c'; cx.lineWidth = 0.035; cx.beginPath();
+    const o = (t * sim.beltSpeed * 0.5) % 0.25;
+    for (let i = -1; i < 2; i++) { const a = -0.25 + o + i * 0.25; if (a < -0.2 || a > 0.17) continue; cx.moveTo(a, -0.09); cx.lineTo(a + 0.07, 0); cx.lineTo(a, 0.09); }
+    cx.stroke(); cx.restore();
+  }
+  for (const b of sim.belts) if (b.item) {
+    const it = b.item, [dx, dy] = DIRS[b.dir], c = [b.sx / 2 + 0.25, b.sy / 2 + 0.25];
+    let ex = it.fx / 2 - c[0], ey = it.fy / 2 - c[1];
+    const m = Math.max(Math.abs(ex), Math.abs(ey)) || 1; ex = ex / m * 0.25; ey = ey / m * 0.25;
+    const u = it.p, w = 1 - u;
+    const px = c[0] + w * w * ex + u * u * dx * 0.25, py = c[1] + w * w * ey + u * u * dy * 0.25;
+    crate(px, py, 0.26, it.g);
+  }
+}
+
+function drawPart(p, t) {
+  const K = KINDS[p.kind], x = p.sx / 2, y = p.sy / 2, c = [x + 0.5, y + 0.5];
+  cx.lineWidth = 0.03;
+  rr(x + 0.05, y + 0.09, 0.9, 0.9, 0.16, 'rgba(30,40,20,.22)');
+  const spin = p.busy ? t * 3 : 0;
+  if (p.kind === 'dock') {
+    rr(x + 0.04, y + 0.04, 0.92, 0.92, 0.14, '#c9ccd0', '#8b9097');
+    cx.strokeStyle = '#e9c24a'; cx.lineWidth = 0.035; cx.setLineDash([0.08, 0.08]); cx.strokeRect(x + 0.13, y + 0.13, 0.74, 0.74); cx.setLineDash([]);
+    pile(p, x, y);
+  } else if (p.kind === 'shop') {
+    rr(x + 0.04, y + 0.04, 0.92, 0.92, 0.14, '#f6efe0', '#b9ad93');
+    for (let i = 0; i < 5; i++) { cx.fillStyle = i % 2 ? '#f6efe0' : '#e2604a'; cx.fillRect(x + 0.1 + i * 0.16, y + 0.1, 0.16, 0.26); }
+    pile(p, x, y + 0.16);
+  } else {
+    const body = { harvester: '#d7b23e', mill: '#f1ede4', oven: '#c9684d', woodcutter: '#8c6a4a', sawmill: '#c59a5b', workshop: '#3e9c93', fishery: '#5a9bd0' }[p.kind];
+    rr(x + 0.05, y + 0.05, 0.9, 0.9, 0.18, body, 'rgba(40,30,20,.5)');
+    cx.save(); cx.translate(c[0], c[1]);
+    if (p.kind === 'mill') { cx.rotate(spin); cx.fillStyle = '#b9aa8c'; for (let i = 0; i < 4; i++) { cx.rotate(Math.PI / 2); rr(-0.06, -0.4, 0.12, 0.38, 0.04, '#a8987a'); } cx.fillStyle = '#7d6f57'; cx.beginPath(); cx.arc(0, 0, 0.08, 0, 7); cx.fill(); }
+    else if (p.kind === 'harvester') { const s = p.busy ? Math.sin(t * 4) * 0.2 : 0; cx.fillStyle = '#8f7420'; for (let i = -1; i <= 1; i++) rr(-0.34, i * 0.2 - 0.04 + s * 0.2, 0.68, 0.08, 0.03, '#8f7420'); }
+    else if (p.kind === 'oven') { rr(-0.3, -0.3, 0.6, 0.6, 0.1, '#8d3f2c'); const glow = p.busy ? 0.6 + 0.4 * Math.sin(t * 6) : 0.15; rr(-0.2, -0.12, 0.4, 0.3, 0.12, `rgba(255,${150 + glow * 60 | 0},60,${0.35 + glow * 0.65})`); }
+    else if (p.kind === 'sawmill' || p.kind === 'woodcutter') { cx.rotate(spin * 2); cx.fillStyle = '#e4e6e8'; cx.beginPath(); for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283, q = i % 2 ? 0.2 : 0.29; cx.lineTo(Math.cos(a) * q, Math.sin(a) * q); } cx.fill(); cx.fillStyle = '#6e5a43'; cx.beginPath(); cx.arc(0, 0, 0.06, 0, 7); cx.fill(); }
+    else if (p.kind === 'workshop') { const s = p.busy ? Math.abs(Math.sin(t * 5)) : 0; rr(-0.28, -0.05, 0.56, 0.3, 0.05, '#2c756e'); cx.rotate(-0.6 + s * 0.7); rr(-0.03, -0.34, 0.06, 0.34, 0.02, '#f1ede4'); rr(-0.1, -0.4, 0.2, 0.1, 0.03, '#f1ede4'); }
+    else if (p.kind === 'fishery') { const s = Math.sin(t * 2) * 0.05; cx.fillStyle = '#f1ede4'; cx.beginPath(); cx.ellipse(0, s, 0.3, 0.14, 0, 0, 7); cx.fill(); rr(-0.02, -0.3 + s, 0.04, 0.3, 0.01, '#3a6f9c'); }
+    cx.restore();
+    if (p.busy && (p.kind === 'oven' || p.kind === 'sawmill') && Math.random() < 0.04) fx.push({ k: 'puff', x: c[0] + 0.28, y: c[1] - 0.3, t: 0, life: 1.6 });
+    if (p.prog > 0) { cx.fillStyle = 'rgba(0,0,0,.25)'; cx.fillRect(x + 0.15, y + 0.86, 0.7, 0.05); cx.fillStyle = '#fff'; cx.fillRect(x + 0.15, y + 0.86, 0.7 * p.prog, 0.05); }
+    for (let i = 0; i < p.out; i++) crate(x + 0.86 - i * 0.15, y + 0.16, 0.16, K.out);
+    if (p.state === 'empty') { cx.strokeStyle = GOODS[K.in].col; cx.lineWidth = 0.05; cx.globalAlpha = 0.55 + 0.45 * Math.sin(t * 4); cx.beginPath(); cx.arc(x + 0.17, y + 0.17, 0.1, 0, 7); cx.stroke(); cx.globalAlpha = 1; }
+  }
+  if (p.pile && p.door < 0) { cx.fillStyle = '#e2604a'; cx.beginPath(); cx.arc(x + 0.86, y + 0.14, 0.13, 0, 7); cx.fill(); cx.fillStyle = '#fff'; cx.fillRect(x + 0.84, y + 0.06, 0.04, 0.1); cx.fillRect(x + 0.84, y + 0.18, 0.04, 0.04); }
+}
+function pile(p, x, y) {
+  let i = 0;
+  for (const g in p.pile) for (let n = 0; n < p.pile[g] && i < 16; n++, i++) crate(x + 0.2 + (i % 4) * 0.2, y + 0.3 + ((i / 4) | 0) * 0.17, 0.16, g);
+}
+
+function drawHouse(h, t) {
+  const s = [0, 0.6, 0.72, 0.84][h.level], x = h.x + 0.5, y = h.y + 0.5;
+  const grow = Math.min(1, (sim.time - h.born) * 2.5), q = s * (0.4 + 0.6 * grow + 0.15 * Math.sin(grow * Math.PI));
+  cx.lineWidth = 0.03;
+  rr(x - q / 2 + 0.04, y - q / 2 + 0.07, q, q, 0.12, 'rgba(30,40,20,.22)');
+  rr(x - q / 2, y - q / 2, q, q, 0.12, '#f6efe0', 'rgba(60,45,30,.5)');
+  rr(x - q / 2 + 0.07, y - q / 2 + 0.07, q - 0.14, q - 0.14, 0.07, ['', '#e0745a', '#d25f6f', '#8e6bc4'][h.level]);
+  cx.fillStyle = 'rgba(255,255,255,.35)'; cx.fillRect(x - q / 2 + 0.07, y - 0.015, q - 0.14, 0.03);
+  if (h.hungry) {
+    const b = Math.sin(t * 3 + h.id) * 0.04;
+    cx.fillStyle = '#0b0c0e'; cx.beginPath(); cx.arc(x, y - 0.5 + b, 0.17, 0, 7); cx.fill();
+    crate(x, y - 0.5 + b, 0.17, 'bread');
+  }
+}
+
+function drawVehicle(v) {
+  let x, y, a;
+  if (v.state === 'home') {
+    if (v.kind === 'car') return;
+    const d = v.home, k = d.fleet.indexOf(v);
+    x = d.sx / 2 + 0.3 + k * 0.22; y = d.sy / 2 + 0.78; a = -Math.PI / 2;
+    if (d.kind === 'dock') { x = d.sx / 2 + 0.5 + (k - (d.fleet.length - 1) / 2) * 0.24; y = d.sy / 2 + 0.5; }
+    if (!d.wants.length && d.kind === 'dock') return;
+  } else if (!v.on) {
+    const p = v.state === 'out' || v.state === 'back' ? null : v.state === 'unloading' ? v.home : v.to;
+    const tile = v.path[v.path.length - 1] ?? -1;
+    if (tile < 0) return;
+    const tx = tile % W + 0.5, ty = ((tile / W) | 0) + 0.5;
+    if (!p) { const s = v.path[0]; x = s % W + 0.5; y = ((s / W) | 0) + 0.5; a = 0; }
+    else { const px = p.sx / 2 + 0.5, py = p.sy / 2 + 0.5, j = ((v.id * 37) % 7 - 3) * 0.05; x = tx + (px - tx) * 0.42 + j; y = ty + (py - ty) * 0.42 - j; a = Math.atan2(py - ty, px - tx); }
+  } else ({ x, y, a } = sim.where(v));
+  cx.save(); cx.translate(x, y); cx.rotate(a); cx.lineWidth = 0.025;
+  if (v.kind === 'car') {
+    rr(-0.19, -0.105, 0.38, 0.21, 0.07, `hsl(${v.hue} 62% 62%)`, 'rgba(30,25,20,.6)');
+    rr(-0.06, -0.075, 0.14, 0.15, 0.03, 'rgba(255,255,255,.55)');
+  } else {
+    rr(-0.3, -0.125, 0.44, 0.25, 0.04, '#e9e6de', 'rgba(30,25,20,.6)');
+    rr(0.15, -0.115, 0.17, 0.23, 0.05, '#f2b84b', 'rgba(30,25,20,.6)');
+    if (v.load) for (let i = 0; i < Math.min(v.load.n, 8); i++) crate(-0.24 + ((i / 2) | 0) * 0.105, i % 2 ? 0.055 : -0.055, 0.095, v.load.g);
+  }
+  cx.restore();
+}
+
+function drawGhost() {
+  if (!hover || tool === 'view') return;
+  const [wx, wy] = hover;
+  if (tool === 'road') { const x = Math.floor(wx), y = Math.floor(wy); rr(x + 0.1, y + 0.1, 0.8, 0.8, 0.2, sim.canRoad(x, y) ? 'rgba(255,255,255,.35)' : 'rgba(226,96,74,.4)'); return; }
+  if (tool === 'erase') { const x = Math.floor(wx * 2) / 2, y = Math.floor(wy * 2) / 2; cx.lineWidth = 0.04; rr(x, y, 0.5, 0.5, 0.1, 'rgba(226,96,74,.35)', '#e2604a'); return; }
+  const [sx, sy] = anchor(wx, wy), size = tool === 'belt' ? 0.5 : 1, ok = !sim.why(tool, sx, sy);
+  cx.lineWidth = 0.04;
+  rr(sx / 2, sy / 2, size, size, size * 0.18, ok ? 'rgba(255,255,255,.4)' : 'rgba(226,96,74,.4)', ok ? '#fff' : '#e2604a');
+  if (tool === 'belt') { cx.save(); cx.translate(sx / 2 + 0.25, sy / 2 + 0.25); cx.rotate(beltDir * Math.PI / 2); cx.strokeStyle = '#0b0c0e'; cx.beginPath(); cx.moveTo(-0.07, -0.1); cx.lineTo(0.07, 0); cx.lineTo(-0.07, 0.1); cx.stroke(); cx.restore(); }
+}
+
+function drawFx(dt) {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i]; f.t += dt;
+    const u = f.t / f.life;
+    if (u >= 1) { fx.splice(i, 1); continue; }
+    if (f.k === 'puff') { cx.fillStyle = `rgba(255,255,255,${0.5 * (1 - u)})`; cx.beginPath(); cx.arc(f.x + u * 0.15, f.y - u * 0.7, 0.07 + u * 0.14, 0, 7); cx.fill(); }
+    if (f.k === 'ring') { cx.strokeStyle = `rgba(255,255,255,${1 - u})`; cx.lineWidth = 0.06 * (1 - u); cx.beginPath(); cx.arc(f.x, f.y, 0.3 + u * 0.7, 0, 7); cx.stroke(); }
+  }
+}
+
+function hud() {
+  $('pop').firstChild.nodeValue = sim.pop || sim.houses.reduce((n, h) => n + PEOPLE[h.level], 0);
+  const m = sim.milestone, to = MILESTONES[m], from = m ? MILESTONES[m - 1] : 0;
+  $('bar').firstElementChild.style.width = to ? Math.max(0, Math.min(100, (sim.pop - from) / (to - from) * 100)) + '%' : '100%';
+  $('next').textContent = sim.offer ? 'Choose one' : to ? `next pick at ${to}` : '';
+  const hungry = sim.houses.filter(h => h.hungry).length;
+  $('hint').textContent = sim.offer ? '' : !sim.stats.hauled
+    ? 'The town wants bread. Stand a harvester on a meadow, then a mill, an oven and a dock, each touching the next or joined by a belt. Lay a road from the dock to the town and the shop sends its lorry.'
+    : hungry > sim.houses.length * 0.15 ? `${hungry} homes found no food at the shop. The town waits until they are fed.` : '';
+}
+
+let lastT = T(), acc = 0, hudAt = 0;
+function frame() {
+  const now = T(), dt = Math.min(0.1, now - lastT); lastT = now;
+  acc += dt * speed;
+  let n = 0;
+  while (acc >= DT && n++ < 12) { sim.tick(); acc -= DT; }
+  if (n >= 12) acc = 0;
+  simClock += dt * Math.min(speed, 1.5);
+  for (const e of sim.events.splice(0)) {
+    if (e.type === 'house') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 0.7 }); ping(700 + Math.random() * 200, 0.12, 0.04); }
+    if (e.type === 'grow') { fx.push({ k: 'ring', x: e.x + 0.5, y: e.y + 0.5, t: 0, life: 0.9 }); ping(880, 0.15, 0.05); ping(1320, 0.2, 0.04); }
+    if (e.type === 'buy') ping(1040, 0.04, 0.012);
+    if (e.type === 'drop') { fx.push({ k: 'ring', x: e.x, y: e.y, t: 0, life: 0.5 }); ping(260, 0.08, 0.05, 'triangle'); }
+    if (e.type === 'offer') { showOffer(); ping(660, 0.2, 0.06); ping(990, 0.3, 0.05); }
+    if (e.type === 'pick') { ping(520, 0.15, 0.06); ping(780, 0.25, 0.06); }
+  }
+  if (now > hudAt) { hudAt = now + 0.3; hud(); if (picked && tool === 'view') say(describe(picked)); }
+
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx.fillStyle = '#a8d27a'; cx.fillRect(0, 0, cw, ch);
+  cx.translate(cw / 2, ch / 2); cx.scale(cam.s, cam.s); cx.translate(-cam.x, -cam.y);
+  cx.imageSmoothingEnabled = true;
+  cx.drawImage(land, 0, 0, W, H);
+  drawRoads();
+  drawBelts(simClock);
+  for (const h of sim.houses) drawHouse(h, now);
+  for (const p of sim.parts) drawPart(p, simClock);
+  for (const v of sim.vehicles) if (v.kind === 'lorry') drawVehicle(v);
+  for (const v of sim.vehicles) if (v.kind === 'car') drawVehicle(v);
+  drawFx(dt);
+  drawGhost();
+  requestAnimationFrame(frame);
+}
+hud();
+requestAnimationFrame(frame);
+window.sim = sim;
+</script>
