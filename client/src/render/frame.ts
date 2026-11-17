@@ -1,6 +1,6 @@
 import { createFreeCamera, getViewMatrix, getViewProjectionMatrix, invertMat4 } from "./camera";
 import { FORWARD_GROUP, SCENE_BYTES, SCENE_OFFSETS, TILE } from "./compose";
-import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, OPEN, RELIGHT } from "./deferred";
+import { COMPOSITE, FRAME_FLOATS, FRAME_OFFSETS, OPEN, PAINT, PAINTED, RELIGHT } from "./deferred";
 import { brdfLut } from "./env";
 import type { Mesh } from "./mesh";
 import { count, DrawList, layoutOf, type Targets } from "./pass";
@@ -183,7 +183,8 @@ function makeFrame(scene: Scene): Frame {
   let maps: { size: number; still: GPUTexture; live: GPUTexture } | null = null;
   /** Two G-buffers: the one shown, `sets[front]`, and the next, drawn into
    *  over the frames (`SPREAD`); and the light on the one shown. */
-  let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture; open: GPUTexture } | null = null;
+  /** `painted`: the lit picture brushed over (`PAINT`), what the composite reads when painting. */
+  let picture: { w: number; h: number; sets: GBuffer[]; lit: GPUTexture; painted: GPUTexture; open: GPUTexture } | null = null;
   let front = 0;
   /** The next picture as it is drawn: the meshes in it so far, and the frames left. */
   let next: { done: Set<Mesh>; frames: number; vp: Float32Array; eye: number[]; seen: Map<Mesh, Seen> } | null = null;
@@ -210,7 +211,7 @@ function makeFrame(scene: Scene): Frame {
   const layerView = (t: GPUTexture) => t.createView({ dimension: "2d", baseArrayLayer: 0, arrayLayerCount: 1 });
 
   // The forward pass's group 3, and the relight's and composite's group, made again when what they bind is new.
-  let resources: { key: string; forward: GPUBindGroup; open: GPUBindGroup[]; relight: GPUBindGroup[]; composite: GPUBindGroup[] } | null = null;
+  let resources: { key: string; forward: GPUBindGroup; open: GPUBindGroup[]; relight: GPUBindGroup[]; paint: GPUBindGroup[]; composite: GPUBindGroup[] } | null = null;
   const FORWARD_LAYOUT = layoutOf(device, FORWARD_GROUP);
   const deferredEntries = (lit: boolean, open: boolean): GPUBindGroupLayoutEntry[] => [
     { binding: 0, visibility: 2, buffer: { type: "uniform" } },
@@ -246,6 +247,7 @@ function makeFrame(scene: Scene): Frame {
   let openPipeline: GPURenderPipeline | null = null;
   let relightPipeline: GPURenderPipeline | null = null;
   let compositePipeline: GPURenderPipeline | null = null;
+  let paintPipeline: GPURenderPipeline | null = null;
 
   function bindResources() {
     const sky = scene._env?.view ?? blankSky.createView({ dimension: "cube" });
@@ -276,7 +278,8 @@ function makeFrame(scene: Scene): Frame {
       relight: gbuffers.map((g) =>
         device.createBindGroup({ layout: RELIGHT_LAYOUT, entries: [...g, ...common, { binding: 14, resource: { buffer: pictureBins.buffer } }, { binding: 15, resource: picture!.open.createView() }] }),
       ),
-      composite: gbuffers.map((g) => device.createBindGroup({ layout: COMPOSITE_LAYOUT, entries: [...g, ...common, { binding: 13, resource: picture!.lit.createView() }, { binding: 14, resource: { buffer: screenBins.buffer } }] })),
+      paint: gbuffers.map((g) => device.createBindGroup({ layout: COMPOSITE_LAYOUT, entries: [...g, ...common, { binding: 13, resource: picture!.lit.createView() }, { binding: 14, resource: { buffer: screenBins.buffer } }] })),
+      composite: gbuffers.map((g) => device.createBindGroup({ layout: COMPOSITE_LAYOUT, entries: [...g, ...common, { binding: 13, resource: (PAINTED ? picture!.painted : picture!.lit).createView() }, { binding: 14, resource: { buffer: screenBins.buffer } }] })),
     };
     forward.dirty = true;
   }
@@ -433,9 +436,9 @@ function makeFrame(scene: Scene): Frame {
     }
     const [pw, ph] = [Math.round(w * SCALE), Math.round(h * SCALE)];
     if (deferred() && (!picture || picture.w !== pw || picture.h !== ph)) {
-      if (picture) for (const t of [...picture.sets.flatMap((g) => [g.albedo, g.normal, g.extra, g.depth]), picture.lit, picture.open]) t.destroy();
+      if (picture) for (const t of [...picture.sets.flatMap((g) => [g.albedo, g.normal, g.extra, g.depth]), picture.lit, picture.painted, picture.open]) t.destroy();
       const set = (): GBuffer => ({ albedo: texture(pw, ph, "rgba8unorm"), normal: texture(pw, ph, "rgba8unorm"), extra: texture(pw, ph, "rgba8unorm"), depth: texture(pw, ph, "depth32float") });
-      picture = { w: pw, h: ph, sets: [set(), set()], lit: texture(pw, ph, "rgba16float"), open: texture(Math.ceil(pw / 2), Math.ceil(ph / 2), "r8unorm") };
+      picture = { w: pw, h: ph, sets: [set(), set()], lit: texture(pw, ph, "rgba16float"), painted: texture(PAINTED ? pw : 1, PAINTED ? ph : 1, "rgba16float"), open: texture(Math.ceil(pw / 2), Math.ceil(ph / 2), "r8unorm") };
       [from, next, stillVp] = ["", null, null];
     }
     bindResources();
@@ -729,6 +732,15 @@ function makeFrame(scene: Scene): Frame {
         pass.draw(3);
         pass.end();
         mark(engine, "relight");
+        if (PAINTED) {
+          paintPipeline ??= fullscreen(PAINT, COMPOSITE_LAYOUT, "rgba16float", false);
+          const brush = encoder.beginRenderPass({ colorAttachments: [{ view: picture!.painted.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
+          brush.setPipeline(paintPipeline);
+          brush.setBindGroup(0, resources!.paint[front]!);
+          brush.draw(3);
+          brush.end();
+          mark(engine, "paint");
+        }
         engine._drew = Math.max(engine._drew, 1);
         count("relights", 1);
         count("relightMs", performance.now() - t0);

@@ -8,6 +8,11 @@ import { binsAt } from "./compose";
  * light as the forward template does (`compose.ts`, Lite's numbers).
  */
 
+/** The painterly look, for now on by default and `?paint=0` without it: the
+ *  sun's light in a soft band and the shade a little violet (`RELIGHT`),
+ *  and the lit picture brushed over (`PAINT`). */
+export const PAINTED = new URLSearchParams(globalThis.location?.search ?? "").get("paint") !== "0";
+
 /** The frame's own uniforms, `F` in WGSL (`frame.ts` writes it). */
 export const FRAME_FIELDS = [
   ["seen", 16],
@@ -205,6 +210,11 @@ const REACH = 1.2;
   return vec4f(1. - 1.2 * shut / whole);
 }`;
 
+/** How far a stroke reaches, in texels of the picture. */
+const STROKE = 4;
+/** How much of the sun's light is the painter's band, the rest as it turns. */
+const BAND = "0.75";
+
 /** The G-buffer lit: sun in the still map's shade, sky, lamps; linear, glow added. */
 export const RELIGHT = /* wgsl */ `${COMMON}
 /** The sun is dimmed in nooks too, by this share of the sky's: sky light
@@ -255,7 +265,17 @@ fn openAt(texel: vec2i, depth: f32) -> f32 {
   let envReflectance = ((1.0 - s.F0) * brdf.x + s.F0 * brdf.y) * clamp((NdotVU + 1.) * (NdotVU + 1.) - 1.0 + 1., 0.0, 1.0);
   let energy = 1.0 + s.F0 * (1.0 / max(brdf.y, 0.001) - 1.0);
   let skyOpen = openAt(texel, depth);
-  var color = (irradiance * s.albedo + env * envReflectance * energy) * skyOpen + direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade) * mix(1., skyOpen, SUN_IN_NOOKS);
+  var sun = direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade) * mix(1., skyOpen, SUN_IN_NOOKS);
+  var skyLight = (irradiance * s.albedo + env * envReflectance * energy) * skyOpen;
+  if (${PAINTED}) {
+    // As a painter lights it: what faces the sun at all takes most of it,
+    // in a soft band rather than turning by degrees; the shade cooler,
+    // toward violet, and the sun's side a touch warmer.
+    let nl = max(dot(s.N, f.sunDir.xyz), 0.);
+    sun *= (${BAND} * smoothstep(0., 0.55, nl) + (1. - ${BAND}) * nl) / max(nl, 0.05) * vec3f(1.03, 1., 0.95);
+    skyLight *= vec3f(0.98, 0.94, 1.1);
+  }
+  var color = skyLight + sun;
   let bin = _r_binAt(p.xy, size.x);
   for (var i = bin.x; i < bin.x + bin.y; i++) { color += lamp(s, lights[bins[i]], V); }
   if (f.image.w < 0.) { return vec4f(vec3f(skyOpen * 0.3), 1.); }
@@ -327,4 +347,44 @@ struct Out { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, };
   let c = f.seen * vec4f(at, 1.);
   out.depth = clamp(c.z / c.w, 0., 1.);
   return out;
+}`;
+
+/** The lit picture brushed over, a Kuwahara filter as Papari's: round each
+ *  texel eight wedges of a disc, each wedge's mean and spread; the texel
+ *  takes the wedges' means, the smoothest counting most. Flat ground goes
+ *  to soft strokes, an edge stays, one side of it or the other. Read in a
+ *  gentler light (the square root) so the bright does not rule the spread.
+ *  Run only when the picture is lit, never per frame. */
+export const PAINT = /* wgsl */ `${COMMON}
+@group(0) @binding(13) var lit: texture_2d<f32>;
+const R: i32 = ${STROKE};
+@fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f {
+  let texel = vec2i(p.xy);
+  let last = vec2i(textureDimensions(lit)) - 1;
+  var sum: array<vec3f, 8>;
+  var sq: array<vec3f, 8>;
+  var n: array<f32, 8>;
+  for (var y = -R; y <= R; y++) {
+    for (var x = -R; x <= R; x++) {
+      let r2 = f32(x * x + y * y);
+      if (r2 > f32(R * R) + 0.5) { continue; }
+      let c = sqrt(max(textureLoad(lit, clamp(texel + vec2i(x, y), vec2i(0), last), 0).rgb, vec3f(0.)));
+      // The wedge it is in; the centre in all.
+      var k = 0;
+      if (r2 > 0.) { k = i32(floor((atan2(f32(y), f32(x)) / 6.2831853 + 1.0625) * 8.)) % 8; }
+      sum[k] += c; sq[k] += c * c; n[k] += 1.;
+      if (r2 == 0.) { for (var j = 1; j < 8; j++) { sum[j] += c; sq[j] += c * c; n[j] += 1.; } }
+    }
+  }
+  var out = vec3f(0.);
+  var weight = 0.;
+  for (var k = 0; k < 8; k++) {
+    let m = sum[k] / n[k];
+    let v = sq[k] / n[k] - m * m;
+    let w = 1. / (1. + pow(1e3 * (v.r + v.g + v.b), 4.));
+    out += m * w;
+    weight += w;
+  }
+  let m = out / weight;
+  return vec4f(m * m, textureLoad(lit, texel, 0).a);
 }`;
