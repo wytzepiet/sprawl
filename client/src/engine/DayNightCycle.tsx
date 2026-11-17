@@ -20,7 +20,7 @@ import {
   type SceneContext,
 } from "./gpu";
 import { useEngine } from "./Canvas";
-import { TONE } from "./toneMap";
+import { OLD_LIGHT, TONE } from "./toneMap";
 import { groundCover } from "./view";
 import { skyEnvironment, type SkyLight } from "./sky";
 import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
@@ -42,7 +42,7 @@ export const shownTimeOfDay = () => PINNED ?? simTimeOfDay();
  *  the sky's light is beside the sun's. A low sky gives deep shadows and
  *  sunlit surfaces that glow; the eye opened wide brings the whole back up. */
 const EYE = 2.7;
-const SKY = 0.21;
+const SKY = OLD_LIGHT ? 0.21 : 0.24;
 
 /**
  * A light as PBR takes it. The palette is written as an eye sees it, and a
@@ -81,10 +81,11 @@ const AMB_MIDNIGHT = rgb(0.35, 0.35, 0.5);
 const AMB_DAWN = rgb(0.55, 0.52, 0.66);
 const AMB_NOON = rgb(0.82, 0.82, 0.8);
 const AMB_DUSK = rgb(0.5, 0.48, 0.62);
-/** The sky's light is blue and the sun's warm, so where the sun is shut out
- *  a surface is its colour times the blue: grass goes teal, a red roof
- *  raspberry, white periwinkle. In the sun the two add to near white. */
-const SKY_LIGHT = rgb(0.74, 0.86, 1.22);
+/** The sky's light is cool and the sun's a little warm, so where the sun is
+ *  shut out a surface is its colour a shade bluer, never teal: a shadow is
+ *  the same thing out of the sun, not another colour. In the sun the two add
+ *  to white. */
+const SKY_LIGHT = OLD_LIGHT ? rgb(0.74, 0.86, 1.22) : rgb(0.84, 0.92, 1.1);
 /** The sun by its elevation: the lower, the more air its light has
  *  crossed and the more blue is scattered out of it, so near white high,
  *  gold low, and a deep orange red as it sets. */
@@ -92,14 +93,17 @@ const sunStops: [number, Rgb][] = [
   [0, rgb(1.8, 0.42, 0.16)],
   [0.14, rgb(1.8, 0.42, 0.16)],
   [0.3, rgb(1.65, 0.78, 0.3)],
-  [0.7, rgb(1.15, 1.02, 0.75)],
-  [1, rgb(1.15, 1.02, 0.75)],
+  [0.7, OLD_LIGHT ? rgb(1.15, 1.02, 0.75) : rgb(1.15, 1.1, 0.98)],
+  [1, OLD_LIGHT ? rgb(1.15, 1.02, 0.75) : rgb(1.15, 1.1, 0.98)],
 ];
 
 /** And stronger as it climbs, by this much more at its highest, so a
  *  summer noon's sun outshines the sky, as a real one does, and its colours
  *  glow rather than sit flat in the sky's fill. */
 const HIGH_SUN = 1;
+/** The sun's strength over the sky's: what a lit white wall comes to, as
+ *  near white as the tone map leaves it, no further. */
+const SUN = OLD_LIGHT ? 0.5 : 0.36;
 
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;
@@ -111,7 +115,7 @@ const LOWEST = 0.1;
 function sunLightAt(elev: number): { colour: Rgb; strength: number } {
   const climbed = Math.min(1, Math.max(0, (elev - 0.42) / (1 - 0.42)));
   const high = 1 + HIGH_SUN * climbed * climbed * (3 - 2 * climbed);
-  return { colour: ramp(sunStops, elev, lerp3), strength: (high * 0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
+  return { colour: ramp(sunStops, elev, lerp3), strength: (high * SUN * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
 }
 
 const SKY_MIDNIGHT = rgb(0.15, 0.15, 0.25);
