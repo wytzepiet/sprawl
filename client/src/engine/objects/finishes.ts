@@ -1,6 +1,6 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import { bark } from "../bark";
-import { bladeShade, BUMP, CLOVER, grain } from "../ground";
+import { bladeLight, bladeShade, BUMP, CLOVER, grain } from "../ground";
 import { lawn, LAWN_DEFINITIONS, lawnRead } from "../lawn";
 import { night } from "../lights";
 import { pavingPlugin } from "../paving";
@@ -45,7 +45,9 @@ let ${p}Du2 = dpdy(input.uv);
 let ${p}T = cross(${p}Dp2, N) * ${p}Du1.x + cross(N, ${p}Dp1) * ${p}Du2.x;
 let ${p}B = cross(${p}Dp2, N) * ${p}Du1.y + cross(N, ${p}Dp1) * ${p}Du2.y;
 let ${p}Inv = inverseSqrt(max(max(dot(${p}T, ${p}T), dot(${p}B, ${p}B)), 1e-14));`;
-function coat(name: string, code: string, textures: (engine: EngineContext) => Record<string, Texture> = () => ({}), definitions = ""): Coat {
+/** A finish: its code before the lights, the textures it reads, WGSL it
+ *  defines, and its code once lit (`color`, the light it takes). */
+function coat(name: string, code: string, textures: (engine: EngineContext) => Record<string, Texture> = () => ({}), definitions = "", light = ""): Coat {
   const made = new WeakMap<EngineContext, MaterialPlugin>();
   return (engine) => {
     let plugin = made.get(engine);
@@ -55,7 +57,7 @@ function coat(name: string, code: string, textures: (engine: EngineContext) => R
       name,
       priority: 900,
       ...(bound.length ? { getSamplers: () => bound.map(([t]) => ({ texture: t, sampler: `${t}Sampler` })), bindTextures: (out) => out.push(...bound.map(([, texture]) => ({ texture }))) } : {}),
-      getCustomCode: (stage) => (stage === "fragment" ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: code } : null),
+      getCustomCode: (stage) => (stage === "fragment" ? { CUSTOM_FRAGMENT_DEFINITIONS: definitions, CUSTOM_FRAGMENT_UPDATE_DIFFUSE: code, CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: light } : null),
     };
     made.set(engine, plugin);
     return plugin;
@@ -220,7 +222,7 @@ if (input.uv.x < ${f(FRAY * 1.5)} * (1. - lawnMap.b)) { discard; }
 baseColor = baseColor * ${bladeShade("lawnMap.b")};
 baseColor = mix(baseColor, vec3f(${CLOVER.map(f).join(", ")}), lawnMap.a);
 N = normalize(N - vec3f(lawnMap.rg * ${f(BUMP)}, 0.));
-roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }), LAWN_DEFINITIONS);
+roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }), LAWN_DEFINITIONS, `color = color * ${bladeLight("lawnMap.b")};`);
 
 /** The town's paving, stopped clean at its edge. */
 const PAVINGS = new WeakMap<EngineContext, MaterialPlugin>();

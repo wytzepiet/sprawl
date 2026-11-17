@@ -47,18 +47,19 @@ export const BUMP = 1.6;
 const TALLER = 0.6;
 export const CLOVER = [1, 0.97, 0.86];
 /** A blade's colour, of the grass's, from deep between the blades (red
- *  and blue going first, so it deepens, not greys) to its tip, as light
- *  through a blade warms it; and how glossy, wet, a blade is, the most at
+ *  and blue less, so it deepens) to its tip, as light through a blade
+ *  warms it; and how glossy, wet, a blade is, the most at
  *  its tip, fading down it (`townShine`). */
-const GAP = [0.62, 0.74, 0.62];
+const GAP = [0.88, 1, 0.88];
 const TIP = [1.06, 1.05, 0.96];
 const SHEEN = 1;
-/** And the light shut out down among them: none at a blade's tip, rising
- *  as it goes down, evenly, to this much of it at the ground. */
-const DEEP = 0.7;
-/** A blade's colour at a height `b`, 0 deep between them, 1 a tip, its
- *  shade among the others with it. */
-export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b}) * mix(${n(DEEP)}, 1., saturate(${b}))`;
+/** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
+export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
+/** And the light shut out down among them, sun, sky and lamps alike: none
+ *  at a blade's tip, more as it goes down, evenly, to this much of it let
+ *  in at the ground. A share of the light a height `b` takes. */
+const DEEP = 0.55;
+export const bladeLight = (b: string) => `mix(${n(DEEP)}, 1., saturate(${b}))`;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
  *  beat how far in it is, so it thins to its edge instead of stopping
@@ -325,6 +326,7 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (any("bump") ? LAWN_DEFINITIONS : "") + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
+            ...(any("bump") ? { CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color = color * mix(1., ${bladeLight("groundBlades.b")}, ${look("bump")});` } : {}),
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * groundBlades.b` : ""});
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundBlades.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundBlades.a * ${look("lawn")});` : ""}
