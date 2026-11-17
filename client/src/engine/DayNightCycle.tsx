@@ -85,7 +85,7 @@ const AMB_DUSK = rgb(0.5, 0.48, 0.62);
  *  shut out a surface is its colour a shade bluer, never teal: a shadow is
  *  the same thing out of the sun, not another colour. In the sun the two add
  *  to white. */
-const SKY_LIGHT = OLD_LIGHT ? rgb(0.74, 0.86, 1.22) : rgb(0.84, 0.92, 1.1);
+const SKY_LIGHT = OLD_LIGHT ? rgb(0.74, 0.86, 1.22) : rgb(0.78, 0.88, 1.16);
 /** The sun by its elevation: the lower, the more air its light has
  *  crossed and the more blue is scattered out of it, so near white high,
  *  gold low, and a deep orange red as it sets. */

@@ -27,6 +27,9 @@ return pow(max(toneOut * c, vec3f(0.)), vec3f(2.2));
 /** How much contrast the curve is given. */
 export const CONTRAST = 1.35;
 
+/** How much more colour, and how much of the S. */
+const POP = { colour: "1.35", contrast: "0.2" };
+
 /**
  * Khronos' PBR Neutral (Emmett Lalish's): what is lit no brighter than white
  * is left as it is, so a surface in full sun shows the colour it was painted,
@@ -34,7 +37,7 @@ export const CONTRAST = 1.35;
  * paled as it goes. AgX's toe and its contrast had pressed every middle tone
  * down, and a white wall at noon came out a beige grey: the town read murky.
  */
-const neutral = `fn toneMap(c0: vec3f) -> vec3f {
+const neutral = `fn neutral(c0: vec3f) -> vec3f {
 let low = min(c0.r, min(c0.g, c0.b));
 var c = c0 - select(0.04, low - 6.25 * low * low, low < 0.08);
 let peak = max(c.r, max(c.g, c.b));
@@ -42,6 +45,15 @@ if (peak < 0.76) { return c; }
 let top = 1. - 0.0576 / (peak - 0.52);
 c *= top / peak;
 return mix(c, vec3f(top), 1. - 1. / (0.15 * (peak - top) + 1.));
+}
+/** And then made to pop, as a toy town under a bright sky: as the eye sees
+ *  it, more colour, its grey kept, and a gentle S round the middle. */
+fn toneMap(c0: vec3f) -> vec3f {
+var c = pow(clamp(neutral(c0), vec3f(0.), vec3f(1.)), vec3f(1. / 2.2));
+let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+c = clamp(luma + ${POP.colour} * (c - luma), vec3f(0.), vec3f(1.));
+c = mix(c, c * c * (3. - 2. * c), ${POP.contrast});
+return pow(c, vec3f(2.2));
 }`;
 
 /** `?light=old`, for now: the town as it was lit before, to set beside. */
