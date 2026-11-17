@@ -89,9 +89,10 @@ export const RANDOM = `fn rnd(i: u32, k: u32) -> f32 {
  *  -> vec4f`, the texels shape `i` may touch (x0 y0 x1 y1, within the
  *  square or up to its side past it, where it comes round), and `fn
  *  stamp(i: u32, at: vec2f) -> vec4f`, what it gives the texel whose
- *  middle is `at`. Onto what is there, or `first` onto nothing. What a
- *  bake did a shape at a time in a worker, drawn. */
-export function stampTexture(engine: Engine, target: Texture2D, code: string, count: number, first: boolean, operation: "max" | "add" = "max") {
+ *  middle is `at`. Onto what is there, or `first` onto nothing; reading
+ *  `sources` as `fillTexture`'s does. What a bake did a shape at a time in
+ *  a worker, drawn. */
+export function stampTexture(engine: Engine, target: Texture2D, code: string, count: number, first: boolean, operation: "max" | "add" = "max", sources: Texture2D[] = []) {
   const device = engine._device;
   const byCode = pipelines.get(device) ?? new Map<string, GPURenderPipeline>();
   pipelines.set(device, byCode);
@@ -99,7 +100,8 @@ export function stampTexture(engine: Engine, target: Texture2D, code: string, co
   let pipeline = byCode.get(key);
   if (!pipeline) {
     const module = device.createShaderModule({
-      code: `${code}
+      code: `${sources.map((_, k) => `@group(0) @binding(${k}) var src${k}: texture_2d<f32>;`).join("\n")}
+${code}
 struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, @location(1) @interpolate(flat) round: vec2f }
 // Each shape four times: as it lies, and come round each side.
 @vertex fn vs(@builtin(vertex_index) v: u32, @builtin(instance_index) n: u32) -> V {
@@ -122,6 +124,7 @@ struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, 
   const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({ colorAttachments: [{ view: top(target), loadOp: first ? "clear" : "load", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
   pass.setPipeline(pipeline);
+  if (sources.length) pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: sources.map((s, k) => ({ binding: k, resource: s.view })) }));
   pass.draw(4, count * 4);
   pass.end();
   device.queue.submit([encoder.finish()]);

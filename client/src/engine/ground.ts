@@ -8,7 +8,7 @@ import { SWASH, swashFn } from "./water";
 import { ripples } from "./waves";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";
-import { hummocks, HUMMOCK_TILES, lawn, LAWN_TILES } from "./lawn";
+import { hummocks, lawn, LAWN_TILES } from "./lawn";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, LAND_LIES, TYPE_BY_BYTE, SHORE_LIES, WATER_Z, type Ground } from "./objects/terrainGeometry";
 import { live } from "./still";
@@ -263,7 +263,7 @@ ${sheet === "wash" ? `if (groundD >= groundBand) { discard; }
 let groundSwash = groundBand * groundWash(material.groundTime, input.worldPos.xy);` : "let groundSwash = groundBand;"}
 if (groundD < groundSwash) { discard; }`
     : `${any("bump") ? `let groundLawn = textureSample(groundLawn, groundLawnSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
-${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(HUMMOCK_TILES)});` : ""}
+${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
 ${any("slate") ? `let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, input.worldPos.xy / ${slateSpan}, ${n(CALM)}).rg * 2. - 1.;` : ""}
 ${
   any("fray")
