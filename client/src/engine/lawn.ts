@@ -26,15 +26,17 @@ const HALF_WIDTH = 7;
 const SWAY = 0.4;
 const COVER = 5;
 /** They grow in tufts of this many, from within this many texels of the
- *  tuft's heart; and the tufts in clumps, about this many texels across,
- *  the lowest this much shorter than the tallest. */
+ *  tuft's heart; and in clumps, about this many texels across, the
+ *  shortest blades' this much shorter than the longest's, every blade of
+ *  them as close: the lawn's grass long here and short there, not thick
+ *  and thin. */
 const TUFT = 7;
 /** Of each tuft's blades, this many grow loose instead, anywhere, so no
  *  ground goes bare between the tufts. */
 const LOOSE = 3;
 const TUFT_SPREAD = 14;
-const CLUMP = 128;
-const CLUMPED = 0.35;
+const CLUMP = 256;
+const CLUMPED = 0.55;
 /** Clover: this many heads to a tile, of one to three flowers each from
  *  this far across to this far, this far apart at most, in tiles. */
 const CLOVER = 0.6;
@@ -108,8 +110,8 @@ fn blade(i: u32) -> Blade {
   let down = 1. - 2. * under.rg;
   let steep = saturate(length(down) * ${f(SLOPED / STEEP)});
   let way = normalize(vec2f(cos(angle), sin(angle)) + down / max(length(down), 1e-4) * steep * ${f(SPLAY)});
-  let lean = (${f(LEAN[0])} + rnd(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep);
-  let top = (0.5 + 0.5 * rnd(i, 4u)) * (1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u)) * (0.6 + 0.4 * under.b);
+  let lean = (${f(LEAN[0])} + rnd(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep) * (1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u));
+  let top = (0.5 + 0.5 * rnd(i, 4u)) * (0.6 + 0.4 * under.b);
   return Blade(base, way, lean, top);
 }
 // Only the box round it, base to tip.
