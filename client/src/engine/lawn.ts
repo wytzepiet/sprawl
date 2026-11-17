@@ -27,9 +27,9 @@ const SWAY = 0.4;
 const COVER = 5;
 /** They grow in tufts of this many, from within this many texels of the
  *  tuft's heart; and in clumps, about this many texels across, the
- *  shortest blades' this much shorter than the longest's, every blade of
- *  them as close: the lawn's grass long here and short there, not thick
- *  and thin. */
+ *  shortest blades' this much shorter than the longest's, and as many
+ *  more of them as close the ground as well: the lawn's grass long here and
+ *  short there, never thin. */
 const TUFT = 7;
 /** Of each tuft's blades, this many grow loose instead, anywhere, so no
  *  ground goes bare between the tufts. */
@@ -50,7 +50,7 @@ const SHARPEN = -1;
 const f = (x: number) => x.toFixed(4);
 const n = LAWN_SIDE;
 const mean = (LEAN[0] + LEAN[1]) / 2;
-const BLADES = Math.round((n * n * COVER) / (mean * HALF_WIDTH * 1.4));
+const BLADES = Math.round((n * n * COVER) / (mean * HALF_WIDTH * 1.4) / (1 - CLUMPED));
 /** Everything a little in from the square's corner, so no stamp's box
  *  starts before it. */
 const IN = 64;
@@ -110,8 +110,12 @@ fn blade(i: u32) -> Blade {
   let down = 1. - 2. * under.rg;
   let steep = saturate(length(down) * ${f(SLOPED / STEEP)});
   let way = normalize(vec2f(cos(angle), sin(angle)) + down / max(length(down), 1e-4) * steep * ${f(SPLAY)});
-  let lean = (${f(LEAN[0])} + rnd(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep) * (1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u));
-  let top = (0.5 + 0.5 * rnd(i, 4u)) * (0.6 + 0.4 * under.b);
+  let short = 1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u);
+  let lean = (${f(LEAN[0])} + rnd(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep) * short;
+  // Of the blades, as many grow where they are short as cover the ground
+  // as the long ones do; the rest, none.
+  let grows = rnd(i, 8u) * short < ${f(1 - CLUMPED)};
+  let top = select(0., (0.5 + 0.5 * rnd(i, 4u)) * (0.6 + 0.4 * under.b), grows);
   return Blade(base, way, lean, top);
 }
 // Only the box round it, base to tip.
