@@ -213,7 +213,7 @@ var _r_diffuse = vec3f(0.0);
 var _r_specular = vec3f(0.0);
 let _r_open = _r_openAt(input.worldPos);
 occlusion *= _r_open;
-let _r_sf = select(1.0, min(_r_shadowOf(shadowStatic, input.worldPos), _r_shadowOf(shadowLive, input.worldPos)), mesh.receiveShadows > 0.5) * mix(1.0, _r_open, 0.6);
+let _r_sf = select(1.0, min(_r_shadowOf(shadowStatic, input.worldPos), _r_shadowOf(shadowLive, input.worldPos)), mesh.receiveShadows > 0.5) * mix(1.0, _r_open, 0.6) * sunlit;
 let _r_L = normalize(scene.sunDir.xyz);
 let _r_NdotL = max(dot(N, _r_L), 0.0);
 _r_diffuse += surfaceAlbedo * (1.0 / PI) * _r_NdotL * scene.sunColor.rgb * _r_sf;
@@ -423,6 +423,9 @@ var baseColor = vec3f(1.0);
 var alpha = 1.0;
 ${layout.colors ? "baseColor *= input.vColor.rgb;\nalpha *= input.vColor.a;" : ""}
 var occlusion = 1.0;
+// How much of the sun's light reaches it, of what would: shade a plugin
+// paints that the shadow map cannot see (down among the grass's blades).
+var sunlit = 1.0;
 var roughness = clamp(material.roughnessFactor, 0.0, 1.0);
 var metallic = material.metallicFactor;
 var emissive = vec3f(0.0);
@@ -457,7 +460,10 @@ ${toAT}
 }`,
     // NI is affine in `color`: from 0 it is the emissive, from 1 that plus
     // the light's weight. Emissive kept as e / (1 + e); lit as the mean.
-    gbuffer: `struct _r_GBuffer { ${depthOut}@location(0) albedo: vec4f, @location(1) normal: vec4f, @location(2) extra: vec4f }
+    // Metal is all or nothing in the town, so the G-buffer's last byte keeps
+    // it in its top half and the sun let in in the rest (`deferred.ts`).
+    gbuffer: `fn _r_metalSun(metallic: f32, sun: f32) -> f32 { return select(0.49 * sun, 0.51 + 0.49 * sun, metallic > 0.5); }
+struct _r_GBuffer { ${depthOut}@location(0) albedo: vec4f, @location(1) normal: vec4f, @location(2) extra: vec4f }
 @fragment fn fs(${params}) -> _r_GBuffer {
 ${toAT}
 ${toMF}
@@ -476,7 +482,7 @@ _r_c1 = color;
 if (!(alpha > 0.4)) { discard; }
 let _r_lit = _r_c1 - _r_c0;
 let _r_glow = max(_r_c0, vec3f(0.0));
-return _r_GBuffer(${depthIs}vec4f(baseColor, (_r_lit.r + _r_lit.g + _r_lit.b) / 3.0), vec4f(N * 0.5 + 0.5, roughness), vec4f(_r_glow / (1.0 + _r_glow), metallic));
+return _r_GBuffer(${depthIs}vec4f(baseColor, (_r_lit.r + _r_lit.g + _r_lit.b) / 3.0), vec4f(N * 0.5 + 0.5, roughness), vec4f(_r_glow / (1.0 + _r_glow), _r_metalSun(metallic, sunlit)));
 }`,
     forward: `${FORWARD_BINDINGS}
 struct _r_Forward { ${depthOut}@location(0) color: vec4f }

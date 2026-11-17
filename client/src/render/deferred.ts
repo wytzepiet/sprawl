@@ -74,7 +74,7 @@ fn geometrySmithGGX(NdotL: f32, NdotV: f32, alphaG: f32) -> f32 {
 fn fresnelSchlick(c: f32, F0: vec3f) -> vec3f { let t = 1.0 - c; let t2 = t * t; return F0 + (1.0 - F0) * (t2 * t2 * t); }
 
 // A pixel of the picture, as its G-buffer has it.
-struct Surface { base: vec3f, lit: f32, N: vec3f, roughness: f32, metallic: f32, glow: vec3f, F0: vec3f, albedo: vec3f, at: vec3f };
+struct Surface { base: vec3f, lit: f32, sun: f32, N: vec3f, roughness: f32, metallic: f32, glow: vec3f, F0: vec3f, albedo: vec3f, at: vec3f };
 fn surfaceAt(texel: vec2i, at: vec3f) -> Surface {
   var s: Surface;
   let a = textureLoad(gAlbedo, texel, 0);
@@ -84,7 +84,9 @@ fn surfaceAt(texel: vec2i, at: vec3f) -> Surface {
   s.lit = a.a;
   s.N = normalize(n.xyz * 2. - 1.);
   s.roughness = n.a;
-  s.metallic = x.a;
+  // Metal or not, and the share of the sun let in (compose.ts, _r_metalSun).
+  s.metallic = step(0.5, x.a);
+  s.sun = (x.a - 0.51 * s.metallic) / 0.49;
   s.glow = x.rgb / max(1. - x.rgb, vec3f(1e-4));
   s.F0 = mix(vec3f(0.04), s.base, s.metallic);
   s.albedo = s.base * (1. - 0.04) * (1. - s.metallic);
@@ -255,7 +257,7 @@ fn openAt(texel: vec2i, depth: f32) -> f32 {
   let envReflectance = ((1.0 - s.F0) * brdf.x + s.F0 * brdf.y) * clamp((NdotVU + 1.) * (NdotVU + 1.) - 1.0 + 1., 0.0, 1.0);
   let energy = 1.0 + s.F0 * (1.0 / max(brdf.y, 0.001) - 1.0);
   let skyOpen = openAt(texel, depth);
-  var color = (irradiance * s.albedo + env * envReflectance * energy) * skyOpen + direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade) * mix(1., skyOpen, SUN_IN_NOOKS);
+  var color = (irradiance * s.albedo + env * envReflectance * energy) * skyOpen + direct(s, f.sunDir.xyz, V, f.sunColor.rgb * shade * s.sun) * mix(1., skyOpen, SUN_IN_NOOKS);
   let bin = _r_binAt(p.xy, size.x);
   for (var i = bin.x; i < bin.x + bin.y; i++) { color += lamp(s, lights[bins[i]], V); }
   if (f.image.w < 0.) { return vec4f(vec3f(skyOpen * 0.3), 1.); }
@@ -316,7 +318,7 @@ struct Out { @location(0) color: vec4f, @builtin(frag_depth) depth: f32, };
   if (lost > 0. || bin.z > 0u) {
     let s = surfaceAt(found.texel, at);
     let V = normalize(found.eye - at);
-    if (lost > 0.) { color = max(color - s.lit * direct(s, f.sunDir.xyz, V, f.sunColor.rgb * lost), vec3f(0.)); }
+    if (lost > 0.) { color = max(color - s.lit * direct(s, f.sunDir.xyz, V, f.sunColor.rgb * lost * s.sun), vec3f(0.)); }
     for (var i = bin.x + bin.y; i < bin.x + bin.y + bin.z; i++) { color += s.lit * lamp(s, lights[bins[i]], V); }
   }
   color = toneMap(color * f.image.x);

@@ -1,6 +1,6 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import { bark } from "../bark";
-import { bladeLight, bladeShade, BUMP, CLOVER, grain } from "../ground";
+import { bladeLight, bladeShade, bladeSun, BUMP, CLOVER, grain } from "../ground";
 import { lawn, LAWN_DEFINITIONS, lawnRead } from "../lawn";
 import { night } from "../lights";
 import { pavingPlugin } from "../paving";
@@ -222,6 +222,7 @@ if (input.uv.x < ${f(FRAY * 1.5)} * (1. - lawnMap.b)) { discard; }
 baseColor = baseColor * ${bladeShade("lawnMap.b")};
 baseColor = mix(baseColor, vec3f(${CLOVER.map(f).join(", ")}), lawnMap.a);
 N = normalize(N - vec3f(lawnMap.rg * ${f(BUMP)}, 0.));
+sunlit = ${bladeSun("lawnMap.b")};
 roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }), LAWN_DEFINITIONS, `color = color * ${bladeLight("lawnMap.b")};`);
 
 /** The town's paving, stopped clean at its edge. */

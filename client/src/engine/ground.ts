@@ -55,11 +55,16 @@ const TIP = [1.06, 1.05, 0.96];
 const SHEEN = 1;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
-/** And the light shut out down among them, sun, sky and lamps alike: none
- *  at a blade's tip, more as it goes down, evenly, to this much of it let
- *  in at the ground. A share of the light a height `b` takes. */
-const DEEP = 0.2;
+/** And the light shut out down among them: none at a blade's tip, more as
+ *  it goes down, to this much of the sky's let in at the ground, and of the
+ *  sun's, which comes from one way and is stopped by the first blade in it,
+ *  this much less again, the most of it lost near the ground. A share of
+ *  the light a height `b` takes, all of it (`color`, once lit), and of the
+ *  sun's again (`sunlit`). */
+const DEEP = 0.45;
+const DEEP_SUN = 0.12;
 export const bladeLight = (b: string) => `mix(${n(DEEP)}, 1., saturate(${b}))`;
+export const bladeSun = (b: string) => `mix(${n(DEEP_SUN)}, 1., sqrt(saturate(${b})))`;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
  *  beat how far in it is, so it thins to its edge instead of stopping
@@ -331,6 +336,7 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundBlades.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundBlades.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
+${any("bump") ? `sunlit = mix(1., ${bladeSun("groundBlades.b")}, ${look("bump")});` : ""}
 N = normalize(N ${tilt});
 ${
   any("bevel")
