@@ -8,7 +8,7 @@ import { SWASH, swashFn } from "./water";
 import { ripples } from "./waves";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";
-import { HUMMOCK_BEND, hummocks, lawn, LAWN_TILES } from "./lawn";
+import { HUMMOCK_BEND, hummocks, lawn, LAWN_DEFINITIONS, lawnRead, LAWN_TILES } from "./lawn";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, LAND_LIES, TYPE_BY_BYTE, SHORE_LIES, WATER_Z, type Ground } from "./objects/terrainGeometry";
 import { live } from "./still";
@@ -53,9 +53,6 @@ export const CLOVER = [1, 0.97, 0.86];
 const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.06, 1.05, 0.96];
 const SHEEN = 1;
-/** The lawn read a mip finer than the pixel asks: the camera looks
- *  down at a slant, and the coarser mip it asks for blurs the blades. */
-export const SHARPEN = -1;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** Grass frays where it meets lower ground: within this far of its edge,
@@ -266,7 +263,7 @@ let groundD = groundIn(groundF.x);
 ${sheet === "wash" ? `if (groundD >= groundBand) { discard; }
 let groundSwash = groundBand * groundWash(material.groundTime, input.worldPos.xy);` : "let groundSwash = groundBand;"}
 if (groundD < groundSwash) { discard; }`
-    : `${any("bump") ? `let groundLawn = textureSampleBias(groundLawn, groundLawnSampler, input.worldPos.xy / ${n(LAWN_TILES)}, ${n(SHARPEN)});` : ""}
+    : `${any("bump") ? lawnRead("groundLawn", "input.worldPos.xy", "groundBlades") : ""}
 ${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
 ${any("slate") ? `let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, input.worldPos.xy / ${slateSpan}, ${n(CALM)}).rg * 2. - 1.;` : ""}
 ${
@@ -286,7 +283,7 @@ ${
     ? // Grass frays blade by blade, the gaps going first, then the shorter
       // blades; the wood floor by them and by the grain's tufts, so its edge
       // wanders off its tiles' outline even where the blades are too fine to see.
-      `let groundOn${y.l} = groundD${y.l} >= ${y.lawn ? "(1. - groundLawn.b)" : "(0.5 * (1. - groundLawn.b) + 0.5 * groundTufts)"} * ${n(y.fray * FRAY)}
+      `let groundOn${y.l} = groundD${y.l} >= ${y.lawn ? "(1. - groundBlades.b)" : "(0.5 * (1. - groundBlades.b) + 0.5 * groundTufts)"} * ${n(y.fray * FRAY)}
   && !(groundD${y.l} < ${patchesIn} && groundPatch > mix(${patched}, 1.05, groundD${y.l} / ${patchesIn}));`
     : `let groundOn${y.l} = groundD${y.l} >= 0.;`
 }
@@ -300,7 +297,7 @@ let groundF = ${layers.map((y) => `groundIs${y.l} * groundF${y.l}`).join(" + ")}
 let groundD = ${layers.map((y) => `groundIs${y.l} * groundD${y.l}`).join(" + ")};
 if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
   const tilt = [
-    any("bump") ? `- vec3f((groundLawn.rg * 2. - 1.) * ${n(BUMP)} * ${look("bump")}${any("lawn") ? ` * (1. + ${n(TALLER)} * groundHummock.b * ${look("lawn")})` : ""}, 0.)` : "",
+    any("bump") ? `- vec3f(groundBlades.rg * ${n(BUMP)} * ${look("bump")}${any("lawn") ? ` * (1. + ${n(TALLER)} * groundHummock.b * ${look("lawn")})` : ""}, 0.)` : "",
     any("lawn") ? `- vec3f((groundHummock.rg * 2. - 1.) * ${n(HUMMOCK_BEND)} * ${look("lawn")}, 0.)` : "",
     any("slate") ? `+ vec3f(groundSlateTilt * ${look("slate")}, 0.)` : "",
     sand ? `+ vec3f((groundGlint.yz - 0.5) * 2. * ${n(GLINT_TILT)} * groundGlinting, 0.) - vec3f(groundRippled * smoothstep(${swash}, ${swash} * 1.6, groundD), 0.)` : "",
@@ -322,11 +319,11 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: "out.vGroundAt = position.xy;" }
         : {
-            CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
+            CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (any("bump") ? LAWN_DEFINITIONS : "") + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * groundLawn.b` : ""});
-baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundLawn.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
-${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundLawn.a * ${look("lawn")});` : ""}
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * groundBlades.b` : ""});
+baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundBlades.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
+${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundBlades.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
 N = normalize(N ${tilt});
 ${

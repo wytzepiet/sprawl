@@ -5,51 +5,53 @@ import { retire } from "./geometry";
  * The grass (`ground.ts` reads it): a square of lawn this many
  * texels a side, wrapping, laid over this many tiles. Blades in tufts,
  * fanned, long enough to see at the usual zoom, leaning up the map give or
- * take a little, so from above mostly their tips show, each side of a blade
+ * take a little, so from above mostly their tips show, each blade one face
  * taking the sun its own way, and the gaps between them in shade: a pile
- * without a second colour; and here and there a clover flower or three. Drawn
- * on the GPU as the game starts, a blade a stamp (`stampTexture`): half a
- * million of them in less time than reading a kept copy took, so nothing
- * of it is kept.
+ * without a second colour. Only their height is kept, a byte a texel, and
+ * their slope found where it is read (`lawnRead`), at the pixel, so a blade
+ * stays crisp zoomed in. Drawn on the GPU as the game starts, a blade a
+ * stamp (`stampTexture`), so nothing of it is kept.
  */
-export const LAWN_SIDE = 2048;
+export const LAWN_SIDE = 4096;
 export const LAWN_TILES = 8;
 
 /** How far a blade leans, base to tip as seen from above, and half its
- *  width at the base, in texels, four texels to a pixel at the usual zoom:
+ *  width at the base, in texels, eight texels to a pixel at the usual zoom:
  *  a stroke a few pixels long there, sharp zoomed in; and how many times
  *  over they cover the lawn. */
-const LEAN = [14, 30];
-const HALF_WIDTH = 3.5;
+const LEAN = [28, 60];
+const HALF_WIDTH = 7;
 /** How far a blade's face turns, across it, at most: from its far edge
  *  this much lower than its middle to as much higher. */
 const FACE = 0.6;
 /** They lean up the map, away from the camera, as blades standing seen
  *  from it would, give or take this much, in radians. */
 const SWAY = 0.4;
-const COVER = 4;
+const COVER = 5;
 /** They grow in tufts of this many, from within this many texels of the
  *  tuft's heart; and the tufts in clumps, about this many texels across,
  *  the lowest this much shorter than the tallest. */
 const TUFT = 7;
-const TUFT_SPREAD = 7;
-const CLUMP = 64;
+const TUFT_SPREAD = 14;
+const CLUMP = 128;
 const CLUMPED = 0.5;
 /** Clover: this many heads to a tile, of one to three flowers each from
- *  this many texels across to this many, this far apart. */
+ *  this far across to this far, this far apart at most, in tiles. */
 const CLOVER = 0.6;
-const FLOWER = [5, 13];
-const SPREAD = 24;
+const FLOWER = [0.02, 0.05];
+const SPREAD = 0.1;
+/** The lawn read a mip finer than the pixel asks: the camera looks
+ *  down at a slant, and the coarser mip it asks for blurs the blades. */
+const SHARPEN = -1;
 
 
 const f = (x: number) => x.toFixed(4);
 const n = LAWN_SIDE;
 const mean = (LEAN[0] + LEAN[1]) / 2;
 const BLADES = Math.round((n * n * COVER) / (mean * HALF_WIDTH * 1.4));
-const HEADS = Math.round(CLOVER * LAWN_TILES * LAWN_TILES);
 /** Everything a little in from the square's corner, so no stamp's box
  *  starts before it. */
-const IN = 32;
+const IN = 64;
 
 /**
  * And the lawn is not flat: all of it rolls, in hummocks of longer grass
@@ -125,37 +127,43 @@ fn stamp(i: u32, at: vec2f) -> vec4f {
   let up = dot(o, b.way) / b.lean;
   let across = (o.y * b.way.x - o.x * b.way.y) / (${f(HALF_WIDTH)} * (1. - 0.7 * up));
   if (up < 0. || up >= 1. || abs(across) >= 1.) { return vec4f(0.); }
-  return vec4f(b.top * (0.2 + 0.8 * up) * (1. + ${f(FACE)} * (rnd(i, 7u) * 2. - 1.) * across), 0., 0., 0.);
+  return vec4f(min(1., b.top * (0.2 + 0.8 * up) * (1. + ${f(FACE)} * (rnd(i, 7u) * 2. - 1.) * across)), 0., 0., 0.);
 }`;
 
-/** A clover head's flowers, three to a head at most: each stands on the
- *  blades, round; how much of a flower a texel is, in green. */
-const FLOWERS = `${RANDOM}
-fn flower(i: u32) -> vec3f {
-  let head = i / 3u + 7000000u;
-  if (f32(i % 3u) >= 1. + floor(rnd(head, 2u) * 3.)) { return vec3f(0.); }
-  let at = vec2f(rnd(head, 0u), rnd(head, 1u)) * ${n}. + ${IN}. + (vec2f(rnd(i, 10u), rnd(i, 11u)) - 0.5) * ${SPREAD}.;
-  return vec3f(at, (${f(FLOWER[0])} + rnd(i, 12u) * ${f(FLOWER[1] - FLOWER[0])}) / 2.);
+/** The blades' heights, kept a byte a texel. */
+const KEPT = `fn fill(at: vec2f) -> vec4f { return textureLoad(src0, vec2i(at), 0); }`;
+
+/** Where a clover flower is, at a point of the map in tiles, from 0 to 1:
+ *  a tile's head, if it has one, of up to three. WGSL, for a lawn's reader. */
+const CLOVER_AT = `fn lawnRnd(i: u32, k: u32) -> f32 {
+  var h = i * 747796405u + k * 2891336453u + 1u;
+  h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+  return f32(((h >> 22u) ^ h) >> 8u) / 16777216.;
 }
-fn box(i: u32) -> vec4f { let c = flower(i); return vec4f(floor(c.xy - c.z), ceil(c.xy + c.z)); }
-fn stamp(i: u32, at: vec2f) -> vec4f {
-  let c = flower(i);
-  let d = dot(at - c.xy, at - c.xy) / max(c.z * c.z, 1e-6);
-  if (d >= 1.) { return vec4f(0.); }
-  return vec4f(1. + sqrt(1. - d), min(1., 1.5 * (1. - d)), 0., 0.);
+fn lawnClover(p: vec2f) -> f32 {
+  let c = vec2i(floor(p));
+  let head = (bitcast<u32>(c.x) * 73856093u) ^ (bitcast<u32>(c.y) * 19349663u);
+  if (lawnRnd(head, 0u) >= ${f(CLOVER)}) { return 0.; }
+  let at = vec2f(c) + 0.15 + 0.7 * vec2f(lawnRnd(head, 1u), lawnRnd(head, 2u));
+  var most = 0.;
+  for (var k = 0u; k < 1u + u32(lawnRnd(head, 3u) * 3.); k++) {
+    let o = at + (vec2f(lawnRnd(head, 10u + k), lawnRnd(head, 20u + k)) - 0.5) * ${f(SPREAD)};
+    let r = (${f(FLOWER[0])} + lawnRnd(head, 30u + k) * ${f(FLOWER[1] - FLOWER[0])}) / 2.;
+    most = max(most, min(1., 1.5 * (1. - dot(p - o, p - o) / (r * r))));
+  }
+  return most;
 }`;
+export const LAWN_DEFINITIONS = CLOVER_AT;
 
-/** Every texel's slope, across and up the square (red, green, from -1 to
- *  1 as 0 to 1), its height (blue, 0 deep between the blades), and whether
- *  a flower is there (alpha): a blade as tall as it is wide, whatever the
- *  texels. */
-const SLOPES = `fn high(p: vec2i) -> vec4f { return textureLoad(src0, (p % ${n} + ${n}) % ${n}, 0); }
-fn fill(at: vec2f) -> vec4f {
-  let p = vec2i(at);
-  let here = high(p);
-  let slope = vec2f(high(p + vec2i(1, 0)).r - high(p - vec2i(1, 0)).r, high(p + vec2i(0, 1)).r - high(p - vec2i(0, 1)).r) * ${f((HALF_WIDTH * 1.5) / 4)};
-  return vec4f(0.5 + slope, here.r, here.g);
-}`;
+/** The lawn read at a point of the map, in tiles, from `texture`: `name`,
+ *  its slope across and up (red, green, -1 to 1), its height (blue, 0 deep
+ *  between the blades) and whether a flower is there (alpha). Its slope
+ *  from the texels beside it, as a blade as tall as it is wide would have. */
+export const lawnRead = (texture: string, at: string, name: string) => `let ${name}Uv = (${at}) / ${f(LAWN_TILES)};
+let ${name}H = textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv, ${f(SHARPEN)}).r;
+let ${name}X = textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + vec2f(${(1 / n).toExponential(4)}, 0.), ${f(SHARPEN)}).r;
+let ${name}Y = textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + vec2f(0., ${(1 / n).toExponential(4)}), ${f(SHARPEN)}).r;
+let ${name} = vec4f(clamp(vec2f(${name}X - ${name}H, ${name}Y - ${name}H) * ${f(1.5 * HALF_WIDTH)}, vec2f(-1.), vec2f(1.)), ${name}H, lawnClover(${at}));`;
 
 /** The hummocks' slope (red, green, from -1 to 1 as 0 to 1) and height
  *  (blue), over the lawn's square: a pixel's facing tilted by it
@@ -175,11 +183,10 @@ export const hummocks = drawnOnce("hummocks", (engine: EngineContext): Texture2D
 
 /** The lawn, an engine's, drawn once. */
 export const lawn = drawnOnce("lawn", (engine: EngineContext): Texture2D => {
-  const texture = createFilledTexture(engine, n, n, "rgba8unorm", true);
-  const heights = createFilledTexture(engine, n, n, "rg16float");
+  const texture = createFilledTexture(engine, n, n, "r8unorm", true);
+  const heights = createFilledTexture(engine, n, n, "r16float");
   stampTexture(engine, heights, BLADE, BLADES, true, "max", [hummocks(engine)]);
-  stampTexture(engine, heights, FLOWERS, HEADS * 3, false);
-  fillTexture(engine, texture, SLOPES, [heights]);
+  fillTexture(engine, texture, KEPT, [heights]);
   retire(heights);
   return texture;
 });

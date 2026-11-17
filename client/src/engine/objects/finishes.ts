@@ -1,8 +1,7 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import { bark } from "../bark";
-import { bladeShade, BUMP, CLOVER, grain, SHARPEN } from "../ground";
-import { lawn } from "../lawn";
-import { LAWN_TILES } from "../lawn";
+import { bladeShade, BUMP, CLOVER, grain } from "../ground";
+import { lawn, LAWN_DEFINITIONS, lawnRead } from "../lawn";
 import { night } from "../lights";
 import { pavingPlugin } from "../paving";
 import { slate } from "../slateTexture";
@@ -216,12 +215,12 @@ roughness = 1.;`);
 /** The town's grass on a model's ground: the same lawn, read where it
  *  lies on the map, so it runs on into the land's; frayed blade by blade
  *  at its edge, the gaps going first. */
-const LAWN = coat("ModelLawn", `let lawnMap = textureSampleBias(modelLawn, modelLawnSampler, input.worldPos.xy / ${f(LAWN_TILES)}, ${f(SHARPEN)});
+const LAWN = coat("ModelLawn", `${lawnRead("modelLawn", "input.worldPos.xy", "lawnMap")}
 if (input.uv.x < ${f(FRAY * 1.5)} * (1. - lawnMap.b)) { discard; }
 baseColor = baseColor * ${bladeShade("lawnMap.b")};
 baseColor = mix(baseColor, vec3f(${CLOVER.map(f).join(", ")}), lawnMap.a);
-N = normalize(N - vec3f((lawnMap.rg * 2. - 1.) * ${f(BUMP)}, 0.));
-roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }));
+N = normalize(N - vec3f(lawnMap.rg * ${f(BUMP)}, 0.));
+roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }), LAWN_DEFINITIONS);
 
 /** The town's paving, stopped clean at its edge. */
 const PAVINGS = new WeakMap<EngineContext, MaterialPlugin>();
