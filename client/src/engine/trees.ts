@@ -47,14 +47,22 @@ const CARD_HEIGHT = 1;
 
 /** A top in layers: a square each, at these heights of the crown's and
  *  this wide, each known to the shader by its facing's x, which nothing
- *  else reads (the crown's facing is the shader's own). A broadleaf's is
- *  four, its clumps spread among them, its branches in the lowest. */
-const layered = (heights: number[], reach: number[]) => ({
+ *  else reads (the crown's facing is the shader's own), and its texture
+ *  drawn this much smaller than baked, by its y (1 where it lies as baked).
+ *  A broadleaf's is four, its clumps spread among them, its branches in
+ *  the lowest. */
+const layered = (heights: number[], reach: number[], fit = reach.map(() => 1)) => ({
   positions: reach.flatMap((w, l) => [-w, -w, heights[l], w, -w, heights[l], w, w, heights[l], -w, w, heights[l]]),
-  normals: reach.flatMap((_, l) => [l, 0, 1, l, 0, 1, l, 0, 1, l, 0, 1]),
+  normals: reach.flatMap((_, l) => [l, fit[l], 1, l, fit[l], 1, l, fit[l], 1, l, fit[l], 1]),
   indices: reach.flatMap((_, l) => [0, 2, 1, 0, 3, 2].map((i) => i + l * 4)),
 });
-const BROAD_TOP = layered([1, 0.86, 0.72, 0.58], [1, 1, 1, 1]);
+/** A broadleaf's layers stand as a dome's: each narrower than the one
+ *  under it and further apart near the top, so the camera, leaning in
+ *  over the near side, sees the lower ones fan out there, its side and
+ *  underside, and the far side's tucked under the top. */
+const BROAD_HEIGHTS = [1, 0.84, 0.64, 0.42];
+const BROAD_REACH = [0.55, 0.8, 0.94, 1];
+const BROAD_TOP = layered(BROAD_HEIGHTS, BROAD_REACH, BROAD_REACH);
 /** A conifer's top: a square a layer, from these heights down, each below the one over it in proportion to how wide that one is, of the crown's,
  *  the topmost under the tip of its shadow's card (`SIDE_HIGH`), and as wide
  *  as its arms reach. They cast no shadow (the card does), so they may
@@ -168,6 +176,7 @@ function crownPlugin(engine: LiteEngine, { shapes, count, grid, round, peak, hol
       { name: "vCrown", type: "vec2f" },
       { name: "vCrownTurn", type: "vec2f" },
       { name: "vCrownCell", type: "vec2f" },
+      { name: "vCrownFit", type: "f32" },
     ],
     getSamplers: () => [{ texture: "crownShape", sampler: "crownShapeSampler" }],
     bindTextures: (out) => out.push({ texture: shapes(engine) }),
@@ -178,16 +187,17 @@ function crownPlugin(engine: LiteEngine, { shapes, count, grid, round, peak, hol
 let treeCell = floor(finalWorld[3].xy * 13.);
 let treeSeed = fract(sin(vec2f(dot(treeCell, vec2f(127.1, 311.7)), dot(treeCell, vec2f(269.5, 183.3)))) * 43758.5453);
 out.vCrownTurn = vec2f(cos(treeSeed.y * 6.2831853), sin(treeSeed.y * 6.2831853));
-out.vCrownCell = vec2f(floor(treeSeed.x * ${count}.), round(normal.x));`,
+out.vCrownCell = vec2f(floor(treeSeed.x * ${count}.), round(normal.x));
+out.vCrownFit = normal.y;`,
           }
         : {
             // Cut round where its shadow is drawn too; shaped where it is seen.
             CUSTOM_FRAGMENT_UPDATE_ALPHA: `let crownTurn = input.vCrownTurn;
-let crownUv = vec2f(crownTurn.x * input.vCrown.x + crownTurn.y * input.vCrown.y, crownTurn.x * input.vCrown.y - crownTurn.y * input.vCrown.x);
+let crownUv = vec2f(crownTurn.x * input.vCrown.x + crownTurn.y * input.vCrown.y, crownTurn.x * input.vCrown.y - crownTurn.y * input.vCrown.x) / input.vCrownFit;
 let crownTex = textureSample(crownShape, crownShapeSampler, (input.vCrownCell + crownUv / ${f(2 * CROWN_REACH)} + 0.5) / vec2f(${grid[0]}., ${grid[1]}.));
 let crownR = crownTex.r * 2.;
 // Turned, its square's corners reach past what is baked, into the next crown's.
-if (crownR > 1. || dot(input.vCrown, input.vCrown) > 1.) { discard; }`,
+if (crownR > 1. || dot(input.vCrown, input.vCrown) > input.vCrownFit * input.vCrownFit) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let crownOut = input.vCrown / max(length(input.vCrown), 1e-4);
 let crownLean = crownTex.gb * 2. - 1.;
 let crownTilt = vec2f(crownTurn.x * crownLean.x - crownTurn.y * crownLean.y, crownTurn.y * crownLean.x + crownTurn.x * crownLean.y);
