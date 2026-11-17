@@ -1,6 +1,6 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import { bark } from "../bark";
-import { bladeShade, BUMP, CLOVER, grain } from "../ground";
+import { bladeShade, BUMP, CLOVER, grain, SHARPEN } from "../ground";
 import { lawn } from "../lawn";
 import { LAWN_TILES } from "../lawn";
 import { night } from "../lights";
@@ -216,7 +216,7 @@ roughness = 1.;`);
 /** The town's grass on a model's ground: the same lawn, read where it
  *  lies on the map, so it runs on into the land's; frayed blade by blade
  *  at its edge, the gaps going first. */
-const LAWN = coat("ModelLawn", `let lawnMap = textureSample(modelLawn, modelLawnSampler, input.worldPos.xy / ${f(LAWN_TILES)});
+const LAWN = coat("ModelLawn", `let lawnMap = textureSampleBias(modelLawn, modelLawnSampler, input.worldPos.xy / ${f(LAWN_TILES)}, ${f(SHARPEN)});
 if (input.uv.x < ${f(FRAY * 1.5)} * (1. - lawnMap.b)) { discard; }
 baseColor = baseColor * ${bladeShade("lawnMap.b")};
 baseColor = mix(baseColor, vec3f(${CLOVER.map(f).join(", ")}), lawnMap.a);

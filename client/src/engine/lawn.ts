@@ -20,7 +20,7 @@ export const LAWN_TILES = 8;
  *  a stroke a few pixels long there, sharp zoomed in; and how many times
  *  over they cover the lawn. */
 const LEAN = [14, 30];
-const HALF_WIDTH = 3;
+const HALF_WIDTH = 3.5;
 /** They lean up the map, away from the camera, as blades standing seen
  *  from it would, give or take this much, in radians. */
 const SWAY = 0.4;
@@ -113,14 +113,16 @@ fn box(i: u32) -> vec4f {
   return vec4f(floor(min(b.base, tip) - ${f(HALF_WIDTH)}), ceil(max(b.base, tip) + ${f(HALF_WIDTH)}));
 }
 // Up the blade, from its base to its tip; across, from its spine,
-// narrowing to the tip. Its height, in red.
+// narrowing to the tip. Its height, in red: a ridge, falling straight
+// from its spine either side, so each side is one flat face, one lit, one
+// not, crisp where they meet.
 fn stamp(i: u32, at: vec2f) -> vec4f {
   let b = blade(i);
   let o = at - b.base;
   let up = dot(o, b.way) / b.lean;
   let across = abs(o.y * b.way.x - o.x * b.way.y) / (${f(HALF_WIDTH)} * (1. - 0.7 * up));
   if (up < 0. || up >= 1. || across >= 1.) { return vec4f(0.); }
-  return vec4f(b.top * (0.2 + 0.8 * up) * (1. - across * across), 0., 0., 0.);
+  return vec4f(b.top * (0.2 + 0.8 * up) * (1. - across), 0., 0., 0.);
 }`;
 
 /** A clover head's flowers, three to a head at most: each stands on the

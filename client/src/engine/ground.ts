@@ -53,6 +53,9 @@ export const CLOVER = [1, 0.97, 0.86];
 const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.06, 1.05, 0.96];
 const SHEEN = 1;
+/** The lawn read a mip finer than the pixel asks: the camera looks
+ *  down at a slant, and the coarser mip it asks for blurs the blades. */
+export const SHARPEN = -1;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** Grass frays where it meets lower ground: within this far of its edge,
@@ -263,7 +266,7 @@ let groundD = groundIn(groundF.x);
 ${sheet === "wash" ? `if (groundD >= groundBand) { discard; }
 let groundSwash = groundBand * groundWash(material.groundTime, input.worldPos.xy);` : "let groundSwash = groundBand;"}
 if (groundD < groundSwash) { discard; }`
-    : `${any("bump") ? `let groundLawn = textureSample(groundLawn, groundLawnSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
+    : `${any("bump") ? `let groundLawn = textureSampleBias(groundLawn, groundLawnSampler, input.worldPos.xy / ${n(LAWN_TILES)}, ${n(SHARPEN)});` : ""}
 ${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
 ${any("slate") ? `let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, input.worldPos.xy / ${slateSpan}, ${n(CALM)}).rg * 2. - 1.;` : ""}
 ${
