@@ -54,11 +54,11 @@ const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.06, 1.05, 0.96];
 const SHEEN = 1;
 /** And the light shut out down among them: none at a blade's tip, rising
- *  as it goes down, smoothly, to this much of it at the ground. */
-const DEEP = 0.45;
+ *  as it goes down, evenly, to this much of it at the ground. */
+const DEEP = 0.7;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip, its
  *  shade among the others with it. */
-export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b}) * mix(${n(DEEP)}, 1., sqrt(saturate(${b})))`;
+export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b}) * mix(${n(DEEP)}, 1., saturate(${b}))`;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
  *  beat how far in it is, so it thins to its edge instead of stopping

@@ -115,14 +115,15 @@ fn box(i: u32) -> vec4f {
   return vec4f(floor(min(b.base, tip) - ${f(HALF_WIDTH)}), ceil(max(b.base, tip) + ${f(HALF_WIDTH)}));
 }
 // Up the blade, from its base to its tip; across, from its spine,
-// narrowing to the tip. Its height, in red: rounded over its spine.
+// narrowing to the tip. Its height, in red: rounded over its spine, rising
+// from the ground at its base, so it grows out of it, as dark there.
 fn stamp(i: u32, at: vec2f) -> vec4f {
   let b = blade(i);
   let o = at - b.base;
   let up = dot(o, b.way) / b.lean;
   let across = abs(o.y * b.way.x - o.x * b.way.y) / (${f(HALF_WIDTH)} * (1. - 0.7 * up));
   if (up < 0. || up >= 1. || across >= 1.) { return vec4f(0.); }
-  return vec4f(b.top * (0.2 + 0.8 * up) * (1. - across * across), 0., 0., 0.);
+  return vec4f(b.top * up * (1. - across * across), 0., 0., 0.);
 }`;
 
 /** The blades' heights, kept a byte a texel. */
