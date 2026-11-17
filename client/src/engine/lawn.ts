@@ -20,14 +20,14 @@ export const LAWN_TILES = 8;
  *  a stroke a few pixels long there, sharp zoomed in; and how many times
  *  over they cover the lawn. */
 const LEAN = [42, 90];
-const HALF_WIDTH = 6;
+const HALF_WIDTH = 7;
 /** How far a blade's face turns, across it, at most: from its far edge
  *  this much lower than its middle to as much higher. */
 const FACE = 0.6;
 /** They lean up the map, away from the camera, as blades standing seen
  *  from it would, give or take this much, in radians. */
 const SWAY = 0.4;
-const COVER = 9;
+const COVER = 7;
 /** They grow in tufts of this many, from within this many texels of the
  *  tuft's heart; and in clumps, about this many texels across, the
  *  shortest blades' this much shorter than the longest's, and as many
