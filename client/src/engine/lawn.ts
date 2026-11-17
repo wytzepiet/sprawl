@@ -29,9 +29,12 @@ const COVER = 5;
  *  tuft's heart; and the tufts in clumps, about this many texels across,
  *  the lowest this much shorter than the tallest. */
 const TUFT = 7;
+/** Of each tuft's blades, this many grow loose instead, anywhere, so no
+ *  ground goes bare between the tufts. */
+const LOOSE = 3;
 const TUFT_SPREAD = 14;
 const CLUMP = 128;
-const CLUMPED = 0.5;
+const CLUMPED = 0.35;
 /** Clover: this many heads to a tile, of one to three flowers each from
  *  this far across to this far, this far apart at most, in tiles. */
 const CLOVER = 0.6;
@@ -98,7 +101,8 @@ fn blade(i: u32) -> Blade {
   let tuft = i / ${TUFT}u;
   let r = ${f(TUFT_SPREAD)} * sqrt(rnd(i, 0u));
   let a = rnd(i, 1u) * 6.2831853;
-  let base = vec2f(rnd(tuft, 5u), rnd(tuft, 6u)) * ${n}. + ${IN}. + r * vec2f(cos(a), sin(a));
+  let loose = i % ${TUFT}u < ${LOOSE}u;
+  let base = select(vec2f(rnd(tuft, 5u), rnd(tuft, 6u)) * ${n}. + r * vec2f(cos(a), sin(a)), vec2f(rnd(i, 5u), rnd(i, 6u)) * ${n}., loose) + ${IN}.;
   let angle = ${f(Math.PI / 2)} + (rnd(i, 2u) - 0.5) * ${f(2 * SWAY)};
   let under = hummock(base);
   let down = 1. - 2. * under.rg;
