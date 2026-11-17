@@ -61,8 +61,8 @@ export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
  *  this much less again, the most of it lost near the ground. A share of
  *  the light a height `b` takes, all of it (`color`, once lit), and of the
  *  sun's again (`sunlit`). */
-const DEEP = 0.45;
-const DEEP_SUN = 0.12;
+const DEEP = 0.7;
+const DEEP_SUN = 0.25;
 export const bladeLight = (b: string) => `mix(${n(DEEP)}, 1., saturate(${b}))`;
 export const bladeSun = (b: string) => `mix(${n(DEEP_SUN)}, 1., sqrt(saturate(${b})))`;
 /** Grass frays where it meets lower ground: within this far of its edge,
