@@ -102,24 +102,32 @@ const BLADE = `${RANDOM}
 ${NOISE}
 // The hummocks' texel under a point.
 fn hummock(at: vec2f) -> vec4f { return textureLoad(src0, (vec2i(at * ${f(HUMMOCK_SIDE / n)}) % ${HUMMOCK_SIDE} + ${HUMMOCK_SIDE}) % ${HUMMOCK_SIDE}, 0); }
+// Each blade's numbers hashed twice over: rnd's one round left a blade's
+// two numbers related, and the blades stood in rows.
+fn hashed(v: u32) -> u32 {
+  let s = v * 747796405u + 2891336453u;
+  let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+fn blend(i: u32, k: u32) -> f32 { return f32(hashed(hashed(i) ^ (k * 2654435769u)) >> 8u) / 16777216.; }
 struct Blade { base: vec2f, way: vec2f, lean: f32, top: f32 }
 fn blade(i: u32) -> Blade {
   let tuft = i / ${TUFT}u;
-  let r = ${f(TUFT_SPREAD)} * sqrt(rnd(i, 0u));
-  let a = rnd(i, 1u) * 6.2831853;
+  let r = ${f(TUFT_SPREAD)} * sqrt(blend(i, 0u));
+  let a = blend(i, 1u) * 6.2831853;
   let loose = i % ${TUFT}u < ${LOOSE}u;
-  let base = select(vec2f(rnd(tuft, 5u), rnd(tuft, 6u)) * ${n}. + r * vec2f(cos(a), sin(a)), vec2f(rnd(i, 5u), rnd(i, 6u)) * ${n}., loose) + ${IN}.;
-  let angle = ${f(Math.PI / 2)} + (rnd(i, 2u) - 0.5) * ${f(2 * SWAY)};
+  let base = select(vec2f(blend(tuft, 5u), blend(tuft, 6u)) * ${n}. + r * vec2f(cos(a), sin(a)), vec2f(blend(i, 5u), blend(i, 6u)) * ${n}., loose) + ${IN}.;
+  let angle = ${f(Math.PI / 2)} + (blend(i, 2u) - 0.5) * ${f(2 * SWAY)};
   let under = hummock(base);
   let down = 1. - 2. * under.rg;
   let steep = saturate(length(down) * ${f(SLOPED / STEEP)});
   let way = normalize(vec2f(cos(angle), sin(angle)) + down / max(length(down), 1e-4) * steep * ${f(SPLAY)});
   let short = 1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u);
-  let lean = (${f(LEAN[0])} + rnd(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep) * short;
+  let lean = (${f(LEAN[0])} + blend(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep) * short;
   // Of the blades, as many grow where they are short as cover the ground
   // as the long ones do; the rest, none.
-  let grows = rnd(i, 8u) * short < ${f(1 - CLUMPED)};
-  let top = select(0., (0.5 + 0.5 * rnd(i, 4u)) * (0.6 + 0.4 * under.b), grows);
+  let grows = blend(i, 8u) * short < ${f(1 - CLUMPED)};
+  let top = select(0., (0.5 + 0.5 * blend(i, 4u)) * (0.6 + 0.4 * under.b), grows);
   return Blade(base, way, lean, top);
 }
 // Only the box round it, base to tip.
@@ -138,7 +146,11 @@ fn stamp(i: u32, at: vec2f) -> vec4f {
   let up = dot(o, b.way) / b.lean;
   let across = (o.y * b.way.x - o.x * b.way.y) / (${f(HALF_WIDTH)} * (1. - 0.7 * up));
   if (up < 0. || up >= 1. || abs(across) >= 1.) { return vec4f(0.); }
-  return vec4f(min(1., b.top * up * (1. + ${f(FACE)} * (rnd(i, 7u) * 2. - 1.) * across)), 0., 0., 0.);
+  // Its edges and tip fall away over a texel and a bit, not cut at a
+  // texel's middle, which left them in steps.
+  let width = ${f(HALF_WIDTH)} * (1. - 0.7 * up);
+  let edge = saturate((1. - abs(across)) * width / 1.2) * saturate((1. - up) * b.lean / 1.2);
+  return vec4f(min(1., b.top * up * edge * (1. + ${f(FACE)} * (blend(i, 7u) * 2. - 1.) * across)), 0., 0., 0.);
 }`;
 
 /** The blades' heights, kept a half float a texel. */
