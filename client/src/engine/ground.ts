@@ -100,6 +100,14 @@ const RIPPLE_PATCH = 2.5;
 /** How far in from its edge ground rounds over it, in tiles: 45 degrees at
  *  the edge itself, level by here. */
 const BEVEL = 0.1;
+/** Grass rounds over its whole frayed edge and a little past, a turf's
+ *  lip, its blades leaning out over the edge as far as this past 45
+ *  degrees: lit on the side the sun is, in its own shade on the other. */
+const LIP = FRAY + 0.1;
+const LIP_STEEP = 1.6;
+/** And the ground it stands on is in its shade, as down among its blades,
+ *  under the frayed edge and out this far past it, in tiles. */
+const FOOT = 0.15;
 /** The rock the land stands on takes the slate's grain, as the cliff's
  *  face does (`peaks.ts`), this much. */
 const SLATE_GRAIN = 0.5;
@@ -116,9 +124,9 @@ const LOOKS: { of: Ground[]; colour: Rgb; shine: number; bevel: number; bump: nu
   // The rock the land stands on: its edge is the cliff's top, of slate,
   // rounding over a little further than the grass does.
   { of: LAND, colour: theme.rock, shine: 0.06, bevel: BEVEL * 1.5, bump: 0, glint: 0, fray: 0, lawn: 0, slate: SLATE_GRAIN, matte: 0 },
-  // Grass rounds over onto the rock more tightly, half as far, and stops
-  // short of the cliff, as the wood floor does.
-  { of: ["Grass", "Forest", "Clay"], colour: theme.land, shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, lawn: 1, slate: 0, matte: 0 },
+  // Grass rounds over onto the rock in a lip (`LIP`), and stops short of
+  // the cliff, as the wood floor does.
+  { of: ["Grass", "Forest", "Clay"], colour: theme.land, shine: 0, bevel: LIP, bump: 1, glint: 0, fray: 1, lawn: 1, slate: 0, matte: 0 },
   // Clay through the turf: bare earth, frayed into the grass round it.
   { of: ["Clay"], colour: theme.clay, shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, lawn: 0, slate: 0, matte: 0 },
   // The wood floor frays into the grass, thinning blade by blade, and
@@ -274,10 +282,10 @@ if (groundD < groundSwash) { discard; }`
     : `${any("bump") ? lawnRead("groundLawn", "input.worldPos.xy", "groundBlades") : ""}
 ${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
 ${any("slate") ? `let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, input.worldPos.xy / ${slateSpan}, ${n(CALM)}).rg * 2. - 1.;` : ""}
+${any("fray") ? `let groundTufts = ${grainAt(`input.worldPos.xy / ${tuftSpan}`)};` : ""}
 ${
-  any("fray")
-    ? `let groundTufts = ${grainAt(`input.worldPos.xy / ${tuftSpan}`)};
-// The rock breaking through near an edge, plate by plate, read at the size it is drawn.
+  any("fray") || sheet === "rock"
+    ? `// The rock breaking through the grass near its edge, plate by plate, read at the size it is drawn.
 let groundPatch = textureSample(groundSlate, groundSlateSampler, input.worldPos.xy / ${patchSpan}).b;`
     : ""
 }
@@ -301,6 +309,16 @@ let groundIs${y.l} = f32(groundOn${y.l}${layers
       .join("")});`,
   )
   .join("\n")}
+${
+  sheet === "rock"
+    ? // The turf's shade on the rock: as dark as down among its blades under
+      // its frayed edge, fading out past it, but where a plate of the rock
+      // stands up through it.
+      `${field("groundTurf", bits(LOOKS[2].of))}
+let groundTurfD = groundIn(groundTurf.x);
+let groundFoot = smoothstep(${n(-FOOT)}, 0., groundTurfD) * f32(!(groundTurfD < ${patchesIn} && groundPatch > mix(${patched}, 1.05, groundTurfD / ${patchesIn})));`
+    : ""
+}
 let groundF = ${layers.map((y) => `groundIs${y.l} * groundF${y.l}`).join(" + ")};
 let groundD = ${layers.map((y) => `groundIs${y.l} * groundD${y.l}`).join(" + ")};
 if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
@@ -330,18 +348,21 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
             CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (any("bump") ? LAWN_DEFINITIONS : "") + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
             ...(any("bump") ? { CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color = color * mix(1., ${bladeLight("groundBlades.b")}, ${look("bump")});` } : {}),
+            ...(sheet === "rock" ? { CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color = color * mix(1., ${bladeLight("0.")}, groundFoot);` } : {}),
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""});
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundBlades.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundBlades.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
 ${any("bump") ? `sunlit = mix(1., ${bladeSun("groundBlades.b")}, ${look("bump")});` : ""}
+${sheet === "rock" ? `sunlit = mix(1., ${bladeSun("0.")}, groundFoot);` : ""}
 N = normalize(N ${tilt});
 ${
   any("bevel")
-    ? // It rounds over only near an edge, its facing turned out down the field's slope.
+    ? // It rounds over only near an edge, its facing turned out down the
+      // field's slope: 45 degrees at the edge, grass's lip steeper.
       `let groundBevel = ${look("bevel")};
 if (groundD < groundBevel && dot(groundF.yz, groundF.yz) > 0.) {
-  N = normalize(mix(N, normalize(N + normalize(vec3f(-groundF.yz, 0.))), 1. - groundD / groundBevel));
+  N = normalize(N + normalize(vec3f(-groundF.yz, 0.)) * (1. - groundD / groundBevel) * ${any("lawn") ? `mix(1., ${n(LIP_STEEP)}, ${look("lawn")})` : "1."});
 }`
     : ""
 }`,
