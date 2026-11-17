@@ -33,7 +33,7 @@ const DISTANCE = 2 / (Math.tan(TILT + FOV / 2) - Math.tan(TILT - FOV / 2)) / Mat
  *  response to the wheel and wants to arrive under the cursor at once. */
 const ZOOM_LERP_SPEED = 0.35;
 /** How near the camera comes, half the view's height in tiles: no nearer
- *  than the grass's blades stay sharp at (`lawn.ts`, 512 texels a tile, a
+ *  than the grass's blades stay sharp at (`lawn.ts`, 512 texels a tile on a desktop, a
  *  texel and a half a pixel on a retina screen here). */
 const NEAREST = 3;
 

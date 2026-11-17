@@ -90,8 +90,8 @@ export const RANDOM = `fn rnd(i: u32, k: u32) -> f32 {
  *  square or up to its side past it, where it comes round), and `fn
  *  stamp(i: u32, at: vec2f) -> vec4f`, what it gives the texel whose
  *  middle is `at`. Onto what is there, or `first` onto nothing; reading
- *  `sources` as `fillTexture`'s does. What a bake did a shape at a time in
- *  a worker, drawn. */
+ *  `sources` as `fillTexture`'s does, its mips made as `fillTexture`'s are.
+ *  What a bake did a shape at a time in a worker, drawn. */
 export function stampTexture(engine: Engine, target: Texture2D, code: string, count: number, first: boolean, operation: "max" | "add" = "max", sources: Texture2D[] = []) {
   const device = engine._device;
   const byCode = pipelines.get(device) ?? new Map<string, GPURenderPipeline>();
@@ -128,6 +128,7 @@ struct V { @builtin(position) p: vec4f, @location(0) @interpolate(flat) i: u32, 
   pass.draw(4, count * 4);
   pass.end();
   device.queue.submit([encoder.finish()]);
+  if (target.texture.mipLevelCount > 1) mipmaps(engine, target.texture);
 }
 
 /** Shapes as texels, for `layTexture` to read as its first source: twelve

@@ -1,5 +1,4 @@
 import { createFilledTexture, drawnOnce, fillTexture, RANDOM, stampTexture, type EngineContext, type Texture2D } from "./gpu";
-import { retire } from "./geometry";
 
 /**
  * The grass (`ground.ts` reads it): a square of lawn this many
@@ -9,18 +8,24 @@ import { retire } from "./geometry";
  * face taking the sun its own way, and the gaps between them in shade: a pile
  * without a second colour. Only their height is kept, a half float a texel
  * (a byte stepped the light along a blade), and their slope found where it
- * is read (`lawnRead`), at the pixel, so a blade stays crisp zoomed in. Drawn on the GPU as the game starts, a blade a
- * stamp (`stampTexture`), so nothing of it is kept.
+ * is read (`lawnRead`), at the pixel, so a blade stays crisp zoomed in.
+ * Drawn on the GPU as the game starts, a blade a stamp (`stampTexture`),
+ * so nothing of it is kept. A phone's is half as many texels a side, each
+ * as big as two, a quarter of the memory and the blades to draw: its
+ * screen has fewer pixels to a tile than one texel.
  */
-export const LAWN_SIDE = 4096;
+const PHONE = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+export const LAWN_SIDE = PHONE ? 2048 : 4096;
 export const LAWN_TILES = 8;
+/** Texels of the lawn to the 4096-a-side texels its sizes are in. */
+const T = LAWN_SIDE / 4096;
 
 /** How far a blade leans, base to tip as seen from above, and half its
  *  width at the base, in texels, eight texels to a pixel at the usual zoom:
  *  a stroke a few pixels long there, sharp zoomed in; and how many times
  *  over they cover the lawn. */
-const LEAN = [42, 90];
-const HALF_WIDTH = 7;
+const LEAN = [42 * T, 90 * T];
+const HALF_WIDTH = 7 * T;
 /** How far a blade's face turns, across it, at most: from its far edge
  *  this much lower than its middle to as much higher. */
 const FACE = 0.6;
@@ -37,8 +42,8 @@ const TUFT = 7;
 /** Of each tuft's blades, this many grow loose instead, anywhere, so no
  *  ground goes bare between the tufts. */
 const LOOSE = 3;
-const TUFT_SPREAD = 21;
-const CLUMP = 256;
+const TUFT_SPREAD = 21 * T;
+const CLUMP = 256 * T;
 const CLUMPED = 0.55;
 /** Clover: this many heads to a tile, of one to three flowers each from
  *  this far across to this far, this far apart at most, in tiles. */
@@ -46,9 +51,8 @@ const CLOVER = 0.6;
 const FLOWER = [0.02, 0.05];
 const SPREAD = 0.1;
 /** The lawn read a mip finer than the pixel asks: the camera looks
- *  down at a slant, and the coarser mip it asks for blurs the blades
- *  (`?sharpen=-2` finer still, `0` as asked). */
-const SHARPEN = Number(new URLSearchParams(globalThis.location?.search ?? "").get("sharpen") ?? -1);
+ *  down at a slant, and the coarser mip it asks for blurs the blades. */
+const SHARPEN = -1;
 
 
 const f = (x: number) => x.toFixed(4);
@@ -57,7 +61,7 @@ const mean = (LEAN[0] + LEAN[1]) / 2;
 const BLADES = Math.round((n * n * COVER) / (mean * HALF_WIDTH * 1.4) / (1 - CLUMPED));
 /** Everything a little in from the square's corner, so no stamp's box
  *  starts before it. */
-const IN = 96;
+const IN = 96 * T;
 
 /**
  * And the lawn is not flat: all of it rolls, in hummocks of longer grass
@@ -153,9 +157,6 @@ fn stamp(i: u32, at: vec2f) -> vec4f {
   return vec4f(min(1., b.top * up * edge * (1. + ${f(FACE)} * (blend(i, 7u) * 2. - 1.) * across)), 0., 0., 0.);
 }`;
 
-/** The blades' heights, kept a half float a texel. */
-const KEPT = `fn fill(at: vec2f) -> vec4f { return textureLoad(src0, vec2i(at), 0); }`;
-
 /** Where a clover flower is, at a point of the map in tiles, from 0 to 1:
  *  a tile's head, if it has one, of up to three. WGSL, for a lawn's reader. */
 const CLOVER_AT = `fn lawnRnd(i: u32, k: u32) -> f32 {
@@ -183,12 +184,10 @@ export const LAWN_DEFINITIONS = CLOVER_AT;
  *  between the blades) and whether a flower is there (alpha). Its slope
  *  from the heights half a texel either side, of the mip read, so it runs
  *  on smoothly from texel to texel instead of standing still in each, as a
- *  blade as tall as it is wide would have; its height their mean.
- *  (`?lawnzoom=8` draws it eight times larger, to see it.) */
-const ZOOM = Number(new URLSearchParams(globalThis.location?.search ?? "").get("lawnzoom") ?? 1);
+ *  blade as tall as it is wide would have; its height their mean. */
 export const lawnRead = (texture: string, at: string, name: string) => {
   const read = (o: string) => `textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + ${o}, ${f(SHARPEN)}).r`;
-  return `let ${name}Uv = (${at}) / ${f(LAWN_TILES * ZOOM)};
+  return `let ${name}Uv = (${at}) / ${f(LAWN_TILES)};
 let ${name}E = max(${(0.5 / n).toExponential(4)}, 0.5 * max(fwidth(${name}Uv).x, fwidth(${name}Uv).y) * ${f(2 ** SHARPEN)});
 let ${name}Xp = ${read(`vec2f(${name}E, 0.)`)};
 let ${name}Xm = ${read(`vec2f(-${name}E, 0.)`)};
@@ -216,9 +215,6 @@ export const hummocks = drawnOnce("hummocks", (engine: EngineContext): Texture2D
 /** The lawn, an engine's, drawn once. */
 export const lawn = drawnOnce("lawn", (engine: EngineContext): Texture2D => {
   const texture = createFilledTexture(engine, n, n, "r16float", true);
-  const heights = createFilledTexture(engine, n, n, "r16float");
-  stampTexture(engine, heights, BLADE, BLADES, true, "max", [hummocks(engine)]);
-  fillTexture(engine, texture, KEPT, [heights]);
-  retire(heights);
+  stampTexture(engine, texture, BLADE, BLADES, true, "max", [hummocks(engine)]);
   return texture;
 });
