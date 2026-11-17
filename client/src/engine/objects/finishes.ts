@@ -1,6 +1,6 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import { bark } from "../bark";
-import { BUMP, CLOVER, CREASE, grain } from "../ground";
+import { bladeShade, BUMP, CLOVER, grain } from "../ground";
 import { lawn } from "../lawn";
 import { LAWN_TILES } from "../lawn";
 import { night } from "../lights";
@@ -218,7 +218,7 @@ roughness = 1.;`);
  *  at its edge, the gaps going first. */
 const LAWN = coat("ModelLawn", `let lawnMap = textureSample(modelLawn, modelLawnSampler, input.worldPos.xy / ${f(LAWN_TILES)});
 if (input.uv.x < ${f(FRAY * 1.5)} * (1. - lawnMap.b)) { discard; }
-baseColor = baseColor * (1. - ${f(CREASE)} * (1. - lawnMap.b));
+baseColor = baseColor * ${bladeShade("lawnMap.b")};
 baseColor = mix(baseColor, vec3f(${CLOVER.map(f).join(", ")}), lawnMap.a);
 N = normalize(N - vec3f((lawnMap.rg * 2. - 1.) * ${f(BUMP)}, 0.));
 roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }));

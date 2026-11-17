@@ -8,12 +8,15 @@ import { SWASH, swashFn } from "./water";
 import { ripples } from "./waves";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";
-import { lawn, LAWN_TILES } from "./lawn";
+import { hummocks, HUMMOCK_TILES, lawn, LAWN_TILES } from "./lawn";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, LAND_LIES, TYPE_BY_BYTE, SHORE_LIES, WATER_Z, type Ground } from "./objects/terrainGeometry";
 import { live } from "./still";
 import { theme } from "./theme";
 import type { Rgb } from "./rgb";
+
+const n = (x: number) => x.toFixed(4);
+const v3 = (c: number[]) => `vec3f(${c.map(n).join(", ")})`;
 
 /**
  * The land, layer on layer: the beaches, the rock the land stands on, the
@@ -27,27 +30,30 @@ import type { Rgb } from "./rgb";
  * rounds over and is wet. Something built in a wood is one texel written.
  *
  * And the grass a lawn (`lawn.ts`), rather than one sheet of felt: one
- * tiling texture of short blades, read by where on the map a pixel lies,
+ * tiling texture of blades, read by where on the map a pixel lies,
  * its slope tilting the land's facing, each blade taking the light, its
- * creases a little darker, in their own shade; and the grass alone has
- * the clover flowers in it.
+ * creases darker and deeper green, its tips lighter and warmer, a little
+ * glossy; and the grass alone of one colour, but for the clover flowers in
+ * it, rising in hummocks of longer grass that take the sun on one side
+ * and turn from it on the other: light, not paint.
  */
 
 /** The grain's side, in texels, and how many tiles it spans. */
 const SIDE = 256;
 const SPAN = 4;
-/** How far the blades' slope tilts the land's facing, how much darker
- *  their deepest creases are, and the clover's colour. */
-export const BUMP = 0.45;
-export const CREASE = 0.3;
+/** How far the blades' slope tilts the land's facing, and this much more
+ *  on a hummock's top, where they stand longer; the clover's colour. */
+export const BUMP = 0.8;
+const TALLER = 0.6;
 export const CLOVER = [1, 0.97, 0.86];
-/** Grass is mottled, as a field is from the air: its colour lighter and a
- *  touch yellower in places, darker and a touch bluer in others, in broad
- *  patches this many tiles across and small ones this many, by up to this
- *  much. The rest of the land is its colour alone. */
-const PATCHES = 3;
-const SPECKS = 0.5;
-const MOTTLE = 0.06;
+/** A blade's colour, of the grass's, from deep between the blades (red
+ *  and blue going first, so it deepens, not greys) to its tip, as light
+ *  through a blade warms it; and how glossy a tip is (`townShine`). */
+const GAP = [0.62, 0.74, 0.62];
+const TIP = [1.06, 1.05, 0.96];
+const SHEEN = 0.35;
+/** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
+export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
  *  beat how far in it is, so it thins to its edge instead of stopping
@@ -93,24 +99,23 @@ const SLATE_GRAIN = 0.5;
  *  grass a little, its bumps catching it, and wood is matte. And how far it
  *  rounds over its edges: the wood floor lies on the grass, and only its
  *  edges onto lower ground round over, which the grass under it does. */
-const LOOKS: { of: Ground[]; colour: Rgb; shine: number; bevel: number; bump: number; glint: number; fray: number; mottle: number; slate: number; matte: number }[] = [
+const LOOKS: { of: Ground[]; colour: Rgb; shine: number; bevel: number; bump: number; glint: number; fray: number; lawn: number; slate: number; matte: number }[] = [
   // Sand glints, where the rest is bumped; and goes flat into the water.
   // It runs on under the land beside it (`UNDER`), so it shows only where
   // the land stops short of the water: one shore, not a blob.
-  { of: ["Beach"], colour: theme.beach, shine: 0.12, bevel: 0, bump: 0, glint: 1, fray: 0, mottle: 0, slate: 0, matte: 0 },
+  { of: ["Beach"], colour: theme.beach, shine: 0.12, bevel: 0, bump: 0, glint: 1, fray: 0, lawn: 0, slate: 0, matte: 0 },
   // The rock the land stands on: its edge is the cliff's top, of slate,
   // rounding over a little further than the grass does.
-  { of: LAND, colour: theme.rock, shine: 0.06, bevel: BEVEL * 1.5, bump: 0, glint: 0, fray: 0, mottle: 0, slate: SLATE_GRAIN, matte: 0 },
+  { of: LAND, colour: theme.rock, shine: 0.06, bevel: BEVEL * 1.5, bump: 0, glint: 0, fray: 0, lawn: 0, slate: SLATE_GRAIN, matte: 0 },
   // Grass rounds over onto the rock more tightly, half as far, and stops
   // short of the cliff, as the wood floor does.
-  { of: ["Grass", "Forest", "Clay"], colour: theme.land, shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0, matte: 0 },
-  // Clay through the turf: bare earth, frayed into the grass round it,
-  // unmottled, which would warm it to brick.
-  { of: ["Clay"], colour: theme.clay, shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 0, slate: 0, matte: 0 },
+  { of: ["Grass", "Forest", "Clay"], colour: theme.land, shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, lawn: 1, slate: 0, matte: 0 },
+  // Clay through the turf: bare earth, frayed into the grass round it.
+  { of: ["Clay"], colour: theme.clay, shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, lawn: 0, slate: 0, matte: 0 },
   // The wood floor frays into the grass, thinning blade by blade, and
   // further in than the grass does: it lies under the trees, not past them.
   // Needle litter in shade: fully matte.
-  { of: ["Forest"], colour: theme.forest, shine: 0, bevel: 0, bump: 1, glint: 0, fray: 1.6, mottle: 0, slate: 0, matte: 1 },
+  { of: ["Forest"], colour: theme.forest, shine: 0, bevel: 0, bump: 1, glint: 0, fray: 1.6, lawn: 0, slate: 0, matte: 1 },
 ];
 
 /** A random byte a texel, in red; and its slope across and up, from the
@@ -151,9 +156,6 @@ export function grain(engine: EngineContext): Texture2D {
   return texture;
 }
 
-
-const n = (x: number) => x.toFixed(4);
-const v3 = (c: number[]) => `vec3f(${c.map(n).join(", ")})`;
 
 /** A tile of land with a beach beside it, as the texture says it: its
  *  kind and this, the beach running on under it. */
@@ -202,9 +204,6 @@ const INSIDE = `fn groundIn(f: f32) -> f32 {
   return sign(f - 0.5) * 1.7320508 * cos(acos(-2.3094011 * g) / 3. - 2.0943951);
 }`;
 
-// A mottle's texel this many tiles across, either scale; lighter patches
-// warmer: more red and green, less blue, darker ones the other way.
-const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fraySpan, tuftSpan] = [n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
 const [slateSpan, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
 // How far up a beach the water runs, at most (`swashFn`); and wet sand,
@@ -232,12 +231,13 @@ type Sheet = keyof typeof SHEETS;
 function groundPlugin(engine: EngineContext, kinds: Texture2D, sheet: Sheet): MaterialPlugin {
   const layers = SHEETS[sheet].layers.map((l) => ({ l, ...LOOKS[l] }));
   const sand = layers[0].glint > 0;
-  const any = (k: "bump" | "fray" | "mottle" | "slate" | "bevel") => layers.some((look) => look[k] > 0);
+  const any = (k: "bump" | "fray" | "lawn" | "slate" | "bevel") => layers.some((look) => look[k] > 0);
   // A look of the layer a pixel is on: each layer's, by whether it is that one.
-  const look = (k: "shine" | "bevel" | "bump" | "mottle" | "slate" | "matte") => `(${layers.map((y) => `groundIs${y.l} * ${n(y[k])}`).join(" + ")})`;
+  const look = (k: "shine" | "bevel" | "bump" | "lawn" | "slate" | "matte") => `(${layers.map((y) => `groundIs${y.l} * ${n(y[k])}`).join(" + ")})`;
   const textures: [string, Texture2D][] = [["groundKinds", kinds]];
   if (sand || any("fray")) textures.push(["groundGrain", grain(engine)]);
   if (any("bump")) textures.push(["groundLawn", lawn(engine)]);
+  if (any("lawn")) textures.push(["groundHummocks", hummocks(engine)]);
   if (any("slate") || any("fray")) textures.push(["groundSlate", slate(engine)]);
   if (sand) textures.push(["sandRipples", sandRipples(engine)]);
   if (sheet === "wash") textures.push(["groundRipple", ripples(engine)]);
@@ -263,7 +263,7 @@ ${sheet === "wash" ? `if (groundD >= groundBand) { discard; }
 let groundSwash = groundBand * groundWash(material.groundTime, input.worldPos.xy);` : "let groundSwash = groundBand;"}
 if (groundD < groundSwash) { discard; }`
     : `${any("bump") ? `let groundLawn = textureSample(groundLawn, groundLawnSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
-${any("mottle") ? `let groundMottle = 0.6 * ${grainAt(`input.worldPos.xy / ${patches}`)} + 0.4 * ${grainAt(`input.worldPos.xy / ${specks}`)} - 0.5;` : ""}
+${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(HUMMOCK_TILES)});` : ""}
 ${any("slate") ? `let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, input.worldPos.xy / ${slateSpan}, ${n(CALM)}).rg * 2. - 1.;` : ""}
 ${
   any("fray")
@@ -282,7 +282,7 @@ ${
     ? // Grass frays blade by blade, the gaps going first, then the shorter
       // blades; the wood floor by them and by the grain's tufts, so its edge
       // wanders off its tiles' outline even where the blades are too fine to see.
-      `let groundOn${y.l} = groundD${y.l} >= ${y.mottle ? "(1. - groundLawn.b)" : "(0.5 * (1. - groundLawn.b) + 0.5 * groundTufts)"} * ${n(y.fray * FRAY)}
+      `let groundOn${y.l} = groundD${y.l} >= ${y.lawn ? "(1. - groundLawn.b)" : "(0.5 * (1. - groundLawn.b) + 0.5 * groundTufts)"} * ${n(y.fray * FRAY)}
   && !(groundD${y.l} < ${patchesIn} && groundPatch > mix(${patched}, 1.05, groundD${y.l} / ${patchesIn}));`
     : `let groundOn${y.l} = groundD${y.l} >= 0.;`
 }
@@ -296,7 +296,8 @@ let groundF = ${layers.map((y) => `groundIs${y.l} * groundF${y.l}`).join(" + ")}
 let groundD = ${layers.map((y) => `groundIs${y.l} * groundD${y.l}`).join(" + ")};
 if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
   const tilt = [
-    any("bump") ? `- vec3f((groundLawn.rg * 2. - 1.) * ${n(BUMP)} * ${look("bump")}, 0.)` : "",
+    any("bump") ? `- vec3f((groundLawn.rg * 2. - 1.) * ${n(BUMP)} * ${look("bump")}${any("lawn") ? ` * (1. + ${n(TALLER)} * groundHummock.b * ${look("lawn")})` : ""}, 0.)` : "",
+    any("lawn") ? `- vec3f((groundHummock.rg * 2. - 1.) * ${look("lawn")}, 0.)` : "",
     any("slate") ? `+ vec3f(groundSlateTilt * ${look("slate")}, 0.)` : "",
     sand ? `+ vec3f((groundGlint.yz - 0.5) * 2. * ${n(GLINT_TILT)} * groundGlinting, 0.) - vec3f(groundRippled * smoothstep(${swash}, ${swash} * 1.6, groundD), 0.)` : "",
   ].join(" ");
@@ -319,11 +320,9 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""});
-baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * (1. - ${n(CREASE)} * ${look("bump")} * (1. - groundLawn.b))` : ""}${
-              any("mottle") ? ` * (1. + ${look("mottle")} * groundMottle * vec3f(${mottleWarm}))` : ""
-            }${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
-${any("mottle") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundLawn.a * ${look("mottle")});` : ""}
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * pow(groundLawn.b, 3.)` : ""});
+baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundLawn.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
+${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundLawn.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
 N = normalize(N ${tilt});
 ${
