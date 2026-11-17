@@ -32,6 +32,10 @@ const DISTANCE = 2 / (Math.tan(TILT + FOV / 2) - Math.tan(TILT - FOV / 2)) / Mat
 /** Fraction of the remaining distance covered each frame: a zoom is a direct
  *  response to the wheel and wants to arrive under the cursor at once. */
 const ZOOM_LERP_SPEED = 0.35;
+/** How near the camera comes, half the view's height in tiles: no nearer
+ *  than the grass's blades stay sharp at (`lawn.ts`, 512 texels a tile, a
+ *  texel and a half a pixel on a retina screen here). */
+const NEAREST = 3;
 
 /** Chunks of unsurveyed ground the camera is allowed to see past the frontier. */
 const PAN_MARGIN_CHUNKS = 1;
@@ -170,7 +174,7 @@ export function Camera(props: { bounds?: () => Bounds | null }) {
   function zoomToward(size: number, clientX: number, clientY: number) {
     const { wx, wy } = screenToWorld(scene, canvas, { clientX, clientY });
     const [ux, uy] = [(wx - at.x) / half, (wy - at.y) / half];
-    const next = Math.max(2, Math.min(100, size));
+    const next = Math.max(NEAREST, Math.min(100, size));
     target = { half: next, x: target.x + ux * (target.half - next), y: target.y + uy * (target.half - next) };
   }
 
