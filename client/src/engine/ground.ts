@@ -58,7 +58,7 @@ export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** And the light shut out down among them, sun, sky and lamps alike: none
  *  at a blade's tip, more as it goes down, evenly, to this much of it let
  *  in at the ground. A share of the light a height `b` takes. */
-const DEEP = 0.55;
+const DEEP = 0.2;
 export const bladeLight = (b: string) => `mix(${n(DEEP)}, 1., saturate(${b}))`;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
