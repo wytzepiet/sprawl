@@ -145,21 +145,6 @@ function hooks() {
   };
 }
 
-/** A tilt-shift lens, to make the town look small: the far top of the view
- *  and the near bottom softened, a model's depth of field. The page blurs
- *  what is drawn under it, nothing in the renderer; `?tilt=0` takes it off. */
-const TILT = new URLSearchParams(location.search).get("tilt") !== "0";
-const SHARP = "linear-gradient(to bottom, black 0%, transparent 38%, transparent 72%, black 100%)";
-const TILT_SHIFT = {
-  position: "fixed",
-  inset: "0",
-  "pointer-events": "none",
-  "backdrop-filter": "blur(3px)",
-  "-webkit-backdrop-filter": "blur(3px)",
-  "mask-image": SHARP,
-  "-webkit-mask-image": SHARP,
-} as const;
-
 export default function Canvas(props: ParentProps) {
   const [ctx, setCtx] = createSignal<EngineContext>();
   const [registered, setRegistered] = createSignal(false);
@@ -318,9 +303,6 @@ export default function Canvas(props: ParentProps) {
         ref={(el) => void initCanvas(el)}
         style={{ width: "100vw", height: "100vh", display: "block", "touch-action": "none" }}
       />
-      <Show when={TILT}>
-        <div style={TILT_SHIFT} />
-      </Show>
       <Show when={ctx()}>
         {(c) => <BabylonContext.Provider value={c()}>{props.children}</BabylonContext.Provider>}
       </Show>
