@@ -51,7 +51,7 @@ export const CLOVER = [1, 0.97, 0.86];
  *  warms it; and how glossy, wet, a blade is, the most at
  *  its tip, fading down it (`townShine`). */
 const GAP = [0.62, 0.74, 0.62];
-const TIP = [1.04, 1.08, 0.86];
+const TIP = [1.08, 1.07, 0.98];
 const SHEEN = 1;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
