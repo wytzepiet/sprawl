@@ -49,22 +49,20 @@ const HEADS = Math.round(CLOVER * LAWN_TILES * LAWN_TILES);
 const IN = 32;
 
 /**
- * And the lawn is not flat: it rolls in hummocks, blobs of longer grass, of
- * noise this many cells to a side of its square and of cells half that,
- * rising from where it is this high to its top this much higher; a pixel's
- * facing tilted by their slope, this much for a rise of a hummock's whole
- * height over a tile. A point is in cells.
+ * And the lawn is not flat: all of it rolls, in hummocks of longer grass
+ * and hollows between, noise this many cells to a side of its square and of
+ * cells half that; no floor for them to sit on. A pixel's facing tilted by
+ * their slope, this much for a rise of a hummock's whole height over a
+ * tile. A point is in cells.
  */
 const HUMMOCK_CELLS = 10;
-const HUMMOCK_FOOT = 0.35;
-const HUMMOCK_RISE = 0.4;
-const HUMMOCK_TILT = 0.1;
+const HUMMOCK_TILT = 0.12;
 /** Drawn this many texels a side, a rise of this much its whole height a
  *  cell as its slope's whole range; a blade leaning out fully on a slope
  *  of this much a cell. */
 const HUMMOCK_SIDE = 512;
 const SLOPED = 4;
-const STEEP = 3;
+const STEEP = 1.5;
 /** How far the slope read tilts a pixel's facing. */
 export const HUMMOCK_BEND = SLOPED * (HUMMOCK_CELLS / LAWN_TILES) * HUMMOCK_TILT;
 const NOISE = `fn corner(c: vec2f, cells: u32, k: u32) -> f32 { let w = vec2u((vec2i(c) % i32(cells) + i32(cells)) % i32(cells)); return rnd(w.x + w.y * cells, k); }
@@ -74,8 +72,7 @@ fn noise(p: vec2f, cell: f32, cells: u32, k: u32) -> f32 {
   return mix(mix(corner(c, cells, k), corner(c + vec2f(1., 0.), cells, k), t.x), mix(corner(c + vec2f(0., 1.), cells, k), corner(c + vec2f(1., 1.), cells, k), t.x), t.y);
 }`;
 const HUMMOCK = `fn rise(p: vec2f) -> f32 {
-  let v = 0.65 * noise(p, 1., ${HUMMOCK_CELLS}u, 1u) + 0.35 * noise(p, 0.5, ${HUMMOCK_CELLS * 2}u, 2u);
-  return smoothstep(${f(HUMMOCK_FOOT)}, ${f(HUMMOCK_FOOT + HUMMOCK_RISE)}, v);
+  return 0.65 * noise(p, 1., ${HUMMOCK_CELLS}u, 1u) + 0.35 * noise(p, 0.5, ${HUMMOCK_CELLS * 2}u, 2u);
 }
 // Its rise a cell across, up and across the square.
 fn hummockSlope(p: vec2f) -> vec2f {
