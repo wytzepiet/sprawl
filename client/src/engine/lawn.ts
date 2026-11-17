@@ -24,7 +24,7 @@ const HALF_WIDTH = 7;
 /** They lean up the map, away from the camera, as blades standing seen
  *  from it would, give or take this much, in radians. */
 const SWAY = 0.4;
-const COVER = 5;
+const COVER = 9;
 /** They grow in tufts of this many, from within this many texels of the
  *  tuft's heart; and in clumps, about this many texels across, the
  *  shortest blades' this much shorter than the longest's, and as many
