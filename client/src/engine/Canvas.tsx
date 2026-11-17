@@ -78,8 +78,9 @@ const DEVICE_RATIO = PHONE ? 1.3 : MAX_DEVICE_RATIO;
 /** And in this many pixels at most, whatever the ratio: what a frame costs
  *  the GPU is mostly its pixels, and a laptop's retina screen at 2 is near
  *  six million of them, four times a phone's, and runs hot for it. Here it
- *  is drawn at about 1.4 instead, the flat colours no worse for it. */
-const MAX_PIXELS = 3e6;
+ *  is drawn at about 1.4 instead, the flat colours no worse for it
+ *  (`?pixels=6e6` to see it at 2, the grass's blades sharp). */
+const MAX_PIXELS = Number(new URLSearchParams(location.search).get("pixels")) || 3e6;
 /** And less again while the GPU cannot keep up, judged as the view moves
  *  over the middle of the last `JUDGED` frames, to a pixel to the CSS pixel
  *  at the least. Where the GPU's own time can be read, a step down when it
