@@ -5,8 +5,8 @@ import { retire } from "./geometry";
  * The grass (`ground.ts` reads it): a square of lawn this many
  * texels a side, wrapping, laid over this many tiles. Blades in tufts,
  * fanned, long enough to see at the usual zoom, leaning up the map give or
- * take a little, so from above mostly their tips show, each blade one face
- * taking the sun its own way, and the gaps between them in shade: a pile
+ * take a little, so from above mostly their tips show, each blade rounded,
+ * each side taking the sun its own way, and the gaps between them in shade: a pile
  * without a second colour. Only their height is kept, a byte a texel, and
  * their slope found where it is read (`lawnRead`), at the pixel, so a blade
  * stays crisp zoomed in. Drawn on the GPU as the game starts, a blade a
@@ -21,9 +21,6 @@ export const LAWN_TILES = 8;
  *  over they cover the lawn. */
 const LEAN = [28, 60];
 const HALF_WIDTH = 7;
-/** How far a blade's face turns, across it, at most: from its far edge
- *  this much lower than its middle to as much higher. */
-const FACE = 0.6;
 /** They lean up the map, away from the camera, as blades standing seen
  *  from it would, give or take this much, in radians. */
 const SWAY = 0.4;
@@ -118,16 +115,14 @@ fn box(i: u32) -> vec4f {
   return vec4f(floor(min(b.base, tip) - ${f(HALF_WIDTH)}), ceil(max(b.base, tip) + ${f(HALF_WIDTH)}));
 }
 // Up the blade, from its base to its tip; across, from its spine,
-// narrowing to the tip, from one edge to the other. Its height, in red:
-// one flat face, turned its own way, so it takes the sun as no blade
-// beside it does.
+// narrowing to the tip. Its height, in red: rounded over its spine.
 fn stamp(i: u32, at: vec2f) -> vec4f {
   let b = blade(i);
   let o = at - b.base;
   let up = dot(o, b.way) / b.lean;
-  let across = (o.y * b.way.x - o.x * b.way.y) / (${f(HALF_WIDTH)} * (1. - 0.7 * up));
-  if (up < 0. || up >= 1. || abs(across) >= 1.) { return vec4f(0.); }
-  return vec4f(min(1., b.top * (0.2 + 0.8 * up) * (1. + ${f(FACE)} * (rnd(i, 7u) * 2. - 1.) * across)), 0., 0., 0.);
+  let across = abs(o.y * b.way.x - o.x * b.way.y) / (${f(HALF_WIDTH)} * (1. - 0.7 * up));
+  if (up < 0. || up >= 1. || across >= 1.) { return vec4f(0.); }
+  return vec4f(b.top * (0.2 + 0.8 * up) * (1. - across * across), 0., 0., 0.);
 }`;
 
 /** The blades' heights, kept a byte a texel. */
