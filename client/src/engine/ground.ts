@@ -32,8 +32,8 @@ const v3 = (c: number[]) => `vec3f(${c.map(n).join(", ")})`;
  * And the grass a lawn (`lawn.ts`), rather than one sheet of felt: one
  * tiling texture of blades, read by where on the map a pixel lies,
  * its slope tilting the land's facing, each blade taking the light, its
- * creases darker and deeper green, its tips lighter and warmer, a little
- * glossy; and the grass alone of one colour, but for the clover flowers in
+ * creases darker and deeper green and shut from the sun, its tips lighter
+ * and warmer; and the grass alone of one colour, but for the clover flowers in
  * it, rising in hummocks of longer grass that take the sun on one side
  * and turn from it on the other: light, not paint.
  */
@@ -48,14 +48,9 @@ const TALLER = 0.6;
 export const CLOVER = [1, 0.97, 0.86];
 /** A blade's colour, of the grass's, from deep between the blades (red
  *  and blue less, so it deepens) to its tip, as light through a blade
- *  warms it; and how glossy, wet, a blade is, its own sheen, as rough
- *  as this, broad, so most blades facing the sun catch it, not a pixel
- *  here and there as the town's polish (`townShine`) would. */
+ *  warms it. */
 const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.08, 1.07, 0.98];
-const SHEEN = 0.3;
-/** Wet from this far up a blade on, of the tallest, fading below it. */
-const GLOSSY = 0.4;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** And the light shut out down among them: none at a blade's tip, more as
@@ -339,7 +334,6 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundBlades.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundBlades.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
-${any("lawn") ? `roughness = mix(roughness, ${n(SHEEN)}, ${look("lawn")} * smoothstep(0., ${n(GLOSSY)}, groundBlades.b));` : ""}
 ${any("bump") ? `sunlit = mix(1., ${bladeSun("groundBlades.b")}, ${look("bump")});` : ""}
 N = normalize(N ${tilt});
 ${
