@@ -7,9 +7,9 @@ import { retire } from "./geometry";
  * fanned, long enough to see at the usual zoom, leaning up the map give or
  * take a little, so from above mostly their tips show, each blade one flat
  * face taking the sun its own way, and the gaps between them in shade: a pile
- * without a second colour. Only their height is kept, a byte a texel, and
- * their slope found where it is read (`lawnRead`), at the pixel, so a blade
- * stays crisp zoomed in. Drawn on the GPU as the game starts, a blade a
+ * without a second colour. Only their height is kept, a half float a texel
+ * (a byte stepped the light along a blade), and their slope found where it
+ * is read (`lawnRead`), at the pixel, so a blade stays crisp zoomed in. Drawn on the GPU as the game starts, a blade a
  * stamp (`stampTexture`), so nothing of it is kept.
  */
 export const LAWN_SIDE = 4096;
@@ -141,7 +141,7 @@ fn stamp(i: u32, at: vec2f) -> vec4f {
   return vec4f(min(1., b.top * up * (1. + ${f(FACE)} * (rnd(i, 7u) * 2. - 1.) * across)), 0., 0., 0.);
 }`;
 
-/** The blades' heights, kept a byte a texel. */
+/** The blades' heights, kept a half float a texel. */
 const KEPT = `fn fill(at: vec2f) -> vec4f { return textureLoad(src0, vec2i(at), 0); }`;
 
 /** Where a clover flower is, at a point of the map in tiles, from 0 to 1:
@@ -169,12 +169,21 @@ export const LAWN_DEFINITIONS = CLOVER_AT;
 /** The lawn read at a point of the map, in tiles, from `texture`: `name`,
  *  its slope across and up (red, green, -1 to 1), its height (blue, 0 deep
  *  between the blades) and whether a flower is there (alpha). Its slope
- *  from the texels beside it, as a blade as tall as it is wide would have. */
-export const lawnRead = (texture: string, at: string, name: string) => `let ${name}Uv = (${at}) / ${f(LAWN_TILES)};
-let ${name}H = textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv, ${f(SHARPEN)}).r;
-let ${name}X = textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + vec2f(${(1 / n).toExponential(4)}, 0.), ${f(SHARPEN)}).r;
-let ${name}Y = textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + vec2f(0., ${(1 / n).toExponential(4)}), ${f(SHARPEN)}).r;
-let ${name} = vec4f(clamp(vec2f(${name}X - ${name}H, ${name}Y - ${name}H) * ${f(1.5 * HALF_WIDTH)}, vec2f(-1.), vec2f(1.)), ${name}H, lawnClover(${at}));`;
+ *  from the heights half a texel either side, of the mip read, so it runs
+ *  on smoothly from texel to texel instead of standing still in each, as a
+ *  blade as tall as it is wide would have; its height their mean.
+ *  (`?lawnzoom=8` draws it eight times larger, to see it.) */
+const ZOOM = Number(new URLSearchParams(globalThis.location?.search ?? "").get("lawnzoom") ?? 1);
+export const lawnRead = (texture: string, at: string, name: string) => {
+  const read = (o: string) => `textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + ${o}, ${f(SHARPEN)}).r`;
+  return `let ${name}Uv = (${at}) / ${f(LAWN_TILES * ZOOM)};
+let ${name}E = max(${(0.5 / n).toExponential(4)}, 0.5 * max(fwidth(${name}Uv).x, fwidth(${name}Uv).y) * ${f(2 ** SHARPEN)});
+let ${name}Xp = ${read(`vec2f(${name}E, 0.)`)};
+let ${name}Xm = ${read(`vec2f(-${name}E, 0.)`)};
+let ${name}Yp = ${read(`vec2f(0., ${name}E)`)};
+let ${name}Ym = ${read(`vec2f(0., -${name}E)`)};
+let ${name} = vec4f(clamp(vec2f(${name}Xp - ${name}Xm, ${name}Yp - ${name}Ym) / (2. * ${name}E * ${n}.) * ${f(1.5 * HALF_WIDTH)}, vec2f(-1.), vec2f(1.)), 0.25 * (${name}Xp + ${name}Xm + ${name}Yp + ${name}Ym), lawnClover(${at}));`;
+};
 
 /** The hummocks' slope (red, green, from -1 to 1 as 0 to 1) and height
  *  (blue), over the lawn's square: a pixel's facing tilted by it
@@ -194,7 +203,7 @@ export const hummocks = drawnOnce("hummocks", (engine: EngineContext): Texture2D
 
 /** The lawn, an engine's, drawn once. */
 export const lawn = drawnOnce("lawn", (engine: EngineContext): Texture2D => {
-  const texture = createFilledTexture(engine, n, n, "r8unorm", true);
+  const texture = createFilledTexture(engine, n, n, "r16float", true);
   const heights = createFilledTexture(engine, n, n, "r16float");
   stampTexture(engine, heights, BLADE, BLADES, true, "max", [hummocks(engine)]);
   fillTexture(engine, texture, KEPT, [heights]);
