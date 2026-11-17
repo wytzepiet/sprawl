@@ -48,8 +48,8 @@ const TALLER = 0.6;
 export const CLOVER = [1, 0.97, 0.86];
 /** A blade's colour, of the grass's, from deep between the blades (red
  *  and blue going first, so it deepens, not greys) to its tip, as light
- *  through a blade warms it; and how glossy, wet, a blade is at its tip, only
- *  length (`townShine`). */
+ *  through a blade warms it; and how glossy, wet, a blade is at its tip
+ *  (`townShine`). */
 const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.06, 1.05, 0.96];
 const SHEEN = 1;
