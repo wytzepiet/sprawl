@@ -48,10 +48,11 @@ const TALLER = 0.6;
 export const CLOVER = [1, 0.97, 0.86];
 /** A blade's colour, of the grass's, from deep between the blades (red
  *  and blue going first, so it deepens, not greys) to its tip, as light
- *  through a blade warms it; and how glossy a tip is (`townShine`). */
+ *  through a blade warms it; and how glossy, near wet, a blade is up its
+ *  length (`townShine`). */
 const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.06, 1.05, 0.96];
-const SHEEN = 0.35;
+const SHEEN = 1;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** Grass frays where it meets lower ground: within this far of its edge,
@@ -320,7 +321,7 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * pow(groundLawn.b, 3.)` : ""});
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * sqrt(groundLawn.b)` : ""});
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundLawn.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundLawn.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
