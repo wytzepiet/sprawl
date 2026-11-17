@@ -98,6 +98,8 @@ const MAX_PIXELS = Number(new URLSearchParams(location.search).get("pixels")) ||
  *  ratio judged is drawn at only once the view has stood still `REST_MS`,
  *  the GPU no longer behind, and `SWITCH_MS` after the last. */
 const JUDGED = 120;
+/** `?pin`: never judged, drawn at the most the ratio and the pixels allow. */
+const PIN = new URLSearchParams(location.search).has("pin");
 const GPU_MS = 12;
 const UP_SHARE = 0.75;
 const REST_MS = 500;
@@ -241,7 +243,7 @@ export default function Canvas(props: ParentProps) {
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
       const cap = Math.min(DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
-      if (moving) judge(now, delta, cap);
+      if (moving && !PIN) judge(now, delta, cap);
       const caught = timed ? engine.gpuFrameTimeMs < GPU_MS : delta < LATE_MS * 2;
       if (ratio !== shown && now - lastMoved > REST_MS && now - switched > SWITCH_MS && caught) [shown, switched] = [ratio, now];
       engine.surfaces[0].maxDevicePixelRatio = Math.min(cap, shown);

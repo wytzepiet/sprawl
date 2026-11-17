@@ -46,8 +46,9 @@ const CLOVER = 0.6;
 const FLOWER = [0.02, 0.05];
 const SPREAD = 0.1;
 /** The lawn read a mip finer than the pixel asks: the camera looks
- *  down at a slant, and the coarser mip it asks for blurs the blades. */
-const SHARPEN = -1;
+ *  down at a slant, and the coarser mip it asks for blurs the blades
+ *  (`?sharpen=-2` finer still, `0` as asked). */
+const SHARPEN = Number(new URLSearchParams(globalThis.location?.search ?? "").get("sharpen") ?? -1);
 
 
 const f = (x: number) => x.toFixed(4);
