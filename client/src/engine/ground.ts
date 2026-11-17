@@ -53,6 +53,8 @@ export const CLOVER = [1, 0.97, 0.86];
 const GAP = [0.62, 0.74, 0.62];
 const TIP = [1.08, 1.07, 0.98];
 const SHEEN = 1;
+/** Wet from this far up a blade on, of the tallest, fading below it. */
+const GLOSSY = 0.4;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** And the light shut out down among them: none at a blade's tip, more as
@@ -332,7 +334,7 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
             CUSTOM_FRAGMENT_DEFINITIONS: INSIDE + (any("bump") ? LAWN_DEFINITIONS : "") + (sheet === "wash" ? swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash") : ""),
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
             ...(any("bump") ? { CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color = color * mix(1., ${bladeLight("groundBlades.b")}, ${look("bump")});` } : {}),
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * groundBlades.b` : ""});
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""}${any("lawn") ? ` + ${n(SHEEN)} * ${look("lawn")} * smoothstep(0., ${n(GLOSSY)}, groundBlades.b)` : ""});
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * mix(vec3f(1.), ${bladeShade("groundBlades.b")}, ${look("bump")})` : ""}${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("lawn") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundBlades.a * ${look("lawn")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
