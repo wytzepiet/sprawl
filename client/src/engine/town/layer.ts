@@ -1,5 +1,6 @@
 import type { TerrainType } from "../../generated";
-import { kerbsOf, kerbTexels, roadsOf, type KerbTexels } from "../kerbLines";
+import { coverage, kerbDistances, kerbsOf, kerbTexels, roadsOf, VERGE_DENSITY, VERGE_OUT, type KerbTexels } from "../kerbLines";
+import type { Laid } from "../verge";
 import { theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
@@ -70,6 +71,9 @@ export interface ChunkDrawing {
   props: Float32Array;
   cut: Box;
   paving: KerbTexels | null;
+  /** How far inside its paving, near its edges, for the grass's verge
+   *  (`verge.ts`), in the window's frame. */
+  verge: Laid | null;
 }
 
 export interface Drawing {
@@ -125,6 +129,16 @@ export function kerbed(roads: Snapshot["roads"]): Set<string> {
     }
   }
   return out;
+}
+
+/** How far inside a chunk's paving, over its box and the grass's reach
+ *  round it. */
+function vergeOf(kerbs: ReturnType<typeof kerbsOf>, cover: Parameters<typeof coverage>[0], [bx0, by0, bx1, by1]: Box): Laid {
+  const [d, reach] = [VERGE_DENSITY, VERGE_OUT + 2 / VERGE_DENSITY];
+  const [x0, y0] = [bx0 - reach, by0 - reach];
+  const [w, h] = [Math.ceil((bx1 - bx0 + 2 * reach) * d), Math.ceil((by1 - by0 + 2 * reach) * d)];
+  const data = coverage(cover, kerbDistances(kerbs, x0, y0, d, w, h, reach), x0, y0, d, w, h);
+  return { data, x0: x0 + 0.5 / d, y0: y0 + 0.5 / d, density: d, w, h };
 }
 
 /** The snapshot's chunks, drawn. */
@@ -252,11 +266,12 @@ export function drawChunks(s: Snapshot): Drawing {
     const sheet = own.find((p) => p.name === "pavement" && p.geo.indices.length);
     const near = (roadsBy.get(key) ?? []).flatMap((t) => [roadSheet.indices[t], roadSheet.indices[t + 1], roadSheet.indices[t + 2]]);
     const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, roads: { sheet: { ...roadSheet, indices: near }, edges: roadEdges } }) : null;
+    const verge = sheet ? vergeOf(kerbs, sheet.geo, cut) : null;
     // A prop stands on the chunk it is on, as a tree does.
     const mine = props.filter((p) => p.x >= cut[0] && p.x < cut[2] && p.y >= cut[1] && p.y < cut[3]);
     const packed = new Float32Array(mine.length * PROP_FLOATS);
     mine.forEach((p, i) => packed.set([PROP_KINDS.indexOf(p.kind), p.x, p.y, p.z, p.size, p.high, p.tx, p.ty], i * PROP_FLOATS));
-    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, theme), props: packed, cut, paving };
+    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, theme), props: packed, cut, paving, verge };
   });
   return { chunks, window, ms: performance.now() - began };
 }

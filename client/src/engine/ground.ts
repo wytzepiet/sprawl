@@ -1,4 +1,4 @@
-import { addToScene, changedWithin, createTexture2DFromPixels, markMaterialUboDirty, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
+import { addToScene, changedWithin, markMeshRenderableDirty, createTexture2DFromPixels, markMaterialUboDirty, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "./gpu";
 import { townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, retire } from "./geometry";
 import type { Culler } from "./cull";
@@ -14,6 +14,8 @@ import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, LAND_LIES, TYPE_BY_BYTE, S
 import { live } from "./still";
 import { theme } from "./theme";
 import type { Rgb } from "./rgb";
+import { verge, VERGE_IN, VERGE_OUT } from "./verge";
+import { VERGE_DENSITY } from "./kerbLines";
 
 const n = (x: number) => x.toFixed(4);
 const v3 = (c: number[]) => `vec3f(${c.map(n).join(", ")})`;
@@ -108,6 +110,10 @@ const LIP_STEEP = 1.6;
 /** And the ground it stands on is in its shade, as down among its blades,
  *  under the frayed edge and out this far past it, in tiles. */
 const FOOT = 0.15;
+/** And it stands a little over the roads and paving laid in it, rounding
+ *  down to them over this far, in tiles, as steeply as its lip
+ *  (`verge.ts`). */
+const VERGE = 0.12;
 /** The rock the land stands on takes the slate's grain, as the cliff's
  *  face does (`peaks.ts`), this much. */
 const SLATE_GRAIN = 0.5;
@@ -245,7 +251,7 @@ const SHEETS = {
 type Sheet = keyof typeof SHEETS;
 
 /** A sheet's material, for a chunk's kinds. */
-function groundPlugin(engine: EngineContext, kinds: Texture2D, sheet: Sheet): MaterialPlugin {
+function groundPlugin(engine: EngineContext, kinds: Texture2D, sheet: Sheet, chunk: string): MaterialPlugin {
   const layers = SHEETS[sheet].layers.map((l) => ({ l, ...LOOKS[l] }));
   const sand = layers[0].glint > 0;
   const any = (k: "bump" | "fray" | "lawn" | "slate" | "bevel") => layers.some((look) => look[k] > 0);
@@ -332,8 +338,8 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
     name: `Ground ${sheet}`,
     priority: 210,
     getVaryings: () => [{ name: "vGroundAt", type: "vec2f" }],
-    getSamplers: () => textures.map(([name]) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push(...textures.map(([, texture]) => ({ texture }))),
+    getSamplers: () => [...textures.map(([name]) => ({ texture: name, sampler: `${name}Sampler` })), ...(sheet === "turf" ? [{ texture: "groundVerge", sampler: "groundVergeSampler" }] : [])],
+    bindTextures: (out) => out.push(...textures.map(([, texture]) => ({ texture })), ...(sheet === "turf" ? [{ texture: verge(engine).of(chunk) }] : [])),
     ...(sheet === "wash"
       ? {
           getUniforms: () => ({ ubo: [{ name: "groundTime", type: "f32" }] }),
@@ -365,6 +371,23 @@ if (groundD < groundBevel && dot(groundF.yz, groundF.yz) > 0.) {
   N = normalize(N + normalize(vec3f(-groundF.yz, 0.)) * (1. - groundD / groundBevel) * ${any("lawn") ? `mix(1., ${n(LIP_STEEP)}, ${look("lawn")})` : "1."});
 }`
     : ""
+}
+${
+  sheet === "turf"
+    ? // Its verge, rounding down to a road or paving: how far from them,
+      // and which way they are, from the texels either side.
+      `let groundVergeUv = input.vGroundAt / ${n(CHUNK_SIZE)};
+let groundVergeD = textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv, 0.).r * ${n(VERGE_IN + VERGE_OUT)} - ${n(VERGE_IN)};
+if (groundVergeD < ${n(VERGE)}) {
+  let groundVt = ${n(1 / (CHUNK_SIZE * VERGE_DENSITY))};
+  let groundVg = vec2f(
+    textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv + vec2f(groundVt, 0.), 0.).r - textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv - vec2f(groundVt, 0.), 0.).r,
+    textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv + vec2f(0., groundVt), 0.).r - textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv - vec2f(0., groundVt), 0.).r);
+  if (dot(groundVg, groundVg) > 0.) {
+    N = normalize(N - normalize(vec3f(groundVg, 0.)) * (1. - max(groundVergeD, 0.) / ${n(VERGE)}) * ${n(LIP_STEEP)});
+  }
+}`
+    : ""
 }`,
           },
   };
@@ -381,6 +404,7 @@ interface Chunk {
 export class GroundTiles {
   private chunks = new Map<string, Chunk>();
   private stopClock: () => void;
+  private stopVerge: () => void;
 
   constructor(
     private engine: EngineContext,
@@ -391,6 +415,13 @@ export class GroundTiles {
     // The swash's clock, a frame at a time.
     this.stopClock = beforeRender(() => {
       for (const { sheets } of this.chunks.values()) if (sheets.has("wash")) markMaterialUboDirty(sheets.get("wash")!.material);
+    });
+    // The grass drawn again where its verge moved; bound to a new texture.
+    this.stopVerge = verge(engine).listen((key, fresh, within) => {
+      const turf = this.chunks.get(key)?.sheets.get("turf")?.mesh;
+      if (!turf) return;
+      if (fresh) markMeshRenderableDirty(turf);
+      changedWithin(turf, within);
     });
   }
 
@@ -424,7 +455,7 @@ export class GroundTiles {
       const { z, order, lies, plane } = SHEETS[sheet];
       const S = CHUNK_SIZE;
       const mesh = meshOf(this.engine, `ground_${key}_${sheet}`, { positions: [0, 0, 0, S, 0, 0, S, S, 0, 0, S, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
-      const material = townMaterial([groundPlugin(this.engine, chunk.kinds, sheet)]);
+      const material = townMaterial([groundPlugin(this.engine, chunk.kinds, sheet, key)]);
       material.plane = plane;
       mesh.material = material;
       mesh.renderOrder = LAYER_ORDER.ground + order;
@@ -449,5 +480,6 @@ export class GroundTiles {
   dispose() {
     for (const key of [...this.chunks.keys()]) this.delete(key);
     this.stopClock();
+    this.stopVerge();
   }
 }

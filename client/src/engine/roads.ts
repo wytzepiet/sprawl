@@ -3,13 +3,14 @@ import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, retire } from "./geometry";
 import { theme } from "./theme";
 import { Atlas } from "./atlas";
-import { grain, grainSlope } from "./ground";
+import { bladeLight, bladeSun, grain, grainSlope } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, LAYER_ORDER, RIM } from "./town/draw";
 import { keyOf, MARKS, marksOf, runsOn, shapeOf, type Surface } from "./town/surface";
 import { LAND_LIES } from "./objects/terrainGeometry";
 import type { Lift } from "./decks";
+import { verge, VERGE_OUT } from "./verge";
 import type { MeshGeometry } from "./geometry";
 
 /**
@@ -39,8 +40,9 @@ const RUN_ON = 0.5;
 function bake(surface: Surface): Float32Array[] {
   const flat = flatPolygons(shapeOf(surface), 0);
   const density = SLOT / SPAN;
-  // How far inside the road's outline, and its kerbs.
-  const outline = coverage(flat, kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT), ORIGIN, ORIGIN, density, SLOT, SLOT);
+  // How far inside the road's outline, and its kerbs; the outline out as
+  // far as the grass's verge reads it (`verge.ts`).
+  const outline = coverage(flat, kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT, VERGE_OUT + 2 / density), ORIGIN, ORIGIN, density, SLOT, SLOT);
   // Its kerbs where it ends, not where it runs on into the next tile;
   // and one running on into it runs on past the road's end, so it rounds
   // over straight across the seam, as the next tile's own kerb does there,
@@ -76,6 +78,10 @@ const GLINT_TILT = 0.4;
  *  beats how far in it is, so the edge breaks up as asphalt's does. */
 const CRUMBLE = 0.035;
 const CHIPS = 4;
+/** The land beside a road stands a little over it, the grass's verge
+ *  (`verge.ts`) and the paving's kerb: its rim rises to them, not
+ *  rounding away, and is in their shade this far in, in tiles. */
+const FOOT = 0.07;
 /** Road paint's colour, before the light, and how soft its edge is, in
  *  tiles. */
 const PAINT = "0.97, 0.96, 0.92";
@@ -170,9 +176,13 @@ if (roadD.g >= 0. && roadD.g < ${n(RIM)}) {
   let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
   if (roadDx * roadDx + roadDy * roadDy > 0.) {
     let roadOut = normalize(vec3f(-roadDx, -roadDy, 0.));
-    N = normalize(mix(N, normalize(N + roadOut), 1. - roadD.g / ${n(RIM)}));
+    N = normalize(mix(N, normalize(N - roadOut), 1. - roadD.g / ${n(RIM)}));
   }
-}`,
+}
+// And in the shade of it, as the grass's own foot is (\`ground.ts\`).
+let roadFoot = select(0., 1. - smoothstep(0., ${n(FOOT)}, roadD.g), roadD.g >= 0.);
+sunlit = ${bladeSun("1. - roadFoot")};`,
+            CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color = color * ${bladeLight("1. - roadFoot")};`,
           },
   };
 }
@@ -218,6 +228,8 @@ export class RoadTiles {
   private painted = 0;
   private kinds: Kind[];
   private at = new Map<string, { kind: number; index: number }>();
+  /** Each shape's outline, for the grass's verge. */
+  private outlines = new Map<string, Float32Array>();
 
   constructor(
     private engine: EngineContext,
@@ -271,7 +283,15 @@ export class RoadTiles {
       }
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
-    kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => (this.marks.push(marksOf(surface)), bake(surface)));
+    const shape = keyOf(surface);
+    kind.slots[index] = this.atlas.slotOf(shape, () => {
+      this.marks.push(marksOf(surface));
+      const baked = bake(surface);
+      this.outlines.set(shape, baked[0]);
+      return baked;
+    });
+    // On the ground, the grass rounds down to it; not under a deck.
+    if (!lift) verge(this.engine).set(key, { data: this.outlines.get(shape)!, x0: x + 1 + ORIGIN + SPAN / SLOT / 2, y0: y + 1 + ORIGIN + SPAN / SLOT / 2, density: SLOT / SPAN, w: SLOT, h: SLOT });
     if (kind.lifts && lift) kind.lifts.set(lift, index * LIFT);
     kind.keys.push(key);
     kind.dirty = true;
@@ -283,6 +303,7 @@ export class RoadTiles {
     const was = this.at.get(key);
     if (!was) return;
     this.at.delete(key);
+    verge(this.engine).set(key, null);
     const kind = this.kinds[was.kind];
     const last = kind.keys.length - 1;
     if (was.index !== last) {

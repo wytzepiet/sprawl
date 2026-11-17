@@ -59,6 +59,13 @@ export function kerbsOf(g: MeshGeometry, kerb: KerbRule = () => true): Kerb[] {
   return out;
 }
 
+/** The grass's verge (`verge.ts`): texels to a tile; how far past an
+ *  edge, into the grass, a distance is kept, and how far in under it, in
+ *  tiles. Here, with no runtime imports, for the town's worker. */
+export const VERGE_DENSITY = 8;
+export const VERGE_OUT = 0.25;
+export const VERGE_IN = 0.125;
+
 /** Texels to a tile, at most; a big sheet takes fewer. A kerb's distance
  *  changes evenly and is read between texels evenly, so a straight kerb is
  *  as sharp at 16 as at 32 and a corner is rounded a sixteenth of a tile,
