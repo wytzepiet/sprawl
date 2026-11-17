@@ -29,11 +29,9 @@ const COVER = 3;
  *  at the usual zoom, where the blades are too fine to see. */
 const CLUMP = 64;
 const CLUMPED = 0.6;
-/** Flowers: this many heads to a tile, of one to three flowers each from
- *  this many texels across to this many, this far apart; daisies, white
- *  with a yellow heart, and this share of them buttercups, yellow all over. */
-const CLOVER = 1;
-const BUTTERCUPS = 0.25;
+/** Clover: this many heads to a tile, of one to three flowers each from
+ *  this many texels across to this many, this far apart. */
+const CLOVER = 0.6;
 const FLOWER = [5, 13];
 const SPREAD = 24;
 
@@ -80,9 +78,8 @@ fn stamp(i: u32, at: vec2f) -> vec4f {
   return vec4f(b.top * (0.2 + 0.8 * up) * (1. - across * across), 0., 0., 0.);
 }`;
 
-/** A head's flowers, three to a head at most: each stands on the
- *  blades, round; in green, how much of a flower a texel is, to a half,
- *  and over three quarters its yellow: a daisy's heart, a buttercup whole. */
+/** A clover head's flowers, three to a head at most: each stands on the
+ *  blades, round; how much of a flower a texel is, in green. */
 const FLOWERS = `${RANDOM}
 fn flower(i: u32) -> vec3f {
   let head = i / 3u + 7000000u;
@@ -95,8 +92,7 @@ fn stamp(i: u32, at: vec2f) -> vec4f {
   let c = flower(i);
   let d = dot(at - c.xy, at - c.xy) / max(c.z * c.z, 1e-6);
   if (d >= 1.) { return vec4f(0.); }
-  let yellow = rnd(i, 13u) < ${f(BUTTERCUPS)} || d < 0.12;
-  return vec4f(1. + sqrt(1. - d), select(0.5 * min(1., 3. * (1. - d)), 0.85, yellow), 0., 0.);
+  return vec4f(1. + sqrt(1. - d), min(1., 1.5 * (1. - d)), 0., 0.);
 }`;
 
 /** Every texel's slope, across and up the square (red, green, from -1 to
