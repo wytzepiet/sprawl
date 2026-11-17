@@ -28,7 +28,7 @@ return pow(max(toneOut * c, vec3f(0.)), vec3f(2.2));
 export const CONTRAST = 1.35;
 
 /** How much more colour, and how much of the S. */
-const POP = { colour: "1.35", contrast: "0.2" };
+const POP = { colour: "1.15", contrast: "0.2" };
 
 /**
  * Khronos' PBR Neutral (Emmett Lalish's): what is lit no brighter than white

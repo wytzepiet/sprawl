@@ -1,6 +1,6 @@
 import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type PbrMaterial } from "../gpu";
 import { bark } from "../bark";
-import { BUMP, CLOVER, CREASE, grain } from "../ground";
+import { BUMP, BUTTERCUP, CLOVER, CREASE, grain } from "../ground";
 import { lawn } from "../lawn";
 import { LAWN_TILES } from "../lawn";
 import { night } from "../lights";
@@ -219,7 +219,7 @@ roughness = 1.;`);
 const LAWN = coat("ModelLawn", `let lawnMap = textureSample(modelLawn, modelLawnSampler, input.worldPos.xy / ${f(LAWN_TILES)});
 if (input.uv.x < ${f(FRAY * 1.5)} * (1. - lawnMap.b)) { discard; }
 baseColor = baseColor * (1. - ${f(CREASE)} * (1. - lawnMap.b));
-baseColor = mix(baseColor, vec3f(${CLOVER.map(f).join(", ")}), lawnMap.a);
+baseColor = mix(baseColor, mix(vec3f(${CLOVER.map(f).join(", ")}), vec3f(${BUTTERCUP.map(f).join(", ")}), smoothstep(0.55, 0.8, lawnMap.a)), smoothstep(0.05, 0.45, lawnMap.a));
 N = normalize(N - vec3f((lawnMap.rg * 2. - 1.) * ${f(BUMP)}, 0.));
 roughness = 1.;`, (engine) => ({ modelLawn: lawn(engine) }));
 

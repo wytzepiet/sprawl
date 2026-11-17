@@ -2,35 +2,35 @@ import { hex } from "./rgb";
 
 /** The colours of the land and the town. */
 export const theme = {
-  // After a Scottish coast from the air, made light: sage pasture, a
-  // slate-teal sea, pale taupe sand, off-white roads, and the trees the one
-  // dark note on the ground, so the buildings carry the colour.
-  land: hex("#A4DA90"),
-  water: hex("#76AAB2"),
-  beach: hex("#E2DCCF"),
+  // A toy town on a bright day, as a painted map has it: fresh spring
+  // grass, a clear turquoise sea, warm sand, and the trees the one dark,
+  // still green note on the ground, so the buildings carry the colour.
+  land: hex("#A6D65E"),
+  water: hex("#5EC2C6"),
+  beach: hex("#EDDAAA"),
   // The floor between the crowns: the wood's shade, the grass darker and
   // bending toward the crowns' teal, so a forest reads as one zoomed out
   // past its trees without standing stark against the open land.
-  forest: hex("#5F8466"),
+  forest: hex("#5E9550"),
   // Clay showing through the turf: a soft ochre, warm against the sage,
   // where a clay pit can dig (`Deposit::Clay`).
   clay: hex("#DCC08E"),
-  // Tree crowns, dark to light: deep teal-greens, the dark note, light
+  // Tree crowns, dark to light: deep leaf greens, the dark note, light
   // enough that a forest reads as a wood and not a hole.
-  crowns: [hex("#325E57"), hex("#3F705E"), hex("#52846A")],
+  crowns: [hex("#2E6A45"), hex("#3B7E4B"), hex("#4E9353")],
   // Conifers, dark to light: darker and bluer than the broadleaves, as a
   // stand of spruce is beside an oak wood.
-  conifers: [hex("#2A554B"), hex("#325F53"), hex("#3D6B5C")],
+  conifers: [hex("#265C4A"), hex("#2D6852"), hex("#38755C")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
   earth: hex("#EBD3A8"),
-  growing: hex("#B5D594"),
+  growing: hex("#B6DA74"),
   ripe: hex("#F2D680"),
   stubble: hex("#ECE3C4"),
   // A mountain: its snow, its bare rock; the cliffs the land stands on.
   mountain: hex("#F4F3F0"),
-  rock: hex("#A89C8A"),
+  rock: hex("#A6A39A"),
   // A yard, a car park or a pavement: a worn, warm stone grey, light
   // beside the asphalt.
   paved: hex("#ADA596"),

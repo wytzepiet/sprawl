@@ -40,14 +40,16 @@ const SPAN = 4;
  *  their deepest creases are, and the clover's colour. */
 export const BUMP = 0.45;
 export const CREASE = 0.3;
-export const CLOVER = [1, 0.97, 0.86];
-/** Grass is mottled, as a field is from the air: its colour lighter and a
- *  touch yellower in places, darker and a touch bluer in others, in broad
+export const CLOVER = [1, 0.99, 0.94];
+/** A daisy's heart, and the buttercups. */
+export const BUTTERCUP = [1, 0.8, 0.12];
+/** Grass is mottled, as a painted lawn is: its colour lighter and
+ *  yellower in places, darker and greener in others, in broad soft
  *  patches this many tiles across and small ones this many, by up to this
  *  much. The rest of the land is its colour alone. */
-const PATCHES = 3;
-const SPECKS = 0.5;
-const MOTTLE = 0.06;
+const PATCHES = 2.5;
+const SPECKS = 0.6;
+const MOTTLE = 0.16;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the lawn's gaps and shorter blades
  *  beat how far in it is, so it thins to its edge instead of stopping
@@ -204,7 +206,7 @@ const INSIDE = `fn groundIn(f: f32) -> f32 {
 
 // A mottle's texel this many tiles across, either scale; lighter patches
 // warmer: more red and green, less blue, darker ones the other way.
-const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
+const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.1, 1, 0.3].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fraySpan, tuftSpan] = [n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
 const [slateSpan, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
 // How far up a beach the water runs, at most (`swashFn`); and wet sand,
@@ -323,7 +325,7 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * (1. - ${n(CREASE)} * ${look("bump")} * (1. - groundLawn.b))` : ""}${
               any("mottle") ? ` * (1. + ${look("mottle")} * groundMottle * vec3f(${mottleWarm}))` : ""
             }${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
-${any("mottle") ? `baseColor = mix(baseColor, ${v3(CLOVER)}, groundLawn.a * ${look("mottle")});` : ""}
+${any("mottle") ? `baseColor = mix(baseColor, mix(${v3(CLOVER)}, ${v3(BUTTERCUP)}, smoothstep(0.55, 0.8, groundLawn.a)), smoothstep(0.05, 0.45, groundLawn.a) * ${look("mottle")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});
 N = normalize(N ${tilt});
 ${
