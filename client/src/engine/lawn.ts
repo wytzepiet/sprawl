@@ -20,7 +20,7 @@ export const LAWN_TILES = 8;
  *  a stroke a few pixels long there, sharp zoomed in; and how many times
  *  over they cover the lawn. */
 const LEAN = [28, 60];
-const HALF_WIDTH = 7;
+const HALF_WIDTH = 4;
 /** How far a blade's face turns, across it, at most: from its far edge
  *  this much lower than its middle to as much higher. */
 const FACE = 0.6;
