@@ -50,8 +50,8 @@ export const CLOVER = [1, 0.97, 0.86];
  *  and blue less, so it deepens) to its tip, as light through a blade
  *  warms it; and how glossy, wet, a blade is, the most at
  *  its tip, fading down it (`townShine`). */
-const GAP = [0.88, 1, 0.88];
-const TIP = [1.06, 1.05, 0.96];
+const GAP = [0.62, 0.74, 0.62];
+const TIP = [1.04, 1.08, 0.86];
 const SHEEN = 1;
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
@@ -61,8 +61,8 @@ export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
  *  this much less again, the most of it lost near the ground. A share of
  *  the light a height `b` takes, all of it (`color`, once lit), and of the
  *  sun's again (`sunlit`). */
-const DEEP = 0.7;
-const DEEP_SUN = 0.25;
+const DEEP = 0.85;
+const DEEP_SUN = 0.4;
 export const bladeLight = (b: string) => `mix(${n(DEEP)}, 1., saturate(${b}))`;
 export const bladeSun = (b: string) => `mix(${n(DEEP_SUN)}, 1., sqrt(saturate(${b})))`;
 /** Grass frays where it meets lower ground: within this far of its edge,

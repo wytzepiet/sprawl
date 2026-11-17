@@ -58,7 +58,7 @@ const IN = 64;
  * tile. A point is in cells.
  */
 const HUMMOCK_CELLS = 10;
-const HUMMOCK_TILT = 0.12;
+const HUMMOCK_TILT = 0.2;
 /** Drawn this many texels a side, a rise of this much its whole height a
  *  cell as its slope's whole range; a blade leaning out fully on a slope
  *  of this much a cell. */
