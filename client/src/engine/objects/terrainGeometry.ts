@@ -84,11 +84,14 @@ function nextRand(s: number): [number, number] {
   return [s, (s >>> 0) / 4294967296];
 }
 
+/** A wood's trees, half again as big as a town's (`trees.ts`) and so
+ *  fewer, the room they keep growing with them. */
+const GROWN = 1.5;
 /** The tallest crown's top, in tiles at full size; the shortest is 45% of it.
  *  A tree is drawn in `trees.ts`. */
-const CROWN_HEIGHT = 0.45;
+const CROWN_HEIGHT = 0.45 * GROWN;
 /** A crown's radius in tiles at full size; smaller trees are down to half. */
-const TREE_RADIUS = 0.35;
+const TREE_RADIUS = 0.35 * GROWN;
 interface TreeInfo {
   x: number;
   y: number;
