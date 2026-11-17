@@ -19,8 +19,8 @@ export const LAWN_TILES = 8;
  *  width at the base, in texels, eight texels to a pixel at the usual zoom:
  *  a stroke a few pixels long there, sharp zoomed in; and how many times
  *  over they cover the lawn. */
-const LEAN = [28, 60];
-const HALF_WIDTH = 4;
+const LEAN = [42, 90];
+const HALF_WIDTH = 6;
 /** How far a blade's face turns, across it, at most: from its far edge
  *  this much lower than its middle to as much higher. */
 const FACE = 0.6;
@@ -37,7 +37,7 @@ const TUFT = 7;
 /** Of each tuft's blades, this many grow loose instead, anywhere, so no
  *  ground goes bare between the tufts. */
 const LOOSE = 3;
-const TUFT_SPREAD = 14;
+const TUFT_SPREAD = 21;
 const CLUMP = 256;
 const CLUMPED = 0.55;
 /** Clover: this many heads to a tile, of one to three flowers each from
@@ -57,7 +57,7 @@ const mean = (LEAN[0] + LEAN[1]) / 2;
 const BLADES = Math.round((n * n * COVER) / (mean * HALF_WIDTH * 1.4) / (1 - CLUMPED));
 /** Everything a little in from the square's corner, so no stamp's box
  *  starts before it. */
-const IN = 64;
+const IN = 96;
 
 /**
  * And the lawn is not flat: all of it rolls, in hummocks of longer grass
