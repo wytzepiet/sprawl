@@ -8,7 +8,7 @@ import { SWASH, swashFn } from "./water";
 import { ripples } from "./waves";
 import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_TILES, sandRipples } from "./sand";
-import { hummocks, lawn, LAWN_TILES } from "./lawn";
+import { HUMMOCK_BEND, hummocks, lawn, LAWN_TILES } from "./lawn";
 import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, LAND, LAND_LIES, TYPE_BY_BYTE, SHORE_LIES, WATER_Z, type Ground } from "./objects/terrainGeometry";
 import { live } from "./still";
@@ -297,7 +297,7 @@ let groundD = ${layers.map((y) => `groundIs${y.l} * groundD${y.l}`).join(" + ")}
 if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
   const tilt = [
     any("bump") ? `- vec3f((groundLawn.rg * 2. - 1.) * ${n(BUMP)} * ${look("bump")}${any("lawn") ? ` * (1. + ${n(TALLER)} * groundHummock.b * ${look("lawn")})` : ""}, 0.)` : "",
-    any("lawn") ? `- vec3f((groundHummock.rg * 2. - 1.) * ${look("lawn")}, 0.)` : "",
+    any("lawn") ? `- vec3f((groundHummock.rg * 2. - 1.) * ${n(HUMMOCK_BEND)} * ${look("lawn")}, 0.)` : "",
     any("slate") ? `+ vec3f(groundSlateTilt * ${look("slate")}, 0.)` : "",
     sand ? `+ vec3f((groundGlint.yz - 0.5) * 2. * ${n(GLINT_TILT)} * groundGlinting, 0.) - vec3f(groundRippled * smoothstep(${swash}, ${swash} * 1.6, groundD), 0.)` : "",
   ].join(" ");

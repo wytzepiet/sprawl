@@ -52,16 +52,23 @@ const IN = 32;
  * And the lawn is not flat: it rises in hummocks, blobs of longer grass
  * packed together, this many to a side of its square, thin seams between
  * them: each a cell round a point of its own (Voronoi), its seams wandering
- * by this much of a cell, rounding up from them to its top this far into
- * it; a pixel's facing tilted by their slope, this much for a rise of a
+ * by this much of a cell, rising from them to its top this far into
+ * it, smoothly, so a seam is a soft dip the blades either side lean over,
+ * not a crack; a pixel's facing tilted by their slope, this much for a rise of a
  * hummock's whole height over a tile. A point is in cells.
  */
 const HUMMOCK_CELLS = 10;
 const WANDER = 0.35;
-const HUMMOCK_ROUND = 0.45;
-const HUMMOCK_TILT = 0.07;
-/** Drawn this many texels a side. */
+const HUMMOCK_ROUND = 0.6;
+const HUMMOCK_TILT = 0.04;
+/** Drawn this many texels a side, a rise of this much its whole height a
+ *  cell as its slope's whole range; a blade leaning out fully on a slope
+ *  of this much a cell. */
 const HUMMOCK_SIDE = 512;
+const SLOPED = 1.5;
+const STEEP = 0.8;
+/** How far the slope read tilts a pixel's facing. */
+export const HUMMOCK_BEND = SLOPED * (HUMMOCK_CELLS / LAWN_TILES) * HUMMOCK_TILT;
 const NOISE = `fn corner(c: vec2f, cells: u32, k: u32) -> f32 { let w = vec2u((vec2i(c) % i32(cells) + i32(cells)) % i32(cells)); return rnd(w.x + w.y * cells, k); }
 fn noise(p: vec2f, cell: f32, cells: u32, k: u32) -> f32 {
   let c = floor(p / cell);
@@ -90,7 +97,7 @@ fn rise(at: vec2f) -> f32 {
     }
   }
   let x = saturate((d2 - d1) * 0.5 / ${f(HUMMOCK_ROUND)});
-  return top * sqrt(x * (2. - x));
+  return top * mix(0.25, 1., x * x * (3. - 2. * x));
 }
 // Its rise a cell across, up and across the square.
 fn hummockSlope(p: vec2f) -> vec2f {
@@ -100,7 +107,7 @@ fn hummockSlope(p: vec2f) -> vec2f {
 
 /** A blade: its base, near its tuft's, which way it leans and how far, and
  *  how tall it stands, of the tallest, shorter in the lower clumps and
- *  shorter still in a hummock's seams. On a hummock's flank it leans out
+ *  a little shorter in a hummock's seams. On a hummock's flank it leans out
  *  down its slope, this much more than up the map at most, and at its top
  *  stands straight, so seen from above it is shorter there, by this much. */
 const SPLAY = 1.6;
@@ -118,10 +125,10 @@ fn blade(i: u32) -> Blade {
   let angle = ${f(Math.PI / 2)} + (rnd(i, 2u) - 0.5) * ${f(2 * SWAY)};
   let under = hummock(base);
   let down = 1. - 2. * under.rg;
-  let steep = saturate(length(down) * ${f(0.5 / ((HUMMOCK_CELLS / LAWN_TILES) * HUMMOCK_TILT))});
+  let steep = saturate(length(down) * ${f(SLOPED / STEEP)});
   let way = normalize(vec2f(cos(angle), sin(angle)) + down / max(length(down), 1e-4) * steep * ${f(SPLAY)});
   let lean = (${f(LEAN[0])} + rnd(i, 3u) * ${f(LEAN[1] - LEAN[0])}) * mix(${f(UPRIGHT)}, 1., steep);
-  let top = (0.5 + 0.5 * rnd(i, 4u)) * (1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u)) * (0.5 + 0.5 * under.b);
+  let top = (0.5 + 0.5 * rnd(i, 4u)) * (1. - ${f(CLUMPED)} * noise(base, ${CLUMP}., ${n / CLUMP}u, 9u)) * (0.75 + 0.25 * under.b);
   return Blade(base, way, lean, top);
 }
 // Only the box round it, base to tip.
@@ -178,7 +185,7 @@ ${NOISE}
 ${HUMMOCK}
 fn fill(at: vec2f) -> vec4f {
   let p = at * ${f(HUMMOCK_CELLS / HUMMOCK_SIDE)};
-  return vec4f(clamp(0.5 + 0.5 * hummockSlope(p) * ${f((HUMMOCK_CELLS / LAWN_TILES) * HUMMOCK_TILT)}, vec2f(0.), vec2f(1.)), rise(p), 1.);
+  return vec4f(clamp(0.5 + 0.5 * hummockSlope(p) * ${f(1 / SLOPED)}, vec2f(0.), vec2f(1.)), rise(p), 1.);
 }`;
 export const hummocks = drawnOnce("hummocks", (engine: EngineContext): Texture2D => {
   const texture = createFilledTexture(engine, HUMMOCK_SIDE, HUMMOCK_SIDE, "rgba8unorm", true);
