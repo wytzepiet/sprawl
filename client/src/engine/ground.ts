@@ -205,8 +205,10 @@ const INSIDE = `fn groundIn(f: f32) -> f32 {
 }`;
 
 // A mottle's texel this many tiles across, either scale; lighter patches
-// warmer: more red and green, less blue, darker ones the other way.
-const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.1, 1, 0.3].map((k) => n(k * MOTTLE * 2)).join(", ")];
+// yellower, darker ones a deeper green: their red and blue going faster
+// than their green, so a dark patch is never a grey one (it read as ash).
+const [patches, specks] = [n(PATCHES * SIDE), n(SPECKS * SIDE)];
+const [mottleWarm, mottleDeep] = [[1.1, 1, 0.3], [1.6, 0.7, 1.6]].map((ks) => ks.map((k) => n(k * MOTTLE * 2)).join(", "));
 const [fraySpan, tuftSpan] = [n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
 const [slateSpan, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
 // How far up a beach the water runs, at most (`swashFn`); and wet sand,
@@ -323,7 +325,7 @@ if (${layers.map((y) => `groundIs${y.l}`).join(" + ")} < 0.5) { discard; }`;
             CUSTOM_FRAGMENT_MAIN_BEGIN: begin,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., ${look("shine")} * ${n(GLINT)}${sand ? " + groundGlinting" : ""});
 baseColor = baseColor * (${layers.map((y) => `groundIs${y.l} * ${v3([y.colour.r, y.colour.g, y.colour.b])}`).join(" + ")})${any("bump") ? ` * (1. - ${n(CREASE)} * ${look("bump")} * (1. - groundLawn.b))` : ""}${
-              any("mottle") ? ` * (1. + ${look("mottle")} * groundMottle * vec3f(${mottleWarm}))` : ""
+              any("mottle") ? ` * (1. + ${look("mottle")} * (max(groundMottle, 0.) * vec3f(${mottleWarm}) + min(groundMottle, 0.) * vec3f(${mottleDeep})))` : ""
             }${sand ? ` * (1. - ${wet} * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD)))` : ""};
 ${any("mottle") ? `baseColor = mix(baseColor, mix(${v3(CLOVER)}, ${v3(BUTTERCUP)}, smoothstep(0.55, 0.8, groundLawn.a)), smoothstep(0.05, 0.45, groundLawn.a) * ${look("mottle")});` : ""}
 roughness = mix(roughness, 1., ${look("matte")});

@@ -32,7 +32,7 @@ const CLUMPED = 0.6;
 /** Flowers: this many heads to a tile, of one to three flowers each from
  *  this many texels across to this many, this far apart; daisies, white
  *  with a yellow heart, and this share of them buttercups, yellow all over. */
-const CLOVER = 1.4;
+const CLOVER = 1;
 const BUTTERCUPS = 0.25;
 const FLOWER = [5, 13];
 const SPREAD = 24;
