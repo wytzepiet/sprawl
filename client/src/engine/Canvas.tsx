@@ -71,16 +71,8 @@ export function useEngine() {
  * pixels for it — on every pass, the shadow-receiving ground included.
  */
 const MAX_DEVICE_RATIO = 2;
-/** A phone's, a touch screen's: a third of the pixels again, the town a
- *  little softer, the phone cooler for it; the menus are HTML, as sharp. */
+/** A phone's, a touch screen's. */
 const PHONE = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
-const DEVICE_RATIO = PHONE ? 1.3 : MAX_DEVICE_RATIO;
-/** And in this many pixels at most, whatever the ratio: what a frame costs
- *  the GPU is mostly its pixels, and a laptop's retina screen at 2 is near
- *  six million of them, four times a phone's, and runs hot for it. Here it
- *  is drawn at about 1.4 instead, the flat colours no worse for it
- *  (`?pixels=6e6` to see it at 2, the grass's blades sharp). */
-const MAX_PIXELS = Number(new URLSearchParams(location.search).get("pixels")) || 3e6;
 /** And less again while the GPU cannot keep up, judged as the view moves
  *  over the middle of the last `JUDGED` frames, to a pixel to the CSS pixel
  *  at the least. Where the GPU's own time can be read, a step down when it
@@ -242,7 +234,7 @@ export default function Canvas(props: ParentProps) {
       const began = performance.now();
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
-      const cap = Math.min(DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
+      const cap = Math.min(MAX_DEVICE_RATIO, devicePixelRatio);
       if (moving && !PIN) judge(now, delta, cap);
       const caught = timed ? engine.gpuFrameTimeMs < GPU_MS : delta < LATE_MS * 2;
       if (ratio !== shown && now - lastMoved > REST_MS && now - switched > SWITCH_MS && caught) [shown, switched] = [ratio, now];
