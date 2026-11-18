@@ -87,13 +87,15 @@ const AMB_DUSK = rgb(0.5, 0.48, 0.62);
 const SKY_LIGHT = rgb(0.74, 0.86, 1.22);
 /** The sun by its elevation: the lower, the more air its light has
  *  crossed and the more blue is scattered out of it, so near white high,
- *  gold low, and a deep orange red as it sets. */
+ *  gold low, and a deep orange red as it sets; at its highest all but
+ *  white, so a noon keeps its colours, not washed warm. */
 const sunStops: [number, Rgb][] = [
   [0, rgb(1.8, 0.42, 0.16)],
   [0.14, rgb(1.8, 0.42, 0.16)],
   [0.3, rgb(1.65, 0.78, 0.3)],
-  [0.7, rgb(1.15, 1.02, 0.75)],
-  [1, rgb(1.15, 1.02, 0.75)],
+  [0.55, rgb(1.15, 1.02, 0.75)],
+  [0.8, rgb(1.1, 1.07, 0.97)],
+  [1, rgb(1.1, 1.07, 0.97)],
 ];
 
 /** And stronger as it climbs, by this much more at its highest, so a
