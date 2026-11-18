@@ -37,11 +37,11 @@ const TILES = 2048;
  *  spreads its light wide across the street, as a bare bulb at its head
  *  would not: so its light hangs `lift` over the head, where the fall of
  *  a bulb's is as broad as the reflector makes it. */
-const LAMP = { colour: [1, 0.62, 0.3] as [number, number, number], intensity: 0.42, range: 2, lift: 0.3 };
+const LAMP = { colour: [1, 0.62, 0.3] as [number, number, number], intensity: 0.65, range: 2.4, lift: 0.3 };
 /** A vehicle's two headlights: whiter, each thrown ahead in a narrow cone,
  *  `apart` either side of its middle and turned out a little, from inside its
  *  body, so none of it is lit by them, only the road before it. */
-const BEAM = { colour: [1, 0.9, 0.75] as [number, number, number], intensity: 1.4, range: 2.2, angle: 0.9, ahead: 0.05, apart: 0.045, toe: 0.08, dip: 0.06 };
+const BEAM = { colour: [1, 0.9, 0.75] as [number, number, number], intensity: 2.1, range: 2.8, angle: 0.9, ahead: 0.05, apart: 0.045, toe: 0.08, dip: 0.06 };
 
 /** How far out the view may be zoomed with the lights on, in tiles from its
  *  middle to its far corner; they fade out over the last quarter of it, as
