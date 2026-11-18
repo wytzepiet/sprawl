@@ -50,10 +50,9 @@ const TALLER = 0.6;
 export const CLOVER = [1, 0.97, 0.86];
 /** A blade's colour, of the grass's, from deep between the blades (red
  *  and blue less, so it deepens) to its tip, as light through a blade
- *  warms it: gently, since light comes through the blades and the gaps
- *  are never dark. */
-const GAP = [0.76, 0.85, 0.76];
-const TIP = [1.05, 1.05, 0.98];
+ *  warms it. */
+const GAP = [0.62, 0.74, 0.62];
+const TIP = [1.08, 1.07, 0.98];
 /** A blade's colour at a height `b`, 0 deep between them, 1 a tip. */
 export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
 /** And the light shut out down among them: none at a blade's tip, more as
@@ -63,7 +62,7 @@ export const bladeShade = (b: string) => `mix(${v3(GAP)}, ${v3(TIP)}, ${b})`;
  *  the light a height `b` takes, all of it (`color`, once lit), and of the
  *  sun's again (`sunlit`). */
 const DEEP = 0.85;
-const DEEP_SUN = 0.6;
+const DEEP_SUN = 0.4;
 export const bladeLight = (b: string) => `mix(${n(DEEP)}, 1., saturate(${b}))`;
 export const bladeSun = (b: string) => `mix(${n(DEEP_SUN)}, 1., sqrt(saturate(${b})))`;
 /** Grass frays where it meets lower ground: within this far of its edge,
