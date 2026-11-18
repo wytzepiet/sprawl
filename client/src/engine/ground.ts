@@ -111,9 +111,12 @@ const LIP_STEEP = 1.6;
  *  under the frayed edge and out this far past it, in tiles. */
 const FOOT = 0.15;
 /** And it stands a little over the roads and paving laid in it, rounding
- *  down to them over this far, in tiles, as steeply as its lip
- *  (`verge.ts`). */
-const VERGE = 0.12;
+ *  down to them over this far, in tiles, this steeply (`verge.ts`); its
+ *  edge broken as its blades and tufts are, this far each, so the turf's
+ *  rim is ragged, not a ruled line. */
+const VERGE = 0.045;
+const VERGE_STEEP = 3;
+const VERGE_RAGGED = 0.025;
 /** The rock the land stands on takes the slate's grain, as the cliff's
  *  face does (`peaks.ts`), this much. */
 const SLATE_GRAIN = 0.5;
@@ -378,13 +381,14 @@ ${
       // and which way they are, from the texels either side.
       `let groundVergeUv = input.vGroundAt / ${n(CHUNK_SIZE)};
 let groundVergeD = textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv, 0.).r * ${n(VERGE_IN + VERGE_OUT)} - ${n(VERGE_IN)};
-if (groundVergeD < ${n(VERGE)}) {
+let groundVergeIn = groundVergeD + ${n(VERGE_RAGGED)} * (groundBlades.b + groundTufts - 1.);
+if (groundVergeIn < ${n(VERGE)}) {
   let groundVt = ${n(1 / (CHUNK_SIZE * VERGE_DENSITY))};
   let groundVg = vec2f(
     textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv + vec2f(groundVt, 0.), 0.).r - textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv - vec2f(groundVt, 0.), 0.).r,
     textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv + vec2f(0., groundVt), 0.).r - textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv - vec2f(0., groundVt), 0.).r);
   if (dot(groundVg, groundVg) > 0.) {
-    N = normalize(N - normalize(vec3f(groundVg, 0.)) * (1. - max(groundVergeD, 0.) / ${n(VERGE)}) * ${n(LIP_STEEP)});
+    N = normalize(N - normalize(vec3f(groundVg, 0.)) * (1. - max(groundVergeIn, 0.) / ${n(VERGE)}) * ${n(VERGE_STEEP)});
   }
 }`
     : ""

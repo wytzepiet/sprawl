@@ -53,7 +53,7 @@ const BAND_LIGHT = 1.07;
 const JOINT = 0.008;
 const JOINT_DEPTH = 0.6;
 /** How far in from its own edge the sheet is in the grass's shade. */
-const FOOT = 0.07;
+const FOOT = 0.045;
 const n = (x: number) => x.toFixed(4);
 
 /** Kerbs edged from a sheet's kerb texture, on its material. Its

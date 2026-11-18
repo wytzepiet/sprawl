@@ -81,7 +81,7 @@ const CHIPS = 4;
 /** The land beside a road stands a little over it, the grass's verge
  *  (`verge.ts`) and the paving's kerb: its rim rises to them, not
  *  rounding away, and is in their shade this far in, in tiles. */
-const FOOT = 0.07;
+const FOOT = 0.045;
 /** Road paint's colour, before the light, and how soft its edge is, in
  *  tiles. */
 const PAINT = "0.97, 0.96, 0.92";
