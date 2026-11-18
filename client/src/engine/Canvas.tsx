@@ -73,6 +73,8 @@ export function useEngine() {
 const MAX_DEVICE_RATIO = 2;
 /** A phone's, a touch screen's. */
 const PHONE = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+/** `?pixels=3e6`: in this many pixels at most, to compare (trial knob). */
+const MAX_PIXELS = Number(new URLSearchParams(location.search).get("pixels")) || Infinity;
 /** And less again while the GPU cannot keep up, judged as the view moves
  *  over the middle of the last `JUDGED` frames, to a pixel to the CSS pixel
  *  at the least. Where the GPU's own time can be read, a step down when it
@@ -234,7 +236,7 @@ export default function Canvas(props: ParentProps) {
       const began = performance.now();
       const was = where();
       // Our own loop, not Lite's: the canvas follows the window only if asked to.
-      const cap = Math.min(MAX_DEVICE_RATIO, devicePixelRatio);
+      const cap = Math.min(MAX_DEVICE_RATIO, devicePixelRatio, Math.sqrt(MAX_PIXELS / Math.max(1, el.clientWidth * el.clientHeight)));
       if (moving && !PIN) judge(now, delta, cap);
       const caught = timed ? engine.gpuFrameTimeMs < GPU_MS : delta < LATE_MS * 2;
       if (ratio !== shown && now - lastMoved > REST_MS && now - switched > SWITCH_MS && caught) [shown, switched] = [ratio, now];

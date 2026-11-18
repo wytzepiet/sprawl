@@ -17,6 +17,7 @@ import { VERGE_DENSITY, VERGE_IN, VERGE_OUT } from "./kerbLines";
 
 export { VERGE_IN, VERGE_OUT };
 const SIDE = CHUNK_SIZE * VERGE_DENSITY;
+const SCALE = 1 / (VERGE_IN + VERGE_OUT);
 
 /** What is laid: its signed distances, inside positive, over a grid of
  *  `w` by `h` texels, `density` to a tile, the first texel's middle at
@@ -111,12 +112,26 @@ export class Verge {
         continue;
       }
       const [cx, cy] = c.split(",").map(Number);
-      const best = new Float32Array(SIDE * SIDE).fill(-VERGE_OUT);
-      for (const key of chunk.laid) nearest(this.laid.get(key)!, cx * CHUNK_SIZE, cy * CHUNK_SIZE, best);
-      const bytes = best.map((d) => Math.round(Math.max(0, Math.min(1, (VERGE_IN - d) / (VERGE_IN + VERGE_OUT))) * 255));
-      const out = Uint8Array.from(bytes);
+      const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
+      // Only the texels where it changed; all of them for a new texture.
       const fresh = !chunk.texture;
-      if (chunk.texture) updateTexture2DFromPixels(this.engine, chunk.texture, out);
+      const clip = (v: number) => Math.max(0, Math.min(SIDE, v));
+      const [i0, j0, i1, j1] = fresh
+        ? [0, 0, SIDE, SIDE]
+        : [clip(Math.floor((within[0] - ox) * VERGE_DENSITY)), clip(Math.floor((within[1] - oy) * VERGE_DENSITY)), clip(Math.ceil((within[2] - ox) * VERGE_DENSITY)), clip(Math.ceil((within[3] - oy) * VERGE_DENSITY))];
+      const [w, h] = [i1 - i0, j1 - j0];
+      if (w <= 0 || h <= 0) continue;
+      const region = { ox: ox + i0 / VERGE_DENSITY, oy: oy + j0 / VERGE_DENSITY, w, h };
+      const best = new Float32Array(w * h).fill(-VERGE_OUT);
+      const [x0, y0, x1, y1] = [region.ox, region.oy, region.ox + w / VERGE_DENSITY, region.oy + h / VERGE_DENSITY];
+      for (const key of chunk.laid) {
+        const laid = this.laid.get(key)!;
+        const b = boxOf(laid);
+        if (b[2] >= x0 && b[0] <= x1 && b[3] >= y0 && b[1] <= y1) nearest(laid, region, best);
+      }
+      const out = new Uint8Array(w * h);
+      for (let k = 0; k < out.length; k++) out[k] = Math.round(Math.max(0, Math.min(1, (VERGE_IN - best[k]) * SCALE)) * 255);
+      if (chunk.texture) updateTexture2DFromPixels(this.engine, chunk.texture, out, i0, j0, w, h);
       else chunk.texture = createTexture2DFromPixels(this.engine, out, SIDE, SIDE, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
       this.tell(c, fresh, within);
     }
@@ -131,13 +146,14 @@ export class Verge {
 /** Where in the world a thing laid lies, with the grass's reach round it. */
 const boxOf = ({ x0, y0, density, w, h }: Laid) => [x0 - VERGE_OUT, y0 - VERGE_OUT, x0 + w / density + VERGE_OUT, y0 + h / density + VERGE_OUT];
 
-/** Into a chunk's texels from (ox, oy), the most inside of what was there
- *  and what is laid, read between its own texels. */
-function nearest({ data, x0, y0, density, w, h }: Laid, ox: number, oy: number, best: Float32Array) {
+/** Into a region of a chunk's texels, `w` by `h` from (ox, oy), the most
+ *  inside of what was there and what is laid, read between its own texels. */
+function nearest({ data, x0, y0, density, w, h }: Laid, region: { ox: number; oy: number; w: number; h: number }, best: Float32Array) {
+  const { ox, oy } = region;
   const i0 = Math.max(0, Math.floor((x0 - ox) * VERGE_DENSITY));
   const j0 = Math.max(0, Math.floor((y0 - oy) * VERGE_DENSITY));
-  const i1 = Math.min(SIDE - 1, Math.ceil((x0 + (w - 1) / density - ox) * VERGE_DENSITY));
-  const j1 = Math.min(SIDE - 1, Math.ceil((y0 + (h - 1) / density - oy) * VERGE_DENSITY));
+  const i1 = Math.min(region.w - 1, Math.ceil((x0 + (w - 1) / density - ox) * VERGE_DENSITY));
+  const j1 = Math.min(region.h - 1, Math.ceil((y0 + (h - 1) / density - oy) * VERGE_DENSITY));
   for (let j = j0; j <= j1; j++) {
     const v = (oy + (j + 0.5) / VERGE_DENSITY - y0) * density;
     if (v < 0 || v > h - 1) continue;
@@ -150,7 +166,7 @@ function nearest({ data, x0, y0, density, w, h }: Laid, ox: number, oy: number, 
       const fu = u - ui;
       const k = vj * w + ui;
       const d = (data[k] * (1 - fu) + data[k + 1] * fu) * (1 - fv) + (data[k + w] * (1 - fu) + data[k + w + 1] * fu) * fv;
-      const at = j * SIDE + i;
+      const at = j * region.w + i;
       if (d > best[at]) best[at] = d;
     }
   }
