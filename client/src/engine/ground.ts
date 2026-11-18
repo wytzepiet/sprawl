@@ -117,6 +117,8 @@ const FOOT = 0.15;
 const VERGE = 0.045;
 const VERGE_STEEP = 3;
 const VERGE_RAGGED = 0.025;
+/** How far each blade turns the verge's facing its own way. */
+const VERGE_SCATTER = 2.5;
 /** The rock the land stands on takes the slate's grain, as the cliff's
  *  face does (`peaks.ts`), this much. */
 const SLATE_GRAIN = 0.5;
@@ -388,7 +390,10 @@ if (groundVergeIn < ${n(VERGE)}) {
     textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv + vec2f(groundVt, 0.), 0.).r - textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv - vec2f(groundVt, 0.), 0.).r,
     textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv + vec2f(0., groundVt), 0.).r - textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv - vec2f(0., groundVt), 0.).r);
   if (dot(groundVg, groundVg) > 0.) {
-    N = normalize(N - normalize(vec3f(groundVg, 0.)) * (1. - max(groundVergeIn, 0.) / ${n(VERGE)}) * ${n(VERGE_STEEP)});
+    // Each blade on it leaning its own way and as far as it stands, so the
+    // light breaks over it in tufts, not along a ridge.
+    let groundVergeBy = (1. - max(groundVergeIn, 0.) / ${n(VERGE)}) * ${n(VERGE_STEEP)} * (0.35 + groundBlades.b);
+    N = normalize(N + vec3f(normalize(-normalize(groundVg) - groundBlades.rg * ${n(VERGE_SCATTER)}) * groundVergeBy, 0.));
   }
 }`
     : ""
