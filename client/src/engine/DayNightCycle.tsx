@@ -101,7 +101,7 @@ const sunStops: [number, Rgb][] = [
 /** And stronger as it climbs, by this much more at its highest, so a
  *  summer noon's sun outshines the sky, as a real one does, and its colours
  *  glow rather than sit flat in the sky's fill. */
-const HIGH_SUN = 1.4;
+const HIGH_SUN = 1.8;
 
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;
