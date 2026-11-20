@@ -119,6 +119,9 @@ const VERGE_STEEP = 3;
 const VERGE_RAGGED = 0.025;
 /** How far each blade turns the verge's facing its own way. */
 const VERGE_SCATTER = 2.5;
+/** And the grass under a road or paving further in than this, in tiles, is
+ *  not drawn at all: it would not be seen. */
+const UNDER_ROAD = 0.03;
 /** The rock the land stands on takes the slate's grain, as the cliff's
  *  face does (`peaks.ts`), this much. */
 const SLATE_GRAIN = 0.5;
@@ -290,7 +293,29 @@ let groundD = groundIn(groundF.x);
 ${sheet === "wash" ? `if (groundD >= groundBand) { discard; }
 let groundSwash = groundBand * groundWash(material.groundTime, input.worldPos.xy);` : "let groundSwash = groundBand;"}
 if (groundD < groundSwash) { discard; }`
-    : `${any("bump") ? lawnRead("groundLawn", "input.worldPos.xy", "groundBlades") : ""}
+    : // Where it is, first, from the tiles alone: a pixel with nothing of
+      // this sheet's to draw, or drawn over, goes before the textures are read.
+      `${NINE}
+${layers.map((y) => `${field(`groundF${y.l}`, bits(y.of))}
+let groundD${y.l} = groundIn(groundF${y.l}.x);`).join("\n")}
+if (max(${layers.map((y) => `groundD${y.l}`).reduce((a, b) => `max(${a}, ${b})`)}, -1.) < 0.) { discard; }
+${
+  sheet === "rock"
+    ? // Under the turf, but where it frays or the rock breaks through it.
+      `${field("groundTurf", bits(LOOKS[2].of))}
+let groundTurfD = groundIn(groundTurf.x);
+if (groundTurfD >= ${patchesIn}) { discard; }`
+    : ""
+}
+${
+  sheet === "turf"
+    ? // Under a road or paving, past its edge.
+      `let groundVergeUv = input.vGroundAt / ${n(CHUNK_SIZE)};
+let groundVergeD = textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv, 0.).r * ${n(VERGE_IN + VERGE_OUT)} - ${n(VERGE_IN)};
+if (groundVergeD < ${n(-UNDER_ROAD)}) { discard; }`
+    : ""
+}
+${any("bump") ? lawnRead("groundLawn", "input.worldPos.xy", "groundBlades") : ""}
 ${any("lawn") ? `let groundHummock = textureSample(groundHummocks, groundHummocksSampler, input.worldPos.xy / ${n(LAWN_TILES)});` : ""}
 ${any("slate") ? `let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, input.worldPos.xy / ${slateSpan}, ${n(CALM)}).rg * 2. - 1.;` : ""}
 ${any("fray") ? `let groundTufts = ${grainAt(`input.worldPos.xy / ${tuftSpan}`)};` : ""}
@@ -300,12 +325,9 @@ ${
 let groundPatch = textureSample(groundSlate, groundSlateSampler, input.worldPos.xy / ${patchSpan}).b;`
     : ""
 }
-${NINE}
 ${layers
   .map(
-    (y) => `${field(`groundF${y.l}`, bits(y.of))}
-let groundD${y.l} = groundIn(groundF${y.l}.x);
-${
+    (y) => `${
   y.fray > 0
     ? // Grass frays blade by blade, the gaps going first, then the shorter
       // blades; the wood floor by them and by the grain's tufts, so its edge
@@ -325,9 +347,7 @@ ${
     ? // The turf's shade on the rock: as dark as down among its blades under
       // its frayed edge, fading out past it, but where a plate of the rock
       // stands up through it.
-      `${field("groundTurf", bits(LOOKS[2].of))}
-let groundTurfD = groundIn(groundTurf.x);
-let groundFoot = smoothstep(${n(-FOOT)}, 0., groundTurfD) * f32(!(groundTurfD < ${patchesIn} && groundPatch > mix(${patched}, 1.05, groundTurfD / ${patchesIn})));`
+      `let groundFoot = smoothstep(${n(-FOOT)}, 0., groundTurfD) * f32(!(groundTurfD < ${patchesIn} && groundPatch > mix(${patched}, 1.05, groundTurfD / ${patchesIn})));`
     : ""
 }
 let groundF = ${layers.map((y) => `groundIs${y.l} * groundF${y.l}`).join(" + ")};
@@ -381,9 +401,7 @@ ${
   sheet === "turf"
     ? // Its verge, rounding down to a road or paving: how far from them,
       // and which way they are, from the texels either side.
-      `let groundVergeUv = input.vGroundAt / ${n(CHUNK_SIZE)};
-let groundVergeD = textureSampleLevel(groundVerge, groundVergeSampler, groundVergeUv, 0.).r * ${n(VERGE_IN + VERGE_OUT)} - ${n(VERGE_IN)};
-let groundVergeIn = groundVergeD + ${n(VERGE_RAGGED)} * (groundBlades.b + groundTufts - 1.);
+      `let groundVergeIn = groundVergeD + ${n(VERGE_RAGGED)} * (groundBlades.b + groundTufts - 1.);
 if (groundVergeIn < ${n(VERGE)}) {
   let groundVt = ${n(1 / (CHUNK_SIZE * VERGE_DENSITY))};
   let groundVg = vec2f(
