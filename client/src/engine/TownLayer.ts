@@ -409,8 +409,10 @@ export class TownLayer {
     this.builder
       .draw(snapshot)
       .then(
-        ({ chunks, window, ms }) => {
+        ({ chunks, window, ms, vergeMs }) => {
           perfCount("town.mainMs", gathered);
+          perfCount("town.workerMs", ms);
+          perfCount("town.vergeMs", vergeMs);
           lag(`worker ${chunks.length}ch ${Math.round(ms)}ms at`);
           // A chunk a part, in frames' spare time; the next drawing waits
           // for the last, so an older one never lands over a newer.
@@ -420,7 +422,7 @@ export class TownLayer {
               this.drop(c.key);
               const made = this.make(c, window, byId);
               // The grass's verge round its paving, placed on the map as it is.
-              if (c.verge) verge(this.ctx.engine).set(`paving ${c.key}`, { ...c.verge, x0: c.verge.x0 + window[2] + 1, y0: c.verge.y0 + window[3] + 1 });
+              if (c.verge) verge(this.ctx.engine).set(`paving ${c.key}`, { ...c.verge, x0: c.verge.x0 + window[2] + 1, y0: c.verge.y0 + window[3] + 1 }, within ? [within[0], within[1], within[2] + 1, within[3] + 1] : undefined);
               if (within) remadeWithin(made.meshes.map((m) => m.name), [within[0], within[1], within[2] + 1, within[3] + 1]);
               // Under a building held, it waits to be seen again.
               if (this.preview.has(c.key)) this.want(made, false);

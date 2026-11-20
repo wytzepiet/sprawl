@@ -1,5 +1,6 @@
 import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
+import { perfCount } from "./PerfReport";
 import { CHUNK_SIZE } from "./objects/terrainGeometry";
 import { VERGE_DENSITY, VERGE_IN, VERGE_OUT } from "./kerbLines";
 
@@ -65,25 +66,28 @@ export class Verge {
     return () => void this.told.delete(fn);
   }
 
-  /** Something laid under `key`, in place of what was; `null`, nothing. */
-  set(key: string, laid: Laid | null) {
+  /** Something laid under `key`, in place of what was; `null`, nothing.
+   *  Different from what was only `within` x0 y0 x1 y1 of the world, if
+   *  given: a town chunk's paving drawn again round a road laid, its
+   *  grass made again there alone, not over the whole chunk. */
+  set(key: string, laid: Laid | null, within?: number[]) {
     const was = this.laid.get(key);
-    if (was) for (const c of this.chunksOf(was)) this.chunks.get(c)?.laid.delete(key), this.touch(c, was);
+    const changed = was && laid && within ? [within[0] - VERGE_OUT, within[1] - VERGE_OUT, within[2] + VERGE_OUT, within[3] + VERGE_OUT] : null;
+    if (was) for (const c of this.chunksOf(was)) this.chunks.get(c)?.laid.delete(key), changed || this.touch(c, boxOf(was));
     if (laid) {
       this.laid.set(key, laid);
       for (const c of this.chunksOf(laid)) {
         const chunk = this.chunks.get(c) ?? { texture: null, laid: new Set() };
         this.chunks.set(c, chunk);
         chunk.laid.add(key);
-        this.touch(c, laid);
+        this.touch(c, changed ?? boxOf(laid));
       }
     } else this.laid.delete(key);
     if (!this.scheduled) (this.scheduled = true), queueMicrotask(() => this.flush());
   }
 
-  /** A chunk changed where a thing laid lies. */
-  private touch(chunk: string, laid: Laid) {
-    const [x0, y0, x1, y1] = boxOf(laid);
+  /** A chunk changed over a box of the world. */
+  private touch(chunk: string, [x0, y0, x1, y1]: number[]) {
     const b = this.dirty.get(chunk) ?? [Infinity, Infinity, -Infinity, -Infinity];
     this.dirty.set(chunk, [Math.min(b[0], x0), Math.min(b[1], y0), Math.max(b[2], x1), Math.max(b[3], y1)]);
   }
@@ -101,6 +105,7 @@ export class Verge {
    *  of what is laid there, stored as how far into the grass it lies,
    *  from under the road (0) to as far as kept (1). */
   private flush() {
+    const began = performance.now();
     this.scheduled = false;
     for (const [c, within] of this.dirty) {
       const chunk = this.chunks.get(c);
@@ -136,6 +141,7 @@ export class Verge {
       this.tell(c, fresh, within);
     }
     this.dirty.clear();
+    perfCount("verge.flushMs", performance.now() - began);
   }
 
   private tell(chunk: string, fresh: boolean, within: number[]) {

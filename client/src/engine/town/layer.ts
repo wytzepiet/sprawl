@@ -80,8 +80,9 @@ export interface Drawing {
   chunks: ChunkDrawing[];
   /** The window the chunks were drawn in, round them a margin wider. */
   window: Bounds;
-  /** How long it took to draw. */
+  /** How long it took to draw, and of that the grass's verge. */
   ms: number;
+  vergeMs: number;
 }
 
 export const grow = (b: Bounds, x: number, y: number) => {
@@ -144,6 +145,7 @@ function vergeOf(kerbs: ReturnType<typeof kerbsOf>, cover: Parameters<typeof cov
 /** The snapshot's chunks, drawn. */
 export function drawChunks(s: Snapshot): Drawing {
   const began = performance.now();
+  let vergeMs = 0;
   const box = s.box;
   const OPEN: Tile = { kind: "open", storeys: 0 };
   const ROAD: Tile = { kind: "road", storeys: 0 };
@@ -266,12 +268,14 @@ export function drawChunks(s: Snapshot): Drawing {
     const sheet = own.find((p) => p.name === "pavement" && p.geo.indices.length);
     const near = (roadsBy.get(key) ?? []).flatMap((t) => [roadSheet.indices[t], roadSheet.indices[t + 1], roadSheet.indices[t + 2]]);
     const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, roads: { sheet: { ...roadSheet, indices: near }, edges: roadEdges } }) : null;
+    const vergeBegan = performance.now();
     const verge = sheet ? vergeOf(kerbs, sheet.geo, cut) : null;
+    vergeMs += performance.now() - vergeBegan;
     // A prop stands on the chunk it is on, as a tree does.
     const mine = props.filter((p) => p.x >= cut[0] && p.x < cut[2] && p.y >= cut[1] && p.y < cut[3]);
     const packed = new Float32Array(mine.length * PROP_FLOATS);
     mine.forEach((p, i) => packed.set([PROP_KINDS.indexOf(p.kind), p.x, p.y, p.z, p.size, p.high, p.tx, p.ty], i * PROP_FLOATS));
     return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, theme), props: packed, cut, paving, verge };
   });
-  return { chunks, window, ms: performance.now() - began };
+  return { chunks, window, ms: performance.now() - began, vergeMs };
 }
