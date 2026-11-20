@@ -182,18 +182,19 @@ export const LAWN_DEFINITIONS = CLOVER_AT;
 /** The lawn read at a point of the map, in tiles, from `texture`: `name`,
  *  its slope across and up (red, green, -1 to 1), its height (blue, 0 deep
  *  between the blades) and whether a flower is there (alpha). Its slope
- *  from the heights half a texel either side, of the mip read, so it runs
- *  on smoothly from texel to texel instead of standing still in each, as a
- *  blade as tall as it is wide would have; its height their mean. */
+ *  from its height and the heights a texel on across and up, of the mip
+ *  read, so it runs on smoothly from texel to texel instead of standing
+ *  still in each, as a blade as tall as it is wide would have: three
+ *  reads, not the four of half a texel either side, which is the same
+ *  slope found half a texel over. */
 export const lawnRead = (texture: string, at: string, name: string) => {
   const read = (o: string) => `textureSampleBias(${texture}, ${texture}Sampler, ${name}Uv + ${o}, ${f(SHARPEN)}).r`;
   return `let ${name}Uv = (${at}) / ${f(LAWN_TILES)};
 let ${name}E = max(${(0.5 / n).toExponential(4)}, 0.5 * max(fwidth(${name}Uv).x, fwidth(${name}Uv).y) * ${f(2 ** SHARPEN)});
-let ${name}Xp = ${read(`vec2f(${name}E, 0.)`)};
-let ${name}Xm = ${read(`vec2f(-${name}E, 0.)`)};
-let ${name}Yp = ${read(`vec2f(0., ${name}E)`)};
-let ${name}Ym = ${read(`vec2f(0., -${name}E)`)};
-let ${name} = vec4f(clamp(vec2f(${name}Xp - ${name}Xm, ${name}Yp - ${name}Ym) / (2. * ${name}E * ${n}.) * ${f(1.5 * HALF_WIDTH)}, vec2f(-1.), vec2f(1.)), 0.25 * (${name}Xp + ${name}Xm + ${name}Yp + ${name}Ym), lawnClover(${at}));`;
+let ${name}H = ${read("vec2f(0.)")};
+let ${name}X = ${read(`vec2f(2. * ${name}E, 0.)`)};
+let ${name}Y = ${read(`vec2f(0., 2. * ${name}E)`)};
+let ${name} = vec4f(clamp(vec2f(${name}X - ${name}H, ${name}Y - ${name}H) / (2. * ${name}E * ${n}.) * ${f(1.5 * HALF_WIDTH)}, vec2f(-1.), vec2f(1.)), ${name}H, lawnClover(${at}));`;
 };
 
 /** The hummocks' slope (red, green, from -1 to 1 as 0 to 1) and height
