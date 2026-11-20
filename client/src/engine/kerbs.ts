@@ -1,6 +1,7 @@
 import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
 import type { KerbTexels } from "./kerbLines";
+import { bladeLight, bladeSun } from "./ground";
 
 /**
  * Kerbs edged from a texture rather than a rim of triangles. A flat sheet
@@ -51,6 +52,8 @@ const BAND = 0.04;
 const BAND_LIGHT = 1.07;
 const JOINT = 0.008;
 const JOINT_DEPTH = 0.6;
+/** How far in from its own edge the sheet is in the grass's shade. */
+const FOOT = 0.045;
 const n = (x: number) => x.toFixed(4);
 
 /** Kerbs edged from a sheet's kerb texture, on its material. Its
@@ -80,6 +83,7 @@ export function kerbPlugin(field: KerbField): MaterialPlugin {
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: "out.vKerbAt = position.xy;" }
         : {
+            CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color = color * ${bladeLight("1. - kerbFoot")};`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let kerbUv = (input.vKerbAt - material.kerbOrigin) / material.kerbSize;
 let kerbTx = vec2f(material.kerbTexel.x, 0.);
 let kerbTy = vec2f(0., material.kerbTexel.y);
@@ -89,6 +93,10 @@ if (kerbAt.a > ${n(CUT)}) { discard; }
 let kerbD = kerbAt.r;
 let kerbEdge = min(select(9., kerbD, kerbD >= 0.), ${n(CUT)} - kerbAt.a);
 let kerbBand = 1. - step(${n(BAND)}, kerbEdge);
+// The grass round the sheet stands over it (\`verge.ts\`): its edge rises
+// to the grass, and is in its shade this far in.
+let kerbFoot = select(0., 1. - smoothstep(0., ${n(FOOT)}, kerbD), kerbD >= 0.);
+sunlit = ${bladeSun("1. - kerbFoot")};
 baseColor *= mix(1., ${n(BAND_LIGHT)}, kerbBand);
 // Within reach of an edge (its chamfer, the kerb's rim, the joint behind
 // the stones) the surface turns; further in, nothing here moves it, and
@@ -102,7 +110,7 @@ let kerbS = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.)
 let kerbDx = kerbE.r - kerbW.r;
 let kerbDy = kerbN.r - kerbS.r;
 if (kerbD >= 0. && kerbD < ${n(CHAMFER)} && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
-  N = normalize(N + normalize(vec3f(-kerbDx, -kerbDy, 0.)));
+  N = normalize(N - normalize(vec3f(-kerbDx, -kerbDy, 0.)));
 }
 let kerbToRoad = vec2f(kerbE.a - kerbW.a, kerbN.a - kerbS.a);
 if (${n(CUT)} - kerbAt.a < ${n(CHAMFER)} && dot(kerbToRoad, kerbToRoad) > 0.) {

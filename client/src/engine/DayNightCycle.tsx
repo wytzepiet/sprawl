@@ -79,7 +79,7 @@ const AMB_MIDNIGHT = rgb(0.35, 0.35, 0.5);
 // it is the sun that turns gold, so a golden hour is warm light and blue
 // shadows at once.
 const AMB_DAWN = rgb(0.55, 0.52, 0.66);
-const AMB_NOON = rgb(0.82, 0.82, 0.8);
+const AMB_NOON = rgb(0.96, 0.96, 0.93);
 const AMB_DUSK = rgb(0.5, 0.48, 0.62);
 /** The sky's light is blue and the sun's warm, so where the sun is shut out
  *  a surface is its colour times the blue: grass goes teal, a red roof
@@ -87,19 +87,21 @@ const AMB_DUSK = rgb(0.5, 0.48, 0.62);
 const SKY_LIGHT = rgb(0.74, 0.86, 1.22);
 /** The sun by its elevation: the lower, the more air its light has
  *  crossed and the more blue is scattered out of it, so near white high,
- *  gold low, and a deep orange red as it sets. */
+ *  gold low, and a deep orange red as it sets; at its highest all but
+ *  white, so a noon keeps its colours, not washed warm. */
 const sunStops: [number, Rgb][] = [
   [0, rgb(1.8, 0.42, 0.16)],
   [0.14, rgb(1.8, 0.42, 0.16)],
   [0.3, rgb(1.65, 0.78, 0.3)],
-  [0.7, rgb(1.15, 1.02, 0.75)],
-  [1, rgb(1.15, 1.02, 0.75)],
+  [0.55, rgb(1.15, 1.02, 0.75)],
+  [0.8, rgb(1.1, 1.07, 0.97)],
+  [1, rgb(1.1, 1.07, 0.97)],
 ];
 
 /** And stronger as it climbs, by this much more at its highest, so a
  *  summer noon's sun outshines the sky, as a real one does, and its colours
  *  glow rather than sit flat in the sky's fill. */
-const HIGH_SUN = 1;
+const HIGH_SUN = 1.8;
 
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;

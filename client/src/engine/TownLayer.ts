@@ -33,6 +33,7 @@ import type { Part } from "./merged";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType, Placing } from "../generated";
 import { SIDE_OFFSET } from "./tiles";
 import { stale } from "./still";
+import { verge } from "./verge";
 
 /** How many roads one tile may hold: the ground's two side by side, and
  *  the decks' over them. */
@@ -418,6 +419,8 @@ export class TownLayer {
               const shown = performance.now();
               this.drop(c.key);
               const made = this.make(c, window, byId);
+              // The grass's verge round its paving, placed on the map as it is.
+              if (c.verge) verge(this.ctx.engine).set(`paving ${c.key}`, { ...c.verge, x0: c.verge.x0 + window[2] + 1, y0: c.verge.y0 + window[3] + 1 });
               if (within) remadeWithin(made.meshes.map((m) => m.name), [within[0], within[1], within[2] + 1, within[3] + 1]);
               // Under a building held, it waits to be seen again.
               if (this.preview.has(c.key)) this.want(made, false);
@@ -640,6 +643,7 @@ export class TownLayer {
     if (!chunk) return;
     this.dropShown(chunk);
     this.chunks.delete(key);
+    verge(this.ctx.engine).set(`paving ${key}`, null);
   }
 
   private dropShown(chunk: Shown) {
