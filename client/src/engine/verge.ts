@@ -1,6 +1,5 @@
 import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "./gpu";
 import { retire } from "./geometry";
-import { perfCount } from "./PerfReport";
 import { CHUNK_SIZE } from "./objects/terrainGeometry";
 import { VERGE_DENSITY, VERGE_IN, VERGE_OUT } from "./kerbLines";
 
@@ -105,7 +104,6 @@ export class Verge {
    *  of what is laid there, stored as how far into the grass it lies,
    *  from under the road (0) to as far as kept (1). */
   private flush() {
-    const began = performance.now();
     this.scheduled = false;
     for (const [c, within] of this.dirty) {
       const chunk = this.chunks.get(c);
@@ -141,7 +139,6 @@ export class Verge {
       this.tell(c, fresh, within);
     }
     this.dirty.clear();
-    perfCount("verge.flushMs", performance.now() - began);
   }
 
   private tell(chunk: string, fresh: boolean, within: number[]) {
